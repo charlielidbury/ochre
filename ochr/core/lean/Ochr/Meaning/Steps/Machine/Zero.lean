@@ -107,8 +107,8 @@ theorem zero_borrowPlace :
   unfold Ochr.borrowPlace; grows_go
 
 theorem zero_assignPlace :
-    ∀ (p : Place) (v : Value) (T : Option Value), GrowsIn tb (Ochr.assignPlace 0 p v T) := by
-  intro p v T
+    ∀ (p : Place), GrowsIn tb (Ochr.assignPlace 0 p) := by
+  intro p
   unfold Ochr.assignPlace; grows_go
 
 theorem zero_dropTopBind :
@@ -390,8 +390,8 @@ theorem zero_bindTyQ :
   unfold Ochr.bindTy?; grows_go
 
 theorem zero_endBorrowArgs :
-    ∀ (ws : Array Value) (tys : Array (Option Value)), GrowsIn tb (Ochr.endBorrowArgs 0 ws tys) := by
-  intro ws tys
+    ∀ (n : Nat), GrowsIn tb (Ochr.endBorrowArgs 0 n) := by
+  intro n
   unfold Ochr.endBorrowArgs; grows_go
 
 theorem zero_runBody :
@@ -405,13 +405,13 @@ theorem zero_runBodyCore :
   unfold Ochr.runBodyCore; grows_go
 
 theorem zero_callFn :
-    ∀ (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool), GrowsIn tb (Ochr.callFn 0 typed fv fT ws tys head cls? recUid? res fills want defer) := by
-  intro typed fv fT ws tys head cls? recUid? res fills want defer
+    ∀ (typed : Bool) (fT : Option Value) (n : Nat) (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool) (resTy : Option Value), GrowsIn tb (Ochr.callFn 0 typed fT n tys head cls? recUid? res fills want defer resTy) := by
+  intro typed fT n tys head cls? recUid? res fills want defer resTy
   unfold Ochr.callFn; grows_go
 
 theorem zero_closeCall :
-    ∀ (fv : Value) (ws : Array Value) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeCall 0 fv ws kind res fills tys) := by
-  intro fv ws kind res fills tys
+    ∀ (n : Nat) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeCall 0 n kind res fills tys) := by
+  intro n kind res fills tys
   unfold Ochr.closeCall; grows_go
 
 theorem zero_refine :

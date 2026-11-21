@@ -959,7 +959,7 @@ def assignPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
     (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemp v) s) (hpos : resolve s p = some (pos, (p.steps).2))
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v T) st bh () st'),
+    (bh : Nat) (h : Runs (Ochr.assignPlace fuel p) (st.withTempT v T) bh () st'),
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       (∀ l, l < st.nextLoan → π' l = π l) ∧ ExtOk K ρ st st' ρ' Δ' ∧ st.absTy.size ≤ st'.absTy.size ∧
       assignAt K φ p (meanV K ρ φ (.plain .err) v) (match v with | .borrow l _ => some l | _ => none) s = some (r, s') ∧
@@ -1747,7 +1747,7 @@ def end_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop
 content's borrows end ([Drop]). -/
 def assign_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (v : Value) (T : Option Value)
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v T) st bh () st'),
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.assignPlace fuel p) (st.withTempT v T) bh () st'),
     WF1 st'.env ∧ WF2 st'.env ∧ WF3 st'.env
 
 /-- [Close] keeps (WF1)–(WF4): the fills are closed sealed programs (C1), the arguments were
@@ -1756,7 +1756,7 @@ def close_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   ∀ (st st' : MState)  (fv : Value) (ws : Array Value) (kind : Kind)
     (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
     (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hargs : ArgsLoanFree st.env ws)
-    (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st bh v st'),
+    (bh : Nat) (h : Runs (Ochr.closeCall fuel ws.size kind res fills tys) ((fv :: ws.toList).foldl MState.withTemp st) bh v st'),
     WF1 st'.env ∧ WF2 st'.env ∧ WF3 st'.env ∧ WF4 st'.env
 
 /-- Closure formation keeps (WF4): the captures are read after [Access] (loan-free) and may not
@@ -1857,7 +1857,8 @@ def callFn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.callFn fuel typed fv fT ws tys hd none recUid? res fills want defer) st bh (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.callFn fuel typed fT ws.size tys hd none recUid? res fills want defer) (st.withTemps (fv :: ws.toList)) bh
+      (v, T?) st'),
     SimConclT K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => callOf K.dm.read fres as) v T?
 
 /-- **A known callee's body, run in place** (`runBody`), in the simulation form: against the
@@ -1907,7 +1908,7 @@ def closeCall_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
       fres.2.m.paramAt? K.dm.read ((as.map (·.1)).take i) = some p →
       ∃ T : Value, tys[i]? = some (some (Value.tRef T)) ∧ (Value.tyS K.dm K.M K.Γ ρ T).m = p.2)
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st bh v st'),
+    (bh : Nat) (h : Runs (Ochr.closeCall fuel ws.size kind res fills tys) (st.withTemps (fv :: ws.toList)) bh v st'),
     SimConcl K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => callOf K.dm.read fres as) v
 
 /-- **The induction step, in the simulation form** (docs/31 D20 item 1). For every `Good`

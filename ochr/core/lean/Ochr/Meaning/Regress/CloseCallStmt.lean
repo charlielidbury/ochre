@@ -26,7 +26,7 @@ def closeCall_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel :
   ∀ (st st' : MState)  (fv : Value) (fT : Value) (ws : Array Value)
     (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
-    (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st fuel v st'),
+    (h : Runs (Ochr.closeCall fuel ws.size kind res fills tys) ((fv :: ws.toList).foldl MState.withTemp st) fuel v st'),
     ∃ r s', callOf K.dm.read (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
       Exact (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
@@ -46,7 +46,7 @@ theorem old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
     (st st' : MState) (fv : Value) (ws : Array Value) (kind : Kind) (res : DeclInfo)
     (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
-    (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st fuel v st') :
+    (h : Runs (Ochr.closeCall fuel ws.size kind res fills tys) ((fv :: ws.toList).foldl MState.withTemp st) fuel v st') :
     ¬ closeCall_step_stmt_old K ρ φ fuel := by
   intro hstmt
   obtain ⟨r, s', hc, _⟩ := hstmt st st' fv .zero ws kind res fills tys v hg hΔ hargs h
