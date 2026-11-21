@@ -82,6 +82,7 @@ import Ochr.Meaning.Regress.GrainDerefProof
 import Ochr.Meaning.Regress.StepKindsTable
 import Ochr.Meaning.Regress.JoinPrefixBorrow
 import Ochr.Meaning.Regress.SelfCapture
+import Ochr.Meaning.Regress.TailJoin
 import Ochr.Meaning.Regress.RefsPathCond
 import Ochr.Meaning.Regress.FreshBound
 import Ochr.Meaning.Regress.EntryCheck
