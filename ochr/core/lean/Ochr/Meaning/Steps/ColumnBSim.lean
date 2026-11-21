@@ -63,9 +63,9 @@ theorem sim_write_read (hE : EvalInv) (hZ : ZeroInv) (hA : AssignDerefInv) (hVE 
         hz (fun a b h ha => ha.kern h) (fun _ h => h.derefVar (.succ .zero)) (fun _ h => h.declY)
         (fun st h => by rw [h.readings]; exact flags_Zy hd) (fun T s => by rw [runT_zero, runT_zero])
         (fun st₀ st₁ bh hint v₀ T₀ hP hm htd hD h => by
-          obtain ⟨rfl, -, hk, -⟩ := run_zero hE hZ hm hD (by rw [hP.readings]; exact flags_Zy hd)
+          obtain ⟨rfl, rfl, hk, -⟩ := run_zero hE hZ hm hD (by rw [hP.readings]; exact flags_Zy hd)
             (by rw [hP.readings, declOf_Zy hd]; exact duC_ok) htd h
-          exact ⟨.zero, hk.env⟩)
+          exact ⟨.zero, hk.env, fun T e => by cases e; rfl⟩)
         (fun sc => hInv sc _))
 
 /-- The sequence `*y := Z; x`, at any extension. -/

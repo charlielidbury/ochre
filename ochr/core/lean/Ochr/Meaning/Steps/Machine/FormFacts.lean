@@ -6,6 +6,7 @@ import Ochr.Meaning.Steps.Machine.InvSteps
 import Ochr.Meaning.Steps.Machine.PlaceLocalFF
 import Ochr.Meaning.Steps.Machine.SeqInv
 import Ochr.Meaning.Steps.Machine.VarEndInv
+import Ochr.Meaning.Steps.Machine.AssignDerefInv
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
@@ -142,5 +143,6 @@ theorem seqInv : SeqInv := seqInvR
 #print axioms placeLocal_ff
 #print axioms seqInvR
 #print axioms varEndInv
+#print axioms assignDerefInv
 
 end Ochr.Meaning.Steps.Machine

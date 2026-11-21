@@ -668,7 +668,8 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ (T : TyS) (s : SState), runT K ρ φ false T u s = runT K ρ φ false (.plain TyM.err) u s)
     (hnum : ∀ st₀ st₁ bh hint v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
-      Runs (Ochr.eval n true u hint) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ Env.erase st₀.env = Env.erase st₁.env)
+      Runs (Ochr.eval n true u hint) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ Env.erase st₀.env = Env.erase st₁.env ∧
+        ∀ T, T₀ = some T → (T == .tNat) = true)
     (hinv : ∀ sc, K.D.invalidated sc (.deref (.var i)) = []) :
     CoreSim K ρ φ (n + 1) (.assign (.deref (.var i)) u) P (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl _ hD bh h
@@ -681,10 +682,14 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
     obtain ⟨rfl, rfl⟩ := hpos
     rw [hb0, Option.some.injEq] at hb
     subst hb; exact ht0
-  obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, lb, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hki, -, hpos₂, hlk₂, hbw,
-    hk'i, rfl, rfl⟩ := hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
+  obtain ⟨st₀, st₁, hu', v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hru, hD₁, rfl, rfl, hpost⟩ :=
+    hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
   have hPu₀ := hPu st st₀ hk₀ hPst
-  obtain ⟨hv₀, he₀₁⟩ := hnum st₀ st₁ bh₁ hu' v₀ T₀ hPu₀ hm₀ htd₀ hD₁ hru
+  obtain ⟨hv₀, he₀₁, hT₀⟩ := hnum st₀ st₁ bh₁ hu' v₀ T₀ hPu₀ hm₀ htd₀ hD₁ hru
+  -- `y` at `u`'s end is as it was: `borrow_l w`, `w` a number, at `&Nat`
+  obtain ⟨f, j, b, lb, w, hpos₁, hlk₁, hbw, hwn, htb'⟩ := (hP st hPst).of_erase (hk₀.env.trans he₀₁)
+  obtain ⟨st₂, hq, hki, -, hpos₂, hlk₂, hk'⟩ := hpost f j b lb w hpos₁ hlk₁ hbw hwn
+  replace hki := hki hT₀
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv
   -- the step for `u`
   have hOu := hu st₀ st₁ true hu' v₀ T₀ s π hPu₀ trivial hm₀ (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hvu
@@ -702,13 +707,6 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
   -- after `u` and the quiet steps, `y` is as it was: `borrow_l w`, at `&Nat`
   have hr₂ : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ st₂ s₁ :=
     rel_of_withTempT_num hv₀ (hr₁.of_quiet (hq.withTempT v₀ T₀) hp₁.labels)
-  obtain ⟨f', j', b', lb', w', hpos', hlk', hbw', hwn', htb'⟩ :=
-    (hP st hPst).of_erase (hk₀.env.trans (he₀₁.trans hq.env))
-  rw [hpos₂, Option.some.injEq, Pos.bind.injEq] at hpos'
-  obtain ⟨rfl, rfl⟩ := hpos'
-  rw [hlk₂, Option.some.injEq] at hlk'
-  subst hlk'
-  have hwn : w.Num := by rw [hbw] at hbw'; cases hbw'; exact hwn'
   obtain ⟨mw, hmw⟩ := hwn.vmean
   have hmx : ∀ (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (φ : Future) (hint : TyS),
       Value.mean dm C Γ ρ φ hint b.val = .el0 Nat mw := by
@@ -727,7 +725,6 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
     rw [htyS]; simp only [Env.hintAt, hlk₂, htb']; rfl
   have hns : ∀ l, (valAt st₂.env (.bind f j)).sitesOf l (.bind f j) [] = [] := fun l => by
     rw [hvb₂, hbw]; exact hwn.sitesOf l _ _
-  have hk' := hk'i (fun m z => hwn.not_borrow m z) hns
   have hacc : ∀ hit, s₁.access (.bind f j) hit = s₁ := fun _ => access_noSites (rel_noSites_at hr₂ hns)
   have haok : ∀ hit, AccessOk K φ s₁ (.bind f j) hit := fun _ => accessOk_noSites (rel_noSites_at hr₂ hns)
   have hres : resolve s₁ (.deref (.var i)) = some (.bind f j, [.deref]) :=
