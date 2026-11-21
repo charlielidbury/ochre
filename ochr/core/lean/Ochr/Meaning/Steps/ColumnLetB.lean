@@ -724,7 +724,7 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hc : Strict.Fund
     rw [htyS]; simp only [Env.hintAt, hlk₂, htb']; rfl
   have hns : ∀ l, (valAt st₂.env (.bind f j)).sitesOf l (.bind f j) [] = [] := fun l => by
     rw [hvb₂, hbw]; exact hwn.sitesOf l _ _
-  have hk' := hk'i hns
+  have hk' := hk'i (fun m z => hwn.not_borrow m z) hns
   have hacc : ∀ hit, s₁.access (.bind f j) hit = s₁ := fun _ => access_noSites (rel_noSites_at hr₂ hns)
   have haok : ∀ hit, AccessOk K φ s₁ (.bind f j) hit := fun _ => accessOk_noSites (rel_noSites_at hr₂ hns)
   have hres : resolve s₁ (.deref (.var i)) = some (.bind f j, [.deref]) :=

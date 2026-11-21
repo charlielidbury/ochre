@@ -198,7 +198,7 @@ theorem run_x (hE : EvalInv) (hV : VarNumInv) {g : Nat} {typed : Bool} {hint : O
   obtain ⟨fr₀, hfr₀, hbs₀⟩ := top_of_erase hk₀.env hfr
   have hb₀ : fr₀.binds.back? = some b := by rw [hbs₀]; exact hb
   obtain ⟨hpos, hlk⟩ := ckVarPos_top hfr₀ hb₀
-  obtain ⟨hv, hT, hTs, hm₁, c, hq, -, hcopy, hmove⟩ :=
+  obtain ⟨hv, hT, hTs, hm₁, c, hq, hcopy, hmove⟩ :=
     hV (g + 3) typed 0 hint st₀ st₁ bh' v T? _ _ b D hm₀ hpos hlk hn (by rw [ht]; rfl) (DecTab.of_kern hk₁.symm hD) h₀
   refine ⟨hv, fun hty => ?_, hmm hm₁, ?_⟩
   · obtain ⟨T, hT'⟩ := Option.isSome_iff_exists.mp (hTs hty)
@@ -245,7 +245,7 @@ theorem atX_push (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hd : DecTab K.D s
 /-- **The step for the body of `C`** (`let x = S(Z); x`, typed, at any fuel from `9`): composed from
 the column's steps, every side condition of each discharged for this program from the machine facts
 and the table aligned at `stC`. -/
-theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) (hL : LetInv)
+theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) (hVK : VarNumInvK) (hL : LetInv)
     (hDN : DropNoopInv) (hI : InvSteps) (hc : Strict.FundCtx K) (hd : DecTab K.D stC) (g : Nat) :
     EvalSim K ρ φ (g + 9) bodyC Top (· = true) := by
   have hz : EvalSim K ρ φ (g + 3) .zero Top :=
@@ -264,7 +264,7 @@ theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) 
       EvalSim { K with Δ := Δ' } ρ' φ (g + 6) (.place (.var 0)) AtX (· = true) := fun Δ' ρ' =>
     eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e) (fun _ _ _ e => by cases e)
       (fun st hst => by rw [hst.1, declOf_x hd]; exact Aux.duC_ok)
-      (CoreSim.mono (var_core (K := { K with Δ := Δ' }) (ρ := ρ') (φ := φ) hV hI (n := g + 3) (i := 0))
+      (CoreSim.mono (var_core (K := { K with Δ := Δ' }) (ρ := ρ') (φ := φ) hVK hI (n := g + 3) (i := 0))
         (fun _ h => h.2.numVar) (fun _ _ => trivial))
   have hlet : CoreSim K ρ φ (g + 7) bodyC Top (· = true) := by
     unfold bodyC
@@ -361,7 +361,7 @@ of the checker on the body from a state with `stC`'s kernel, in mode (where `che
 constant's body), the strict run of the body from the reference state (`stC` read as one) succeeds,
 and its value is `1`, a member of `Nat`, at the type `Nat`. Assumed: facts about the checker alone
 (the module docstring). -/
-theorem column_C (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) (hL : LetInv) (hDN : DropNoopInv)
+theorem column_C (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) (hVK : VarNumInvK) (hL : LetInv) (hDN : DropNoopInv)
     (hI : InvSteps) (hback : DecBack) {g : Nat} (hgrow : GrowsM (Ochr.eval (g + 9) true bodyC (some .tNat)))
     (dm : DataModel) (D : Decisions) (ρ : Assignment) (φ : Future) {st st' : MState} {bh : Nat} {v : Value}
     {T? : Option Value} (hk : Kern stC st) (hm : Mode st) (htd : st.tailDecl = none) (hD : DecTab D st')
@@ -373,7 +373,7 @@ theorem column_C (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) (
   obtain ⟨rfl, rfl⟩ := run_body (K := KC dm D) hE hZ hS hV hL hDN hd hT hm (.inl htd) hD h
   have hsc : scopeOf (SM' (KC dm D) ρ stC) = [] := by rw [scopeOf_sstate']; exact topReadings_stC
   obtain ⟨ρ', Δ', π', r, s', -, hx, hmean, hagree, -, -, -⟩ :=
-    sim_bodyC (K := KC dm D) (ρ := ρ) (φ := φ) hE hZ hS hV hL hDN hI (fundCtx_KC dm D) hd g st st' true (some .tNat)
+    sim_bodyC (K := KC dm D) (ρ := ρ) (φ := φ) hE hZ hS hV hVK hL hDN hI (fundCtx_KC dm D) hd g st st' true (some .tNat)
       _ _ (SM' (KC dm D) ρ stC) id hT rfl hm (.inl htd) ((pre_stC dm D ρ).of_kern hk) ((rel_stC dm D ρ φ).of_kern hk)
       (sgood_stC dm D ρ φ) (valsOk_bodyC ρ φ _) (absBelow_bodyC _) hasHolePrim_bodyC
       (by rw [hsc]; exact flags_bodyC hd) (fun e => by cases e) hD bh h

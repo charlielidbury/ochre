@@ -197,7 +197,7 @@ section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 /-- **The read of a variable holding a number stored at `Nat`, at `evalCore`.** -/
-theorem var_core (hV : VarNumInv) (hI : InvSteps) {n i : Nat} : CoreSim K ρ φ (n + 1) (.place (.var i)) (NumVar i) := by
+theorem var_core (hV : VarNumInvK) (hI : InvSteps) {n i : Nat} : CoreSim K ρ φ (n + 1) (.place (.var i)) (NumVar i) := by
   intro st st' typed hint v T? s π ⟨f, j, b, hpos, hb, hnum, hty⟩ _ hm htn _ _ hp hr hS hv hab hnh hfl hok hD bh h
   obtain ⟨rfl, hT, -, hm', st₁, hq, hki, hcopy, hmove⟩ :=
     hV n typed i hint st st' bh v T? f j b K.D hm hpos hb hnum (by rw [hty]; rfl) hD h

@@ -133,6 +133,22 @@ def VarNumInv : Prop :=
     b.val.Num → b.ty.isSome → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) typed (.place (.var i)) hint) st bh (v, T?) st' →
     v = b.val ∧ (∀ T, T? = some T → b.ty = some T) ∧ (typed = true → T?.isSome) ∧ Mode st' ∧
+    ∃ st₁, Quiet st st₁ ∧
+      (D.copy (D.placeDecl (DecideScope.topReadings st) (.var i)) = true → Kern st₁ st') ∧
+      (D.copy (D.placeDecl (DecideScope.topReadings st) (.var i)) = false →
+        Kern { st₁ with env := Env.setAtE st₁.env (.bind f j) .bot } st')
+
+/-- **`VarNumInv` with the invariant kept across its quiet stretch** (`KeepsInv`; lead9, docs/31 D116):
+what `var_core` uses. `VarNumInv` is PROVED as stated (`Machine.varNumInv`), its stretch being
+`Quiet.refl`, so this is that proof with `fun _ _ h => h` beside it; stated apart only so as not to
+break the proof of record. -/
+def VarNumInvK : Prop :=
+  ∀ (n : Nat) (typed : Bool) (i : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
+    (T? : Option Value) (f j : Nat) (b : Binding) (D : Decisions),
+    Mode st → ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+    b.val.Num → b.ty.isSome → DecTab D st' →
+    Runs (Ochr.evalCore (n + 1) typed (.place (.var i)) hint) st bh (v, T?) st' →
+    v = b.val ∧ (∀ T, T? = some T → b.ty = some T) ∧ (typed = true → T?.isSome) ∧ Mode st' ∧
     ∃ st₁, Quiet st st₁ ∧ KeepsInv st st₁ ∧
       (D.copy (D.placeDecl (DecideScope.topReadings st) (.var i)) = true → Kern st₁ st') ∧
       (D.copy (D.placeDecl (DecideScope.topReadings st) (.var i)) = false →
@@ -216,6 +232,18 @@ def BorrowNumInv : Prop :=
     Mode st → ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
     b.val.Num → b.ty = some .tNat → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) true (.borrow (.var i)) hint) st bh (v, T?) st' →
+    Mode st' ∧ ∃ st₁, Quiet st st₁ ∧ v = .borrow st₁.nextLoan b.val ∧ T? = some (.tRef .tNat) ∧
+      Kern { st₁ with env := Env.setAtE st₁.env (.bind f j) (.loan st₁.nextLoan), nextLoan := st₁.nextLoan + 1 } st'
+
+/-- **`BorrowNumInv` with the invariant kept across its quiet stretch** (`KeepsInv`; lead9): what
+`borrow_core` uses. `BorrowNumInv` is PROVED as stated (`Machine.borrowNumInv`), its stretch
+`Quiet.refl`; as `VarNumInvK`. -/
+def BorrowNumInvK : Prop :=
+  ∀ (n i : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value) (f j : Nat)
+    (b : Binding) (D : Decisions),
+    Mode st → ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+    b.val.Num → b.ty = some .tNat → DecTab D st' →
+    Runs (Ochr.evalCore (n + 1) true (.borrow (.var i)) hint) st bh (v, T?) st' →
     Mode st' ∧ ∃ st₁, Quiet st st₁ ∧ KeepsInv st st₁ ∧ v = .borrow st₁.nextLoan b.val ∧ T? = some (.tRef .tNat) ∧
       Kern { st₁ with env := Env.setAtE st₁.env (.bind f j) (.loan st₁.nextLoan), nextLoan := st₁.nextLoan + 1 } st'
 
@@ -223,8 +251,13 @@ def BorrowNumInv : Prop :=
 as `AssignNumInv`, the path `[*]`: after the write `y` holds `borrow_l v₀`, where nothing is lent
 inside `y`'s content. As first stated (lead7) that condition was missing, and where `y`'s content is
 reborrowed (`y ↦ borrow_0 loan_1`, `r ↦ borrow_1 S(Z)`) the write's access ends `r` (`r ↦ ⊥`), which
-the conclusion excluded (`ColumnB`'s sanity runs, `stReb`; lead8). `y` is stored at `&Nat` (the
-step's entry condition: a whole write through `*`, no strong update, no lent proof). -/
+the conclusion excluded (`ColumnB`'s sanity runs, `stReb`; lead8). And where `y`'s old content `w`
+is itself a borrow, the write's drop of it ends that borrow (`assignPlace`: `match old with |
+.borrow m _ => endBorrow m`), so with `y ↦ borrow_l (borrow_m z)`, `x ↦ loan_m` the write gives `z`
+back to `x` and "only `y` changed" is FALSE (the machine lane's review, 2026-11-21; the sites
+condition does not exclude it, a borrow being no loan): the `Kern` clause now also asks `w` not a
+borrow. `y` is stored at `&Nat` (the step's entry condition: a whole write through `*`, no strong
+update, no lent proof). -/
 def AssignDerefInv : Prop :=
   ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -237,7 +270,7 @@ def AssignDerefInv : Prop :=
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧ Runs (Ochr.eval n true u hu) st₀ bh₁ (v₀, T₀) st₁ ∧
       DecTab D st₁ ∧ Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ ModeEq st₁ st' ∧ ckVarPos st₂.env i = some (.bind f j) ∧
       st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.val = .borrow l w ∧
-      ((∀ l', (valAt st₂.env (.bind f j)).sitesOf l' (.bind f j) [] = []) →
+      ((∀ m z, w ≠ .borrow m z) → (∀ l', (valAt st₂.env (.bind f j)).sitesOf l' (.bind f j) [] = []) →
         Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st') ∧ v = .unit ∧ T? = some .tUnit
 
 /-- **`evalCore` of a typed `u; w`** (`Machine.evalCore`'s `.seq`), for a first part whose value
