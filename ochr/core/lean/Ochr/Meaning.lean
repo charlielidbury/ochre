@@ -126,6 +126,7 @@ import Ochr.Meaning.Steps.ColumnReadEnd
 import Ochr.Meaning.Steps.ColumnBRuns
 import Ochr.Meaning.Steps.ColumnBSim
 import Ochr.Meaning.Steps.ColumnBFF
+import Ochr.Meaning.Steps.FragEnd
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects
