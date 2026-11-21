@@ -165,6 +165,11 @@ import Ochr.Meaning.Steps.CallGuards
 import Ochr.Meaning.Steps.ColumnJ
 import Ochr.Meaning.Steps.CallBody
 import Ochr.Meaning.Steps.FrameJ2
+import Ochr.Meaning.Steps.FormTail
+import Ochr.Meaning.Steps.SplitP
+import Ochr.Meaning.Steps.SplitGuards
+import Ochr.Meaning.Steps.ColumnPRun
+import Ochr.Meaning.Steps.ColumnPSplit
 import Ochr.Meaning.Steps.FrameFrag
 import Ochr.Meaning.Steps.GlobalsLocal
 import Ochr.Meaning.Regress.EvalMemRuns
