@@ -703,4 +703,68 @@ theorem readPlace_c1 (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBindi
     fun x => ⟨x, by simp [Code0.enc]⟩
   cases w.as Nat <;> simp [Sem.whole, ReadGood, hm] <;> rfl
 
+/-- The write `*r := w` on `S₄` ends nothing (it reaches no label). -/
+theorem assignOk_deref_S₄ (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    AssignOk K φ (.deref (.var 0)) (S₄ F n b k c) := by
+  have hr : resolve (S₄ F n b k c) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₄]
+  unfold AssignOk; rw [hr]
+  exact ⟨fun _ => accessOk_unreached K φ fun l => not_reached_r F n b k c _ l, fun h => by simp at h⟩
+
+theorem holderOf_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w : Sem) :
+    (S₅ F n b k c w).holderOf (k+1) = some (.bind 0 1) := by
+  unfold SState.holderOf
+  rw [positions_S₅]
+  simp [S₅]
+
+/-- Ending `k+1` over `r`'s content `w`, a `Nat` member, passes. -/
+theorem endOk_S₅ (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w : Sem)
+    (hw : w ∈ₛ[K.dm.read] TyM.nat) : EndOk K φ (S₅ F n b k c w) (k+1) := by
+  intro r hr ψ _
+  rw [holderOf_S₅] at hr
+  cases hr
+  show w ∈ₛ[K.dm.read] (if k + 1 = k + 1 then TyM.nat else _)
+  rw [if_pos rfl]; exact hw
+
+/-- The read of `c1` on `S₅` ends `r`'s borrow, strictly. -/
+theorem contentOk_c1_S₅ (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w : Sem)
+    (hw : w ∈ₛ[K.dm.read] TyM.nat) : ContentOk K φ (.var 1) (S₅ F n b k c w) := by
+  have hr : resolve (S₅ F n b k c w) (.var 1) = some (.bind 0 0, []) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₅]
+  unfold ContentOk; rw [hr]
+  intro j hj
+  rw [liveLabels_S₅] at hj
+  have hj0 : j = 0 := by simpa using hj
+  subst hj0
+  simp only [List.range_zero, List.foldl_nil, liveLabels_S₅, List.filter_cons, List.filter_nil,
+    reached_c1 F n b k c w (dataHit []) rfl, if_true]
+  exact ⟨endOk_S₅ K φ F n b k c w hw, trivial⟩
+
+theorem shape_S₆ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w : Sem) :
+    (S₆ F n b k c w).shape = fun _ => none := rfl
+
+/-- A state with no shape: the drop's `letLenders` and `dropLast` leave none. -/
+theorem shape_letLenders_dropLast (s : SState) (h : s.shape = fun _ => none) :
+    ((letLenders s).dropLast).shape = fun _ => none := by
+  have hl : letLenders s = s := by
+    unfold letLenders; split
+    · exact access_noShape s h _ _
+    · rfl
+  rw [hl]
+  funext q
+  rw [SState.dropLast_shape, h]
+  split <;> rfl
+
+/-- The [Drop] of a discarded value that holds no borrow does nothing (its test is trivial). -/
+theorem guardMod_discard_plain (K : RunCtx) (φ : Future) (T : TyM) (s : SState) :
+    SM.guardMod (DiscardOk K φ (TyS.plain T)) (discardEnd (TyS.plain T)) s = some (⟨⟩, s) := by
+  have h : DiscardOk K φ (TyS.plain T) s := trivial
+  unfold SM.guardMod; rw [if_pos h]; rfl
+
+theorem held_noShape (s : SState) (h : s.shape = fun _ => none) :
+    (match s.env.getLast? with
+      | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+      | none => none) = none := by
+  cases s.env.getLast? <;> simp [h]
+
 end Ochr.Meaning.Attack
