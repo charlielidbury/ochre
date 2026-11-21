@@ -4,6 +4,7 @@ import Ochr.Meaning.Steps.Machine.All
 import Ochr.Meaning.Steps.Machine.False
 import Ochr.Meaning.Steps.Machine.DecideFuel
 import Ochr.Meaning.Steps.Machine.DecideFuelFF
+import Ochr.Meaning.Steps.Machine.DecBack
 
 /-!
 # Facts about the machine alone (the slice, main's decision 2026-11-20; its own lane)
@@ -71,11 +72,11 @@ the proofs of (a) are under `Steps/Machine/` (its `HANDOFF.md` says how they go)
 at `st` reads only the tables' old entries (it names only unknowns `st` has, and their readings are
 frozen), so it succeeds at `st'` with the same answer, which the decisions give. The one-way
 simulation of `Decide.lean` (`DecideScope.decideSim`) for tables whose old entries agree, the
-converse direction of the removed `DecExtend.decAligned_grow` and the same lemma underneath. Open (the machine
-lane). -/
+converse direction of the removed `DecExtend.decAligned_grow` and the same lemma underneath. Proved
+in `Steps/Machine/DecBack.lean` (`Machine.decTab_back`: a one-way simulation of the decisions' block). -/
 theorem DecTab.back {D : Decisions} {st st' : MState} (hd : DecTab D st') (hg : TablesGrow st st') :
-    DecTab D st := by
-  sorry
+    DecTab D st :=
+  Machine.decTab_back hd hg
 
 /-- An assembly's tool: the decisions after the whole run are aligned after a part of it, where
 the rest of the run only extends the tables. -/
