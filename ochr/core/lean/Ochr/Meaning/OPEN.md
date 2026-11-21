@@ -14,6 +14,15 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE BORROW-PARAMETER COLUMNS `W`, `K`; D138 BUILT; D137 (B)'S TEST (lead19, 2026-11-22, `spine-lead19`; docs/31 D140 to D144)
+
+- **D138 built**: a borrow parameter's cell is its label's loan site (`fixStep`). `rel_startW`, `rel_startK` (every clause of `Rel` at the start), no assumed fact. `FrameProp.FrameRel.lentCl` restated (a closure may lend at its cells).
+- **`W` closed at the column level with NO assumed fact**: `ColumnW.column_W_ff` (the reference forms `W`'s closure, a member of `Π(r : &Nat). Nat`, at the checker's table). The body step in the form, `body_simW`/`body_outW` (applied at the start with `pre_stW`, `rel_startW`, `sgood_SBW`), ASSUMES `BodyWInv`, `InvNumA` (checker facts, unproved).
+- **OPEN, RULING ASKED (D141)**: `OutGood` (`Steps/Statements.lean`) asks borrow-parameter finals to be members at every future; FALSE (K) for any function returning its borrow parameter (`ColumnW.not_outGood_K`, `closure_ref_hyp_false_K`): the final is the returned borrow's final content. Through `OutGood'` this makes `MemBelow` (`GlobalsOk`), `FixKnot`'s and `Consistency.lean`'s stage obligations false for such globals. Recommended: the final clause at futures that give the returned label a member of the codomain.
+- **`K`'s body step**: not written. Needs a new checker fact for `Inv` after moving a borrow into flight (proposed `InvMoveBorrow`) and the relation after the move (template: `ColumnLetB.rel_pushBind_borrow`, the inverse move).
+- **D137 (B)**: not dropped; its test is `Regress/BlockReadings.A3` (stored reading `.pi .other`, the model's `.other`); `KeepTP` closes no block.
+- Unchanged from lead18: `Q`'s step and column; `J2`'s `Pre`/`Rel` after the call, the `let`, `column_J2_ff`.
+
 ## THE FIRST CLOSED-OFF BLOCK (`Q`), THE FIRST BORROW PARAMETERS (`W`, `K`), `J2`'S CALL (lead18, 2026-11-21, `spine-lead18`; docs/31 D137 to D139)
 
 - **Two model faults found, both ruled (A):** (1) D137, FIXED (ecb7288d): `CapsOk` reads a closure's captures against the first readings only (a stuck block keeps its parameters' readings in `rd`); `ColumnQMean.mean_vQ` proves the block means the reference's result. (B), the parameters' readings from `rd` in the `.fix` run, is decided and not built; its regression (main's `FrozenReadings.KeepTP`) is not pinned yet. (2) D138, NOT BUILT: `fixStep` must record a borrow parameter's cell as its label's loan site; until then `BorrowParStart.rel_start_false` stands (no `fixBodyAt` state for a borrow parameter is related to the checker's start).
