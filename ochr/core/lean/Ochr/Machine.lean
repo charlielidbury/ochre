@@ -3822,7 +3822,9 @@ def joinDrop (fuel : Nat) (mt : Term) (run : M (Value × Option Value)) : M (Val
   pure (v, T)
 termination_by structural fuel
 
-/-- D84 [Join] in tail position: the continuation of the arm drops what the join says first. -/
+/-- D84 [Join] in tail position: the continuation of the arm drops what the join says first. It
+ends a known constructor's arm and, since D119, each world's arm of a split, so the generic
+call's end states are an instance's. -/
 def joinCont (fuel : Nat) (mt : Term) (k : Value → Value → M Unit) : M (Value → Value → M Unit) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let (drops, _) ← staticJoin fuel' mt
@@ -4433,7 +4435,8 @@ termination_by structural fuel
 
 /-- Check a term in tail position. At the end of every path, `k` gets the result and
 its type (in that path's refined state). A match on an abstract `σ` here is split:
-each arm is checked to the end under its refinement ([Split]). -/
+each arm is checked to the end under its refinement ([Split]), and ends with the match's join
+as an instance's arm does ([Join], D119). -/
 def checkTail (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- the editor: an error here (`k`'s included) is reported at `t`, and hovering `t` shows its goal
@@ -4507,16 +4510,19 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
     | .zero => checkTail fuel' z (← joinCont fuel' t k)
     | .succ _ => checkTail fuel' s (← joinCont fuel' t k)
     | .abs σ =>
+      -- D119: each world's arm ends as a known constructor's does, the join dropping what
+      -- another arm moves ([Join], `joinCont`), so the generic call's end states are the
+      -- instances' (`runBodyCore`'s tail match, `joinEnds … tail`)
       let w ← enterWorld
       inWorld w do
         refine fuel' σ .zero
         trace fun _ => s!"[Split] σ{σ} := 0"
-        checkTail fuel' z k
+        checkTail fuel' z (← joinCont fuel' t k)
       inWorld w do
         let σ' ← freshAbsR fuel' .tNat
         refine fuel' σ (.succ (.abs σ'))
         trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
-        checkTail fuel' s k
+        checkTail fuel' s (← joinCont fuel' t k)
     | v@(.sealed _) | v@(.loan _) =>
       discard (generalizeNeutral fuel' p v)
       checkTail fuel' t k
@@ -4565,13 +4571,14 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
         let r ← etaInPlace fuel' σ d ps
         fire .SplitOne fun _ => s!"σ{σ} := {r} (one constructor, in place)"
         return ← checkTail fuel' t k
+      -- D119: each world's arm ends with the join, as a known constructor's does (above)
       let w ← enterWorld
       for (c, (_, a)) in (List.range d.ctors.length).zip arms do
         inWorld w do
           let r ← ctorRefinement fuel' d ps c
           refine fuel' σ r
           trace fun _ => s!"[Split] σ{σ} := {r}"
-          checkTail fuel' a k
+          checkTail fuel' a (← joinCont fuel' t k)
     | v@(.sealed _) | v@(.loan _) =>
       discard (generalizeNeutral fuel' p v)
       checkTail fuel' t k

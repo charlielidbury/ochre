@@ -670,3 +670,73 @@ def callArgsLive : Bool :=
     | _ => true
 
 #guard callArgsLive
+
+/-! ## Every name a declaration mentions is declared (D118)
+
+A declaration is rejected before anything runs if any of its terms mentions a constant or an
+inductive type that is not declared at that point: not in Σ, which holds only the accepted
+declarations before it (an inductive type's own name in its fields aside; a function's own name
+in its body is its bound `self`). It is read from syntax and Σ, so it covers code that no run
+reaches. Before D118 such a name was looked up only when a run reached it, so in the other arm of
+a match on a known constructor (`H4`, `K1`, `K2`, a closure's body `Clo`, a match an outer split
+already decided `RS`), in a type whose dead arm is never evaluated (`PT`, `RT`, `IP`, `TP`, `TLv`,
+a statement `ES`, an `Id` side `IdS`), in a field type (`Q4`, through a λ), as a `split` target
+(`SC`) or as a constant's own name (`SelfC`) it was accepted, while the same name in a live arm was
+rejected (`H4L`, `H4U`, `H4Lam`). A name declared later is not declared yet, a constant
+(`Later1`) or an inductive type (`LT3`, a match on its constructors; `LT2`, a constructor value,
+was rejected before by the declared readings), nor is a rejected declaration (`UsesBad`). The controls with declared names are accepted. -/
+
+ochr Undeclared uses Nats {
+  def Known : Nat := 7
+  inductive PF (f : Π(x : Nat). Nat) := MkPF
+  reject def H4 : Nat := (let z = 0; match z { Z => 0, S n => NoSuchNameD })
+  def H4K : Nat := (let z = 0; match z { Z => 0, S n => Known })
+  reject def H4L : Nat := (let z = 1; match z { Z => 0, S n => NoSuchNameD })
+  reject def H4U (z : Nat) : Nat := match z { Z => 0, S n => NoSuchNameD }
+  reject def H4Lam : Nat → Nat := λ(y : Nat) : Nat => NoSuchNameF
+  reject inductive Q4 := MkQ4(p : PF(λ(y : Nat) : Nat => (let z = 0; match z { Z => 0, S n => NoSuchNameE })))
+  inductive Q4K := MkQ4K(p : PF(λ(y : Nat) : Nat => (let z = 0; match z { Z => 0, S n => Known })))
+  reject def K1 : Nat := (let z = 0; match z { Z => 0, S n => NoSuchFn(n) })
+  reject def K2 (x : Nat) : Nat := (let z = 0; match z { Z => x, S n => match n { Z => Undeclared1, S _ => 0 } })
+  reject def Clo (u : Unit) : Nat → Nat := λ(y : Nat) : Nat => (let z = 0; match z { Z => y, S _ => NoSuchC7 })
+  reject def RS (n : Nat) : Nat := match n { Z => match n { Z => 0, S _ => NoSuchR1 }, S _ => 0 }
+  def RSK (n : Nat) : Nat := match n { Z => match n { Z => 0, S _ => Known }, S _ => 0 }
+  reject def PT (x : (let z = 0; match z { Z => Nat, S _ => NoSuchT1 })) : Nat := 0
+  reject def RT (u : Unit) : (let z = 0; match z { Z => Nat, S _ => NoSuchT2 }) := 0
+  reject inductive IP (k : (let z = 0; match z { Z => Nat, S _ => NoSuchT3 })) := MkIP
+  reject def TP (n : Nat) : Type := match n { Z => Nat, S _ => Π(x : Nat). (let z = 0; match z { Z => Nat, S _ => NoSuchT7 }) }
+  def TL (n : Nat) : Type := match n { Z => Nat, S _ => (Nat → Nat) }
+  reject def TLv (u : Unit) : TL(1) := λ(x : Nat) : Nat => (let z = 0; match z { Z => x, S _ => NoSuchL1 })
+  reject def ES (u : Unit) : Eq(Nat, (let z = 0; match z { Z => 0, S _ => NoSuchE1 }), 0) := refl
+  reject def IdS (u : Unit) : Id(Nat, (let z = 0; match z { Z => 0, S _ => NoSuchC5 }), 0) := refl
+  def IdSK (u : Unit) : Id(Nat, (let z = 0; match z { Z => 0, S _ => Known }), 0) := refl
+  reject def SC (n : Nat) : Eq(Nat, n, n) := (let z = 0; match z { Z => refl, S _ => split NoSuchF in refl })
+  reject def SelfC : Nat := (let z = 0; match z { Z => 0, S _ => SelfC })
+  def SelfRec (n : Nat) : Nat by n := match n { Z => 0, S m => SelfRec(m) }
+  inductive OwnL := ONil | OCons(t : OwnL)
+  reject def Later1 (u : Unit) : Nat := (let z = 0; match z { Z => 0, S _ => LaterC })
+  def LaterC : Nat := 1
+  def Later1K (u : Unit) : Nat := (let z = 0; match z { Z => 0, S _ => LaterC })
+  reject def LT2 (u : Unit) : Nat := (let z = 0; match z { Z => 0, S _ => (let q = MkLateT; match q { MkLateT => 0 }) })
+  reject def LT3 (y : Nat) : Nat := (let z = 0; match z { Z => 0, S _ => match y { MkLateT => 0 } })
+  inductive LateT := MkLateT
+  def LT2K (u : Unit) : Nat := (let z = 0; match z { Z => 0, S _ => (let q = MkLateT; match q { MkLateT => 0 }) })
+  reject def Bad : Nat := NoSuchAtAll
+  reject def UsesBad (u : Unit) : Nat := (let z = 0; match z { Z => 0, S _ => Bad })
+  inductive Void0 : Prop
+  def NoArms (v : Void0) : Nat := (let x : Nat = match v {}; x)
+}
+
+#guard (run "Undeclared" Undeclared).rejectedWith [
+  ("H4", "unknown constant NoSuchNameD"), ("H4L", "unknown constant NoSuchNameD"),
+  ("H4U", "unknown constant NoSuchNameD"), ("H4Lam", "unknown constant NoSuchNameF"),
+  ("Q4", "unknown constant NoSuchNameE"), ("K1", "unknown constant NoSuchFn"),
+  ("K2", "unknown constant Undeclared1"), ("Clo", "unknown constant NoSuchC7"),
+  ("RS", "unknown constant NoSuchR1"), ("PT", "unknown constant NoSuchT1"),
+  ("RT", "unknown constant NoSuchT2"), ("IP", "unknown constant NoSuchT3"),
+  ("TP", "unknown constant NoSuchT7"), ("TLv", "unknown constant NoSuchL1"),
+  ("ES", "unknown constant NoSuchE1"), ("IdS", "unknown constant NoSuchC5"),
+  ("SC", "unknown constant NoSuchF"), ("SelfC", "unknown constant SelfC"),
+  ("Later1", "unknown constant LaterC"), ("LT2", "unknown inductive type LateT"),
+  ("LT3", "unknown inductive type LateT"),
+  ("Bad", "unknown constant NoSuchAtAll"), ("UsesBad", "unknown constant Bad")]

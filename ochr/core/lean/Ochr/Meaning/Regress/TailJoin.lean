@@ -23,6 +23,12 @@ reference holds `n ↦ moved` where the checker holds `n ↦ Z` (or `S(⊥)`): t
 `n`, and `Rel` (hence `Out`, the conclusion of every step in `Steps/Form.lean`) cannot hold between
 the checker's leaf and the reference's end state. The results agree (`0`, or the predecessor), and the
 frame that differs is popped right after on both sides.
+
+**Since main's D119 (docs/31 D125, re-ruled (B′)) the split joins**: each world's arm ends with the
+match's join (`joinCont` around the continuation, as a known constructor's arm does), so each leaf
+holds `n ↦ ⊥`, as the reference's join drop leaves it (`moved`). The guards below that pinned the
+split without a join were flipped to the new behaviour (the leaves, and the `[Join]` counts of
+`T1`, `T4`, `T5`, `T6`, `T7`); the rest stay as they were.
 -/
 
 namespace Ochr.Meaning.Regress.TailJoin
@@ -55,10 +61,10 @@ def nAt (st : MState) : Value := st.env[1]!.binds[1]!.val
 -- the run succeeds, with two leaves, one per world
 #guard isOk (Ochr.checkTail 1000 bodyP kRec) stP 100000
 #guard leaves.length == 2
--- world `σ0 := Z`: `n ↦ Z`, `Z` in flight
-#guard leaves[0]!.2 == .zero && nAt leaves[0]!.1 == .zero && leaves[0]!.1.refs.length == 1
--- world `σ0 := S(σ1)`: `n ↦ S(⊥)`, `σ1` in flight
-#guard leaves[1]!.2 == .abs 1 && nAt leaves[1]!.1 == .succ .bot && leaves[1]!.1.refs.length == 1
+-- world `σ0 := Z`: `n ↦ ⊥` (the join dropped it; before D119 `n ↦ Z`), `Z` in flight
+#guard leaves[0]!.2 == .zero && nAt leaves[0]!.1 == .bot && leaves[0]!.1.refs.length == 1
+-- world `σ0 := S(σ1)`: `n ↦ ⊥` (before D119 `n ↦ S(⊥)`), `σ1` in flight
+#guard leaves[1]!.2 == .abs 1 && nAt leaves[1]!.1 == .bot && leaves[1]!.1.refs.length == 1
 
 -- the join of the match moves `n` whole (what the reference's tail match drops)
 def scP : MState := scopeState ColumnI.stI [.other, .pi .other]
@@ -73,9 +79,11 @@ def scP : MState := scopeState ColumnI.stI [.other, .pi .other]
 /-! ## Where the checker joins at a match in tail position (docs/31 D125, the ruling's first step)
 
 Counted from the derivation (`Config.derivation`: every `[Join]` drop, `[Split]` world; a callee's
-lines are indented by its depth). Only the SPLIT of an unknown at the generic call runs without a join;
-a tail match on a known value joins, at the generic call (`checkTailAt` → `joinCont`) and in a
-callee's run (`runBodyCore` → `eval` in tail position → `joinEnds … tail` → `joinDrop`). -/
+lines are indented by its depth). Before main's D119 only the SPLIT of an unknown at the generic call
+ran without a join; a tail match on a known value joins, at the generic call (`checkTailAt` →
+`joinCont`) and in a callee's run (`runBodyCore` → `eval` in tail position → `joinEnds … tail` →
+`joinDrop`). Since D119 the split joins too: each world's leaf has a `[Join]` line per place the
+join drops there. -/
 
 end Ochr.Meaning.Regress.TailJoin
 
@@ -105,9 +113,14 @@ def tcount (name pfx : String) : Nat := ((tlines name).filter (·.startsWith pfx
 
 -- all accepted
 #guard (Ochr.Test.runWith none "TailProbe" TailProbe {}).allAsExpected
--- tail position, unknown scrutinee: split, no join (body; λ body; a match in an arm; under `let`; under `;`)
-#guard ["T1", "T4", "T6", "T7"].all fun n => tcount n "[Join]" == 0 && tcount n "[Split]" == 2
-#guard tcount "T5" "[Join]" == 0 && tcount "T5" "[Split]" == 4
+-- tail position, unknown scrutinee: split, and since D119 each world joins (body; λ body; a match in
+-- an arm; under `let`; under `;`). Before D119 every `[Join]` count here was 0.
+-- `T1`, `T4`, `T7`: `n` dropped in each of the two worlds
+#guard ["T1", "T4", "T7"].all fun n => tcount n "[Join]" == 2 && tcount n "[Split]" == 2
+-- `T6`: world `Z` drops `n` (the arm moved `y`); world `S` drops `y` and `n`
+#guard tcount "T6" "[Join]" == 3 && tcount "T6" "[Split]" == 2
+-- `T5`: four worlds (`n` split, then `k` in `n`'s world `Z`); `k` and `n` dropped in each of the three leaves
+#guard tcount "T5" "[Join]" == 6 && tcount "T5" "[Split]" == 4
 -- tail position, known scrutinee: joins (`joinCont`)
 #guard tcount "T2" "[Join]" == 1 && tcount "T2" "[Split]" == 0
 -- a callee's run in tail position (`T1(1)` runs `T1`'s body on `1`): joins
