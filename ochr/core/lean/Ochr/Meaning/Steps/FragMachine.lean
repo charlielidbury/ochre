@@ -99,4 +99,30 @@ def SeqBorInv : Prop :=
       ModeEq st₁ stW ∧ stW.tailNext = st.curTail ∧
       Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st'
 
+/-! ## For the `let` of the fragment (lead11) -/
+
+/-- **[Drop] of a `let`'s binding LENT to the value in flight fails** (`dropTopBind`: ending the
+binding's loans would end a borrow a value in flight holds, D106). In the fragment a binding lends
+only to younger bindings or to the value in flight (`FSt.order`), so this is the only way the
+binding a `let` drops can be lent (`let x = Z; &x` is rejected). -/
+def DropLentFail : Prop :=
+  ∀ (n : Nat) (st st' : MState) (bh : Nat) (fr : Frame) (b : Binding) (m f i : Nat) (w : Value),
+    st.env[st.env.size - 1]? = some fr → fr.binds.back? = some b → b.val = .loan m →
+    Pos.temp f i ∈ allPos st.env → valAt st.env (.temp f i) = .borrow m w →
+    ¬ Runs (Ochr.dropTopBind n) st bh () st'
+
+/-- `InvBindNum` for `()` (state-level): the value in flight, `()`, moved into a binding pushed at
+`Unit` read `.unit`. -/
+def InvBindUnit : Prop :=
+  ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (h : Hint) (T? : Option Value) (p : Bool),
+    PlaceLocal D → 0 < st.env.size → Inv D Γ (st.withTempT .unit T?).norm →
+    Inv D Γ { st with env := Env.pushBindE st.env h (some .tUnit) .unit p .unit }.norm
+
+/-- `InvPopBind` for a binding holding `()` (state-level). -/
+def InvPopUnit : Prop :=
+  ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (fr : Frame) (b : Binding),
+    PlaceLocal D → st.env[st.env.size - 1]? = some fr → fr.binds.back? = some b → b.val = .unit →
+    Inv D Γ st.norm → Inv D Γ { st with env := Env.popBindE st.env }.norm
+
+
 end Ochr.Meaning.Steps.Form

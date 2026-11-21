@@ -77,6 +77,13 @@ structure FSt (Γ : List FT) (st : MState) : Prop where
   /-- the top frame's variables, as `Γ` types them -/
   top : ∀ i A, Γ[i]? = some A → ∃ f j b, ckVarPos st.env i = some (.bind f j) ∧
     st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.ty = some A.ty ∧ b.decl = A.rd ∧ A.holds b.val
+  /-- a lender's binding precedes its holder's (`&x` needs `x` in scope, and no write stores a borrow
+  into an older binding): so the binding a `let` drops lends to none but the value in flight -/
+  order : ∀ f j f' j' l c, Pos.bind f j ∈ allPos st.env → Pos.bind f' j' ∈ allPos st.env →
+    valAt st.env (.bind f j) = .loan l → valAt st.env (.bind f' j') = .borrow l c → f < f' ∨ (f = f' ∧ j < j')
+  /-- a lent binding is a number variable (only `&x` of one lends) -/
+  lent : ∀ (f j : Nat) (b : Binding) (l : Nat), st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.val = .loan l →
+    b.ty = some .tNat ∧ b.decl = .other
 
 /-- A binding found by lookup is a position, holding its value. -/
 theorem lookup_pos {env : Env} {f j : Nat} {b : Binding} (hb : env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b) :
@@ -137,7 +144,10 @@ theorem FSt.of_erase {Γ : List FT} {a b : MState} (he : a.env.erase = b.env.era
     fun f j => by rw [← lookup_erase, ← he, lookup_erase]
   have hc : ∀ i, ckVarPos b.env i = ckVarPos a.env i := fun i => by rw [← ckVarPos_erase, ← he, ckVarPos_erase]
   refine ⟨fun q hq => ?_, fun f i hq => ?_, fun q q' l hq hq' e e' => ?_, fun q q' l w w' hq hq' e e' => ?_,
-    fun q l hq e => ?_, fun q l c hq e => ?_, fun i A hi => ?_⟩
+    fun q l hq e => ?_, fun q l c hq e => ?_, fun i A hi => ?_,
+    fun f j f' j' l c hq hq' e e' => h.order f j f' j' l c (ha ▸ hq) (ha ▸ hq') (by rw [← hv]; exact e)
+      (by rw [← hv]; exact e'),
+    fun f j b' l hb e => h.lent f j b' l (by rw [← hl]; exact hb) e⟩
   · rw [hv]; exact h.vals q (ha ▸ hq)
   · rw [hv]; exact h.temps f i (ha ▸ hq)
   · exact h.loan1 q q' l (ha ▸ hq) (ha ▸ hq') (by rw [← hv]; exact e) (by rw [← hv]; exact e')
@@ -159,12 +169,58 @@ def FragDec (D : Decisions) : Prop :=
   ∀ Γ t A st, FTy Γ t A → FSt Γ st →
     D.flags (DecideScope.topReadings st) t = (false, false) ∧ D.declOf (DecideScope.topReadings st) t = A.rd
 
+/-- The values a fragment term of type `A` returns: a number; `()`; a borrow of a number. -/
+def FT.val : FT → Value → Prop
+  | .nat, v => v.Num
+  | .unit, v => v = .unit
+  | .ref, v => ∃ l c, v = .borrow l c ∧ c.Num
+
+/-- **The fragment's checker states with a value in flight** (a run's end state with its value parked
+as a temporary, `st'.withTempT v T?`): `FSt`, but a temporary may hold a borrow (the value in flight)
+and a loan's borrow may be held there. -/
+structure FStT (Γ : List FT) (st : MState) : Prop where
+  vals : ∀ q ∈ allPos st.env, FVal (valAt st.env q)
+  temps : ∀ f i, (Pos.temp f i) ∈ allPos st.env → (valAt st.env (.temp f i)).Num ∨
+    valAt st.env (.temp f i) = .unit ∨ ∃ l c, valAt st.env (.temp f i) = .borrow l c
+  loan1 : ∀ q q' l, q ∈ allPos st.env → q' ∈ allPos st.env → valAt st.env q = .loan l → valAt st.env q' = .loan l → q = q'
+  bor1 : ∀ q q' l w w', q ∈ allPos st.env → q' ∈ allPos st.env → valAt st.env q = .borrow l w →
+    valAt st.env q' = .borrow l w' → q = q'
+  held : ∀ q l, q ∈ allPos st.env → valAt st.env q = .loan l → ∃ q' c, q' ∈ allPos st.env ∧
+    valAt st.env q' = .borrow l c
+  lender : ∀ q l c, q ∈ allPos st.env → valAt st.env q = .borrow l c → ∃ q', q' ∈ allPos st.env ∧
+    valAt st.env q' = .loan l
+  top : ∀ i A, Γ[i]? = some A → ∃ f j b, ckVarPos st.env i = some (.bind f j) ∧
+    st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.ty = some A.ty ∧ b.decl = A.rd ∧ A.holds b.val
+  order : ∀ f j f' j' l c, Pos.bind f j ∈ allPos st.env → Pos.bind f' j' ∈ allPos st.env →
+    valAt st.env (.bind f j) = .loan l → valAt st.env (.bind f' j') = .borrow l c → f < f' ∨ (f = f' ∧ j < j')
+  lent : ∀ (f j : Nat) (b : Binding) (l : Nat), st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.val = .loan l →
+    b.ty = some .tNat ∧ b.decl = .other
+
+/-- **What a fragment term's typed run leaves** (a fact about the checker alone, by induction over
+the fragment from the inversion facts; for the machine lane; it replaces `FragNatRun`): from a
+fragment state, at any hint (the hint the checker hands a write's right-hand side is left free by
+`AssignNumInv`/`AssignDerefInv`), entered as `eval` is entered in a typed run, the run returns a
+value of the term's type at its type, in the same mode, with the top frame's readings and the
+number of frames kept, and leaves a fragment state with that value in flight. -/
+def FragRun (D : Decisions) : Prop :=
+  ∀ Γ u A n hint st st' bh v T?, FTy Γ u A → FSt Γ st → Mode st →
+    (st.tailDecl = none ∨ st.tailDecl = some (D.declOf (DecideScope.topReadings st) u)) → DecTab D st' →
+    Runs (Ochr.eval n true u hint) st bh (v, T?) st' →
+    T? = some A.ty ∧ A.val v ∧ ModeEq st st' ∧ DecideScope.topReadings st' = DecideScope.topReadings st ∧
+    st'.env.size = st.env.size ∧ FStT Γ (st'.withTempT v T?)
+
 /-- **A typed run of a fragment term at `Nat` returns a number at `Nat`** (a fact about the checker
 alone, by induction over the fragment from the inversion facts; for the machine lane: the part of
 the fragment's run facts the `S` case reads). -/
 def FragNatRun (D : Decisions) : Prop :=
   ∀ Γ u n st st' bh v T?, FTy Γ u .nat → FSt Γ st → Mode st → st.tailDecl = none → DecTab D st' →
     Runs (Ochr.eval n true u none) st bh (v, T?) st' → v.Num ∧ T? = some .tNat
+
+/-- `FragNatRun` is the `Nat` part of `FragRun`. -/
+theorem FragRun.nat {D : Decisions} (h : FragRun D) : FragNatRun D :=
+  fun Γ u n st st' bh v T? hu hP hm htd hD hr => by
+    obtain ⟨hT, hv, -⟩ := h Γ u .nat n none st st' bh v T? hu hP hm (.inl htd) hD hr
+    exact ⟨hv, hT⟩
 
 /-- **The reference's run of a fragment term reads no hint** (each clause the fragment uses hands its
 sub-terms fixed hints and ignores its own). -/

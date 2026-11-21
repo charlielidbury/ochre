@@ -22,9 +22,9 @@ def _root_.Ochr.Env.popBindE (env : Env) : Env :=
 /-- **(P1) A binding pushed for a number keeps the relation**: the checker pushes `v` at the stored
 type `T`, the reference pushes the number's meaning `c` at a type of the same code, both with the
 same declared reading `d`. -/
-theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState}
+theorem rel_pushBind_inert {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState}
     {s : SState} (hr : Rel K ρ φ π st s) (hne : 0 < st.env.size) (h : Hint) (T : Value) {v : Value}
-    (hv : v.Num) (p : Bool) (d : DeclInfo) (R : TyS) (hR : (Value.tyS K.dm K.M K.Γ ρ T).m = R.m) (c : Sem)
+    (hv : v.Inert) (p : Bool) (d : DeclInfo) (R : TyS) (hR : (Value.tyS K.dm K.M K.Γ ρ T).m = R.m) (c : Sem)
     (hc : ∀ (φ' : Future) (hint : TyS), Value.mean K.dm K.M K.Γ ρ φ' hint v = c) :
     Rel K ρ φ π { st with env := Env.pushBindE st.env h (some T) v p d }
       (s.pushBind { ty := R, val := fun _ => c, decl := d }) := by
@@ -50,7 +50,7 @@ theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
   have hlv : ∀ l, liveLoan (Env.pushBindE st.env h (some T) v p d) l = liveLoan st.env l :=
     fun l => liveLoan_pushBindE st.env h (some T) v p d fr hfr hne l (hv.holdsBorrow l)
   have hvshape : Env.shape (Env.pushBindE st.env h (some T) v p d) (.bind (st.env.size - 1) fr.binds.size) = none := by
-    simp only [Env.shape, valAt_pushBindE_new st.env h (some T) v p d fr hfr]; cases hv <;> rfl
+    simp only [Env.shape, valAt_pushBindE_new st.env h (some T) v p d fr hfr]; exact hv.shape
   refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · -- skel
     rw [skel_pushBindE K ρ st h T v p d fr hfr, sskel_pushBind, hr.skel, htop, hbs, hR]
@@ -58,7 +58,7 @@ theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
     intro l hl ho
     obtain ⟨w, hw, ha⟩ := ho
     rcases mem_values_pushBindE st.env h (some T) v p d fr hfr hne hw with rfl | hw
-    · rw [hv.anyAtom (by rfl) (fun _ => by rfl)] at ha; cases ha
+    · rw [hv.anyAtom _ rfl rfl (fun _ => rfl)] at ha; cases ha
     · exact hr.fresh l hl ⟨w, hw, ha⟩
   · -- the bindings' meanings
     intro ψ hψ q hq
@@ -130,6 +130,15 @@ theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
     intro l hl
     rw [hhty]
     exact hr.records l ((hlive l).mp hl)
+
+/-- `rel_pushBind_inert` at a number. -/
+theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState}
+    {s : SState} (hr : Rel K ρ φ π st s) (hne : 0 < st.env.size) (h : Hint) (T : Value) {v : Value}
+    (hv : v.Num) (p : Bool) (d : DeclInfo) (R : TyS) (hR : (Value.tyS K.dm K.M K.Γ ρ T).m = R.m) (c : Sem)
+    (hc : ∀ (φ' : Future) (hint : TyS), Value.mean K.dm K.M K.Γ ρ φ' hint v = c) :
+    Rel K ρ φ π { st with env := Env.pushBindE st.env h (some T) v p d }
+      (s.pushBind { ty := R, val := fun _ => c, decl := d }) :=
+  rel_pushBind_inert hr hne h T hv.inert p d R hR c hc
 
 /-! ### (P2) as stated is false: `loans` does not walk a closure's recorded readings
 
