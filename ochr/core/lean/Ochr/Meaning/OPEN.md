@@ -17,12 +17,12 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 ## THE FIRST SPLIT, AND J2'S CALLEE (lead16, 2026-11-21, `spine-lead16`; docs/31 D131, D132)
 
 Open statements added, none with `sorry` (all are named hypotheses):
-- **Facts about the checker (machine lane), stated and `#guard`ed, unproved:** `ColumnP.SplitPInv` (`Steps/SplitP.lean`: `checkTail` of `P`'s body from `stP`'s kernel, in the plain mode, with a continuation keeping the counters in world `Z` (`KeepsAtZ`), ran the continuation at two leaves with the kernels `leafZ` (on `Z : Nat`) and `leafS` (on `σ1 : Nat`); guards in `Steps/SplitGuards.lean`); `ColumnP.FixRunP` (`Steps/ColumnP.lean`: `checkDef defP` inverted to the body's `checkTail` from `stP`'s kernel, with a continuation keeping the counters in world `Z`; guarded by the derivation).
+- **Facts about the checker (machine lane), stated and `#guard`ed, unproved:** `ColumnP.SplitPInv` (`Steps/SplitP.lean`: `checkTail` of `P`'s body from `stP`'s kernel, in the plain mode, with a continuation keeping the counters in world `Z` (`KeepsAtZ`), ran the continuation at two leaves with the kernels `leafZ` (on `Z : Nat`) and `leafS` (on `σ1 : Nat`); guards in `Steps/SplitGuards.lean`); `ColumnP.FixRunP` (`Steps/ColumnP.lean`: `checkDef defP` inverted to the body's `checkTail` from `stP`'s kernel, with a continuation keeping the counters in world `Z`; guarded by the derivation); `CallJ2.CallJ2Inv` (`Steps/CallJ2.lean`: the checker's call `I(x)` at `J2` decomposed into the untyped body run from `stCJ2`'s kernel, the value at `Nat`, the end kernel `stX`; guarded).
 - **The form:** `Out`/`Ext` unchanged; a wrapper for tail position, `FormTail.TailOut`/`TailSim` (some leaf where the continuation ran, with `Out` there).
 
 Proved (standard axioms): `ColumnPSplit.split_outP`/`split_simP` (`TailSim` for `P`'s body from every related reference state; checker: `SplitPInv`; model: none); `ColumnP.column_P_ff` (checker: `SplitPInv`; model: none); `column_P_def` (+ `FixRunP`); `CallJ2.rel_calleeJ2`, `pre_stCJ2`, `lazyNum_stCJ2`, `hint_nLazy`, `hpi_of_globals` (no assumption); `CallJ2.closureRun_J2` (checker: `BodyLazyInv`, `InvNumA`; model: none; without `FundCtx`/`SGood`/`FrameStart`).
 
-Open at `J2` (docs/31 D132): the checker's call decomposed (to state and guard), the table at the callee body's end (`BodyLazyInv` asks a whole `DecTab` there; narrowing proposed), the reference's run of `I(x)`, `callOf` of `J2`'s own closure, the `let` around the call.
+Open at `J2` (docs/31 D132): the table at the callee body's end (`BodyLazyInv` asks a whole `DecTab` there; narrowing proposed), the reference's run of `I(x)`, `callOf` of `J2`'s own closure, the `let` around the call.
 
 ## THE FRAME PROPERTY (model6, 2026-11-21, `spine-model6`; docs/31 D129, D130)
 

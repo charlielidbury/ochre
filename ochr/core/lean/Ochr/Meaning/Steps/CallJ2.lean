@@ -542,4 +542,55 @@ theorem caller_of_rel {π : Nat → Nat} {s : SState} (hr : Rel K ρ φ π stX1 
 
 end
 
+/-! ## The checker's call `I(x)`, decomposed: one fact -/
+
+/-- **The checker's call `I(x)` at `J2`, decomposed** (a fact about the checker alone, assumed; the machine lane's to
+read and prove): every successful typed `eval` of `I(x)` from a state with `stX1`'s kernel (`x ↦ S(Z)`), in the plain
+mode, not in tail position, with no reading handed down, outside any private copy, returns its value at `Nat`
+(`callType`) and ends with `stX`'s kernel (the argument's read moved `x`, the callee's frame popped); and it ran `I`'s
+body UNTYPED, with no hint, from a state with `stCJ2`'s kernel in the plain mode with no handed-down reading, to that
+same value (`runBodyCore`). What `closureRun_J2` takes from the checker's side. Guarded below. -/
+def CallJ2Inv : Prop :=
+  ∀ (n : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value),
+    Kern stX1 st → Mode st → st.tailNext = false → st.tailDecl = none → st.privateDepth = 0 →
+    Runs (Ochr.eval n true callJ2 hint) st bh (v, T?) st' →
+    T? = some .tNat ∧ Kern stX st' ∧
+      ∃ (m : Nat) (stc stc' : MState) (bh' : Nat) (T₀ : Option Value),
+        Kern stCJ2 stc ∧ Mode stc ∧ stc.tailDecl = none ∧ Runs (Ochr.eval m false bodyI none) stc bh' (v, T₀) stc'
+
+namespace Guards
+
+open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt outVal)
+open Ochr.Meaning.Steps.Form.ParGuards (bindOk)
+
+/-- The caller after the argument's read and the pop: `stX`'s kernel. -/
+def callerAfterOk (st : MState) : Bool :=
+  st.env.size == 1 && st.env[0]!.binds.size == 1 && bindOk st.env[0]!.binds[0]! "x" .bot .tNat .other none &&
+  st.env[0]!.temps.isEmpty && (match st.globals with | [g] => ParGuards.globalOk g "I" bodyI | _ => false) &&
+  st.nextLoan == 0 && st.nextAbs == 0 && st.absTy.isEmpty && st.refs.isEmpty
+
+/-- The deep records of `eval` of `I(x)` from `stX1` (with the mode fields `st` sets). -/
+def deepOf (st : MState) (h : Option Value) : List (Bool × Option (Value × Option Value) × MState) :=
+  match runMachine (Ochr.eval 100 true callJ2 h) { st with cfg := { recordDeep := true } } 100000 with
+  | (_, _, log) => log.toList.filterMap fun
+      | LogEntry.deep ex fl st => some (ex, fl, st) | _ => none
+
+/-- `CallJ2Inv`'s conclusion at a state and hint: the call returns `S(S(Z))` at `Nat`, ends at `stX`'s kernel, and its
+first deep record (the body's entry) has `stCJ2`'s kernel, its last (the body's exit) the same value. -/
+def concl (st : MState) (h : Option Value) : Bool :=
+  isOk (Ochr.eval 100 true callJ2 h) st 100000 &&
+  outVal (Ochr.eval 100 true callJ2 h) st 100000 == (.succ (.succ .zero), some .tNat) &&
+  callerAfterOk (outSt (Ochr.eval 100 true callJ2 h) st 100000) &&
+  (match deepOf st h with
+    | (false, _, e) :: rest => calleeKernOk e && (match rest.getLast? with
+        | some (true, some (v, _), _) => v == .succ (.succ .zero)
+        | _ => false)
+    | _ => false)
+
+-- from `stX1`, at any hint; with the typing flag and the tail flag of the term before set either way
+#guard [none, some .tNat, some .tUnit].all fun h =>
+  concl stX1 h && concl { stX1 with typing := true } h && concl { stX1 with curTail := true } h
+
+end Guards
+
 end Ochr.Meaning.Steps.Form.CallJ2
