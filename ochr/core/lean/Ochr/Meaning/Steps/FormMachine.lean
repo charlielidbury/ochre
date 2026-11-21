@@ -137,4 +137,23 @@ def DropNoopInv : Prop :=
     (∀ l w, b.val ≠ .borrow l w) → (∀ l, b.val.holdsBorrow l = false) →
     Runs (Ochr.dropTopBind n) st bh () st' → Kern { st with env := Env.popBindE st.env } st'
 
+/-- **`evalCore` of a typed write at the field `0` of a variable** (`x.0 := u`; the column's write):
+`u` evaluated from the entry's kernel, in mode, the one-shot flag clear (with whatever hint the
+checker hands it: the place's type for a constructor or an embedded value, none otherwise); then
+quiet steps (the place's type, read privately; `u`'s type checked against the field's; the
+accesses, which end nothing where nothing is lent; the temporary `assignPlace` parks `u`'s value in
+and takes back); the variable then holds `S(w)` (the path exists) and the write leaves it holding
+`S(v₀)` (`setPlace`); D112's invalidation writes nothing at a field of `Nat` (`openWrite`: `Nat` is no
+declaration); the value `()` at `Unit`. The table aligned at the end is aligned after `u`. -/
+def AssignNumInv : Prop :=
+  ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
+    (D : Decisions),
+    Mode st → DecTab D st' → Runs (Ochr.evalCore (n + 1) true (.assign (.proj 0 (.var i)) u) hint) st bh (v, T?) st' →
+    ∃ (st₀ st₁ st₂ : MState) (hu : Option Value) (v₀ : Value) (T₀ : Option Value) (bh₁ f j : Nat) (b : Binding)
+      (w : Value),
+      Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ Runs (Ochr.eval n true u hu) st₀ bh₁ (v₀, T₀) st₁ ∧
+      DecTab D st₁ ∧ Quiet st₁ st₂ ∧ ckVarPos st₂.env i = some (.bind f j) ∧
+      st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.val = .succ w ∧
+      Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.succ v₀) } st' ∧ v = .unit ∧ T? = some .tUnit
+
 end Ochr.Meaning.Steps.Form
