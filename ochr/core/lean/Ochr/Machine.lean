@@ -2164,7 +2164,7 @@ discarded. Every value of a proposition is `⋆` (C7) and only such terms evalua
 def eval (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- the editor: an error here is reported at `t`, and hovering `t` shows its value
-  located t (noteValue t (evalAt fuel' typed t hint)) (flight := some)
+  located t (noteValue t (evalAt fuel' typed t hint)) (flight := some) (ownTyping := some typed)
 termination_by structural fuel
 
 def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do

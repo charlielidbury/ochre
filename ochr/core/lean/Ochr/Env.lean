@@ -167,6 +167,13 @@ structure Config where
   typed run, or holding a borrow with none (`LogEntry.push`), at every call depth, which
   `recordStates` does not reach. Off in every run that produces a verdict; no decision reads it. -/
   recordPushes : Bool := false
+  /-- Dev tooling (`lake exe sweep --deep`): log the whole machine state on entry to every
+  evaluation and on its successful exit at every call depth above 0 (a callee's body, a sealed
+  program's re-run), which `recordStates` does not reach (`LogEntry.deep`); outside private copies,
+  and inside them too with `recordDeepPrivate`. Off in every run that produces a verdict; no
+  decision reads it. -/
+  recordDeep : Bool := false
+  recordDeepPrivate : Bool := false
 deriving Inhabited, Repr, BEq
 
 /-- The universe a sort lives in: `Type_l : Type_{l+1}`, and `Prop : Type₁` beside `Type₀`
@@ -259,6 +266,9 @@ inductive LogEntry where
   /-- Dev tooling (`Config.recordPushes`): a temporary pushed at the push site `site` with no stored
   type, in a typed run (`typing`) or holding a borrow, at call depth `depth`. -/
   | push (site : String) (typing : Bool) (v : Value) (depth : Nat)
+  /-- Dev tooling (`Config.recordDeep`): the whole state on entry to an evaluation at call depth
+  above 0 (`exit = false`), or as it leaves it successfully, with its value and type (`flight`). -/
+  | deep (exit : Bool) (flight : Option (Value × Option Value)) (st : MState)
 
 /-- The machine monad. The inner `StateM` holds the log (the trace, and the editor's notes),
 which survives both state restores and errors (so a rejected definition still shows how far
