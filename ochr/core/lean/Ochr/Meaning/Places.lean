@@ -130,9 +130,10 @@ def fieldHint (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) : TyS :=
 
 /-- Field `i` of constructor `c` of a constructor value read at the type `T` (route (c), D32): the
 field and the type the read gives it (`DataModel.readTy`), from `T`'s declaration (a data code
-carries it) and the value's own record; never a declaration looked up by name. The read fails where
-`T` is no data code, where `T`'s declaration is not the value's (the names differ), and at a junk
-leaf. A field of `⋆` is `⋆` at `err`. `Γ` is not read (kept so that callers read alike). -/
+carries it) and the value's own record; a declaration is looked up by name only for a tree of
+another declaration than the field's (`DataModel.readTy`, `ownTy`). The read fails where `T` is no
+data code, where `T`'s declaration is not the value's (the names differ), and at a junk leaf. A field
+of `⋆` is `⋆` at `err`. -/
 noncomputable def Sem.stepField (T : TyS) (c i : Nat) (s : Sem) : Option (Sem × TyS) :=
   match s with
   | .proof => some (.proof, .plain TyM.err)
@@ -141,7 +142,7 @@ noncomputable def Sem.stepField (T : TyS) (c i : Nat) (s : Sem) : Option (Sem ×
     | some (d, _) =>
       if d.name = n ∧ c' = c then
         match fs[i]? with
-        | some f => (dm.readTy d r c i (fs.take i) f).map fun U => (f, .plain U)
+        | some f => (dm.readTy Γ d r c i (fs.take i) f).map fun U => (f, .plain U)
         | none => none
       else none
     | none => none
@@ -161,14 +162,14 @@ noncomputable def Sem.step (T : TyS) : Step → Sem → Option (Sem × TyS)
     | some 0 => none
     | none => match T.m.dataCode?, s with
       | none, .dat "Nat" _ 1 [w] => some (w, .plain TyM.nat)
-      | _, _ => Sem.stepField dm T 0 0 s
-  | .proj i, s => Sem.stepField dm T 0 i s
+      | _, _ => Sem.stepField dm Γ T 0 0 s
+  | .proj i, s => Sem.stepField dm Γ T 0 i s
   -- a named field step reads only a constructor value of the declaration it names, as the
   -- checker's `stepV` reads only `.ind` values of `g.ty`; never a number (the checker's numbers are
   -- `zero`/`succ`, with no named field; no declaration is named `Nat`, (N))
   | .field g, s => match s with
-    | .dat n _ _ _ => if n = g.ty ∧ n ≠ "Nat" then Sem.stepField dm T g.ctor g.idx s else none
-    | s => Sem.stepField dm T g.ctor g.idx s
+    | .dat n _ _ _ => if n = g.ty ∧ n ≠ "Nat" then Sem.stepField dm Γ T g.ctor g.idx s else none
+    | s => Sem.stepField dm Γ T g.ctor g.idx s
 
 /-- Follow a path on a meaning of type `T`. -/
 noncomputable def Sem.follow (T : TyS) (s : Sem) : List Step → Option (Sem × TyS)

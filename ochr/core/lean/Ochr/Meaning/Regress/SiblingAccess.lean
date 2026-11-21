@@ -60,8 +60,8 @@ field, whatever the other fields hold: lent, moved, or outside their types (read
 itself, a tree), typed by the read (`DataModel.readTy`, route (c)). -/
 theorem sibling_read (d : IndDecl) (ps : List Sem) (c i : Nat) (fs : List Sem) (T : TyS) (r₀ : Rec)
     (hT : T.m.dataCode? = some (d, r₀)) :
-    Sem.stepField dm T c i (dm.ctorM d ps c fs)
-      = (fs[i]?).bind fun f => (dm.readTy d (dm.recOf d ps) c i (fs.take i) f).map fun U => (f, .plain U) := by
+    Sem.stepField dm Γ T c i (dm.ctorM d ps c fs)
+      = (fs[i]?).bind fun f => (dm.readTy Γ d (dm.recOf d ps) c i (fs.take i) f).map fun U => (f, .plain U) := by
   simp only [Sem.stepField, DataModel.ctorM, DataModel.ctorR, hT, true_and, if_true]
   cases fs[i]? <;> rfl
 

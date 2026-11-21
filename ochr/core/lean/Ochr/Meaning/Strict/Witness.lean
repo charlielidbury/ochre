@@ -408,7 +408,7 @@ theorem live_sE1 (dm : DataModel) : (sE1 dm).liveLabels = [0] := by
   unfold SState.liveLabels; rw [positions_sE1, shape_sE1]; simp
 
 /-- Field `n` is read at `Nat`, whatever it holds (a `Nat` leaf). -/
-theorem readTy_n (dm : DataModel) (f : Sem) : dm.readTy dE rE 0 0 [] f = some TyM.nat := by
+theorem readTy_n (dm : DataModel) (Γ : List IndDecl) (f : Sem) : dm.readTy Γ dE rE 0 0 [] f = some TyM.nat := by
   have hown : ¬ dm.OwnCarrier Code0.nat := by
     rintro ⟨d, r, h, -⟩; cases h
   have hsh : dm.sig.shape dE rE 0 0 [] = .leaf Nat .nat := rfl
@@ -499,7 +499,7 @@ theorem stateOk_sE2 (dm : DataModel) : StateOk (KE dm) φw (sE2 dm) := by
     rw [hv, ht]
     left
     show dm.OMem [] (dm.tyR dE rE) (.dat dE.name rE 0 [ψ 0, .moved])
-    exact .dat rfl (by decide) rfl (.cons (.at [] TyM.nat .nil (readTy_n dm (ψ 0)) hψ0) (.cons .moved .nil))
+    exact .dat rfl (by decide) rfl (.cons (.at [] TyM.nat .nil (readTy_n dm [] (ψ 0)) hψ0) (.cons .moved .nil))
   · have hsh : (sE2 dm).shape = (sE1 dm).shape := by unfold sE2; rw [SState.shape_setAt]
     rw [hsh, shape_sE1] at hq
     dsimp only at hq

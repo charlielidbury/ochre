@@ -50,11 +50,11 @@ is a data field of `Pk` at the current index; the read reaches `MkPk(a, b)`, typ
 `rk` (a tree field keeps the type its own record gives, route (c)), and then `b`. -/
 theorem read_after_index_rewritten (dm : DataModel) (Γ : List IndDecl) (T : TyS) (d dPk : IndDecl)
     (r r₀ rk r₁ : Rec) (a b : Sem) (hT : T.m.dataCode? = some (d, r₀)) (hd : d.name = "WP")
-    (hsh : dm.sig.shape d r 0 1 [Sem.small (.el0 Nat 2)] = .sub dPk r₁) :
+    (hsh : dm.sig.shape d r 0 1 [Sem.small (.el0 Nat 2)] = .sub dPk r₁) (hPk : dPk.name = "Pk") :
     Sem.step dm Γ T (.proj 1) (.dat "WP" r 0 [.el0 Nat 2, .dat "Pk" rk 0 [a, b]]) =
       some (.dat "Pk" rk 0 [a, b], .plain (dm.rawTy dPk rk)) := by
-  have hrt : dm.readTy d r 0 1 [.el0 Nat 2] (.dat "Pk" rk 0 [a, b]) = some (dm.rawTy dPk rk) := by
-    simp only [DataModel.readTy, List.map_cons, List.map_nil, hsh]
+  have hrt : dm.readTy Γ d r 0 1 [.el0 Nat 2] (.dat "Pk" rk 0 [a, b]) = some (dm.rawTy dPk rk) := by
+    simp only [DataModel.readTy, List.map_cons, List.map_nil, hsh, hPk, if_true]
   simp only [Sem.step, Sem.stepField, hT, hd, true_and, if_true]
   simp [hrt]
 

@@ -40,7 +40,7 @@ theorem list_tail_read (Γ : List IndDecl) :
   have hdc : (TyS.plain (dmP.tyM listD psN)).m.dataCode? = some (listD, rN) := rfl
   have hsh : dmP.sig.shape listD rN 1 1 [Sem.small (.el0 Nat 3)] =
       .sub listD (DataLib.contRec rN (DataLib.contStep 1 1 [.other])) := rfl
-  have hrt : dmP.readTy listD rN 1 1 [.el0 Nat 3] (semL [4]) = some (dmP.tyM listD psN) := by
+  have hrt : dmP.readTy Γ listD rN 1 1 [.el0 Nat 3] (semL [4]) = some (dmP.tyM listD psN) := by
     simp only [DataModel.readTy, List.map_cons, List.map_nil, hsh]; rfl
   simp only [semL] at hrt
   simp only [Sem.follow, Sem.step, Sem.stepField, hdc, semL, Option.bind]
@@ -98,7 +98,7 @@ theorem moved_index_read (dm : DataModel) (Γ : List IndDecl) :
   have hown : ¬ dm.OwnCarrier Code0.err := by
     rintro ⟨d, r, h, -⟩; cases h
   have hdc : (TyS.plain (dm.tyR dE rE)).m.dataCode? = some (dE, rE) := rfl
-  have hrt : dm.readTy dE rE 0 1 [.moved] (.el0 Nat 7) = some TyM.err := by
+  have hrt : dm.readTy Γ dE rE 0 1 [.moved] (.el0 Nat 7) = some TyM.err := by
     simp only [DataModel.readTy, List.map_cons, List.map_nil, Sem.small, shape_moved, DataModel.shapeReadTy,
       if_neg hown]; rfl
   simp only [Sem.follow, Sem.step, Sem.stepField, gV, hdc, Option.bind]

@@ -48,7 +48,7 @@ theorem fresh_read (dm : DataModel) (Γ : List IndDecl) :
     rintro ⟨d, r, h, -⟩; cases h
   have hdc : (TyS.plain (dm.tyR dF rF)).m.dataCode? = some (dF, rF) := rfl
   have hsh : dm.sig.shape dF rF 0 0 [] = .leaf Nat .nat := rfl
-  have hrt : dm.readTy dF rF 0 0 [] (.el0 Nat 5) = some TyM.nat := by
+  have hrt : dm.readTy Γ dF rF 0 0 [] (.el0 Nat 5) = some TyM.nat := by
     simp only [DataModel.readTy, List.map_nil, hsh, DataModel.shapeReadTy, if_neg hown]; rfl
   simp only [Sem.follow, Sem.step, Sem.stepField, g, hdc, Option.bind]
   simp [show dF.name = "Fresh" from rfl, hrt]

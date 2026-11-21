@@ -160,7 +160,7 @@ def GoodAt (dm : DataModel) (T : TyS) (w : Sem) : Prop :=
   w ∈ₛ[dm.read] T.m ∨ (T.m = TyM.err ∧ ((∃ X, w = .ty X) ∨ w = .proof))
 
 theorem stepField_good {T U : TyS} {c i : Nat} {w x : Sem} (hw : GoodAt dm T w)
-    (h : Sem.stepField dm T c i w = some (x, U)) : GoodAt dm U x := by
+    (h : Sem.stepField dm Γ T c i w = some (x, U)) : GoodAt dm U x := by
   unfold Sem.stepField at h
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -174,7 +174,7 @@ theorem stepField_good {T U : TyS} {c i : Nat} {w x : Sem} (hw : GoodAt dm T w)
         obtain ⟨hn, rfl⟩ := hcond
         split at h
         · rename_i f hf
-          cases hU : dm.readTy d r c' i (fs.take i) f with
+          cases hU : dm.readTy Γ d r c' i (fs.take i) f with
           | none => rw [hU] at h; cases h
           | some U' =>
             rw [hU] at h

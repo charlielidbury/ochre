@@ -222,10 +222,15 @@ theorem read_wholeFields : dm.read.WholeFields := by
 /-! ## The type a read gives a field (route (c), 2026-11-21; `Strict/ReadProto.lean` the prototype)
 
 A field is typed from the TYPE the read starts at (a data code carries its declaration) and the
-value's own record, through the universal signature: no declaration is looked up by name. The
-declaration is needed for one thing only, which earlier fields are index fields (the record's key
-projects to them, `projIdx`). `readTy` is THE function for "the type a read gives a field": the
-run's read (`Places.Sem.stepField`), open membership (`OMem`) and the read lemma use it. -/
+value's own record, through the universal signature. The declaration is needed for one thing only,
+which earlier fields are index fields (the record's key projects to them, `projIdx`). One case looks
+a declaration up by name: a tree field holding a tree of ANOTHER declaration than the one its shape
+names at the current earlier fields (what a strong update stored before an index write changed the
+field's declared type; the checker's `depFieldType` types it by its content, `valType?`, its own
+declaration and parameters), typed by its own declaration found in the program's declarations, at
+its own record (`ownTy`). A member never reaches that case (`readTy_fit`). `readTy` is THE function
+for "the type a read gives a field": the run's read (`Places.Sem.stepField`), open membership (`OMem`)
+and the read lemma use it. -/
 
 /-- The declaration and record of a data code, at any carrier level (lifts included). -/
 def _root_.Ochr.Meaning.Code1.dataCode? : {A : Type 1} → Code1 A → Option (IndDecl × Rec)
@@ -255,12 +260,20 @@ noncomputable def shapeReadTy : Shape → Option TyM
   | .sub d r => some (dm.rawTy d r)
   | .prf d r => some (TyM.prop (Nonempty (dm.car d r)))
 
+/-- A tree's own type: its declaration, found by name among the program's declarations, at its own
+record (the checker's `valType?` of a tree). -/
+noncomputable def ownTy (Γ : List IndDecl) (n : String) (r : Rec) : Option TyM :=
+  (Γ.find? (·.name == n)).map (dm.rawTy · r)
+
 /-- **The type field `i` of constructor `c` is read at**, in a value of declaration `d` at its own
-record `r`, given the earlier fields and the field itself: the shape's; a constructor value in a
-data field at ITS OWN record (D112: a tree field keeps the type its own record gives). -/
-noncomputable def readTy (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) (f : Sem) : Option TyM :=
+record `r`, given the program's declarations, the earlier fields and the field itself: the shape's;
+a constructor value in a data field at ITS OWN record (D112: a tree field keeps the type its own
+record gives), of its OWN declaration where that is not the shape's (`ownTy`: a strong update's
+tree, typed by its content as the checker's `depFieldType` types it). -/
+noncomputable def readTy (Γ : List IndDecl) (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) (f : Sem) :
+    Option TyM :=
   match dm.sig.shape d r c i (earlier.map Sem.small), f with
-  | .sub d' _, .dat _ r' _ _ => some (dm.rawTy d' r')
+  | .sub d' _, .dat n r' _ _ => if n = d'.name then some (dm.rawTy d' r') else dm.ownTy Γ n r'
   | sh, _ => dm.shapeReadTy sh
 
 /-- **A fitting value is a member of the type its shape is read at.** -/
@@ -298,9 +311,9 @@ theorem fits_readTy {sh : Shape} {f : Sem} {U : TyM} (hf : FitsOneM dm.sig sh f)
     exact ⟨⟨⟨x⟩⟩, rfl⟩
 
 /-- For a value that fits the field's shape, the field's type is the shape's. -/
-theorem readTy_fit {d : IndDecl} {r : Rec} {c i : Nat} {earlier : List Sem} {f : Sem}
+theorem readTy_fit {Γ : List IndDecl} {d : IndDecl} {r : Rec} {c i : Nat} {earlier : List Sem} {f : Sem}
     (hf : FitsOneM dm.sig (dm.sig.shape d r c i (earlier.map Sem.small)) f) :
-    dm.readTy d r c i earlier f = dm.shapeReadTy (dm.sig.shape d r c i (earlier.map Sem.small)) := by
+    dm.readTy Γ d r c i earlier f = dm.shapeReadTy (dm.sig.shape d r c i (earlier.map Sem.small)) := by
   unfold readTy
   generalize dm.sig.shape d r c i (earlier.map Sem.small) = sh at hf ⊢
   cases sh with
@@ -309,7 +322,8 @@ theorem readTy_fit {d : IndDecl} {r : Rec} {c i : Nat} {earlier : List Sem} {f :
     | dat n r' c' fs =>
       obtain ⟨_, _, he, _⟩ := (DataLib.mem_iff dm.sig d' r₀ _).1 hf
       simp only [Sem.dat.injEq] at he
-      obtain ⟨-, rfl, -⟩ := he
+      obtain ⟨hn, rfl, -⟩ := he
+      simp only [hn, if_true]
       rfl
     | _ => rfl
   | _ => rfl
@@ -363,7 +377,7 @@ inductive OField (Γ : List IndDecl) : IndDecl → Rec → Nat → Nat → List 
       MovedOfList Γ e e' → t.whole → MovedOf Γ f t → FitsOneM dm.sig (dm.sig.shape d r c i (e'.map Sem.small)) t →
       OField Γ d r c i e f
   | at {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {f : Sem} (e' : List Sem) (U : TyM) :
-      MovedOfList Γ e e' → dm.readTy d r c i e' f = some U → OMem Γ U f → OField Γ d r c i e f
+      MovedOfList Γ e e' → dm.readTy Γ d r c i e' f = some U → OMem Γ U f → OField Γ d r c i e f
 end
 
 /-- Partial membership IS open membership (the dependent-values unit: the old "below a whole member,
