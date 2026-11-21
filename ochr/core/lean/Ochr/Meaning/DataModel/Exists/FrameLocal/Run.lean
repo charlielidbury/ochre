@@ -37,6 +37,16 @@ theorem Adm.after (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop}
   obtain ⟨hR₁, -, he, -⟩ := runT_rinv K ρ φ _ hK tl u hint s s₁ a hR hu
   exact ⟨hA.next he (fix_of_comm hc hA.twin.fix hu), hR₁, he⟩
 
+theorem mem_placeOccsList {a : Term} {as : List Term} (ha : a ∈ as) {c : Nat} {x : Nat × Place × PKind}
+    (hx : x ∈ a.placeOccs c) : x ∈ Term.placeOccsList c as := by
+  induction as with
+  | nil => cases ha
+  | cons b bs ih =>
+    rw [Term.placeOccsList, List.mem_append]
+    rcases List.mem_cons.mp ha with rfl | h
+    · exact .inl hx
+    · exact .inr (ih h)
+
 mutual
 theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D)
     (hcap : ∀ t i, i ∈ capOrder t → i ∈ t.freeVars) :
@@ -80,8 +90,66 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
     obtain ⟨hR₂, he₂, -⟩ := discardEnd_props (fun _ => True) hR₁ a.2
     have hA₂ := hA₁.next (s₁ := discardEnd a.2 s₁) he₂ hfix₂
     exact runT_qset hK hD hcap tl w _ _ Q β β' hA₂ ((hVw.of_envLe he₁).of_envLe he₂) hR₂
+  | tl, .eq A a b, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]
+    have hVA : VarsAvoid Q s A := hV.sub fun x hx => by simp [Term.placeOccs, hx]
+    have hVa : VarsAvoid Q s a := hV.sub fun x hx => by simp [Term.placeOccs, hx]
+    have hVb : VarsAvoid Q s b := hV.sub fun x hx => by simp [Term.placeOccs, hx]
+    refine comm_onCopy (comm_bind (runT_qset hK hD hcap false A _ s Q β β' hA hVA hR) fun x s₁ h1 => ?_)
+    obtain ⟨hA₁, hR₁, he₁⟩ := Adm.after K ρ φ hK hA hR h1 (runT_qset hK hD hcap false A _ s Q β β hA.self hVA hR)
+    obtain ⟨TA, _⟩ := x
+    dsimp only
+    refine comm_bind (comm_onCopy (runT_qset hK hD hcap false a _ s₁ Q β β' hA₁ (hVa.of_envLe he₁) hR₁))
+      fun y s₂ h2 => ?_
+    have e₂ := SM.onCopy_state h2; subst e₂
+    obtain ⟨va, _⟩ := y
+    dsimp only
+    refine comm_bind (comm_onCopy (runT_qset hK hD hcap false b _ s₂ Q β β' hA₁ (hVb.of_envLe he₁) hR₁))
+      fun z s₃ h3 => ?_
+    have e₃ := SM.onCopy_state h3; subst e₃
+    obtain ⟨vb, _⟩ := z
+    unfold Comm; dsimp only; split <;> rfl
+  | tl, .cong c h, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]
+    have hVh : VarsAvoid Q s h := hV.sub fun x hx => by simp [Term.placeOccs, hx]
+    exact comm_onCopy (comm_bind (runT_qset hK hD hcap false h _ s Q β β' hA hVh hR) fun _ _ _ => comm_pure _ _)
+  | tl, .ascribe u A, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
+    have hVA : VarsAvoid Q s A := hV.sub fun x hx => by simp [Term.placeOccs, hx]
+    have hVu : VarsAvoid Q s u := hV.sub fun x hx => by simp [Term.placeOccs, hx]
+    refine comm_erasedIf (comm_strictS (comm_bind (comm_onCopy (runT_qset hK hD hcap false A _ s Q β β' hA hVA hR))
+      fun x s₁ h1 => ?_))
+    have e₁ := SM.onCopy_state h1; subst e₁
+    obtain ⟨TA, _⟩ := x
+    dsimp only
+    refine comm_bind (runT_qset hK hD hcap false u _ s₁ Q β β' hA hVu hR) fun y s₂ _ => ?_
+    obtain ⟨v, R⟩ := y
+    exact comm_ite (P := fun s => labTyOk s R.label TA.asTy) Iff.rfl (fun _ => rfl) (fun _ => rfl)
+  | tl, .tind n args, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]
+    cases hd : List.find? (fun x => x.name == n) K.Γ with
+    | none => rfl
+    | some d =>
+      dsimp only
+      refine comm_bind (runParams_qset hK hD hcap _ args 0 [] s Q β β' hA
+        (fun a ha => hV.sub fun x hx => by simpa [Term.placeOccs] using mem_placeOccsList ha hx) hR) fun _ _ _ => ?_
+      unfold Comm; dsimp only; split <;> rfl
   | _, _, _, _, _, _, _, _, _, _ => sorry
-termination_by structural tl t => t
+
+theorem runParams_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D)
+    (hcap : ∀ t i, i ∈ capOrder t → i ∈ t.freeVars) (d : IndDecl) :
+    ∀ (as : List Term) (i : Nat) (earlier : List Sem) (s : SState) (Q : Pos → Prop) (β β' : Pos → SBinding),
+      Adm K Q β β' s → (∀ a ∈ as, VarsAvoid Q s a) → RInv (fun _ => True) s →
+      Comm Q β' (runParams K ρ φ d i earlier as) s
+  | [], _, _, _, _, _, _, _, _, _ => rfl
+  | a :: as, i, earlier, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runParams]
+    refine comm_bind (comm_onCopy (runT_qset hK hD hcap false a _ s Q β β' hA (hV a (by simp)) hR)) fun x s₁ h1 => ?_
+    have e₁ := SM.onCopy_state h1; subst e₁
+    obtain ⟨v, _⟩ := x
+    dsimp only
+    exact comm_bind (runParams_qset hK hD hcap d as (i + 1) (earlier ++ [v]) s₁ Q β β' hA
+      (fun b hb => hV b (by simp [hb])) hR) fun _ _ _ => comm_pure _ _
 end
 
 end
