@@ -17,8 +17,10 @@ site recorded), `x₁ : Nat` holding `0` (`1`), `heldTy 0 = Nat`, `heldMem 0 = 1
 (`s₀_good`). The state the old run left after moving out `x₀.0` is not (`s₁_bad`). Under the rule,
 the write is tested defined at every typed future, and at `φ₀` (label `0` the number `0`) the path
 `.0` is absent: the write fails (`setContent_s₀`), the read's move fails (`readPlace_p₀`), and the
-term `x₀.0` is stuck at `s₀` (`runT_p₀`). The simulation's obligation (`Meaning/OPEN.md`) is what
-keeps related states away from `s₀`.
+term `x₀.0` is stuck at `s₀` (`runT_p₀`). Still so under ruling (A) (typed futures at whole members,
+docs/31 D106): `0` is a member of `Nat`. EXCLUDED, not dissolved: `x₀` reads label `0` with no site
+recorded, so `s₀` is related to no checker state (`Rel.sites`); the simulation's obligation
+(`Meaning/OPEN.md`) is what keeps related states away from it.
 -/
 
 namespace Ochr.Meaning.Strict.FieldWriteCE

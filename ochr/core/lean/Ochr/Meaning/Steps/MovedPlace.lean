@@ -1063,10 +1063,10 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
         (Slice.updAt_moved_none K.dm K.Γ (fun _ => Sem.moved) rest T₁ ⟨y, hy, hyd⟩)
       -- SORRY (model lane, 2026-11-21, for the slice lane): `dropAt` now writes only where the write
       -- is defined at EVERY typed future (the orchestrator's write rule); here it is undefined at the
-      -- read's future `s₁.typedFuture φ`, which is a typed future once each live label's record is an
-      -- open member of its RECORDED type `heldTy`. The relation's `records` gives membership at
-      -- `holderTy` (the holder's stored type); that the two agree is `SGood.holderTy` on the model
-      -- side, not a clause of `Rel`.
+      -- read's future `s₁.typedFuture φ`, which is a typed future once each live label's record is a
+      -- member of its RECORDED type `heldTy` (ruling (A)). The relation's `records` gives membership
+      -- at `holderTy` (the holder's stored type); that the two agree is `SGood.holderTy` on the model
+      -- side, not a clause of `Rel` (the same missing fact as `DropOneAsm.dropOne_exists`).
       have htf : TypedFut K φ s₁ (s₁.typedFuture φ) := by
         refine ⟨fun l hl => ?_, fun l hl => ?_⟩
         · simp [SState.typedFuture, hl]
