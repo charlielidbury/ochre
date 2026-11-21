@@ -491,6 +491,89 @@ ochr ObsRef uses Nats, Fixtures {
   ("OpenOne", "[Id-typestate] the left side of Id leaves moved, through a borrow, *y, the right side does not"),
   ("RefillHide", "the body of RefillHide has type ⊤, but the goal is Eq(Tr, Lf, σ1)")]
 
+/-! ## A side may end a borrow it consumes, on every path (D114)
+
+While a side of `Id` runs, ending a borrow that a binding outside it holds is an error
+([Id-typestate], D84), but not one the side consumes: its type-state moves that binding on every
+path, so no continuation uses it after either side. Before D114 the check asked who held the
+borrow as it ended, and that depends on the path: at the generic call a stuck block takes `x` by
+move and its parameter ends it, at `n = 0` it is moved into `Eat`, whose parameter ends it, and
+at `n = 1` the arm that does not use it leaves it, the join drops it in place, and the check
+fired: `A1` was accepted and its closed instance `A1(1, &c)` rejected (the red team's `I2`; in
+the suite's `IdThroughRet` at `C10`). Each theorem below is checked generically and at each
+constructor, its closed instances in a call, in another definition's check, and over a local
+borrow; every verdict agrees. A borrow the side does not consume is still protected
+(`NotConsumed`, `NotConsumedW`). Where an arm reads the lender while another moves the borrow,
+the match's entry ends the borrow before the arm that moves it runs, inside `Id` as outside it
+(`LenderRead`, `LenderRead1` against `Outside`, `Outside0`, `Outside1`). -/
+ochr IdConsumed uses Nats {
+  def Eat (r : &Nat) : Unit := ()
+  def Keep (r : &Nat) : &Nat := r
+  inductive Tri := T0 | T1 | T2
+  -- the red team's I2: consumed in one arm only
+  def A0 (x : &Nat) : Id(Unit, Eat(x), Eat(x)) := refl
+  def A0c : ⊤ := (let c = 0; A0(&c))
+  def A1 (n : Nat) (x : &Nat) : Id(Unit, match n { Z => Eat(x), S _ => () }, match n { Z => Eat(x), S _ => () }) := refl
+  def A1z : ⊤ := (let c = 0; A1(0, &c))
+  def A1s : ⊤ := (let c = 0; A1(1, &c))
+  def A1ss : ⊤ := (let c = 0; A1(2, &c))
+  def A1in (x : &Nat) : Unit := (let h = A1(1, x); ())
+  def A1gen (n : Nat) (x : &Nat) : Unit := (let h = A1(n, x); ())
+  def A2 (n : Nat) (x : &Nat) : Id(Unit, match n { Z => (let a = Keep(x); ()), S _ => () }, match n { Z => (let a = Keep(x); ()), S _ => () }) := refl
+  def A2z : ⊤ := (let c = 0; A2(0, &c))
+  def A2s : ⊤ := (let c = 0; A2(1, &c))
+  -- consumed by a `let`, by a write then a call, in the second arm, in a nested match
+  def ByLet (n : Nat) (x : &Nat) : Id(Unit, match n { Z => (let a = x; ()), S _ => () }, match n { Z => (let a = x; ()), S _ => () }) := refl
+  def ByLet1 : ⊤ := (let c = 0; ByLet(1, &c))
+  def WriteEat (n : Nat) (x : &Nat) : Id(Unit, match n { Z => (*x := 3; Eat(x)), S _ => () }, match n { Z => (*x := 3; Eat(x)), S _ => () }) := refl
+  def WriteEat1 : ⊤ := (let c = 0; WriteEat(1, &c))
+  def Second (n : Nat) (x : &Nat) : Id(Unit, match n { Z => (), S _ => Eat(x) }, match n { Z => (), S _ => Eat(x) }) := refl
+  def Second0 : ⊤ := (let c = 0; Second(0, &c))
+  def Nested (n : Nat) (m : Nat) (x : &Nat) : Id(Unit, match n { Z => match m { Z => Eat(x), S _ => () }, S _ => () }, match n { Z => match m { Z => Eat(x), S _ => () }, S _ => () }) := refl
+  def Nested00 : ⊤ := (let c = 0; Nested(0, 0, &c))
+  def Nested01 : ⊤ := (let c = 0; Nested(0, 1, &c))
+  def Nested10 : ⊤ := (let c = 0; Nested(1, 0, &c))
+  def Three (t : Tri) (x : &Nat) : Id(Unit, match t { T0 => Eat(x), T1 => (), T2 => () }, match t { T0 => Eat(x), T1 => (), T2 => () }) := refl
+  def Three0 : ⊤ := (let c = 0; Three(T0, &c))
+  def Three1 : ⊤ := (let c = 0; Three(T1, &c))
+  def Three2 : ⊤ := (let c = 0; Three(T2, &c))
+  -- over a local borrow, generic and at each value
+  def Local (n : Nat) : Unit := (let c = 0; let x = &c; let h : Id(Unit, match n { Z => Eat(x), S _ => () }, match n { Z => Eat(x), S _ => () }) = refl; ())
+  def Local0 : Unit := (let n = 0; let c = 0; let x = &c; let h : Id(Unit, match n { Z => Eat(x), S _ => () }, match n { Z => Eat(x), S _ => () }) = refl; ())
+  def Local1 : Unit := (let n = 1; let c = 0; let x = &c; let h : Id(Unit, match n { Z => Eat(x), S _ => () }, match n { Z => Eat(x), S _ => () }) = refl; ())
+  -- the suite's `IdThroughRet`, at each closed instance (the red team's I1)
+  def RetSub (x0 : &Nat) : &Nat := match *x0 { Z => &*x0, S p3 => &p3 }
+  def ThroughRet (x0 : &Nat) (x1 : &Nat) :
+      Id(Prop, (match *x0 { Z => let a6 = RetSub(x1); Id(Unit, *x0 := clone(*a6), ()), S p7 => ⊤ }), (match *x0 { Z => let a6 = RetSub(x1); Id(Unit, *x0 := clone(*a6), ()), S p7 => ⊤ ∧ ⊤ })) := (
+    match *x0 { Z => refl, S _ => refl }
+  )
+  def ThroughRet00 : ⊤ := (let c0 = 0; let c1 = 0; ThroughRet(&c0, &c1))
+  def ThroughRet01 : ⊤ := (let c0 = 0; let c1 = 1; ThroughRet(&c0, &c1))
+  def ThroughRet10 : ⊤ := (let c0 = 1; let c1 = 0; ThroughRet(&c0, &c1))
+  -- a borrow the side does not consume is still protected: reading or writing its lender ends it
+  reject def NotConsumed (n : Nat) : Unit := (let c = 0; let x = &c; let h : Id(Unit, match n { Z => (), S _ => (let a = clone(c); ()) }, match n { Z => (), S _ => (let a = clone(c); ()) }) = refl; *x := 1)
+  reject def NotConsumedW : Unit := (let c = 0; let x = &c; let h : Id(Unit, (c := 9; ()), (c := 9; ())) = refl; *x := 1)
+  -- the lender read in the other arm. The generic call and `n = 0` are rejected and `n = 1` is
+  -- accepted, inside `Id` as outside it: the match's entry reads `c` (a capture of the arm that
+  -- reads it), which ends `x` before any arm runs, so the arm that moves `x` reads `⊥`, and only an
+  -- instance whose arm does not use `x` passes. The paths differ only in that direction (a rejected
+  -- theorem with an accepted instance, never the reverse): fail-safe
+  reject def LenderRead (n : Nat) : Unit := (let c = 0; let x = &c; let h : Id(Unit, match n { Z => Eat(x), S _ => (let a = clone(c); ()) }, match n { Z => Eat(x), S _ => (let a = clone(c); ()) }) = refl; ())
+  reject def LenderRead0 : Unit := (let n = 0; let c = 0; let x = &c; let h : Id(Unit, match n { Z => Eat(x), S _ => (let a = clone(c); ()) }, match n { Z => Eat(x), S _ => (let a = clone(c); ()) }) = refl; ())
+  def LenderRead1 : Unit := (let n = 1; let c = 0; let x = &c; let h : Id(Unit, match n { Z => Eat(x), S _ => (let a = clone(c); ()) }, match n { Z => Eat(x), S _ => (let a = clone(c); ()) }) = refl; ())
+  reject def Outside (n : Nat) : Unit := (let c = 0; let x = &c; match n { Z => Eat(x), S _ => (let a = clone(c); ()) }; ())
+  reject def Outside0 : Unit := (let n = 0; let c = 0; let x = &c; match n { Z => Eat(x), S _ => (let a = clone(c); ()) }; ())
+  def Outside1 : Unit := (let n = 1; let c = 0; let x = &c; match n { Z => Eat(x), S _ => (let a = clone(c); ()) }; ())
+}
+
+#guard (run "IdConsumed" IdConsumed).rejectedWith [
+  ("NotConsumed", "[Id-typestate] a side of Id ends the borrow x, which a binding outside the Id holds"),
+  ("NotConsumedW", "[Id-typestate] a side of Id ends the borrow x, which a binding outside the Id holds"),
+  ("LenderRead", "[Read] x was moved out or its borrow ended (reading ⊥)"),
+  ("LenderRead0", "[Read] x was moved out or its borrow ended (reading ⊥)"),
+  ("Outside", "[Read] x was moved out or its borrow ended (reading ⊥)"),
+  ("Outside0", "[Read] x was moved out or its borrow ended (reading ⊥)")]
+
 /-! ## `J` at runtime (D85)
 
 The checker computes `J(A, a, b, P, h, t)` to `t` only when `a` and `b` are convertible ([J]),

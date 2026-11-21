@@ -230,10 +230,11 @@ structure MState where
   inPlace : Bool := false                 -- D53: the next read is in place (a call's head, a block's read-only capture)
   modelDepth : Nat := 0                   -- K2/K3: > 0 inside model code, which never runs at runtime
   copying : Bool := false      -- inside `clone`/`peek`: reads copy (the explicit copy, not an erased-read mode)
-  /-- D84 [Id-typestate], ending a borrow: while a side of `Id` runs, the frame the `Id` is formed in and how
-  many bindings and temporaries it had then; a side may not end a borrow one of those holds. A
-  run from a fresh environment (a sealed program's re-run, a comparison) has none. -/
-  obsFrame : Option (Nat × Nat × Nat) := none
+  /-- D84 [Id-typestate], ending a borrow: while a side of `Id` runs, the frame the `Id` is formed in, how
+  many bindings and temporaries it had then, and (D114) the positions of the borrow bindings the
+  side consumes (its type-state's); a side may not end a borrow one of the others holds. A run
+  from a fresh environment (a sealed program's re-run, a comparison) has none. -/
+  obsFrame : Option (Nat × Nat × Nat × List Nat) := none
   typing : Bool := false                  -- the term being evaluated is part of the checked program (`eval true`),
                                           -- where D64's [Repack] points are checked
   locs : Locs := {}                       -- the editor: where the declaration's terms are (`located`)
