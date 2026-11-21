@@ -1,5 +1,6 @@
 import Ochr.Meaning.ApplyMem
 import Ochr.Meaning.RunPresInd
+import Ochr.Meaning.Uniq
 
 /-!
 # The fundamental lemma's statement
@@ -18,6 +19,8 @@ it ends, and every end is strict, `EndOkF`; a partly moved CURRENT content is th
   `x` reads no live label `≤ x`), what an end needs (`holderIndep`) and keeps;
 - `fresh`: no position reads a label at or above the counter (a new borrow's lender reads a future
   that agrees with the old state's only off it);
+- `uniq`: each label is held at one position (`SState.Uniq`; moved here from the simulation's
+  relation, docs/31 D116: a fact about the reference state alone);
 - (no read clause since the dependent-values unit: a read is strict, `Run.ReadGood`, and the
   positions hold OPEN members, `DataModel.OMem`, which a read need not give whole.)
 
@@ -74,6 +77,7 @@ structure SGood (s : SState) : Prop where
   holderTy : ∀ f i l, s.shape (.bind f i) = some l → (s.tyAt (.bind f i)).m = s.heldTy l
   acyc : SState.RInv (fun _ => True) s
   fresh : s.ReadsBelow
+  uniq : s.Uniq
 
 /-- A result's label, if any, records the result's type as its content type, and a member as its
 record (the label may have ended: a borrow of a binding the result outlived; binding the result makes

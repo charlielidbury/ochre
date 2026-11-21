@@ -322,14 +322,14 @@ at the join's grain. Since the orchestrator's ruling (A) (strict ends) the entry
 ends are tested (`MatchEntryOk`, `JoinDropOk`); the statement takes both (`hme`, `hjd`). -/
 theorem runT_J_some (tl : Bool) (hint : TyS) (A a b P h t : Term) (s : SState)
     (hme : MatchEntryOk K φ true t s)
-    (hjd : ∀ r R s₂, runT K ρ φ false hint t (matchEntry K φ true t s).1 = some ((r, R), s₂) →
+    (hjd : ∀ r R s₂, runT K ρ φ false (.plain TyM.err) t (matchEntry K φ true t s).1 = some ((r, R), s₂) →
       JoinDropOk K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim "J" [A, a, b, P, h, t]) s₂)
     (hns : K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t]) = (false, false))
     (hA : (runT K ρ φ false (.plain .err) A s).isSome) (ha : (runT K ρ φ false (.plain .err) a s).isSome)
     (hb : (runT K ρ φ false (.plain .err) b s).isSome) (hP : (runT K ρ φ false (.plain .err) P s).isSome)
     (hh : (runT K ρ φ false (.plain .err) h s).isSome) :
     runT K ρ φ tl hint (.prim "J" [A, a, b, P, h, t]) s =
-      (match runT K ρ φ false hint t (matchEntry K φ true t s).1 with
+      (match runT K ρ φ false (.plain TyM.err) t (matchEntry K φ true t s).1 with
         | some ((r, R), s₂) => some ((r, R), joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim "J" [A, a, b, P, h, t]) s₂)
         | none => none) := by
   obtain ⟨xA, eA⟩ := Option.isSome_iff_exists.mp hA
@@ -338,17 +338,17 @@ theorem runT_J_some (tl : Bool) (hint : TyS) (A a b P h t : Term) (s : SState)
   obtain ⟨xP, eP⟩ := Option.isSome_iff_exists.mp hP
   obtain ⟨xh, eh⟩ := Option.isSome_iff_exists.mp hh
   have key : (open Classical in if MatchEntryOk K φ true t s then
-      (match runT K ρ φ false hint t (matchEntry K φ true t s).1 with
+      (match runT K ρ φ false (.plain TyM.err) t (matchEntry K φ true t s).1 with
         | some ((r, R), s₂) =>
           open Classical in if JoinDropOk K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim "J" [A, a, b, P, h, t]) s₂ then
             some ((r, R), joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim "J" [A, a, b, P, h, t]) s₂)
           else none
         | none => none) else none) =
-      (match runT K ρ φ false hint t (matchEntry K φ true t s).1 with
+      (match runT K ρ φ false (.plain TyM.err) t (matchEntry K φ true t s).1 with
         | some ((r, R), s₂) => some ((r, R), joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim "J" [A, a, b, P, h, t]) s₂)
         | none => none) := by
     rw [if_pos hme]
-    cases hr : runT K ρ φ false hint t (matchEntry K φ true t s).1 with
+    cases hr : runT K ρ φ false (.plain TyM.err) t (matchEntry K φ true t s).1 with
     | none => rfl
     | some y =>
       obtain ⟨⟨r, R⟩, s₂⟩ := y
@@ -436,7 +436,7 @@ theorem J_arm (fuel : Nat) (ih : StepsIHBelow fuel) {st st₂ st' : MState} {typ
     (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) J s).isSome)
     (h : Runs (jArm fuel typed want J u Pa Pb) st₂ b (v, T?) st') (hD : DecTab K.D st') :
     SimConclT { K with Δ := Δ₂ } ρ₂ φ π₂ st₂ st' s₁
-      (fun ρ' s₁' => match runT K ρ' φ false (hintM K ρ hint) u s₁' with
+      (fun ρ' s₁' => match runT K ρ' φ false (.plain TyM.err) u s₁' with
         | some ((r, R), s₂) => some ((r, R), joinDrop K φ (movedPlaces φ s₁') J s₂)
         | none => none) v T? := by
   sorry

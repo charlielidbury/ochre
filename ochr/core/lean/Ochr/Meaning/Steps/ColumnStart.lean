@@ -200,6 +200,7 @@ theorem sgood_stC : Strict.SGood dm [] φ (SM' (KC dm D) ρ stC) where
   fresh := fun p l h => by
     obtain ⟨ψ, x, hne⟩ := h
     exact absurd (by show (SM' (KC dm D) ρ stC).valAt p ψ = (SM' (KC dm D) ρ stC).valAt p (ψ.upd l x); rw [valAt_SM]) hne
+  uniq := fun p _ l hp _ => by rw [shape_SM] at hp; cases hp
 
 /-! ## The context and the term -/
 

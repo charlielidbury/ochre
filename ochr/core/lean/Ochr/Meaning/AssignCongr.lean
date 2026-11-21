@@ -78,7 +78,7 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     intro a s₁ _
     apply SM.bind_congr rfl
     intro _ s₂ _
-    exact runT_congrA tl w hint _ fun σ h => ha σ (by simp [Term.anyAtom, h])
+    exact runT_congrA tl w (.plain TyM.err) _ fun σ h => ha σ (by simp [Term.anyAtom, h])
   | tl, .succ u, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
@@ -185,9 +185,9 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     obtain ⟨s₁, lend⟩ := me
     dsimp only
     split
-    · apply Option.bind_congr' (runT_congrA tl z hint s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
+    · apply Option.bind_congr' (runT_congrA tl z (.plain TyM.err) s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
       intro _ _; rfl
-    · apply Option.bind_congr' (runT_congrA tl u hint s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
+    · apply Option.bind_congr' (runT_congrA tl u (.plain TyM.err) s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
       intro _ _; rfl
     · rfl
   | tl, .matchInd p n arms, hint, s, ha => by
@@ -206,10 +206,10 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     dsimp only
     split
     · rename_i c _
-      apply Option.bind_congr' (runArm_congrA tl arms hint c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
+      apply Option.bind_congr' (runArm_congrA tl arms (.plain TyM.err) c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
       intro _ _; rfl
     · split
-      · exact SM.anyArm_congr fun c => runArm_congrA tl arms hint c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h])
+      · exact SM.anyArm_congr fun c => runArm_congrA tl arms (.plain TyM.err) c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h])
       · rfl
   | tl, .letIn x u w, hint, s, ha => by
     rw [runT, runT]
@@ -217,7 +217,7 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     apply Option.bind_congr' (runT_congrA false u _ s fun σ h => ha σ (by simp [Term.anyAtom, h]))
     rintro ⟨⟨v, T⟩, s₁⟩ _
     dsimp only
-    apply Option.bind_congr' (runT_congrA tl w hint _ fun σ h => ha σ (by simp [Term.anyAtom, h]))
+    apply Option.bind_congr' (runT_congrA tl w (.plain TyM.err) _ fun σ h => ha σ (by simp [Term.anyAtom, h]))
     intro _ _; rfl
   | tl, .assign p u, hint, s, ha => by
     rw [runT, runT]
@@ -288,7 +288,7 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
       apply SM.bind_congr (SM.onCopy_congr (hall h' (hm h' (by simp)) _ _))
       intro _ s₅ e5; have e := SM.onCopy_state e5; subst e
       dsimp only
-      rw [show ∀ s₀, runT K ρ φ false hint t s₀ = runT (KA K Δ') ρ' φ false hint t s₀ from
+      rw [show ∀ s₀, runT K ρ φ false (.plain TyM.err) t s₀ = runT (KA K Δ') ρ' φ false (.plain TyM.err) t s₀ from
         fun s₀ => hall t (hm t (by simp)) _ s₀]
       rfl
     by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]

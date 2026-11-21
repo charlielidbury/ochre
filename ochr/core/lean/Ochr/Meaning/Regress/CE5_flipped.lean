@@ -56,7 +56,7 @@ theorem stmtIf_noStmt (hfl : NoStmt K) (t : Term) (x : SM Res) (s : SState) :
 
 theorem run_letIn (hfl : NoStmt K) (h : Hint) (u w : Term) (hint : TyS) (s : SState) :
     run K ρ φ hint (.letIn h u w) s = (run K ρ φ (.plain .err) u s).bind (fun x =>
-      (run K ρ φ hint w (pushBindShaped x.2 { ty := x.1.2, val := fun _ => x.1.1, decl := K.D.declOf (scopeOf x.2) u })).bind
+      (run K ρ φ (.plain .err) w (pushBindShaped x.2 { ty := x.1.2, val := fun _ => x.1.1, decl := K.D.declOf (scopeOf s) u })).bind
         fun y => if (match (match y.2.env.getLast? with
             | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
             | none => none) with
@@ -77,7 +77,7 @@ theorem seq_discard_plain (T : TyM) (k : SM Res) (s : SState) :
 
 theorem run_seq (hfl : NoStmt K) (u w : Term) (hint : TyS) (s : SState) :
     run K ρ φ hint (.seq u w) s =
-      (run K ρ φ (.plain .err) u >>= fun r => SM.guardMod (DiscardOk K φ r.2) (discardEnd r.2) >>= fun _ => run K ρ φ hint w) s := by
+      (run K ρ φ (.plain .err) u >>= fun r => SM.guardMod (DiscardOk K φ r.2) (discardEnd r.2) >>= fun _ => run K ρ φ (.plain .err) w) s := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_place (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
@@ -136,9 +136,9 @@ theorem content_b1_x (n : Nat) : contentOf K φ (.var 0) (b1 K n) = some ((.el0 
 theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SState) :
     run K ρ φ hint (.assign p u) s = (do
       -- the right-hand side first, at the place's type read on a discarded copy; then the access
-      let ((v, R), s) ← run K ρ φ (match contentOf K φ p s with
+      let ((v, R), s) ← run K ρ φ (if u.assignHinted then (match contentOf K φ p s with
         | some ((_, T, _, _), _) => T
-        | none => .plain .err) u s
+        | none => .plain .err) else .plain .err) u s
       -- STRICT: the value written is a member of the place's type, its label holds that type
       if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
       match SM.guarded (AssignOk K φ p) (assignAt K φ p v R.label) s with

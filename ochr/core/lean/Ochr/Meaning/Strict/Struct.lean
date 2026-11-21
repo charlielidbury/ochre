@@ -23,12 +23,13 @@ structure SStruct (dm : DataModel) (s : SState) : Prop where
   holderTy : ∀ f i l, s.shape (.bind f i) = some l → (s.tyAt (.bind f i)).m = s.heldTy l
   acyc : SState.RInv (fun _ => True) s
   fresh : s.ReadsBelow
+  uniq : s.Uniq
 
 section
 variable {dm : DataModel} {Γ : List IndDecl} {φ : Future}
 
 theorem SGood.struct {s : SState} (hs : SGood dm Γ φ s) : SStruct dm s :=
-  ⟨hs.held, hs.holderTy, hs.acyc, hs.fresh⟩
+  ⟨hs.held, hs.holderTy, hs.acyc, hs.fresh, hs.uniq⟩
 
 /-- An end keeps the structural part (`endAt_sgood`'s last four clauses). -/
 theorem SStruct.endAt {s : SState} {l : Nat} {r : Pos} (hs : SStruct dm s) (hh : s.holderOf l = some r) :
@@ -36,7 +37,7 @@ theorem SStruct.endAt {s : SState} {l : Nat} {r : Pos} (hs : SStruct dm s) (hh :
   have hTy : ∀ q, (s.endAt l r).tyAt q = s.tyAt q := fun q => by unfold SState.endAt; rw [tyAt_mapVals]; rfl
   have hHT : (s.endAt l r).heldTy = s.heldTy := rfl
   have hHM : (s.endAt l r).heldMem = s.heldMem := rfl
-  refine ⟨fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_⟩
+  refine ⟨fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_, ?_⟩
   · rw [hHT, hHM]; exact hs.held l' (SState.endAt_live hl')
   · rw [SState.endAt_shape] at hl'
     simp only at hl'
@@ -47,6 +48,7 @@ theorem SStruct.endAt {s : SState} {l : Nat} {r : Pos} (hs : SStruct dm s) (hh :
     rwa [SState.endLabel_eq hh] at this
   · have := SState.readsBelow_endLabel hs.fresh l
     rwa [SState.endLabel_eq hh] at this
+  · exact hs.uniq.endAt l r
 
 theorem SStruct.endLabel {s : SState} (hs : SStruct dm s) (l : Nat) : SStruct dm (s.endLabel l) := by
   cases h : s.holderOf l with
@@ -71,7 +73,7 @@ clauses at every typed future. -/
 theorem sgood_of_stateOk {K : RunCtx} {s : SState} (hS : SStruct K.dm s) (hok : StateOk K φ s) :
     SGood K.dm K.Γ φ s :=
   ⟨fun ψ hψ f i hp => (hok ψ hψ).1 f i hp, fun ψ hψ q l hl => (hok ψ hψ).2 q l hl,
-    hS.held, hS.holderTy, hS.acyc, hS.fresh⟩
+    hS.held, hS.holderTy, hS.acyc, hS.fresh, hS.uniq⟩
 
 end
 
@@ -83,7 +85,7 @@ theorem SStruct.setContent {s s' : SState} {pos : Pos} {steps : List Step} {v : 
     (h : setContent K φ pos steps v s = some (⟨⟩, s')) : SStruct K.dm s' := by
   have hacyc := (setContent_rinv K φ (fun _ => True) h hs.acyc).1
   rw [setContent_eq K φ h] at hacyc ⊢
-  refine ⟨?_, fun f i l hl => ?_, hacyc, ?_⟩
+  refine ⟨?_, fun f i l hl => ?_, hacyc, ?_, hs.uniq.setAt _ _⟩
   · rw [liveLabels_setAt, heldTy_setAt, heldMem_setAt]; exact hs.held
   · rw [SState.shape_setAt] at hl; rw [tyAt_setAt, heldTy_setAt]; exact hs.holderTy f i l hl
   · exact SState.readsBelow_setAt hs.fresh _ _ (fun l h => hs.fresh pos l

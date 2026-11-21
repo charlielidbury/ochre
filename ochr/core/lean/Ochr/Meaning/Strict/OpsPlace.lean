@@ -127,7 +127,7 @@ theorem sgood_transfer {s : SState} (hs : SGood K.dm K.Γ φ s) {l : Nat} (hl : 
     intro f i; rw [valAt_pushTempShaped_bind, hval₁]
   have hbty : ∀ q, ((s.takeLabel l).pushTempShaped (fun _ => v) l).tyAt q = s.tyAt q := by
     intro q; rw [tyAt_pushTempShaped, hty₁]
-  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_⟩
+  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_, hs.uniq.take_park hs.acyc.2.2 _ l⟩
   · rw [hTF] at hψ
     rw [bind_mem_pushTempShaped, SState.takeLabel_positions] at hpi
     rw [hbval, hbty]
@@ -329,7 +329,7 @@ theorem sgood_push_generic {s s₁ S : SState} (hs : SGood K.dm K.Γ φ s) {f₀
     (hlive : ∀ y, y ∈ S.liveLabels ↔ y ∈ s.liveLabels ∨ lab = some y)
     (hv : GoodRes K.dm.read (v, T)) (hlab : LabOk K.dm s (v, T)) (hlabT : lab = T.label)
     (hind : ∀ l, lab = some l → l ∉ s.liveLabels → ∀ q, Indep l (s.valAt q))
-    (hacyc : SState.RInv (fun _ => True) S) (hfresh : S.ReadsBelow) : SGood K.dm K.Γ φ S := by
+    (hacyc : SState.RInv (fun _ => True) S) (hfresh : S.ReadsBelow) (huniq : S.Uniq) : SGood K.dm K.Γ φ S := by
   -- a future typed after, read before: the label, if it was not live, at the run's future
   let ψ₀ : Future → Future := fun ψ y => if y ∉ s.liveLabels ∧ lab = some y then φ y else ψ y
   have hT1 : ∀ ψ, TypedF K.dm K.Γ φ S ψ → TypedF K.dm K.Γ φ s (ψ₀ ψ) := by
@@ -368,7 +368,7 @@ theorem sgood_push_generic {s s₁ S : SState} (hs : SGood K.dm K.Γ φ s) {f₀
     · exact .mem hv
     · simp only at hv; rw [hv]; exact .moved _
     · rw [h1, he] at h2; exact absurd h2 (DataModel.err_mem_false _ _)
-  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, hacyc, hfresh⟩
+  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, hacyc, hfresh, huniq⟩
   · show GoodVal _ _ (S.valAt _ ψ) (S.tyAt _).m
     by_cases hq : Pos.bind f i = .bind f₀ i₀
     · rw [hq, hvalN, htyN]; exact hv.val K.dm.read_wholeFields K.Γ
@@ -418,9 +418,10 @@ theorem sgood_pushBindShaped {s : SState} (hs : SGood K.dm K.Γ φ s) (b : SBind
       · intro q k h; exact readsBelow_pushBind (SState.readsBelow_takeLabel hs.fresh _) b hb q k h
       · exact readsBelow_pushBind (SState.readsBelow_takeLabel hs.fresh _) b hb
     · exact readsBelow_pushBind hs.fresh b hb
+  have huniq : (pushBindShaped s b).Uniq := hs.uniq.pushBindShaped hsa b
   have hind : ∀ l, b.ty.label = some l → l ∉ s.liveLabels → ∀ q, Indep l (s.valAt q) :=
     fun l hl hnl => (hlou l hl).1.resolve_left hnl
-  generalize hS : pushBindShaped s b = S at hacyc hlive hfresh
+  generalize hS : pushBindShaped s b = S at hacyc hlive hfresh huniq
   cases hl : b.ty.label with
   | none =>
     unfold pushBindShaped at hS; rw [hl] at hS; dsimp only at hS; subst hS
@@ -432,7 +433,7 @@ theorem sgood_pushBindShaped {s : SState} (hs : SGood K.dm K.Γ φ s) (b : SBind
     refine sgood_push_generic (s₁ := s) hs hN hpos (fun q hq => by rw [hval, if_neg hq])
       (by rw [hval, if_pos rfl, hb]) (fun q hq => by rw [hty, if_neg hq]) (by rw [hty, if_pos rfl])
       (fun q _ => by rw [hsh]) (by rw [hsh, hshN]) (fun _ => .inl rfl) (fun q l' h => ⟨h, rfl⟩) hHT hHM
-      (fun y => by rw [hlive, hl]) hv hlab hl.symm (fun l h => by cases h) hacyc hfresh
+      (fun y => by rw [hlive, hl]) hv hlab hl.symm (fun l h => by cases h) hacyc hfresh huniq
   | some l =>
     have hne₁ : (s.takeLabel l).env ≠ [] := by
       intro he; apply hne
@@ -461,7 +462,7 @@ theorem sgood_pushBindShaped {s : SState} (hs : SGood K.dm K.Γ φ s) (b : SBind
       h1val h1sh (by rw [withShape_heldTy, hHT, h1HT])
       (by rw [withShape_heldMem, hHM, h1HM])
       (fun y => by rw [hlive, hl]) hv hlab hl.symm (fun l' h => by cases h; exact hind l hl)
-      hacyc hfresh
+      hacyc hfresh huniq
 
 /-! ## A `let`'s drop -/
 
@@ -554,7 +555,7 @@ theorem sgood_dropLast {s : SState} (hs : SGood K.dm K.Γ φ s)
         show (if z ∈ s.liveLabels ∧ z ∉ s.dropLast.liveLabels then s.heldMem z else ψ z) = _
         rw [if_neg (fun h => hc ⟨z, h⟩)]
       rw [e]
-  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_⟩
+  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_, hs.uniq.dropLast⟩
   · obtain ⟨hpi', hd⟩ := SState.mem_positions_dropLast hpi
     show GoodVal _ _ (s.dropLast.valAt _ ψ) (s.dropLast.tyAt _).m
     rw [SState.valAt_dropLast s _ hd, tyAt_dropLast s _ hd, ← hT2 ψ]
@@ -927,7 +928,11 @@ theorem sgood_borrow_root {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {f i
     by_cases hk : k = l
     · omega
     · exact absurd (by simp [Future.upd, Ne.symm hk]) hne
-  generalize hS : ((((S₃.pushTempShaped (fun _ => v) l).setLent l xs).setHeldTy l Tm).setHeldMem l v) = S at hacyc hfresh
+  have huniq : ((((S₃.pushTempShaped (fun _ => v) l).setLent l xs).setHeldTy l Tm).setHeldMem l v).Uniq := by
+    show (S₃.pushTempShaped (fun _ => v) l).Uniq
+    refine (hs₁.uniq.of_eq h3sh).pushTempShaped _ (fun q hq => ?_)
+    rw [h3sh] at hq; have := (hsa₁ q l hq).2; rw [hl] at this; exact Nat.lt_irrefl _ this
+  generalize hS : ((((S₃.pushTempShaped (fun _ => v) l).setLent l xs).setHeldTy l Tm).setHeldMem l v) = S at hacyc hfresh huniq
   have hSval : ∀ q, S.valAt q = (S₃.pushTempShaped (fun _ => v) l).valAt q := by intro q; rw [← hS]; simp
   have hSty : ∀ q, S.tyAt q = s₁.tyAt q := by intro q; rw [← hS]; simp [tyAt_pushTempShaped, h3ty]
   have hSsh : S.shape = (S₃.pushTempShaped (fun _ => v) l).shape := by rw [← hS]; rfl
@@ -971,7 +976,7 @@ theorem sgood_borrow_root {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {f i
   have hbval : ∀ f' i', S.valAt (.bind f' i') =
       if Pos.bind f' i' = .bind f i then (fun φ' => φ' l) else s₁.valAt (.bind f' i') := by
     intro f' i'; rw [hSval, valAt_pushTempShaped_bind, h3val]
-  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh⟩
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh, huniq⟩
   · show GoodVal _ _ (S.valAt _ ψ) (S.tyAt _).m
     rw [hbval, hSty]
     split
@@ -1013,17 +1018,23 @@ theorem sstruct_borrow_park {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {p
       (fun _ => v) s₁.nextLoan).setLent s₁.nextLoan xs).setHeldTy s₁.nextLoan Tm).setHeldMem s₁.nextLoan v) := by
   have hsa₁ := hs₁.acyc.2.2
   have hlnew : s₁.nextLoan ∉ s₁.liveLabels := fun h => Nat.lt_irrefl _ (hs₁.live_lt h)
+  have huniq : (((((s₁.freshLoan.2.setAt pos G).pushTempShaped (fun _ => v) s₁.nextLoan).setLent
+      s₁.nextLoan xs).setHeldTy s₁.nextLoan Tm).setHeldMem s₁.nextLoan v).Uniq := by
+    show ((s₁.freshLoan.2.setAt pos G).pushTempShaped (fun _ => v) s₁.nextLoan).Uniq
+    refine (((hs₁.uniq.of_eq rfl) : s₁.freshLoan.2.Uniq).setAt pos G).pushTempShaped _ (fun q hq => ?_)
+    rw [SState.shape_setAt] at hq
+    exact Nat.lt_irrefl _ (hsa₁ q _ hq).2
   have hF : s₁.freshLoan.2 = { s₁ with nextLoan := s₁.nextLoan + 1 } := rfl
-  rw [hF] at hacyc hfresh ⊢
+  rw [hF] at hacyc hfresh huniq ⊢
   generalize hl : s₁.nextLoan = l at *
-  generalize hS₂ : ({ s₁ with nextLoan := l + 1 } : SState) = S₂ at hacyc hfresh ⊢
+  generalize hS₂ : ({ s₁ with nextLoan := l + 1 } : SState) = S₂ at hacyc hfresh huniq ⊢
   have h2pos : S₂.positions = s₁.positions := by rw [← hS₂]; rfl
   have h2ty : S₂.tyAt = s₁.tyAt := by rw [← hS₂]; rfl
   have h2sh : S₂.shape = s₁.shape := by rw [← hS₂]
   have h2HT : S₂.heldTy = s₁.heldTy := by rw [← hS₂]
   have h2HM : S₂.heldMem = s₁.heldMem := by rw [← hS₂]
   have h2nl : S₂.nextLoan = l + 1 := by rw [← hS₂]
-  generalize hS₃ : S₂.setAt pos G = S₃ at hacyc hfresh ⊢
+  generalize hS₃ : S₂.setAt pos G = S₃ at hacyc hfresh huniq ⊢
   have h3ty : ∀ q, S₃.tyAt q = s₁.tyAt q := by intro q; rw [← hS₃, tyAt_setAt, h2ty]
   have h3sh : S₃.shape = s₁.shape := by rw [← hS₃, SState.shape_setAt, h2sh]
   have h3pos : S₃.positions = s₁.positions := by rw [← hS₃, SState.positions_setAt, h2pos]
@@ -1038,7 +1049,7 @@ theorem sstruct_borrow_park {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {p
     rw [← hS₃, nextLoan_setAt, h2nl]; omega
   have h3live : ∀ y, y ∈ S₃.liveLabels ↔ y ∈ s₁.liveLabels := by
     intro y; unfold SState.liveLabels; rw [h3pos, h3sh]
-  generalize hS : ((((S₃.pushTempShaped (fun _ => v) l).setLent l xs).setHeldTy l Tm).setHeldMem l v) = S at hacyc hfresh ⊢
+  generalize hS : ((((S₃.pushTempShaped (fun _ => v) l).setLent l xs).setHeldTy l Tm).setHeldMem l v) = S at hacyc hfresh huniq ⊢
   have hSty : ∀ q, S.tyAt q = s₁.tyAt q := by intro q; rw [← hS]; simp [tyAt_pushTempShaped, h3ty]
   have hSsh : S.shape = (S₃.pushTempShaped (fun _ => v) l).shape := by rw [← hS]; rfl
   have hSHT : ∀ y, S.heldTy y = if y = l then Tm else s₁.heldTy y := by
@@ -1056,7 +1067,7 @@ theorem sstruct_borrow_park {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {p
     rcases SState.live_pushTempShaped_new hsa₃ (e.1 hy) with h | h
     · exact .inl ((h3live y).1 h)
     · exact .inr h
-  refine ⟨fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh⟩
+  refine ⟨fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh, huniq⟩
   · rw [hSHM, hSHT]
     rcases hSlive y hy with h | rfl
     · have hyl : y ≠ l := fun e => hlnew (e ▸ h)
@@ -1374,6 +1385,7 @@ theorem sgood_hold {s : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} (hpos : 
     rw [← hS]; exact hold_rinv (fun _ => True) hs.acyc _ hpos (fun ψ ψ' => by rw [hval]) hlou hold
   have hfresh : S.ReadsBelow := by
     rw [← hS]; intro q k h; exact SState.readsBelow_takeLabel hs.fresh l q k h
+  have huniq : S.Uniq := by rw [← hS]; exact hs.uniq.take_put hsa l _
   -- the live labels: `l`, and those of `s` held elsewhere than at the root
   have hlive1 : ∀ y, y ∈ S.liveLabels → y ∈ s.liveLabels ∨ y = l := by
     intro y hy
@@ -1449,7 +1461,7 @@ theorem sgood_hold {s : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} (hpos : 
           · exact h1 h3
           · exact hyl h3
   have hval' : ∀ q, (s.takeLabel l).valAt q = s.valAt q ∨ (s.takeLabel l).valAt q = fun _ => .moved := t1val
-  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh⟩
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh, huniq⟩
   · show GoodVal _ _ (S.valAt _ ψ) (S.tyAt _).m
     rw [hSval, hSty]
     rw [hSpos] at hpi

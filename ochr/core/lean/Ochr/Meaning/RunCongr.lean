@@ -1096,7 +1096,7 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     intro _ s₂ h2
     have es : s₂ = discardEnd a.2 s₁ := (SM.guardMod_some h2).2
     subst es
-    exact runT_congrE hK tl w hint _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h]))
+    exact runT_congrE hK tl w (.plain TyM.err) _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h]))
       (discardEnd_props L (runT_rinv K ρ φ L hK false u _ s s₁ a hi h1).1 a.2).1
   | tl, .succ u, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
@@ -1219,16 +1219,16 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     dsimp only
     rw [movedPlaces_congr hφ hi₁]
     split
-    · apply Option.bind_congr' (runT_congrE hK tl z hint s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
+    · apply Option.bind_congr' (runT_congrE hK tl z (.plain TyM.err) s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
       rintro ⟨⟨r, R⟩, s₂⟩ h2
-      have hi₂ := (runT_rinv K ρ φ L hK tl z hint s₁ s₂ _ hi₁ h2).1
+      have hi₂ := (runT_rinv K ρ φ L hK tl z (.plain TyM.err) s₁ s₂ _ hi₁ h2).1
       rw [optCheck_congr (joinDropOk_congr K hφ _ _ hi₂)]
       apply Option.bind_congr' rfl
       intro _ _
       rw [joinDrop_congr K hφ _ _ hi₂]
-    · apply Option.bind_congr' (runT_congrE hK tl u hint s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
+    · apply Option.bind_congr' (runT_congrE hK tl u (.plain TyM.err) s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
       rintro ⟨⟨r, R⟩, s₂⟩ h2
-      have hi₂ := (runT_rinv K ρ φ L hK tl u hint s₁ s₂ _ hi₁ h2).1
+      have hi₂ := (runT_rinv K ρ φ L hK tl u (.plain TyM.err) s₁ s₂ _ hi₁ h2).1
       rw [optCheck_congr (joinDropOk_congr K hφ _ _ hi₂)]
       apply Option.bind_congr' rfl
       intro _ _
@@ -1255,9 +1255,9 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     rw [movedPlaces_congr hφ hi₁]
     split
     · rename_i c _
-      apply Option.bind_congr' (runArm_congrE hK tl arms hint c s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
+      apply Option.bind_congr' (runArm_congrE hK tl arms (.plain TyM.err) c s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
       rintro ⟨⟨r, R⟩, s₂⟩ h2
-      have hi₂ := (runArm_rinv K ρ φ L hK tl arms hint c s₁ s₂ _ hi₁ h2).1
+      have hi₂ := (runArm_rinv K ρ φ L hK tl arms (.plain TyM.err) c s₁ s₂ _ hi₁ h2).1
       rw [optCheck_congr (or_congr Iff.rfl (or_congr Iff.rfl (joinDropOk_congr K hφ _ _ hi₂)))]
       apply Option.bind_congr' rfl
       intro _ _
@@ -1265,7 +1265,7 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     · -- an erased match on a proof with other than one arm: each arm's run on the copy agrees
       split
       · exact SM.anyArm_congr fun c =>
-          runArm_congrE hK tl arms hint c s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁
+          runArm_congrE hK tl arms (.plain TyM.err) c s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁
       · rfl
   | tl, .letIn x u w, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
@@ -1273,15 +1273,15 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     apply Option.bind_congr' (runT_congrE hK false u _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     rintro ⟨⟨v, T⟩, s₁⟩ h1
     obtain ⟨hi₁, hy₁, -, -⟩ := runT_rinv K ρ φ L hK false u _ s s₁ (v, T) hi h1
-    have hi₂ := pushBindShaped_rinv hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s₁) u } v rfl
+    have hi₂ := pushBindShaped_rinv hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u } v rfl
       fun l hl => by
         rcases hy₁ l hl with ⟨h' | h', hn⟩
         · exact ⟨.inl h', hn⟩
         · exact ⟨.inr (.inr h'), hn⟩
     dsimp only
-    apply Option.bind_congr' (runT_congrE hK tl w hint _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₂)
+    apply Option.bind_congr' (runT_congrE hK tl w (.plain TyM.err) _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₂)
     rintro ⟨⟨r, R⟩, s₃⟩ h3
-    have hi₃ := (runT_rinv K ρ φ L hK tl w hint _ s₃ _ hi₂ h3).1
+    have hi₃ := (runT_rinv K ρ φ L hK tl w (.plain TyM.err) _ s₃ _ hi₂ h3).1
     dsimp only
     refine ite_congr (propext ?_) (fun _ => rfl) (fun _ => rfl)
     split
@@ -1376,7 +1376,7 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
       rw [propext (matchEntryOk_congr K hφ hi true t), matchEntry_congr K hφ hi]
       have hi₁ := (matchEntry_props K φ' L true t hi).1
       rw [movedPlaces_congr hφ hi₁]
-      rw [show runT K ρ φ false hint t _ = runT K ρ φ' false hint t _ from hall t (hm t (by simp)) _ _ hi₁]
+      rw [show runT K ρ φ false (.plain TyM.err) t _ = runT K ρ φ' false (.plain TyM.err) t _ from hall t (hm t (by simp)) _ _ hi₁]
       split
       · split
         · rename_i r₁ R₁ s₆ h6

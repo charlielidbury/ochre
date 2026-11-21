@@ -17,7 +17,7 @@ variable {K : RunCtx} {φ : Future}
 
 theorem sgood_setLent {s : SState} (hs : SGood K.dm K.Γ φ s) (l : Nat) (xs : List Site) :
     SGood K.dm K.Γ φ (s.setLent l xs) :=
-  ⟨hs.bind, hs.holder, hs.held, hs.holderTy, hs.acyc, hs.fresh⟩
+  ⟨hs.bind, hs.holder, hs.held, hs.holderTy, hs.acyc, hs.fresh, hs.uniq⟩
 
 /-- An operation that keeps the invariant where its test holds, folded with the fold's tests. -/
 theorem sgood_foldOk {α : Type} (g : SState → α → SState) (ok : SState → α → Prop)

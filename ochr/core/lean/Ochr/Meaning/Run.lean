@@ -1090,6 +1090,36 @@ theorem optCheck_some.{u} {P : Prop} {x : PUnit.{u+1}} (h : optCheck.{u} P = som
 theorem optCheck_of.{u} {P : Prop} (h : P) : optCheck.{u} P = some ⟨⟩ := by
   unfold optCheck; rw [if_pos h]
 
+/-! ## The hints the TYPED checker hands (docs/31 D119)
+
+The reference hands a sub-term an expected type exactly where the checker that CHECKS (`eval` with
+`typed`, which `checkDef` runs) hands one: no hint to a `let`'s or a `;`'s tail, to a match's arms
+or to `J`'s transported term; the place's type to an assignment's right-hand side, the parameter's
+type to an argument and the field's type to a field only at the syntactic forms below. The untyped
+checker (an in-place call's body, a sealed program's re-run) leaves hints out where it checks
+nothing, and a strict constructor with no record fails, so the reference does not follow it. -/
+
+/-- `evalCore`'s `.assign`: a constructor or an embedded value. -/
+def _root_.Ochr.Term.assignHinted : Term → Bool
+  | .ctor .. | .val _ => true
+  | _ => false
+
+/-- `evalCall`'s argument hint: a constructor, an embedded value, `rewrite`, `rewriteR`, a hole. -/
+def _root_.Ochr.Term.argHinted : Term → Bool
+  | .ctor .. | .val _ => true
+  | .prim n _ => n == "rewrite" || n == "rewriteR" || n == "hole"
+  | _ => false
+
+/-- `evalCtor`'s field hint `fh`: a constructor, `rewrite` or `rewriteR` of a declaration with
+parameters, an embedded value, or any field of a dependent constructor that its index fields type. -/
+def _root_.Ochr.Term.fieldHinted (a : Term) (d : IndDecl) (c i : Nat) : Bool :=
+  (decide (0 < d.params.length) && (match a with
+    | .ctor .. => true
+    | .prim n _ => n == "rewrite" || n == "rewriteR"
+    | _ => false)) ||
+  (match a with | .val _ => true | _ => false) ||
+  (d.dependent c && d.fieldDependent c i)
+
 mutual
 
 
@@ -1118,9 +1148,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- `assignPlace`; D19, R5: accessing first ended the borrows the right-hand side reads
     -- through, `y := clone(*r)` with `r` borrowing `y`). The place's type, the hint of the
     -- right-hand side, is read on a discarded copy
-    let T : TyS := match contentOf K φ p s with
+    -- the hint, as the TYPED checker hands it (`evalCore`'s `.assign`: `placeType?` iff `u` is a
+    -- constructor or an embedded value; docs/31 D119)
+    let T : TyS := if u.assignHinted then (match contentOf K φ p s with
       | some ((_, T, _, _), _) => T
-      | none => .plain .err
+      | none => .plain .err) else .plain .err
     let ((v, R), s) ← runT false T u s
     -- STRICT: the value written is a member of the place's type at the write (read on a
     -- discarded copy, `placeTy`; the hint `T` was read before the right-hand side ran)
@@ -1133,9 +1165,14 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       | none => none
     else none) s
   | .letIn x u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.letIn x u w)) (fun s => do
+    -- the binding's reading is read BEFORE `u` runs, as the checker reads it (`evalCore`'s
+    -- `.letIn`: `declOf` under `withLive`, then `eval u`; docs/31 D118): `u` may write, and a
+    -- reading taken after it would be of a scope the checker never read
+    let d := K.D.declOf (scopeOf s) u
     let ((v, T), s) ← runT false (.plain TyM.err) u s
-    let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
-    let ((r, R), s) ← runT tl hint w s
+    let s := pushBindShaped s { ty := T, val := fun _ => v, decl := d }
+    -- the tail runs with no hint, as the TYPED checker runs it (`evalCore`'s `.letIn`; docs/31 D119)
+    let ((r, R), s) ← runT tl (.plain TyM.err) w s
     -- [Drop] of the binding: the borrow it holds *now* ends, then it is forgotten (PROPOSAL,
     -- m2-proofs, CE5: not the label its type carried when it was bound, which it may have moved
     -- out, while an assignment may have made it the holder of another)
@@ -1156,7 +1193,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let r ← runT false (.plain TyM.err) u
     -- STRICT END (ruling (A))
     SM.guardMod (DiscardOk K φ r.2) (discardEnd r.2)
-    runT tl hint w) s
+    -- the tail runs with no hint, as the TYPED checker runs it (docs/31 D119)
+    runT tl (.plain TyM.err) w) s
   | .matchNat p z u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchNat p z u)) (fun s => do
     -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access] for the tag: the
     -- audit's A1); `⊥` is an error; then D84's drop at the join
@@ -1169,11 +1207,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let entry := movedPlaces φ s
     match tg.asNat with
     | some 0 => do
-      let ((r, R), s) ← runT tl hint z s
+      let ((r, R), s) ← runT tl (.plain TyM.err) z s
       let _ ← optCheck (JoinDropOk K φ entry (.matchNat p z u) s)
       some ((r, R), lend R.label (joinDrop K φ entry (.matchNat p z u) s))
     | some (_ + 1) => do
-      let ((r, R), s) ← runT tl hint u s
+      let ((r, R), s) ← runT tl (.plain TyM.err) u s
       let _ ← optCheck (JoinDropOk K φ entry (.matchNat p z u) s)
       some ((r, R), lend R.label (joinDrop K φ entry (.matchNat p z u) s))
     | none => none) s
@@ -1195,7 +1233,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       | _ => tg.asNat
     match c? with
     | some c => do
-      let ((r, R), s) ← runArm tl hint c arms s
+      -- an arm runs with no hint, as the TYPED checker runs it (docs/31 D119)
+      let ((r, R), s) ← runArm tl (.plain TyM.err) c arms s
       let _ ← optCheck (tg.isProof = true ∨ one = true ∨ JoinDropOk K φ entry (.matchInd p n arms) s)
       -- a match on a proof has no join (`Machine.evalMatchByType`: its one arm runs on every
       -- path; the audit's A4)
@@ -1204,7 +1243,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         | _ => if one then s else lend R.label (joinDrop K φ entry (.matchInd p n arms) s))
     -- an erased match on a proof with other than one arm: the arms on copies (`SM.anyArm`)
     | none => match tg with
-      | .proof => SM.anyArm arms.length (fun c => runArm tl hint c arms) s
+      | .proof => SM.anyArm arms.length (fun c => runArm tl (.plain TyM.err) c arms) s
       | _ => none) s
   | .tind n args => do
     match K.Γ.find? (·.name == n) with
@@ -1467,7 +1506,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       if MatchEntryOk K φ true t s then
       let s := (matchEntry K φ true t s).1
       let entry := movedPlaces φ s
-      match runT false hint t s with
+      -- the transported term runs with no hint (`evalCore`'s `J`, in place; docs/31 D119)
+      match runT false (.plain TyM.err) t s with
       | some ((r, R), s) =>
         if JoinDropOk K φ entry (.prim "J" [A, a, b, P, h, t]) s then
           some ((r, R), joinDrop K φ entry (.prim "J" [A, a, b, P, h, t]) s)
@@ -1536,14 +1576,15 @@ noncomputable def runFields (stmt : Bool) (d : IndDecl) (c i : Nat) (rh : Option
     (earlier : List Sem) : List Term → SM (List Sem × List (Option Sem))
   | [] => pure ([], sol)
   | a :: as => fun s => (do
-    let T : TyS := match rh with
+    -- the field's type is handed as the TYPED checker hands it (`evalCtor`'s `fh`; docs/31 D119)
+    let T : TyS := if a.fieldHinted d c i then (match rh with
       | some r => .plain (K.dm.fieldTyR d r c i earlier)
       | none => match fieldTerm d c i with
         | some FT =>
           if FT.freeVars.all (fun j => d.params.length ≤ j || (sol.getD (d.params.length - 1 - j) none).isSome) then
             .plain (K.dm.fieldTy d (solved sol) c i earlier)
           else .plain TyM.err
-        | none => .plain TyM.err
+        | none => .plain TyM.err) else .plain TyM.err
     let (v, R) ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (runT false T a)
     let sol₁ := match fieldTerm d c i with
       | some FT => unifyTyS K.dm d.params.length FT R sol
@@ -1560,7 +1601,8 @@ found `x` moved), unless its declared type is a borrow type, which runs in place
 noncomputable def runArgs (stmt : Bool) (fT : TyM) (earlier : List Sem) : List Term → SM (List Res)
   | [] => pure []
   | a :: as => fun s => (do
-    let T : TyS := .plain (fT.domAfter K.dm.read earlier)
+    -- the parameter's type is handed as the TYPED checker hands it (`evalCall`; docs/31 D119)
+    let T : TyS := if a.argHinted then .plain (fT.domAfter K.dm.read earlier) else .plain TyM.err
     let r ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (runT false T a)
     let rest ← runArgs stmt fT (earlier ++ [r.1]) as
     pure (r :: rest)) s

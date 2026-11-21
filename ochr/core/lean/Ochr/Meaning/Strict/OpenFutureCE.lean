@@ -81,7 +81,8 @@ theorem valAt_s₀_indep (p : Pos) (ψ : Future) {l : Nat} (hl : l ≠ 0) (x : S
 /-- **`s₀` is good.** -/
 theorem s₀_good (dm : DataModel) : SGood dm [] φ₀ s₀ := by
   refine ⟨fun ψ hψ f i hp => ?_, fun ψ hψ p l hl => ?_, fun l _ => nat_mem dm 0, fun f i l hl => ?_,
-    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_⟩
+    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_,
+    fun p q l hp hq => (sh_some hp).1.trans (sh_some hq).1.symm⟩
   · rw [positions_s₀] at hp
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false] at hp
     rcases hp with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩

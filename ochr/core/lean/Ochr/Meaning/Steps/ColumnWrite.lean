@@ -181,9 +181,9 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 theorem runT_assign (tl : Bool) (hint : TyS) (p : Place) (u : Term) (s : SState)
     (hfl : K.D.flags (scopeOf s) (.assign p u) = (false, false)) :
     runT K ρ φ tl hint (.assign p u) s = (do
-      let T : TyS := match contentOf K φ p s with
+      let T : TyS := if u.assignHinted then (match contentOf K φ p s with
         | some ((_, T, _, _), _) => T
-        | none => .plain .err
+        | none => .plain .err) else .plain .err
       let ((v, R), s) ← runT K ρ φ false T u s
       if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
         match SM.guarded (AssignOk K φ p) (assignAt K φ p v R.label) s with

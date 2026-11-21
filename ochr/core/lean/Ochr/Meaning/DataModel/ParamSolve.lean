@@ -193,9 +193,10 @@ theorem ctor1_fails (K : RunCtx) (d : IndDecl) (ty : String) (c : Nat) (x : Hint
     List.isEmpty_nil, Bool.not_true, Bool.false_or, hpe, hh, hp, List.replicate, Option.bind]
   simp only [runFields, hFT, hfv, hs, Bool.false_and, SM.stmtIf, Bool.false_eq_true, if_false]
   have hne : d.params ≠ [] := fun h => by rw [h] at hp; cases hp
-  rw [if_neg (by simp [hp])]
-  simp only [SM.stmtIf, Bool.false_eq_true, if_false, Regress.CE4flip.SM.bind_apply, ha, pure, hp, hu]
-  simp [ctorOut, SM.fail, SM.strictS]
+  cases hfh : a.fieldHinted d c 0 <;> simp only [hfh, ↓reduceIte, Bool.false_eq_true] <;>
+    (try rw [if_neg (by simp [hp])]) <;>
+    simp only [ite_self, SM.stmtIf, Bool.false_eq_true, if_false, Regress.CE4flip.SM.bind_apply, ha, pure, hp, hu]
+  all_goals simp [ctorOut, SM.fail, SM.strictS]
 
 /-- A one-field constructor whose field fails to run fails. -/
 theorem ctor1_fails_none (K : RunCtx) (d : IndDecl) (ty : String) (c : Nat) (x : Hint) (a FT : Term) (s : SState)
@@ -213,8 +214,9 @@ theorem ctor1_fails_none (K : RunCtx) (d : IndDecl) (ty : String) (c : Nat) (x :
   simp only [SM.erasedIf, hfl, SM.stmtIf, Bool.false_eq_true, if_false, hd, runParams, bind, pure,
     List.isEmpty_nil, Bool.not_true, Bool.false_or, hpe, hh, hp, List.replicate, Option.bind]
   simp only [runFields, hFT, hfv, hs, Bool.false_and, SM.stmtIf, Bool.false_eq_true, if_false]
-  rw [if_neg (by simp [hp])]
-  simp only [SM.stmtIf, Bool.false_eq_true, if_false, Regress.CE4flip.SM.bind_apply, ha, pure, hp]
+  cases hfh : a.fieldHinted d c 0 <;> simp only [hfh, ↓reduceIte, Bool.false_eq_true] <;>
+    (try rw [if_neg (by simp [hp])]) <;>
+    simp only [ite_self, SM.stmtIf, Bool.false_eq_true, if_false, Regress.CE4flip.SM.bind_apply, ha, pure, hp]
 
 /-- **A one-field constructor with one unwritten parameter and no hint runs** when the field's
 type gives the parameter back (`p`): the field runs at `err`, `unifyTyS` solves the parameter, and
@@ -238,10 +240,10 @@ theorem ctor1_runs (K : RunCtx) (d : IndDecl) (ty : String) (c : Nat) (x : Hint)
   simp only [SM.erasedIf, hfl, SM.stmtIf, Bool.false_eq_true, if_false, hd, runParams, bind, pure,
     List.isEmpty_nil, Bool.not_true, Bool.false_or, hpe, hh, hp, List.replicate]
   simp only [runFields, hFT, hfv, hs, Bool.false_and, SM.stmtIf, Bool.false_eq_true, if_false]
-  rw [if_neg (by simp [hp])]
-  simp only [SM.stmtIf, Bool.false_eq_true, if_false, Regress.CE4flip.SM.bind_apply, ha, pure, hp, hu]
-  simp [ctorOut, hs, solved, pure, SM.strictS]
-  exact hm
+  cases hfh : a.fieldHinted d c 0 <;> simp only [hfh, ↓reduceIte, Bool.false_eq_true] <;>
+    (try rw [if_neg (by simp [hp])]) <;>
+    simp only [ite_self, SM.stmtIf, Bool.false_eq_true, if_false, Regress.CE4flip.SM.bind_apply, ha, pure, hp, hu]
+  all_goals (simp [ctorOut, hs, solved, pure, SM.strictS]; exact hm)
 
 /-- A frame holding `t` at type `T`. -/
 def bindT (T : TyM) (v : Sem) : SBinding := { ty := .plain T, val := fun _ => v, decl := .other }
