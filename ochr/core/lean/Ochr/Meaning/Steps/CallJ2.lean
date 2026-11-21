@@ -415,4 +415,131 @@ theorem lazyNum_stCJ2 (hpd : K.D.paramDecls [] [.nat] = [.other]) {st : MState} 
 
 end
 
+/-! ## The reference's run of the call `I(x)` -/
+
+/-- `J2`'s call. -/
+def callJ2 : Term := .call (.const "I") [.place (.var 0)] false
+
+/-- The write the argument's read makes (`readPlace`'s move of `x`, `botWrite_rel`'s form). -/
+noncomputable def moveX (K : RunCtx) (s : SState) : SState :=
+  s.setAt (.bind 0 0) fun φ' =>
+    (Sem.updAt K.dm K.Γ (s.tyAt (.bind 0 0)) (fun _ => .moved) [] (s.valAt (.bind 0 0) φ')).getD .err
+
+section
+variable {K : RunCtx} {ρ : Assignment} {φ : Future}
+
+/-- **The strict run of `I(x)`**, from every reference state where `x` (the binding `(0, 0)`, the top frame read
+`[.other]`) holds the number `a` at `Nat` and nothing is live or held: the head is the context's global; the argument's
+read MOVES `x` (the copy decision at `.other` is false) and gives `a` at `Nat`; the borrow test is vacuous; then
+`callOf` of the global at `a`, from the state with `x` moved. At a table deciding the call and the read as neither a
+statement nor a proof. -/
+theorem runT_callJ2 (tl : Bool) (h : TyS) {s : SState} {a : Nat}
+    (hlive : s.liveLabels = []) (hsh : ∀ p, s.shape p = none) (hsc : scopeOf s = [.other])
+    (hres : resolve s (.var 0) = some (.bind 0 0, [])) (hval : s.valAt (.bind 0 0) φ = .el0 Nat a)
+    (hty : (s.tyAt (.bind 0 0)).m = TyM.nat)
+    (hfl : K.D.flags [.other] callJ2 = (false, false)) (hfa : K.D.flags [.other] (.place (.var 0)) = (false, false))
+    (hcp : K.D.copy (K.D.placeDecl [.other] (.var 0)) = false) :
+    runT K ρ φ tl h callJ2 s = callOf K.dm.read (K.C.global "I") [(.el0 Nat a, .plain TyM.nat)] (moveX K s) := by
+  have hns : ∀ pos, ∀ l ∈ s.liveLabels, ∀ x ∈ s.lent l, x.pos ≠ pos := fun pos => by
+    rw [hlive]; intro l hl; cases hl
+  have hacc : ∀ pos hit, s.access pos hit = s := fun pos hit => access_noSites (hns pos)
+  have htf : s.typedFuture φ = φ := by funext l; unfold SState.typedFuture; rw [hlive]; simp
+  have hco : contentOf K φ (.var 0) s = some ((.el0 Nat a, s.tyAt (.bind 0 0), .bind 0 0, []), s) := by
+    unfold contentOf; rw [hres]; dsimp only; rw [hacc, htf, hval]; simp [Sem.follow]
+  have hset : setContent K φ (.bind 0 0) [] .moved s = some (⟨⟩, moveX K s) := by
+    unfold setContent; rw [if_pos (fun _ _ => by rw [Sem.updAt.eq_def]; rfl)]; rfl
+  have hwhole : (Sem.el0 Nat a).whole := by simp [Sem.whole]
+  have hrg : ReadGood K.dm.read (s.tyAt (.bind 0 0)).m (.el0 Nat a) := .inl (by rw [hty]; exact ⟨a, rfl⟩)
+  have hT : ({ s.tyAt (.bind 0 0) with label := none } : TyS) = .plain TyM.nat := by
+    show (⟨(s.tyAt (.bind 0 0)).m, none⟩ : TyS) = ⟨TyM.nat, none⟩; rw [hty]
+  have hrd : readPlace K φ (.var 0) false s = some ((.el0 Nat a, .plain TyM.nat), moveX K s) := by
+    unfold readPlace; rw [hco]
+    simp only [bind, Option.bind, hwhole, hrg, not_true_eq_false, if_false, Bool.false_eq_true, List.isEmpty_nil,
+      if_true, hsh, hset]
+    rw [← hT]
+  have harg : runT K ρ φ false (.plain TyM.err) (.place (.var 0)) s = some ((.el0 Nat a, .plain TyM.nat), moveX K s) := by
+    rw [runT]
+    show SM.erasedIf (K.D.flags (scopeOf s) (.place (.var 0)))
+      (SM.guarded (ContentOk K φ (.var 0)) (readPlace K φ (.var 0) (K.D.copy (K.D.placeDecl (scopeOf s) (.var 0))))) s = _
+    rw [hsc, hfa, hcp]
+    simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
+    rw [SM.guarded_of (by unfold ContentOk; rw [hres]; exact accessOk_noSites (hns _)), hrd]
+  have h1 : runT K ρ φ false (TyS.plain TyM.err) (Term.const "I") s = some (K.C.global "I", s) := by rw [runT]; rfl
+  have h2 : runArgs K ρ φ false (K.C.global "I").2.m [] [.place (.var 0)] s =
+      some ([(.el0 Nat a, .plain TyM.nat)], moveX K s) := by
+    rw [runArgs]
+    simp only [Bool.false_and, SM.stmtIf, Bool.false_eq_true, if_false, Bind.bind, Term.argHinted]; rw [harg]; rfl
+  have hfl' : K.D.flags (scopeOf s) (.call (.const "I") [.place (.var 0)] false) = (false, false) := by
+    rw [hsc]; exact hfl
+  unfold callJ2
+  rw [runT]
+  simp only [hfl']
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
+  simp only [SM.headOf, Bind.bind, h1]
+  rw [h2]
+  dsimp only
+  rw [if_pos (ColumnJ.borrowArgsTyped_unlabelled _ _ _ _ (fun a ha => by simp at ha; subst ha; rfl))]
+end
+
+/-! ## The caller's side of the call: what the reference reads, and the relation after the argument's read -/
+
+/-- The caller's state at the call: `x ↦ S(Z)` at `Nat` (the `let` bound it). -/
+def stX1 : MState := { env := #[{ binds := #[xB (.succ .zero)] }], globals := [gI] }
+
+theorem shape_stX1 (p : Pos) : Env.shape stX1.env p = none := by
+  unfold Env.shape
+  rcases p with ⟨f, i⟩ | ⟨f, i⟩
+  · rcases f with _ | f
+    · rcases i with _ | i <;> rfl
+    · rfl
+  · rcases f with _ | f <;> rfl
+
+section
+variable {K : RunCtx} {ρ : Assignment} {φ : Future}
+
+/-- **What the reference's run of `I(x)` reads, at every state related to the caller**, and **the relation after
+the argument's read** (`x` moved on both sides: `botWrite_rel`). -/
+theorem caller_of_rel {π : Nat → Nat} {s : SState} (hr : Rel K ρ φ π stX1 s) :
+    s.liveLabels = [] ∧ (∀ p, s.shape p = none) ∧ scopeOf s = [.other] ∧
+      resolve s (.var 0) = some (.bind 0 0, []) ∧ s.valAt (.bind 0 0) φ = .el0 Nat 1 ∧
+      (s.tyAt (.bind 0 0)).m = TyM.nat ∧ Rel K ρ φ π stX (moveX K s) := by
+  have hlive : s.liveLabels = [] := liveLabels_of_rel hr shape_stX1
+  have hsh : ∀ p, s.shape p = none := by
+    intro p
+    rcases e : s.shape p with _ | l
+    · rfl
+    · have : l ∈ s.liveLabels := by
+        unfold SState.liveLabels; rw [List.mem_mergeSort]
+        exact List.mem_filterMap.mpr ⟨p, hr.holders p l e, e⟩
+      rw [hlive] at this; cases this
+  have hF : RelF φ s φ ∧ TypedLive K s φ :=
+    ⟨fun _ _ => rfl, fun l hl => absurd hl (by show l ∉ s.liveLabels; rw [hlive]; simp)⟩
+  have hb : stX1.env[0]?.bind (fun fr : Frame => fr.binds[0]?) = some (xB (.succ .zero)) := rfl
+  obtain ⟨hps, hty⟩ := rel_bind_ty hr hb (hp := rfl)
+  refine ⟨hlive, hsh, by rw [scopeOf_rel hr]; rfl, rel_resolve_ck _ ρ φ stX1 s π (.var 0) (.bind 0 0) hr rfl, ?_,
+    by rw [hty]; rfl, ?_⟩
+  · rw [← hr.sim.1 φ hF (.bind 0 0) (by simp [IsTemp])]
+    show (Value.mean _ _ _ ρ _ (.plain TyM.nat) Value.zero).succ = _
+    exact Sem.succ_el0 0
+  · have h₁ := botWrite_rel K ρ φ stX1 s π 0 0 [] .bot hr
+      ⟨fun p hp => by
+        have : allPos stX1.env = [.bind 0 0] := by rw [allPos_eq]; simp [stX1, frameAllPos]
+        rw [this] at hp; simp at hp; subst hp; exact Bool.false_ne_true,
+       fun p _ q _ l h => by rw [shape_stX1] at h; cases h⟩
+      (by have : allPos stX1.env = [.bind 0 0] := by rw [allPos_eq]; simp [stX1, frameAllPos]
+          rw [this]; simp) hps
+      (by show Value.updAt _ [] _ = _; rw [Value.updAt])
+      (fun _ => shape_stX1 _)
+      (fun l hl => by
+        have : liveLoan stX1.env l = false := by
+          rw [liveLoan, findBorrow]
+          have : allPos stX1.env = [.bind 0 0] := by rw [allPos_eq]; simp [stX1, frameAllPos]
+          rw [this]; rfl
+        rw [this] at hl; cases hl)
+      ⟨rfl, rfl⟩ (fun _ => by rw [NatAlong]; trivial)
+    refine h₁.of_kern ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    simp [Env.setAtE, stX1, stX, xB, Env.erase, Frame.erase]
+
+end
+
 end Ochr.Meaning.Steps.Form.CallJ2
