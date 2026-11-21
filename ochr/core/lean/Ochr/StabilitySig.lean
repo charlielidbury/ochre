@@ -438,6 +438,22 @@ macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).decl
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).isPropV)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).valTypeDecl)
 
+/-- D105: where a constructor's parameter is inferred from a field's type, read from the
+declarations' parameter telescopes (`telescope`, `typePos`). -/
+theorem sigPres_inferablePos (n : Nat) (d : IndDecl) (i : Nat) : SigPres (inferablePos n d i) := by
+  have := fun n => (decSP n).telescope
+  have := fun n => (decSP n).typePos
+  unfold inferablePos; sp
+
+theorem sigPres_inferFrom : ∀ (n : Nat) (FT : Term), SigPres (inferFrom n FT)
+  | 0, FT => by unfold inferFrom; sp
+  | n + 1, FT => by
+    have := sigPres_inferFrom n
+    have := sigPres_inferablePos n
+    unfold inferFrom; sp
+
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_inferFrom)
+
 theorem sigPres_freshAbsR (n : Nat) (T : Value) : SigPres (freshAbsR n T) := by unfold freshAbsR; sp
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_freshAbsR)
 theorem sigPres_absOf (n : Nat) (T : Value) : SigPres (absOf n T) := by unfold absOf; sp
@@ -465,6 +481,20 @@ theorem EndsAt.restoreKeep_bind {β} {s₀ : MState} {k : Unit → M β} (hk : �
   intro Ω fl lg b Ω' fl' lg' hs
   rw [step_bind] at hs
   unfold restoreKeep at hs
+  rw [step_modify] at hs
+  simp only [cont] at hs
+  have h := hk ()
+  unfold SigPres at h
+  have := h _ fl lg b Ω' fl' lg' hs
+  exact ⟨this.inds, this.globals⟩
+
+/-- D103: a run that ends by putting back the state it saved but for the names made since
+(`restoreNames`), as a comparison does, ends with that state's signature. -/
+theorem EndsAt.restoreNames_bind {β} {s₀ : MState} {k : Unit → M β} (hk : ∀ u, SigPres (k u)) :
+    EndsAt s₀ (restoreNames s₀ >>= k) := by
+  intro Ω fl lg b Ω' fl' lg' hs
+  rw [step_bind] at hs
+  unfold restoreNames at hs
   rw [step_modify] at hs
   simp only [cont] at hs
   have h := hk ()
@@ -515,8 +545,11 @@ theorem sigPres_expandRefsF (refs : List (Nat × Value)) : ∀ n v, SigPres (exp
 theorem sigPres_expandRefs (refs : List (Nat × Value)) (v : Value) : SigPres (expandRefs refs v) := by
   unfold expandRefs; have := sigPres_expandRefsF refs; sp
 
+theorem sigPres_neutralLookup (v : Value) : SigPres (neutralLookup v) := by
+  unfold neutralLookup; sp
+
 theorem sigPres_canonNeutral (v : Value) : SigPres (canonNeutral v) := by
-  unfold canonNeutral; have := sigPres_expandRefs; sp
+  unfold canonNeutral; have := sigPres_expandRefs; have := sigPres_neutralLookup; sp
 
 theorem sigPres_mapState (f : Value → M Value) (hf : ∀ v, SigPres (f v)) (types : Bool) :
     SigPres (mapState f types) := by
@@ -580,12 +613,19 @@ theorem refSP_succ (n : Nat) (ih : RefSP n) : RefSP (n + 1) := by
     repeat' (first | (intro) | (with_reducible apply EndsAt.restoreKeep_bind) | (with_reducible apply EndsAt.bind_any) | split)
     all_goals sp
   · intro A a b; unfold mkEqM; sp
-  · intro v w; unfold conv; sp
+  · intro v w; unfold conv; simp only []
+    -- D103: a comparison puts back the state it saved, but for names, on every exit
+    refine SigPres.get_ends fun saved => ?_
+    exact EndsAt.bind_any _ fun r => EndsAt.restoreNames_bind fun _ => SigPres.pure r
   · intro l l'; unfold convList; sp
   · intro l l'; unfold convTList; sp
   · intro t u; unfold convT; sp
-  · intro P Q; unfold convPi; sp
-  · intro f g; unfold convFn; sp
+  · intro P Q; unfold convPi; simp only []
+    refine SigPres.get_ends fun saved => ?_
+    exact EndsAt.bind_any _ fun r => EndsAt.restoreNames_bind fun _ => SigPres.pure r
+  · intro f g; unfold convFn; simp only []
+    refine SigPres.get_ends fun saved => ?_
+    exact EndsAt.bind_any _ fun r => EndsAt.restoreNames_bind fun _ => SigPres.pure r
   · intro f g pf cs hs ds c; unfold convFnRun; sp
   · intro fv fT; unfold funType?; sp
   · intro fv fT; unfold funType; sp

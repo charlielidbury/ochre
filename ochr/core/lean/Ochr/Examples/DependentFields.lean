@@ -1,3 +1,4 @@
+import Ochr.Examples.Nat
 import Ochr.Examples.Logic
 import Ochr.Examples.Word
 import Ochr.Examples.Option
@@ -524,6 +525,21 @@ ochr DepFields uses Logic, WordType, Options {
   reject def Boom2 : False := K(bad)
   -- twin of Boom2: over `BadOk`: from any `BadOk` (there is no closed one without a `Void`)
   def Boom2Ok (x : BadOk) : False := KOk(x)
+  -- D107: nested at its own parameter `A`, which it passes to `NegIf`: `QN(Unit, Zero)` is
+  -- `QN(Unit, Zero) → Void` (Curry's paradox; the paper's example, appendix [Ind-decl])
+  reject inductive QN (A : Type) (n : Word) := MkQN(z : QN(QN(A, n), Succ(Zero)), e : Eq(Word, n, Zero)) | StopN(f : NegIf(n, A), h : IsSucc(n))
+  -- twin of QN: `StopN` holds an `A`, so `A` is nestable in `QNOk`
+  inductive QNOk (A : Type) (n : Word) := MkQNOk(z : QNOk(QNOk(A, n), Succ(Zero)), e : Eq(Word, n, Zero)) | StopNOk(a : A, h : IsSucc(n))
+  reject def DeltaQ (x : QN(Unit, Zero)) : False := (
+    match x {
+      MkQN(z, e) => match z {
+        MkQN(z2, e2) => e2,
+        StopN(f, h) => absurdV(f(x)),
+      },
+      StopN(f, h) => h,
+    }
+  )
+  reject def BoomQ : False := DeltaQ(MkQN[Unit, Zero](StopN[QN(Unit, Zero), Succ(Zero)](λ(y : QN(Unit, Zero)) : Void => (let p = DeltaQ(y); let k : Void = match p {}; k), refl), refl))
   -- a type function whose value is a Π at the generic telescope is not first-order data
   def Neg (A : Type) : Type := Π(x : A). Void
   reject inductive NegBox (A : Type) := MkNegBox(f : Neg(A))
@@ -559,8 +575,10 @@ ochr DepFields uses Logic, WordType, Options {
   ("GetLent", "the proof assigned to h (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⌈IsSucc(σ1)⌉, expected ⌈IsSucc(σ2)⌉"),
   ("BoomGetLent", "unknown constant GetLent"),
   ("RefillLentLive", "the proof assigned to h (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⊤, expected ⌈IsSucc(σ2)⌉"),
-  ("Bad", "field b of MkBad : NBox(Bad): Bad occurs at the parameter A of NBox, which NBox passes to a type function"),
+  ("Bad", "field b of MkBad : NBox(Bad): Bad occurs at the parameter A of NBox, which is not nestable in NBox"),
   ("Boom2", "unknown constant K"),
+  ("QN", "field z of MkQN : QN(QN(A, n), Succ(Zero)): QN occurs at the parameter A of QN, which is not nestable in QN"),
+  ("DeltaQ", "unknown inductive type QN"), ("BoomQ", "unknown"),
   ("NegBox", "field f of MkNegBox : Neg(A) computes to Π")]
 
 /-! ## Stuck blocks are calls (D72)
@@ -892,6 +910,497 @@ ochr LentIndex uses DepFields {
   ("LendIndexWrite", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Void"),
   ("BoomBPf", "[Match] on c.x, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
   ("BoomIB", "unknown constant BoomBPf")]
+
+/-! ## What a strong update may store (D110)
+
+A strong update stores its value unchecked and types the field by what it holds ([Open]). That
+reads back the field's type only from a value whose content determines it, so only a value whose
+declared type is first-order data may be stored so; a proof, a borrow, a type or a function is
+checked against the field's declared type at the current earlier fields, as any other write is.
+Before, `x := refl` stored `⋆`, the field then read at its declared type `Fin1(Z) = Void` once the
+index was rewritten, and a zero-arm match on it closed the goal (`Bad`, a closed proof of `False`
+through `BoomF`): the value was a dropped local, and through a borrow parameter (`ViaParam`) the
+path ended before the borrow's [Repack]. A borrow stored inside the value (`Leak`) left its lender
+a loan nothing would fill, readable as data of any type and, stored back, at the field's declared
+type (`ViaLoan`). Storing a constructor value of another type is the strong update's purpose and
+stays (`OtherTree`), re-checked where the value must be whole again (`OtherTreeWhole`). Since D112
+only a constructor value of a data inductive (a tree) is stored so, and only in a field whose
+type is one at every instance: `Fin3(n)` is `Nat` at every instance, so `x : Fin3(n)` is a leaf
+field and `x := O` is a checked write (`OtherData`, `OtherDataWhole`). -/
+
+ochr StrongUpdate uses Nats {
+  inductive Void : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  def Fin3 (n : Nat) : Type := match n { Z => Nat, S(m) => Nat, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  inductive V3 := MkV3(n : Nat, x : Fin3(n))
+  def AbsurdV (v : Void) : False := match v {}
+  -- a proof: `refl`, a proof parameter, a proof of an arbitrary proposition
+  reject def Bad : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := refl; n := Z; let z : Void = match x {}; z), })
+  reject def BoomF : False := AbsurdV(Bad)
+  reject def BadSwap : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (n := Z; x := refl; let z : Void = match x {}; z), })
+  reject def ViaProofParam (h : Eq(Nat, Z, Z)) : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := h; n := Z; let z : Void = match x {}; z), })
+  reject def ViaAnyProof (P : Prop) (p : P) : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := p; n := Z; let z : Void = match x {}; z), })
+  -- through a borrow parameter, and through a borrow a call returns: no return point is reached
+  reject def ViaParam (r : &V) : Void := ((*r).1 := refl; (*r).0 := Z; match (*r).1 {})
+  def IdV (r : &V) : &V := r
+  reject def ViaReturned (r : &V) : Void := (let s = IdV(r); (*s).1 := refl; (*s).0 := Z; match (*s).1 {})
+  -- a borrow, a type, a function
+  reject def Leak : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (let w = Z; x := &w; *x := S(Z); x := 0; w), })
+  reject def ViaLoan : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let w = O; x := &w; x := O; x := w; n := Z; let z : Void = match x {}; z), })
+  -- D111: the dangling loan read as data of another type; a read of a loan whose borrow is gone is
+  -- now an internal error, never reached since a borrow cannot be stored below a root
+  reject def DanglingRead : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (let w = O; x := &w; x := 0; let v : One = w; match v { O => 0, }), })
+  reject def AType : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := Nat; 0), })
+  reject def AFunction : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := (λ(u : Unit) : Nat => Z); 0), })
+  -- the controls: the index rewritten alone (`x` keeps `O`, now not of `Void`); data of another
+  -- type, the strong update's purpose, re-checked when the value is whole; a checked write of the
+  -- field's own type; a borrow kept out of the value
+  reject def Ctl1 : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (n := Z; let z : Void = match x {}; z), })
+  reject def OtherData : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := O; 0), })
+  reject def OtherDataWhole : V3 := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := O; c), })
+  inductive Two := TA | TB
+  def OtherTree : Nat := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := TA; 0), })
+  reject def OtherTreeWhole : V := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := TA; c), })
+  def OwnType : V := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := O; c), })
+  def BorrowOutside : Nat := (let w = Z; let r = &w; *r := S(Z); w)
+}
+
+#guard (run "StrongUpdate" StrongUpdate).rejectedWith [
+  ("Bad", "the assigned value has type ⊤, expected One"),
+  ("BoomF", "unknown constant Bad"),
+  ("BadSwap", "the assigned value has type ⊤, expected Void"),
+  ("ViaProofParam", "the assigned value has type ⊤, expected One"),
+  ("ViaAnyProof", "the assigned value has type σ0, expected One"),
+  ("ViaParam", "the assigned value has type ⊤, expected ⌈Fin1(σ1)⌉"),
+  ("ViaReturned", "the assigned value has type ⊤, expected ⌈Fin1(σ1)⌉"),
+  ("Leak", "the assigned value has type &Nat, expected Nat"),
+  ("ViaLoan", "the assigned value has type &One, expected One"),
+  ("DanglingRead", "the assigned value has type &One, expected Nat"),
+  ("AType", "the assigned value has type Type, expected Nat"),
+  ("AFunction", "the assigned value has type Π(u : Unit). Nat, expected Nat"),
+  ("Ctl1", "a match with no arms on c.x : One, which has constructors"),
+  ("OtherData", "the assigned value has type One, expected Nat"),
+  ("OtherDataWhole", "the assigned value has type One, expected Nat"),
+  ("OtherTreeWhole", "[Repack] c is read whole, but it is open: field x of MkV holds a value of type Two, but its type from the earlier fields is One")]
+
+/-! ## Leaf fields (D112)
+
+A dependent field whose type is a data inductive at every instance (`Fin1(n)`, `Array(E, n)`) is a
+TREE field: it holds a constructor value, which records its declaration and parameters, so while
+its value is open it is typed by what it holds ([Open]). Any other dependent field is a LEAF
+field (`Payload(b)` is `Nat` or `Unit`, `NF(b)` a function type or `Unit`): a number, the unit
+value or a function does not say which instance of the field's type it was written at, and the
+set model reads a leaf at its field's declared type. A leaf field is treated as a proof field is:
+a write or borrow through an index its type mentions invalidates it (`⊥`, its borrows ended
+first), an assignment is checked against its type at the current earlier fields (with the lent
+parts unknown while part of the value is lent), and it is never typed by its content. A tree field
+stores unchecked only a constructor value (D110, D112). A capture by `&` invalidates at a match's
+entry on both paths, so a direct run of a match no longer keeps a proof its stuck form would
+invalidate (`EntryKnown`). Each rejected shape stands beside an accepted rewrite; the runs are
+checked by `refl`. -/
+ochr LeafFields uses Nats {
+  inductive Void : Type
+  inductive One := O
+  inductive Bit := B0 | B1
+  def Payload (b : Bit) : Type := match b { B0 => Nat, B1 => Unit, }
+  inductive Tagged := MkT(b : Bit, x : Payload(b))
+  -- changing a tagged value in place: the tag first, then the payload
+  def TagFirst (p : &Tagged) : Unit := match *p { MkT(b, x) => (b := B1; x := ()), }
+  reject def PayloadFirst (p : &Tagged) : Unit := match *p { MkT(b, x) => (x := (); b := B1), }
+  -- keeping the old payload: take it out before the tag changes
+  def TakeOld (p : &Tagged) : Nat := match *p { MkT(b, x) => match b { B0 => (let old = x; b := B1; x := (); old), B1 => 0, }, }
+  reject def ReadAfter (p : &Tagged) : Nat := match *p { MkT(b, x) => match b { B0 => (b := B1; let old = x; x := (); old), B1 => 0, }, }
+  -- a borrow of the payload: used before the tag changes
+  def LentUsedBefore (p : &Tagged) : Unit := match *p { MkT(b, x) => match b { B0 => (let r = &x; *r := 5; b := B1; x := ()), B1 => (), }, }
+  reject def LentUsedAfter (p : &Tagged) : Unit := match *p { MkT(b, x) => match b { B0 => (let r = &x; b := B1; *r := 5; x := ()), B1 => (), }, }
+  -- the whole value written
+  def Whole (p : &Tagged) : Unit := (*p := MkT(B1, ()))
+  def TagFirstRuns : Eq(Bit, (let t = MkT(B0, 3); TagFirst(&t); match t { MkT(b, x) => b, }), B1) := refl
+  def TakeOldRuns : Eq(Nat, (let t = MkT(B0, 3); TakeOld(&t)), 3) := refl
+  -- a leaf assigned while its index is lent is checked whatever the borrow may write
+  def NV (b : Bit) : Type := match b { B0 => Nat, B1 => Void, }
+  inductive DV := MkDV(b : Bit, x : NV(b))
+  def AbsurdV (v : Void) : False := match v {}
+  reject def LentIndexLie : Void := (let c = MkDV(B0, 3); match c { MkDV(b, x) => ((let r = &b; x := 4; *r := B1; ()); let z : Void = match x {}; z), })
+  reject def BoomLent : False := AbsurdV(LentIndexLie)
+  def LentIndexEnded : Nat := (let c = MkDV(B0, 3); match c { MkDV(b, x) => ((let r = &b; *r := B0; ()); x := 4; let y = x; y), })
+  def LentIndexEndedRuns : Eq(Nat, LentIndexEnded, 4) := refl
+  -- a function in a leaf field
+  def NF (b : Bit) : Type := match b { B0 => Π(z : Nat). Nat, B1 => Unit, }
+  inductive DF := MkDF(b : Bit, f : NF(b))
+  def CallBefore : Nat := (let c = MkDF(B0, λ(z : Nat) : Nat => S(z)); match c { MkDF(b, f) => (let g = f; b := B1; f := (); g(2)), })
+  reject def CallAfter : Nat := (let c = MkDF(B0, λ(z : Nat) : Nat => S(z)); match c { MkDF(b, f) => (b := B1; let g = f; f := (); g(2)), })
+  def CallBeforeRuns : Eq(Nat, CallBefore, 3) := refl
+  -- a field whose type is a data inductive at every instance stores only a constructor value
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  reject def ParkNumber (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := 5; x := old), }
+  def ParkMoved (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := old), }
+  -- a capture by `&` in a match invalidates at the match's entry, whether it closes off or runs
+  inductive PosN := MkPosN(n : Nat, h : Eq(Nat, n, 1))
+  reject def EntryKnown (c0 : PosN) : Unit := (let c = c0; match c { MkPosN(n, h) => (match S(Z) { Z => (n := n; ()), S(m) => (), }; let h2 = h; ()), }; ())
+  def EntryKnownBefore (c0 : PosN) : Unit := (let c = c0; match c { MkPosN(n, h) => (let h2 = h; match S(Z) { Z => (n := n; ()), S(m) => (), }; ()), }; ())
+  reject def EntryStuck (k : Nat) (c0 : PosN) : Unit := (let c = c0; match c { MkPosN(n, h) => (match k { Z => (n := n; ()), S(m) => (), }; let h2 = h; ()), }; ())
+  def EntryStuckBefore (k : Nat) (c0 : PosN) : Unit := (let c = c0; match c { MkPosN(n, h) => (let h2 = h; match k { Z => (n := n; ()), S(m) => (), }; ()), }; ())
+  -- a borrow, a proof, a type or a function is never stored unchecked, in a tree field or a leaf
+  -- field: each is a checked write and fails (D110, D112; D111 relies on it: a borrow never sits
+  -- below the root of a value)
+  reject def BorrowIntoTree (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; let w = 0; x := &w; x := old), }
+  reject def BorrowIntoLeaf (p : &Tagged) : Unit := match *p { MkT(b, x) => (let w = 0; x := &w; ()), }
+  reject def ProofIntoTree (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := refl; x := old), }
+  reject def ProofIntoLeaf (p : &Tagged) : Unit := match *p { MkT(b, x) => (x := refl; ()), }
+  reject def TypeIntoTree (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := Nat; x := old), }
+  reject def TypeIntoLeaf (p : &Tagged) : Unit := match *p { MkT(b, x) => (x := Nat; ()), }
+  reject def FunctionIntoTree (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := (λ(u : Unit) : Nat => 0); x := old), }
+  reject def FunctionIntoLeaf (p : &Tagged) : Unit := match *p { MkT(b, x) => (x := (λ(u : Unit) : Nat => 0); ()), }
+}
+
+#guard (run "LeafFields" LeafFields).rejectedWith [
+  ("PayloadFirst", "the assigned value has type Unit, expected ⌈Payload(σ1)⌉"),
+  ("ReadAfter", "[Read] (*p).x was moved out or its borrow ended (reading ⊥)"),
+  ("LentUsedAfter", "no such place *r: its path does not exist in ⊥"),
+  ("LentIndexLie", "the value assigned to x (while part of its value is lent, what the borrow holds unknown: [Open]) has type Nat,"),
+  ("BoomLent", "unknown constant LentIndexLie"),
+  ("CallAfter", "[Read] c.f was moved out or its borrow ended (reading ⊥)"),
+  ("ParkNumber", "the assigned value has type Nat, expected ⌈Fin1(σ1)⌉"),
+  ("EntryKnown", "[Open] c.h is a proof field invalidated by a write to a field its type mentions"),
+  ("EntryStuck", "[Open] c.h is a proof field invalidated by a write to a field its type mentions"),
+  ("BorrowIntoTree", "the assigned value has type &Nat, expected ⌈Fin1(σ1)⌉"),
+  ("BorrowIntoLeaf", "the assigned value has type &Nat, expected ⌈Payload(σ1)⌉"),
+  ("ProofIntoTree", "the assigned value has type ⊤, expected ⌈Fin1(σ1)⌉"),
+  ("ProofIntoLeaf", "the assigned value has type ⊤, expected ⌈Payload(σ1)⌉"),
+  ("TypeIntoTree", "the assigned value has type Type, expected ⌈Fin1(σ1)⌉"),
+  ("TypeIntoLeaf", "the assigned value has type Type, expected ⌈Payload(σ1)⌉"),
+  ("FunctionIntoTree", "the assigned value has type Π(u : Unit). Nat, expected ⌈Fin1(σ1)⌉"),
+  ("FunctionIntoLeaf", "the assigned value has type Π(u : Unit). Nat, expected ⌈Payload(σ1)⌉")]
+
+/-! ## A field lent to a borrow a call returned (D112, amended)
+
+A field lent to the borrow a call returns holds a mark over its content (`lent_g`, static ends,
+D90/D99). Paths and the repack read through a mark; typing did not (`valType?` had no case for
+one), so on main at 14aeb9cd a field so lent took its declared type at a rewritten index (`A2`,
+`Direct`: a closed proof of `False` through `Boom`, the red team's), and after D112, which closed
+that fallback, an ordinary read of such a field was rejected (`LeafLegit`, `LeafLegit2`,
+`TreeLegit`). Typing now reads through a mark as through a loan, so a plain borrow and a borrow
+returned by a call give the same verdict and message, row by row: a read, a write through it, a
+re-borrow and a move of the field, each with and without an index write, in a tree field and in a
+leaf field (`…Plain` against `…Ret`). The census rows read after an index write each form of
+content a typed run leaves in a dependent field that the earlier blocks do not: a stuck program,
+a fill of a stuck call's returned borrow, an unknown, a mark over a mark; each reads at the type
+its content determines, and none reaches the error for a content of unreadable type. -/
+ochr MarkedFields uses Nats {
+  inductive Void : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  def AbsurdV (v : Void) : False := match v {}
+  def Keep (r : &One) : &One := r
+  def KeepN (r : &Nat) : &Nat := r
+  def Payload (b : Nat) : Type := match b { Z => Nat, S(m) => Unit, }
+  inductive L := MkL(b : Nat, p : Payload(b))
+  reject def A2 : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; let k : Void = x; k), })
+  reject def Boom : False := AbsurdV(A2)
+  reject def Direct : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; x), })
+  def LeafLegit : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k : Nat = p; k), })
+  def LeafLegit2 : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); *r := 6; let k : Nat = p; k), })
+  def TreeLegit : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); let k : One = x; k), })
+  def TreeHonest : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := S(S(Z)); let y : One = x; y), })
+  -- census: each form of content a typed run can leave in a dependent field, read after the index changes
+  def StuckOne (k : Nat) : One := match k { Z => O, S(m) => O, }
+  def CensusStuck (k : Nat) : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := StuckOne(k); n := S(S(Z)); let y : One = x; y), })
+  reject def CensusStuckVoid (k : Nat) : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := StuckOne(k); n := Z; let y : Void = x; y), })
+  def PickOne (k : Nat) (a : &One) (b : &One) : &One := match k { Z => a, S(m) => b, }
+  def CensusFill (k : Nat) : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let w = O; let r = PickOne(k, &x, &w); n := S(S(Z)); let y : One = x; y), })
+  reject def CensusFillVoid (k : Nat) : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let w = O; let r = PickOne(k, &x, &w); n := Z; let y : Void = x; y), })
+  reject def CensusUnknown (c0 : V) : Void := (let c = c0; match c { MkV(n, x) => (n := Z; let y : Void = x; y), })
+  def CensusMarkMark : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(Keep(&x)); n := S(S(Z)); let y : One = x; y), })
+  reject def CensusMarkMarkVoid : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(Keep(&x)); n := Z; let y : Void = x; y), })
+  def LeafLegitRuns : Eq(Nat, LeafLegit, 5) := refl
+  def LeafLegit2Runs : Eq(Nat, LeafLegit2, 6) := refl
+  def TreeLegitRuns : Eq(One, TreeLegit, O) := refl
+  def TreeReadPlain : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; let k : One = x; k), })
+  def TreeReadRet : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); let k : One = x; k), })
+  reject def TreeReadIdxPlain : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; n := Z; let k : Void = x; k), })
+  reject def TreeReadIdxRet : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; let k : Void = x; k), })
+  def TreeWritePlain : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; *r := O; let k : One = x; k), })
+  def TreeWriteRet : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); *r := O; let k : One = x; k), })
+  reject def TreeWriteIdxPlain : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; *r := O; n := Z; let k : Void = x; k), })
+  reject def TreeWriteIdxRet : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); *r := O; n := Z; let k : Void = x; k), })
+  def TreeRebPlain : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; let s = &x; let k : One = *s; k), })
+  def TreeRebRet : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); let s = &x; let k : One = *s; k), })
+  reject def TreeRebIdxPlain : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; n := Z; let s = &x; let k : Void = *s; k), })
+  reject def TreeRebIdxRet : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; let s = &x; let k : Void = *s; k), })
+  def TreeMovePlain : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; let k = x; k), })
+  def TreeMoveRet : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); let k = x; k), })
+  reject def TreeMoveIdxPlain : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; n := Z; let k = x; k), })
+  reject def TreeMoveIdxRet : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; let k = x; k), })
+  def LeafReadPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let k : Nat = p; k), })
+  def LeafReadRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k : Nat = p; k), })
+  reject def LeafReadIdxPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let k : Nat = p; k), })
+  reject def LeafReadIdxRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let k : Nat = p; k), })
+  def LeafWritePlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; *r := 6; let k : Nat = p; k), })
+  def LeafWriteRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); *r := 6; let k : Nat = p; k), })
+  reject def LeafWriteIdxPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; *r := 6; b := S(Z); let k : Nat = p; k), })
+  reject def LeafWriteIdxRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); *r := 6; b := S(Z); let k : Nat = p; k), })
+  def LeafRebPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let s = &p; let k : Nat = clone(*s); k), })
+  def LeafRebRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let s = &p; let k : Nat = clone(*s); k), })
+  reject def LeafRebIdxPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let s = &p; 0), })
+  reject def LeafRebIdxRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let s = &p; 0), })
+  def LeafMovePlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let k = p; k), })
+  def LeafMoveRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k = p; k), })
+  reject def LeafMoveIdxPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let k = p; k), })
+  reject def LeafMoveIdxRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let k = p; k), })
+}
+
+#guard (run "MarkedFields" MarkedFields).rejectedWith [
+  ("A2", "the ascribed term has type One, expected Void"),
+  ("Boom", "unknown constant A2"),
+  ("Direct", "the body of Direct has type One, but the goal is Void"),
+  ("CensusStuckVoid", "the ascribed term has type One, expected Void"),
+  ("CensusFillVoid", "the ascribed term has type One, expected Void"),
+  ("CensusUnknown", "the ascribed term has type ⌈Fin1(σ1)⌉, expected Void"),
+  ("CensusMarkMarkVoid", "the ascribed term has type One, expected Void"),
+  ("TreeReadIdxPlain", "the ascribed term has type One, expected Void"),
+  ("TreeReadIdxRet", "the ascribed term has type One, expected Void"),
+  ("TreeWriteIdxPlain", "the ascribed term has type One, expected Void"),
+  ("TreeWriteIdxRet", "the ascribed term has type One, expected Void"),
+  ("TreeRebIdxPlain", "the ascribed term has type One, expected Void"),
+  ("TreeRebIdxRet", "the ascribed term has type One, expected Void"),
+  ("TreeMoveIdxPlain", "the body of TreeMoveIdxPlain has type One, but the goal is Void"),
+  ("TreeMoveIdxRet", "the body of TreeMoveIdxRet has type One, but the goal is Void"),
+  ("LeafReadIdxPlain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafReadIdxRet", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafWriteIdxPlain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafWriteIdxRet", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafRebIdxPlain", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("LeafRebIdxRet", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("LeafMoveIdxPlain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafMoveIdxRet", "[Read] c.p was moved out or its borrow ended (reading ⊥)")]
+
+/-! ## Opened dependent values, attacked (D110, D112)
+
+The attack of the dependent-values lane (`Meaning/Dep/HANDOFF.md`), as asserted rows. In order:
+leaf fields read, borrowed or strongly updated after their index is rewritten (`L…`, `F…`); a
+field read while its index is lent and the index then written through the borrow (`C3…`); a
+positional write of the index (`B1`); a borrow of the dependent field kept across a rewrite of
+the index (`B2…`); calls given the field at the new index's type (`B4…`); constructors, `Eq` and
+`Id` at the new index (`B9…`, `B10…`); a match run on a known scrutinee (`J1…`); recursion passing
+the open value on (`Rec…`); a proof extracted from a value whose parameters were not written
+(`T…`); nested dependent values (`N…`); a proof's witness rewritten (`PS1`); a proof re-assigned
+while the index is lent to a call's returned borrow (`G…`); closures and stuck blocks over an open
+value (`CL…`, `SB…`); a repair through a borrow (`RB`); closed instances (`…r`, `…Runs`) and a
+false equation as a control (`BadCtl`); strong updates of a number, unit, function, type, borrow
+or proof into a tree field (`W…`, `H…`, `K…`). -/
+ochr OpenAttacks uses DepFields {
+  def NU (b : Word) : Type := match b { Zero => Nat, Succ(m) => Unit, }
+  inductive DP := MkDP(b : Word, x : NU(b))
+  def DP0 : DP := MkDP(Zero, 3)
+  reject def Ctl : Unit := (3 : Unit)
+  reject def L1 : Unit := (let c = MkDP(Zero, 3); match c { MkDP(b, x) => (b := Succ(Zero); let y = x; (y : Unit)), })
+  reject def L1Nat : Nat := (let c = MkDP(Zero, 3); match c { MkDP(b, x) => (b := Succ(Zero); let y = x; y), })
+  reject def L1NatRuns : Eq(Nat, L1Nat, 3) := refl
+  reject def L2 (c0 : DP) : Unit := (let c = c0; match c { MkDP(b, x) => (b := Succ(Zero); let y = x; (y : Unit)), })
+  reject def L2b (c0 : DP) : Unit := (let c = c0; match c { MkDP(b, x) => (b := Succ(Zero); let y = x; ()), })
+  reject def L3 : Nat := (let c = MkDP(Succ(Zero), ()); match c { MkDP(b, x) => (x := 5; let y = x; y), })
+  reject def L3Runs : Eq(Nat, L3, 5) := refl
+  reject def L4 : Nat := (let c = MkDP(Zero, 3); match c { MkDP(b, x) => (b := Succ(Zero); let r = &x; let y = clone(*r); y), })
+  reject def L4u : Unit := (let c = MkDP(Zero, 3); match c { MkDP(b, x) => (b := Succ(Zero); let r = &x; *r := (); ()), })
+  reject def L5 : Unit := (let c = MkDP(Succ(Zero), ()); match c { MkDP(b, x) => (b := Zero; let y = x; y), })
+  reject def L5n : Nat := (let c = MkDP(Succ(Zero), ()); match c { MkDP(b, x) => (b := Zero; let y = x; (y : Nat)), })
+  def NF (b : Word) : Type := match b { Zero => Π(z : Nat). Nat, Succ(m) => Unit, }
+  inductive DF := MkDF(b : Word, f : NF(b))
+  reject def F1 : Nat := (let c = MkDF(Zero, λ(z : Nat) : Nat => S(z)); match c { MkDF(b, f) => (b := Succ(Zero); let g = f; g(2)), })
+  reject def F1Runs : Eq(Nat, F1, 3) := refl
+  reject def F1u : Unit := (let c = MkDF(Zero, λ(z : Nat) : Nat => S(z)); match c { MkDF(b, f) => (b := Succ(Zero); let g = f; (g : Unit)), })
+  def VoidF (z : Void) : False := match z {}
+  reject def C3a (v : &V) : False := match *v { MkV(n, x) => (let r = &n; let y = clone(x); *r := Zero; match y {}), }
+  reject def C3b (v : &V) : False := match *v { MkV(n, x) => (let y = (let r = &n; let y0 = clone(x); *r := Zero; y0); match y {}), }
+  reject def C3c (v : &V) : Unit := match *v { MkV(n, x) => (let y = (let r = &n; let y0 = clone(x); *r := Zero; y0); n := Succ(Zero); ()), }
+  reject def C3d (c0 : V) : False := (let c = c0; match c { MkV(n, x) => (let y = (let r = &n; let y0 = clone(x); *r := Zero; y0); match y {}), })
+  reject def C3e (c0 : V) : Void := (let c = c0; match c { MkV(n, x) => (let y = (let r = &n; let y0 = clone(x); *r := Zero; y0); y), })
+  reject def B1 (p0 : Pos) : IsSucc(Zero) := (let p = p0; p.0 := Zero; match p { MkPos(n, h) => h, })
+  def UseVoidRef (y : &Void) : False := match *y {}
+  reject def B2 (c0 : V) : False := (let c = c0; match c { MkV(n, x) => (let rx = &x; let rn = &n; *rn := Zero; UseVoidRef(rx)), })
+  reject def B2b (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let rx = &x; let rn = &n; *rn := Zero; *rx := O; ()), })
+  reject def B4 (c0 : V) : False := (let c = c0; match c { MkV(n, x) => (n := Zero; UseVoidRef(&x)), })
+  def UseFin (k : Word) (y : &Fin1(k)) : Unit := ()
+  reject def B4b (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (n := Zero; UseFin(Zero, &x)), })
+  def B4c (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let m = clone(n); n := Zero; UseFin(m, &x); n := m), })
+  reject def B9a : V := (let c = One1; match c { MkV(n, x) => (n := Zero; MkV(clone(n), x)), })
+  def B9b : V := (let c = One1; match c { MkV(n, x) => (n := Zero; MkV(Succ(Zero), x)), })
+  reject def B10a (c0 : V) : Prop := (let c = c0; match c { MkV(n, x) => n := Zero, }; Eq(V, c, c))
+  reject def B10b (c0 : V) : Prop := (let c = c0; match c { MkV(n, x) => (n := Zero; Eq(Void, x, x)), })
+  reject def B10c (c0 : V) : Prop := (let c = c0; match c { MkV(n, x) => (n := Zero; Id(Void, x, x)), })
+  reject def B10d (c0 : V) : Prop := (let c = c0; match c { MkV(n, x) => n := Zero, }; Id(V, c, c))
+  def J1 : Word := (let c = One1; match Zero { Zero => (match c { MkV(n, x) => n := Zero, }; ()), Succ(m) => (), }; match c { MkV(n, x) => clone(n), })
+  reject def J1b : False := (let c = One1; match Zero { Zero => (match c { MkV(n, x) => n := Zero, }; ()), Succ(m) => (), }; match c { MkV(n, x) => match x {}, })
+  reject def RecO (k : Nat) (v : &V) : Unit by k := match k { Z => (), S m => (match *v { MkV(n, x) => n := Zero, }; RecO(m, v)), }
+  reject def RecF (k : Nat) (v : &V) : Unit by k := match k { Z => (), S m => match *v { MkV(n, x) => (n := Zero; RecF(m, v); n := Succ(Zero)), }, }
+  inductive Tag (n : Word) := MkTag(h : IsSucc(n))
+  inductive TW := MkTW(n : Word, y : Tag(n))
+  def Mk1 : Tag(Succ(Zero)) := MkTag(refl)
+  def Mk1L : Tag(Succ(Zero)) := (let t = MkTag[Succ(Zero)](refl); t)
+  reject def T1 : IsSucc(Zero) := (let c = MkTW(Succ(Zero), Mk1); match c { MkTW(n, y) => (n := Zero; match y { MkTag(h) => h, }), })
+  reject def T2 : IsSucc(Zero) := (let c = MkTW(Succ(Zero), Mk1L); match c { MkTW(n, y) => (n := Zero; match y { MkTag(h) => h, }), })
+  reject def T3 : IsSucc(Zero) := (let c = MkTW(Succ(Zero), MkTag[Succ(Zero)](refl)); match c { MkTW(n, y) => (n := Zero; match y { MkTag(h) => h, }), })
+  reject def T4 (c0 : TW) : IsSucc(Zero) := (let c = c0; match c { MkTW(n, y) => (n := Zero; match y { MkTag(h) => h, }), })
+  def VAt (k : Word) : Type := match k { Zero => One, Succ(m) => V, }
+  inductive WV := MkWV(k : Word, w : VAt(k))
+  def N1 (c0 : WV) : Unit := (let c = c0; match c { MkWV(k, w) => (k := Succ(Zero); ()), })
+  reject def N2 : False := (let c = MkWV(Succ(Zero), One1); match c { MkWV(k, w) => (k := Zero; match w { MkV(n, x) => (n := Zero; match x {}), }), })
+  def N3 : Word := (let c = MkWV(Succ(Zero), One1); match c { MkWV(k, w) => (match w { MkV(n, x) => n := Zero, }; k := Zero; match w { MkV(n, x) => clone(n), }), })
+  reject def N4 : False := (let c = MkWV(Succ(Zero), One1); match c { MkWV(k, w) => (match w { MkV(n, x) => n := Zero, }; match w { MkV(n, x) => match x {}, }), })
+  reject def N5 : Unit := (let c = MkWV(Succ(Zero), One1); match c { MkWV(k, w) => (match w { MkV(n, x) => n := Zero, }; let ww = w; ()), })
+  reject def PS1 (e : ExSucc) : IsSucc(Zero) := match e { WitS(w, h) => (w := Zero; h), }
+  def PickW (k : Word) (a : &Word) (b : &Word) : &Word := match k { Zero => a, Succ(m) => b, }
+  def G1 (p : &Pos) : Unit := match *p { MkPos(n, h) => (let h0 = h; let d = Succ(Zero); let r = PickW(Succ(Zero), &n, &d); h := h0; *r := Zero), }
+  reject def G2 (p : &Pos) : Unit := match *p { MkPos(n, h) => (let h0 = h; let d = Succ(Zero); let r = PickW(Zero, &n, &d); h := h0; *r := Zero), }
+  reject def G3 (k : Word) (p : &Pos) : Unit := match *p { MkPos(n, h) => (let h0 = h; let d = Succ(Zero); let r = PickW(k, &n, &d); h := h0; *r := Zero), }
+  reject def G4 (k : Word) (p : &Pos) : Unit := match *p { MkPos(n, h) => (let h0 = h; let d = Succ(Zero); let r = PickW(k, &n, &d); h := h0; ()), }
+  reject def CL1 (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (n := Zero; let f = (λ(u : Unit) : Unit => (let y = x; ())); n := Succ(Zero); ()), })
+  reject def CL2 (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (n := Zero; let f = (λ(u : Unit) : Fin1(Zero) => x); ()), })
+  def SB1 (k : Word) (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (n := Zero; match k { Zero => (let r = &x; ()), Succ(m) => (), }; n := clone(n)), })
+  def SB2 (k : Word) (v : &V) : Unit := match *v { MkV(n, x) => (let m = clone(n); n := Zero; match k { Zero => (let r = &x; ()), Succ(mm) => (), }; n := m), }
+  def RB (v : &V) : Unit := match *v { MkV(n, x) => (let m = clone(n); let r = &n; *r := Zero; *r := m; ()), }
+  def RBc : Word := (let c = One1; RB(&c); VN(c))
+  def RBr : Eq(Word, RBc, Succ(Zero)) := refl
+  def N3r : Eq(Word, N3, Zero) := refl
+  def P1 : Pos := MkPos(Succ(Zero), refl)
+  def G1c : Word := (let p = P1; G1(&p); match p { MkPos(n, h) => clone(n), })
+  def G1r : Eq(Word, G1c, Succ(Zero)) := refl
+  def SB2a : Word := (let c = One1; SB2(Zero, &c); VN(c))
+  def SB2b : Word := (let c = One1; SB2(Succ(Zero), &c); VN(c))
+  def SB2ar : Eq(Word, SB2a, Succ(Zero)) := refl
+  def SB2br : Eq(Word, SB2b, Succ(Zero)) := refl
+  reject def BadCtl : Eq(Word, RBc, Zero) := refl
+  def N1c : Word := (let c = MkWV(Zero, O); N1(c); Zero)
+  reject def W1 : Nat := (let c = One1; match c { MkV(n, x) => (x := 5; let y = x; x := O; y), })
+  reject def W1r : Eq(Nat, W1, 5) := refl
+  reject def W2 (c0 : V) : Nat := (let c = c0; match c { MkV(n, x) => (x := 5; let y = x; n := Succ(Zero); x := O; y), })
+  reject def W3 (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := (); x := old), }
+  reject def W4 (v : &V) : Unit := match *v { MkV(n, x) => (x := (λ(z : Nat) : Nat => z); ()), }
+  reject def H1 (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := Nat; let T = x; x := old), }
+  reject def H2 (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; let w = Zero; x := &w; x := old), }
+  reject def H3 (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := refl; x := old), }
+  reject def H4 (v : &V) : Nat := match *v { MkV(n, x) => (let old = x; x := Nat; let T = x; let k : T = 3; x := old; k), }
+  reject def H5 : Eq(Nat, (let c = One1; H4(&c)), 3) := refl
+  reject def K1 : False := (let c = One1; match c { MkV(n, x) => (x := refl; n := Zero; let z : False = match x {}; z), })
+  reject def K2 : False := (let c = One1; match c { MkV(n, x) => (n := Zero; x := refl; let z : False = match x {}; z), })
+  reject def K3 (v : &V) : False := match *v { MkV(n, x) => (let old = x; x := refl; n := Zero; let z : False = match x {}; z), }
+  reject def K1Ctl : False := (let c = One1; match c { MkV(n, x) => (n := Zero; let z : False = match x {}; z), })
+}
+
+#guard (run "OpenAttacks" OpenAttacks).rejectedWith [
+  ("Ctl", "the ascribed term has type Nat, expected Unit"),
+  ("L1", "[Read] c.x was moved out or its borrow ended (reading ⊥)"),
+  ("L1Nat", "[Read] c.x was moved out or its borrow ended (reading ⊥)"),
+  ("L1NatRuns", "unknown constant L1Nat"),
+  ("L2", "[Read] c.x was moved out or its borrow ended (reading ⊥)"),
+  ("L2b", "[Read] c.x was moved out or its borrow ended (reading ⊥)"),
+  ("L3", "the assigned value has type Nat, expected Unit"),
+  ("L3Runs", "unknown constant L3"),
+  ("L4", "[Borrow] c.x was moved out (borrowing ⊥)"),
+  ("L4u", "[Borrow] c.x was moved out (borrowing ⊥)"),
+  ("L5", "[Read] c.x was moved out or its borrow ended (reading ⊥)"),
+  ("L5n", "[Read] c.x was moved out or its borrow ended (reading ⊥)"),
+  ("F1", "[Read] c.f was moved out or its borrow ended (reading ⊥)"),
+  ("F1Runs", "unknown constant F1"),
+  ("F1u", "[Read] c.f was moved out or its borrow ended (reading ⊥)"),
+  ("C3a", "[Match] on y, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
+  ("C3b", "[Match] on y, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
+  ("C3c", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of ty"),
+  ("C3d", "[Match] on y, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
+  ("C3e", "the body of C3e has type ⌈Fin1(σ1)⌉, but the goal is Void"),
+  ("B1", "[Open] p.h is a proof field invalidated by a write to a field its type mentions:"),
+  ("B2", "argument 1 (y) has type &⌈Fin1(σ1)⌉, expected &Void"),
+  ("B2b", "the assigned value has type One, expected ⌈Fin1(σ1)⌉"),
+  ("B4", "argument 1 (y) has type &⌈Fin1(σ1)⌉, expected &Void"),
+  ("B4b", "argument 2 (y) has type &⌈Fin1(σ1)⌉, expected &Void"),
+  ("B9a", "field x of MkV has type One, expected Void"),
+  ("B10a", "[Repack] c is read whole, but it is open: field x of MkV holds a value of type ⌈"),
+  ("B10b", "the left side of Eq has type ⌈Fin1(σ1)⌉, expected Void"),
+  ("B10c", "a side of Id has type ⌈Fin1(σ1)⌉, expected Void"),
+  ("B10d", "[Repack] c is read whole, but it is open: field x of MkV holds a value of type ⌈"),
+  ("J1b", "a match with no arms on c.x : One, which has constructors"),
+  ("RecO", "[Repack] v is read whole, but it is open: field x of MkV holds a value of type ⌈"),
+  ("RecF", "[Repack] v is read whole, but it is open: field x of MkV holds a value of type ⌈"),
+  ("T1", "the body of T1 has type ⊤, but the goal is False"),
+  ("T2", "the body of T2 has type ⊤, but the goal is False"),
+  ("T3", "the body of T3 has type ⊤, but the goal is False"),
+  ("T4", "the body of T4 has type ⌈IsSucc(σ1)⌉, but the goal is False"),
+  ("N2", "a match with no arms on c.w.x : One, which has constructors"),
+  ("N4", "a match with no arms on c.w.x : One, which has constructors"),
+  ("N5", "[Repack] c.w is read whole, but it is open: field x of MkV holds a value of type"),
+  ("PS1", "the body of PS1 has type ⌈IsSucc(σ0)⌉, but the goal is False"),
+  ("G2", "the proof assigned to h (while part of its value is lent, what the borrow holds "),
+  ("G3", "the proof assigned to h (while part of its value is lent, what the borrow holds "),
+  ("G4", "the proof assigned to h (while part of its value is lent, what the borrow holds "),
+  ("CL1", "[Repack] a closure or Π-type captures c, but it is open: field x of MkV holds a "),
+  ("CL2", "[Repack] a closure or Π-type captures c, but it is open: field x of MkV holds a "),
+  ("BadCtl", "the body of BadCtl has type ⊤, but the goal is False"),
+  ("W1", "the assigned value has type Nat, expected One"),
+  ("W1r", "unknown constant W1"),
+  ("W2", "the assigned value has type Nat, expected ⌈Fin1(σ1)⌉"),
+  ("W3", "the assigned value has type Unit, expected ⌈Fin1(σ1)⌉"),
+  ("W4", "the assigned value has type Π(z : Nat). Nat, expected ⌈Fin1(σ1)⌉"),
+  ("H1", "the assigned value has type Type, expected ⌈Fin1(σ1)⌉"),
+  ("H2", "the assigned value has type &Word, expected ⌈Fin1(σ1)⌉"),
+  ("H3", "the assigned value has type ⊤, expected ⌈Fin1(σ1)⌉"),
+  ("H4", "[D55] T is written where a type is expected, but its declared type is not a sort"),
+  ("H5", "unknown constant H4"),
+  ("K1", "the assigned value has type ⊤, expected One"),
+  ("K2", "the assigned value has type ⊤, expected Void"),
+  ("K3", "the assigned value has type ⊤, expected ⌈Fin1(σ1)⌉"),
+  ("K1Ctl", "a match with no arms on c.x : One, which has constructors")]
+
+/-! ## A path that ends early leaves no value open at its caller (D106's negative result)
+
+`StrongUpdate.ViaParam` reached `False` because its only path ended in a match with no arms, so the
+[Repack] at the borrow parameter's end never ran, on a field D110 now never lets read as empty. With
+D110 in place, every way of ending a path before its return was tried after opening the caller's
+value (writing its index through a borrow parameter): a zero-arm match on an empty value the
+function was given (`E1`), on a hypothesis false at every instance (`E2`), on a field made empty by
+a split (`E3`, whose closed call takes the other arm, `E3C`): accepted, and unreachable at any
+instance, since each needs an inhabitant of an empty type; on the opened field itself (`E4`, typed
+by its content), moved out (`E5`), or a proof field the index write invalidated (`E6`): rejected; a
+tail call passing the borrow on, whole or reborrowed (`E8`, `E9`), and a normal end after an opaque
+call or a proof (`E10`, `E11`, `E12`): [Repack]. Only a manufactured emptiness, an opened field read
+at its declared type, made the early end dangerous. -/
+
+ochr EarlyEnd uses Nats {
+  inductive Void : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  def Fin2 (n : Nat) : Type := match n { Z => Void, S(m) => Nat, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  inductive V2 := MkV2(n : Nat, x : Fin2(n))
+  inductive VP := MkVP(n : Nat, h : Eq(Nat, n, S(Z)))
+  def ReadX (v : V) : Nat := match v { MkV(n, x) => 0, }
+  def E1 (r : &V) (v : Void) : Unit := ((*r).0 := Z; match v {})
+  def E2 (r : &V) (h : Eq(Nat, Z, S(Z))) : Unit := ((*r).0 := Z; match h {})
+  def E3 (n : Nat) (x : Fin1(n)) (r : &V) : Unit := match n { Z => ((*r).0 := Z; match x {}), S(m) => (), }
+  def E3C : Nat := (let c = MkV(S(Z), O); E3(S(Z), O, &c); ReadX(c))
+  reject def E4 (r : &V) : Unit := ((*r).0 := Z; match (*r).1 {})
+  reject def E5 (r : &V2) : Unit := (let y = (*r).1; (*r).0 := Z; match (*r).1 {})
+  reject def E6 (r : &VP) : Unit := ((*r).0 := Z; match (*r).1 {})
+  reject def E8 (k : Nat) (r : &V) : Unit by k := match k { Z => (), S(j) => ((*r).0 := Z; E8(j, r)), }
+  reject def E9 (k : Nat) (r : &V) : Unit by k := match k { Z => (), S(j) => ((*r).0 := Z; E9(j, &*r)), }
+  reject def E10 (r : &V) (h : Eq(Nat, (*r).0, S(Z))) : Eq(Nat, S(Z), S(Z)) := ((*r).0 := Z; refl)
+  reject def E11 (f : Π(u : Unit). Void) (r : &V) : Void := ((*r).0 := Z; f(()))
+  reject def E12 (r : &V) : Unit := ((*r).0 := Z; ())
+}
+
+#guard (run "EarlyEnd" EarlyEnd).rejectedWith [
+  ("E4", "[Match] on (*r).1, whose type"),
+  ("E5", "[Match] on (*r).1, which was moved out"),
+  ("E6", "[Match] on (*r).1, which was moved out"),
+  ("E8", "[Repack] r is read whole, but it is open"),
+  ("E9", "[Repack] *r is borrowed whole, but it is open"),
+  ("E10", "[Repack] a borrow of it ends, but it is open"),
+  ("E11", "[Repack] a borrow of it ends, but it is open"),
+  ("E12", "[Repack] a borrow of it ends, but it is open")]
 
 /-! ## A growable vector (a case study)
 

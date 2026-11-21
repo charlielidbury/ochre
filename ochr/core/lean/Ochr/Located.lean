@@ -23,8 +23,8 @@ declaration's own code at this point: at call depth 0 (a callee's body and a sea
 re-run raise `depth`; their errors belong to the call, or the point, that started them). A call
 also makes its arguments' ranges the ones `callType` reads. With `Config.recordStates` (dev
 tooling, `Sweep.lean`), the whole state is logged at such a term on entry and on a successful
-exit (`noteState`), with the value `flight` reads off the result. -/
-@[inline] def located {α : Type} (t : Term) (x : M α) (flight : α → Option Value := fun _ => none) : M α := do
+exit (`noteState`), with the value and type `flight` reads off the result. -/
+@[inline] def located {α : Type} (t : Term) (x : M α) (flight : α → Option (Value × Option Value) := fun _ => none) : M α := do
   let s ← get
   if s.locs.table.isEmpty then x else
   let a := termAddr t
@@ -40,7 +40,7 @@ exit (`noteState`), with the value `flight` reads off the result. -/
   pure r
 where
   /-- Dev tooling (`Config.recordStates`): log the whole state at the located term `l`. -/
-  noteState (l : Option Loc) (exit : Bool) (v : Option Value) : M Unit := do
+  noteState (l : Option Loc) (exit : Bool) (v : Option (Value × Option Value)) : M Unit := do
     let s ← get
     if s.cfg.recordStates then
       if let some l := l then modifyThe (Array LogEntry) (·.push (.state l exit v s))

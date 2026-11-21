@@ -1,6 +1,6 @@
 # Inductive types: a model and the conditions it derives
 
-Written by the `inductive-model` lane on 2026-10-30, toward the consistency goal, in the style of `depfields-model.md`, `split-model.md`, `rec-model.md`, `erasure-model.md`, `closeoff-model.md` and `frame-model.md`. Branch `inductive-model`, off main `41205bdb` (the theory chain). **Result: no hole.** Every derived condition is enforced by the checker; two conditions are enforced more strictly than the model needs (candidate simplifications); the probes are a registered regression block, `InductiveModel` in `Examples/Fording.lean` (24 declarations; total 1,763 → 1,787).
+Written by the `inductive-model` lane on 2026-10-30, toward the consistency goal, in the style of `depfields-model.md`, `split-model.md`, `rec-model.md`, `erasure-model.md`, `closeoff-model.md` and `frame-model.md`. Branch `inductive-model`, off main `41205bdb` (the theory chain). **Result: no hole** (wrong: corrected by D107, 2026-11-21. (P1)'s nesting condition was skipped at the declared type's own occurrences, and an earlier inductive's own occurrence counted as nestable at any position; both gave closed proofs of `False`, `Inductives.PositivitySelf` and `PositivitySwap`.) Every derived condition is enforced by the checker; two conditions are enforced more strictly than the model needs (candidate simplifications); the probes are a registered regression block, `InductiveModel` in `Examples/Fording.lean` (24 declarations; total 1,763 → 1,787).
 
 ## 1. The model
 
@@ -42,7 +42,7 @@ For `Eq` on constructor values:
 
 | Derived condition | Enforced by | Probe |
 |---|---|---|
-| (P1) strict positivity | `firstOrderTerm` (no `Π`, `&`, sort; fields are first-order data, parameters or earlier type functions), K4's nesting condition (`paramNestable`, `nestViolation`), and K4's check that a type-function field does not compute to a `Π`, a sort or `&` | existing `Positivity*` blocks; `NegV` |
+| (P1) strict positivity | `firstOrderTerm` (no `Π`, `&`, sort; fields are first-order data, parameters or earlier type functions), K4's nesting condition (`nestableSet`, `nestViolation`; until D107 skipped at the declared type's own occurrences, which made this row's "no hole" wrong: `Inductives.PositivitySelf`), and K4's check that a type-function field does not compute to a `Π`, a sort or `&` | existing `Positivity*` blocks; `NegV` |
 | (P2) non-uniform arguments | `firstOrderArgs`: at a value parameter, any erased term not mentioning `D`; at a type parameter, a first-order type | `G`, `NL` (accepted), `NegV` (rejected) |
 | (P3) no call of a parameter | `firstOrderTerm` accepts only calls of earlier *global* type functions | `HL` (accepted), `HL2` (rejected) |
 | (I1) parameter types | arity: `D` cannot be applied without all its parameters, so a parameter type mentioning `D` is ill-formed | `PD` (rejected) |
