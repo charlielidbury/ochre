@@ -49,9 +49,9 @@ theorem reached_of_rootSited {s : SState} {p : Pos} {l : Nat} (h : rootSited s p
 
 /-- A position each of whose readings reads only labels lent at its root: such a label is reached at
 every path, so the futures compared agree on it. -/
-theorem dws_of_root (dm : DataModel) (Γ : List IndDecl) (s : SState)
+theorem dws_of_root (s : SState)
     (hv : ∀ p ψ ψ', (∀ l, ψ l ≠ ψ' l → rootSited s p l = false) → s.valAt p ψ = s.valAt p ψ') :
-    DepWithinSites dm Γ s := by
+    DepWithinSites s := by
   intro p steps ψ ψ' h
   rw [hv p ψ ψ' fun l hne => by
     have := (h l hne).2
@@ -72,7 +72,7 @@ variable (dm : DataModel) (Γ : List IndDecl)
 
 /-- **The plain borrow** (`borrowPlace_var0_one`'s output): the lender reads the borrow's final
 content, lent at its root; the parked borrow reads its old content. -/
-theorem dws_S₂ (b : SBinding) (k : Nat) (c : Sem) : DepWithinSites dm Γ (Attack.S₂ b k c) := by
+theorem dws_S₂ (b : SBinding) (k : Nat) (c : Sem) : DepWithinSites (Attack.S₂ b k c) := by
   apply dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
@@ -88,7 +88,7 @@ theorem dws_S₂ (b : SBinding) (k : Nat) (c : Sem) : DepWithinSites dm Γ (Atta
 function of the reborrow `1`'s final content (lent at `y`'s root, a fill), the rest are constant. -/
 theorem dws_SR (rT : TyS) (yv rv t0 t1 : SVal) (hy : ∀ ψ ψ' : Future, ψ 1 = ψ' 1 → yv ψ = yv ψ')
     (hr : ∀ ψ ψ', rv ψ = rv ψ') (h0 : ∀ ψ ψ', t0 ψ = t0 ψ') (h1 : ∀ ψ ψ', t1 ψ = t1 ψ') :
-    DepWithinSites dm Γ (SR rT yv rv t0 t1) := by
+    DepWithinSites (SR rT yv rv t0 t1) := by
   apply dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
@@ -114,8 +114,8 @@ theorem mv1_const (ψ ψ' : Future) : mv1 dm ψ = mv1 dm ψ' := by
 
 /-- **`Id1`**: after the call and the binding of `r`, and after `*r := 5`. -/
 theorem dws_Id1 (TU : TyS) (w : Sem) :
-    DepWithinSites dm Γ (SR TU (yR1 dm) (fun _ => w) (mv1 dm) (fun _ => .moved)) :=
-  dws_SR dm Γ TU _ _ _ _ (yR1_reads_one dm) (fun _ _ => rfl) (mv1_const dm) (fun _ _ => rfl)
+    DepWithinSites (SR TU (yR1 dm) (fun _ => w) (mv1 dm) (fun _ => .moved)) :=
+  dws_SR TU _ _ _ _ (yR1_reads_one dm) (fun _ _ => rfl) (mv1_const dm) (fun _ _ => rfl)
 
 /-! ## `Pick` at `Z`
 
@@ -141,7 +141,7 @@ theorem rs_PZ_b : (Env.sitesOf StaticLend.stZ.env 2).any (fun x => decide (x.pos
 
 /-- **`Pick` at `Z`.** -/
 theorem dws_PZ (S A B R : SBinding) (fa fb : Sem → Sem) (vs vr : Sem) :
-    DepWithinSites dm Γ (SPZ S A B R fa fb vs vr) := by
+    DepWithinSites (SPZ S A B R fa fb vs vr) := by
   apply dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
@@ -181,7 +181,7 @@ theorem rs_G8K_b : ((StaticLend.refOf StaticLend.stK.env).relend 2 StaticLend.rK
 
 /-- **`G8` after the re-rooting end, `n` known.** -/
 theorem dws_G8K (S A B R T : SBinding) (fa fb : Sem → Sem) (vs vt : Sem) :
-    DepWithinSites dm Γ (SG8K S A B R T fa fb vs vt) := by
+    DepWithinSites (SG8K S A B R T fa fb vs vt) := by
   apply dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
@@ -219,7 +219,7 @@ def SG8 (S N A B R T : SBinding) (fa fb : Sem → Sem) (vs vt : Sem) : SState :=
 
 /-- **`G8` after the re-rooting end, `n` unknown.** -/
 theorem dws_G8 (S N A B R T : SBinding) (fa fb : Sem → Sem) (vs vt : Sem) :
-    DepWithinSites dm Γ (SG8 S N A B R T fa fb vs vt) := by
+    DepWithinSites (SG8 S N A B R T fa fb vs vt) := by
   apply dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
@@ -273,7 +273,7 @@ theorem rs_CD (l : Nat) (hl : l = 1 ∨ l = 2) (i : Nat) (hi : i = 0 ∨ i = 1) 
 
 /-- **The conditional dependence.** -/
 theorem dws_CD (X Y R J M : SBinding) (c : Nat) (g : Sem → Sem → Sem) (vj vm : Sem) :
-    DepWithinSites dm Γ (SCD X Y R J M c g vj vm) := by
+    DepWithinSites (SCD X Y R J M c g vj vm) := by
   apply dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
@@ -332,7 +332,7 @@ theorem live_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) 
 /-- **The reborrow's lender**: `r` reads `s`'s borrow `k+2`, lent at `(r, [*])`, whose key is the
 root's, so every path at `r` is comparable with it. -/
 theorem dws_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
-    DepWithinSites dm Γ (SRb F n b k c) := by
+    DepWithinSites (SRb F n b k c) := by
   apply dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩

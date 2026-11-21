@@ -1,16 +1,15 @@
 import Ochr.Meaning.Strict.Ops
 
 /-!
-# `MemReads` as stated holds in no data model (a finding, 2026-11-21)
+# The read off the program's declarations (a finding, 2026-11-21, and its repair)
 
-`MemReads dm Γ` (`Strict/Ops.lean`, the context's `FundCtx.reads`) asks of EVERY type `T`: a whole
-value a read path reaches in a member of `T` is a member of the type the read gives it. A read
-types a field by the declaration it finds BY NAME in `Γ` (`contentTyS`); a data code of the model
-for a declaration that `Γ` does not declare is still a type with members (the signature is
-universal, `DataLib/Universal.lean`), and the read types its fields `err`. So for any `Γ` that
-declares nothing named `Fresh`, the declaration `Fresh` with one `Nat` field at the record `rF`
-(field `0` a `Nat` leaf) has the member `Fresh.C(5)`, whose field reads `5` at `err`: no member of
-`err`, and data. `FundCtx K` is then uninhabited and `fund_all` holds vacuously.
+`MemReads dm Γ` asked of EVERY type: a whole value a read path reaches in a member is a member of
+the type the read gives it. The by-name read typed a field through the declaration it found BY
+NAME in `Γ`; a data code of an undeclared declaration (the signature is universal) has members whose
+fields read at `err`: `Fresh.C(5)` at a record giving field `0` a `Nat` leaf read `5` at `err`, so
+`MemReads` held in no model (kernel-checked at spine-model 9911399e). Route (c) types a read by the
+type it starts at (`DataModel.readTy`): `fresh_read` (its field at `Nat`), and
+`ReadMember.follow_good` (every read of a member of any data code gives a member) with no hypothesis.
 -/
 
 namespace Ochr.Meaning.Strict.MemReadsCE
@@ -37,19 +36,20 @@ theorem mem (dm : DataModel) : Sem.dat "Fresh" rF 0 [.el0 Nat 5] ∈ₛ[dm.read]
   show ∃ b, DataLib.encLeaf Code0.nat b = Sem.el0 Nat 5
   exact ⟨5, rfl⟩
 
-/-- **`MemReads` is false** for every data model and every `Γ` declaring nothing named `Fresh`. -/
-theorem not_memReads (dm : DataModel) (Γ : List IndDecl) (hΓ : ∀ d ∈ Γ, d.name ≠ "Fresh") :
-    ¬ MemReads dm Γ := by
-  intro h
-  have hf : Γ.find? (·.name == "Fresh") = none := by
-    rw [List.find?_eq_none]; intro d hd; simpa using hΓ d hd
-  have hfol : Sem.follow dm Γ (.plain (dm.tyR dF rF)) (.dat "Fresh" rF 0 [.el0 Nat 5]) [.field g]
-      = some (.el0 Nat 5, .plain TyM.err) := by
-    simp [Sem.follow, Sem.step, Sem.stepField, g, contentTyS, hf]
-  rcases h (.plain (dm.tyR dF rF)) _ _ (mem dm) (.refl _) [.field g] _ _ hfol (by simp [Sem.whole]) with
-    ⟨a, _⟩ | ⟨-, ⟨T, hT⟩ | hT⟩
-  · exact a.elim
-  · cases hT
-  · cases hT
+/-- **The typed read (route (c)) reads `Fresh.C(5)`'s field at `Nat`**, whatever `Γ` declares: the
+declaration comes from the type, not from `Γ` by name. (The by-name read gave `err` here, so
+`MemReads` failed for every model and every `Γ` without a `Fresh`: the finding of 2026-11-21, at
+spine-model 9911399e, `not_memReads`.) -/
+theorem fresh_read (dm : DataModel) (Γ : List IndDecl) :
+    Sem.follow dm Γ (.plain (dm.tyR dF rF)) (.dat "Fresh" rF 0 [.el0 Nat 5]) [.field g]
+      = some (.el0 Nat 5, .plain TyM.nat) := by
+  have hown : ¬ dm.OwnCarrier Code0.nat := by
+    rintro ⟨d, r, h, -⟩; cases h
+  have hdc : (TyS.plain (dm.tyR dF rF)).m.dataCode? = some (dF, rF) := rfl
+  have hsh : dm.sig.shape dF rF 0 0 [] = .leaf Nat .nat := rfl
+  have hrt : dm.readTy dF rF 0 0 [] (.el0 Nat 5) = some TyM.nat := by
+    simp only [DataModel.readTy, List.map_nil, hsh, DataModel.shapeReadTy, if_neg hown]; rfl
+  simp only [Sem.follow, Sem.step, Sem.stepField, g, hdc, Option.bind]
+  simp [show dF.name = "Fresh" from rfl, hrt]
 
 end Ochr.Meaning.Strict.MemReadsCE

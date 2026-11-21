@@ -24,34 +24,39 @@ namespace Ochr.Meaning
 
 variable (dm : DataModel) (Γ : List IndDecl)
 
-/-- The value read off `v` at `steps`. -/
-noncomputable def readV (v : Sem) (steps : List Step) : Option Sem :=
-  (Sem.follow dm Γ (.plain TyM.err) v steps).map Prod.fst
+/-- A field of a value, by the value alone (`Sem.stepField` without its type). -/
+def fieldV (c i : Nat) : Sem → Option Sem
+  | .proof => some .proof
+  | .dat _ _ c' fs => if c' = c then fs[i]? else none
+  | _ => none
 
-/-- The value component of a reading does not read the type it starts at. -/
-theorem follow_fst_indep : ∀ (steps : List Step) (s : Sem) (T T' : TyS),
-    (Sem.follow dm Γ T s steps).map Prod.fst = (Sem.follow dm Γ T' s steps).map Prod.fst
-  | [], _, _, _ => rfl
-  | .deref :: ss, s, T, T' => by
-    simp only [Sem.follow, Sem.step, Option.bind_some]
-    exact follow_fst_indep ss s T T'
-  | .proj i :: ss, s, T, T' => by
-    have e : Sem.step dm Γ T (.proj i) s = Sem.step dm Γ T' (.proj i) s := by cases i <;> rfl
-    simp only [Sem.follow, e]
-  | .field g :: ss, s, T, T' => by
-    have e : Sem.step dm Γ T (.field g) s = Sem.step dm Γ T' (.field g) s := rfl
-    simp only [Sem.follow, e]
+/-- One step on a value, by the value alone (`Sem.step` without its types; route (c) types a read
+by the type it starts at, which the value read does not need). -/
+noncomputable def stepV : Step → Sem → Option Sem
+  | .deref, s => some s
+  | .proj 0, s =>
+    match s.asNat with
+    | some (n + 1) => some (.el0 Nat n)
+    | some 0 => none
+    | none => match s with
+      | .dat "Nat" _ 1 [w] => some w
+      | _ => fieldV 0 0 s
+  | .proj i, s => fieldV 0 i s
+  | .field g, s => match s with
+    | .dat n _ _ _ => if n = g.ty ∧ n ≠ "Nat" then fieldV g.ctor g.idx s else none
+    | s => fieldV g.ctor g.idx s
 
-theorem follow_map_fst (T : TyS) (v : Sem) (steps : List Step) :
-    (Sem.follow dm Γ T v steps).map Prod.fst = readV dm Γ v steps :=
-  follow_fst_indep dm Γ steps v T _
+/-- The value read off `v` at `steps`, by the value alone. -/
+noncomputable def readV : Sem → List Step → Option Sem
+  | v, [] => some v
+  | v, st :: ss => (stepV st v).bind fun w => readV w ss
 
 /-- **Dependence within sites**: two futures that differ only at live labels with no site at `p` on
 a path comparable with `steps` give the same value read at `p` and `steps`, typed or not. -/
 def DepWithinSites (s : SState) : Prop :=
   ∀ (p : Pos) (steps : List Step) (ψ ψ' : Future),
     (∀ l, ψ l ≠ ψ' l → s.Live l ∧ s.reached p (dataHit steps) l = false) →
-    readV dm Γ (s.valAt p ψ) steps = readV dm Γ (s.valAt p ψ') steps
+    readV (s.valAt p ψ) steps = readV (s.valAt p ψ') steps
 
 /-- The positions read no label at or above the counter. -/
 def FreshReads (s : SState) : Prop := ∀ p, FT (· < s.nextLoan) (s.valAt p)
@@ -84,8 +89,8 @@ open SState
 /-- **`callOf`'s borrow-free row**: the consumed holders are taken and every position reads the
 consumed labels fixed. A position that read one of them now reads its final; nothing reads it
 after (it is not live, and fixed). -/
-theorem dws_take_fix {s : SState} (hd : DepWithinSites dm Γ s) (ls : List Nat) (F : List (Nat × Sem)) :
-    DepWithinSites dm Γ ((ls.foldl takeLabel s).mapVals fun _ v φ' => v (φ'.updList F)) := by
+theorem dws_take_fix {s : SState} (hd : DepWithinSites s) (ls : List Nat) (F : List (Nat × Sem)) :
+    DepWithinSites ((ls.foldl takeLabel s).mapVals fun _ v φ' => v (φ'.updList F)) := by
   intro p steps ψ ψ' hψ
   by_cases hp : p ∈ (ls.foldl takeLabel s).positions
   · rw [valAt_mapVals_of_mem _ _ _ hp]
@@ -111,7 +116,7 @@ label `k` is parked with the forward value, every position reads the consumed la
 the backward function at `k`'s final content (or to the error fixing), and `k` is lent as a fill
 wherever a consumed label was lent. A position that read a consumed label on a path comparable
 with the one read now reads `k` there, where `k` is lent; one that did not reads neither. -/
-theorem dws_park_fix.{u} {s : SState} (hd : DepWithinSites dm Γ s) (hfr : FreshReads s) (hsa : ShapeAt s)
+theorem dws_park_fix.{u} {s : SState} (hd : DepWithinSites s) (hfr : FreshReads s) (hsa : ShapeAt s)
     {X : Type u} (ls : List Nat) (hls : ∀ j ∈ ls, s.Live j)
     (dec : Sem → Option X) (fx : X → List (Nat × Sem)) (ee : List (Nat × Sem))
     (hkx : ∀ x, ∀ y ∈ (fx x).map (·.1), y ∈ ls) (hke : ∀ y ∈ ee.map (·.1), y ∈ ls)
@@ -119,7 +124,7 @@ theorem dws_park_fix.{u} {s : SState} (hd : DepWithinSites dm Γ s) (hfr : Fresh
     (hg : ∀ p v ψ, (∃ x, dec (ψ (ls.foldl takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
       (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = v (ψ.updList ee)))
     (lentK : List Site) (hlK : ∀ j ∈ ls, ∀ x ∈ s.lent j, ∃ y ∈ lentK, y.pos = x.pos ∧ y.path = x.path) (T : TyM) (m : Sem) :
-    DepWithinSites dm Γ ((((((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape
+    DepWithinSites ((((((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape
         ((ls.foldl takeLabel s).nextLoan + 1) (ls.foldl takeLabel s).lent ht hm).mapVals g).pushTempShaped (fun _ => c)
         (ls.foldl takeLabel s).nextLoan).setLent (ls.foldl takeLabel s).nextLoan lentK).setHeldTy (ls.foldl takeLabel s).nextLoan T).setHeldMem (ls.foldl takeLabel s).nextLoan m) := by
   have hk' : (ls.foldl takeLabel s).nextLoan = s.nextLoan := (shapeSub_foldl_takeLabel ls s).2
@@ -161,7 +166,7 @@ theorem dws_park_fix.{u} {s : SState} (hd : DepWithinSites dm Γ s) (hfr : Fresh
   -- what the reference does not read: the consumed labels where none is reached, and `k`
   have hfix : ∀ (χ : Future) (F : List (Nat × Sem)), (∀ y ∈ F.map (·.1), y ∈ ls) →
       (∀ j ∈ ls, s.reached q (dataHit σ) j = false) →
-      readV dm Γ (s.valAt q (χ.updList F)) σ = readV dm Γ (s.valAt q χ) σ := by
+      readV (s.valAt q (χ.updList F)) σ = readV (s.valAt q χ) σ := by
     intro χ F hF hj
     apply hd q σ
     intro y hy
@@ -213,7 +218,7 @@ theorem dws_park_fix.{u} {s : SState} (hd : DepWithinSites dm Γ s) (hfr : Fresh
             rw [List.any_eq_false] at hk2
             apply hk2 y (by show y ∈ (if k = k then lentK else _); rw [if_pos rfl]; exact hy)
             simp [hyp, hypa, hxr.1, hxr.2]
-          have hg1 : ∀ χ : Future, readV dm Γ (g q (s.valAt q) χ) σ = readV dm Γ (s.valAt q χ) σ := by
+          have hg1 : ∀ χ : Future, readV (g q (s.valAt q) χ) σ = readV (s.valAt q χ) σ := by
             intro χ
             rcases hg q (s.valAt q) χ with ⟨x, -, ex⟩ | ⟨-, ex⟩ <;> rw [ex]
             · exact hfix χ _ (hkx x) hj
@@ -258,25 +263,25 @@ theorem fixes_keys : ∀ (ls : List (Option Nat)) (fs : List Sem),
 
 /-- **`callOf`'s borrow-free row keeps the invariant.** -/
 theorem dws_callOfL_data.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
-    {s s' : SState} (hd : DepWithinSites dm Γ s) {res : Res} (h : callOfL Lv t fv args s = some (res, s'))
+    {s s' : SState} (hd : DepWithinSites s) {res : Res} (h : callOfL Lv t fv args s = some (res, s'))
     {r : Sem} {T : TyM} {finals : List Sem} (happ : applyFnL Lv t fv (args.map (·.1)) = some (.data r T finals)) :
-    DepWithinSites dm Γ s' := by
+    DepWithinSites s' := by
   unfold callOfL at h
   dsimp only at h
   rw [happ] at h
   simp only [Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨_, rfl⟩ := h
-  exact dws_take_fix dm Γ hd _ _
+  exact dws_take_fix hd _ _
 
 /-- **`callOf`'s borrow row keeps the invariant**, when the run's positions read no label at or
 above the counter and the borrow arguments' labels are live. -/
 theorem dws_callOfL_ref.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
-    {s s' : SState} (hd : DepWithinSites dm Γ s) (hfr : FreshReads s) (hsa : ShapeAt s)
+    {s s' : SState} (hd : DepWithinSites s) (hfr : FreshReads s) (hsa : ShapeAt s)
     (hlive : ∀ a ∈ args, ∀ j, a.2.label = some j → s.Live j)
     {res : Res} (h : callOfL Lv t fv args s = some (res, s'))
     {U : Type u} {c : Lv.Code U} {fwd : U} {back : U → List Sem}
     (happ : applyFnL Lv t fv (args.map (·.1)) = some (.ref U c fwd back)) :
-    DepWithinSites dm Γ s' := by
+    DepWithinSites s' := by
   unfold callOfL at h
   dsimp only at h
   rw [happ] at h
@@ -299,7 +304,7 @@ theorem dws_callOfL_ref.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C
         fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1),
       y ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id :=
     fun y hy => fixes_keys _ _ y hy
-  refine dws_park_fix dm Γ hd hfr hsa _ hls (Lv.dec c) _ _ hkx hke _ _ _ _ ?_ _ ?_ _ _
+  refine dws_park_fix hd hfr hsa _ hls (Lv.dec c) _ _ hkx hke _ _ _ _ ?_ _ ?_ _ _
   · intro p v ψ
     cases hdc : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap
         id)).foldl SState.takeLabel s).nextLoan) with

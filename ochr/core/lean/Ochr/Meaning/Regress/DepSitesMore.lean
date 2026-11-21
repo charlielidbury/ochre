@@ -96,7 +96,7 @@ theorem rs_RR' (l i : Nat) (h : (l = 0 ∧ i = 1) ∨ (l = 2 ∧ i = 2)) :
 variable (dm : DataModel) (Γ : List IndDecl)
 
 /-- **A reborrow of a reborrow.** -/
-theorem dws_RR (S A R T U : SBinding) (vs vt : Sem) : DepWithinSites dm Γ (SRR S A R T U vs vt) := by
+theorem dws_RR (S A R T U : SBinding) (vs vt : Sem) : DepWithinSites (SRR S A R T U vs vt) := by
   apply DepSites.dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
@@ -112,7 +112,7 @@ theorem dws_RR (S A R T U : SBinding) (vs vt : Sem) : DepWithinSites dm Γ (SRR 
   · rcases f with _ | _ | f <;> simp [SState.valAt, SRR]
 
 /-- **The same after the middle borrow's end.** -/
-theorem dws_RR' (S A R T U : SBinding) (vs vt : Sem) : DepWithinSites dm Γ (SRR' S A R T U vs vt) := by
+theorem dws_RR' (S A R T U : SBinding) (vs vt : Sem) : DepWithinSites (SRR' S A R T U vs vt) := by
   apply DepSites.dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
@@ -158,27 +158,23 @@ noncomputable def SPr (S A B X R T : SBinding) (fx : Sem → Sem) (ps : Rec) (v1
     nextLoan := 4, lent := Env.sitesOf stP.env }
 
 /-- **Off field `0`, the value read off a two-field constructor value does not read field `0`**,
-whatever the declaration (its type at field `1` may). -/
+whatever the declaration (the value read, `readV`, by the value alone; its type at field `1` may). -/
 theorem follow_dat_off (n : String) (ps : Rec) (v1 : Sem) (a a' : Sem) :
-    ∀ (steps : List Step) (T : TyS), (pathKey steps).head? ≠ none → (pathKey steps).head? ≠ some (0, 0) →
-      (Sem.follow dm Γ T (.dat n ps 0 [a, v1]) steps).map Prod.fst =
-        (Sem.follow dm Γ T (.dat n ps 0 [a', v1]) steps).map Prod.fst
-  | [], _, h, _ => absurd rfl h
-  | .deref :: ss, T, h1, h2 => by
-    simp only [Sem.follow, Sem.step, Option.bind_some]
-    exact follow_dat_off n ps v1 a a' ss T h1 h2
-  | .proj i :: ss, T, h1, h2 => by
+    ∀ (steps : List Step), (pathKey steps).head? ≠ none → (pathKey steps).head? ≠ some (0, 0) →
+      readV (.dat n ps 0 [a, v1]) steps = readV (.dat n ps 0 [a', v1]) steps
+  | [], h, _ => absurd rfl h
+  | .deref :: ss, h1, h2 => by
+    simp only [readV, stepV, Option.bind_some]
+    exact follow_dat_off n ps v1 a a' ss h1 h2
+  | .proj i :: ss, h1, h2 => by
     cases i with
     | zero => exact absurd rfl h2
     | succ i =>
       cases i with
-      | zero =>
-        simp only [Sem.follow, Sem.step, Sem.stepField, if_true, List.getElem?_cons_succ, List.getElem?_cons_zero,
-          Option.map_some, Option.bind_some]
-        exact follow_fst_indep dm Γ ss v1 _ _
-      | succ i => simp [Sem.follow, Sem.step, Sem.stepField]
-  | .field g :: ss, T, h1, h2 => by
-    simp only [Sem.follow, Sem.step, Sem.stepField]
+      | zero => simp [readV, stepV, fieldV]
+      | succ i => simp [readV, stepV, fieldV]
+  | .field g :: ss, h1, h2 => by
+    simp only [readV, stepV]
     by_cases hn : ¬ (n = g.ty ∧ n ≠ "Nat")
     · simp [hn]
     have hn : n = g.ty ∧ n ≠ "Nat" := Classical.byContradiction hn
@@ -190,10 +186,9 @@ theorem follow_dat_off (n : String) (ps : Rec) (v1 : Sem) (a a' : Sem) :
       subst hc
       rcases gi with _ | _ | gi
       · exact absurd rfl hi
-      · simp only [if_true, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.map_some, Option.bind_some]
-        exact follow_fst_indep dm Γ ss v1 _ _
-      · simp
-    · simp [hc]
+      · simp [fieldV]
+      · simp [fieldV]
+    · simp [fieldV, hc]
 
 /-- A path whose key is not comparable with `[.0]`'s starts with another field. -/
 theorem off_key00 {steps π : List Step} (hπ : pathKey π = [(0, 0)]) (hd : dataHit steps π = false) :
@@ -223,7 +218,7 @@ theorem siteP3 : (Env.sitesOf stP.env 3).any
 
 /-- **A field borrowed through a returned borrow of a pair**: the site below the root. -/
 theorem dws_Pair (S A B X R T : SBinding) (fx : Sem → Sem) (ps : Rec) (v1 vs vt : Sem) :
-    DepWithinSites dm Γ (SPr S A B X R T fx ps v1 vs vt) := by
+    DepWithinSites (SPr S A B X R T fx ps v1 vs vt) := by
   intro p steps ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
   · rcases f with _ | _ | f
@@ -249,7 +244,7 @@ theorem dws_Pair (S A B X R T : SBinding) (fx : Sem → Sem) (ps : Rec) (v1 vs v
             exact this
           obtain ⟨h1, h2⟩ := off_key00 hxp.2 hd
           simp only [SState.valAt, SPr, SState.tyAt]
-          exact follow_dat_off dm Γ "Pair" ps v1 _ _ steps _ h1 h2
+          exact follow_dat_off "Pair" ps v1 _ _ steps h1 h2
       · simp [SState.valAt, SPr]
       · simp [SState.valAt, SPr]
     · simp [SState.valAt, SPr]
@@ -273,12 +268,19 @@ field `1` at different types. The value read is the same (`dws_Pair`). The recor
 invariant compares values only. -/
 theorem dws_Pair_dependent_fails (S A B X R T : SBinding) (fx : Sem → Sem) (ps : Rec) (v1 vs vt : Sem)
     (x y : Sem)
-    (hdep : contentTyS dm Γ "Pair" ps 0 1 [x] v1 ≠ contentTyS dm Γ "Pair" ps 0 1 [y] v1) :
+    (hdep : Sem.follow dm Γ ((SPr S A B X R T fx ps v1 vs vt).tyAt (.bind 1 4)) (.dat "Pair" ps 0 [x, v1])
+        [.deref, .field ⟨"Pair", 0, 1, ""⟩] ≠
+      Sem.follow dm Γ ((SPr S A B X R T fx ps v1 vs vt).tyAt (.bind 1 4)) (.dat "Pair" ps 0 [y, v1])
+        [.deref, .field ⟨"Pair", 0, 1, ""⟩]) :
     ¬ DepWithinSitesT dm Γ (SPr S A B X R T fx ps v1 vs vt) := by
   intro h
   have := h (.bind 1 4) [.deref, .field ⟨"Pair", 0, 1, ""⟩] (fun l => if l = 3 then x else .err)
     (fun l => if l = 3 then y else .err) (fun l hl => ?_)
-  · simp [SState.valAt, SPr, Sem.follow, Sem.step, Sem.stepField] at this
+  · have e1 : (SPr S A B X R T fx ps v1 vs vt).valAt (.bind 1 4) (fun l => if l = 3 then x else .err)
+        = .dat "Pair" ps 0 [x, v1] := by simp [SState.valAt, SPr]
+    have e2 : (SPr S A B X R T fx ps v1 vs vt).valAt (.bind 1 4) (fun l => if l = 3 then y else .err)
+        = .dat "Pair" ps 0 [y, v1] := by simp [SState.valAt, SPr]
+    rw [e1, e2] at this
     exact hdep this
   · by_cases hl3 : l = 3
     · subst hl3
@@ -337,7 +339,7 @@ noncomputable def SLI (C S Vb R : SBinding) (ps : Rec) (vx vs vr : Sem) : SState
 /-- **A dependent pair with its index lent**: the value read at the dependent field does not read
 the lent index. -/
 theorem dws_LendIndex (C S Vb R : SBinding) (ps : Rec) (vx vs vr : Sem) :
-    DepWithinSites dm Γ (SLI C S Vb R ps vx vs vr) := by
+    DepWithinSites (SLI C S Vb R ps vx vs vr) := by
   intro p steps ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
   · rcases f with _ | _ | f
@@ -362,7 +364,7 @@ theorem dws_LendIndex (C S Vb R : SBinding) (ps : Rec) (vx vs vr : Sem) :
             exact this
           obtain ⟨hn, hk⟩ := off_key00 hxp.2 hd
           simp only [SState.valAt, SLI, SState.tyAt]
-          exact follow_dat_off dm Γ "V" ps vx _ _ steps _ hn hk
+          exact follow_dat_off "V" ps vx _ _ steps hn hk
       · simp [SState.valAt, SLI]
       · simp [SState.valAt, SLI]
     · simp [SState.valAt, SLI]

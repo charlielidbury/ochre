@@ -1,5 +1,6 @@
 import Ochr.Meaning.Strict.Fund
-import Ochr.Meaning.Strict.ReadProto
+import Ochr.Meaning.DataModel.ReadMember
+import Ochr.Meaning.DataModel.Program
 
 /-!
 # "Well typed inside": a value with a meaning is hereditarily well typed (the strict type formers' payoff)
@@ -19,14 +20,14 @@ an invariant: it follows from the value having a meaning (`hwt_of_fit`).
 * a constructor value's recorded parameters are not asked (no proof uses them); its type is a data
   code at its record (`T.dataCode?`); each field is read at the hint its declaration (found by name,
   as the value's meaning finds it) gives it, and typed at the type the READ gives it
-  (`ReadProto.readTy`, at the type's declaration and the value's record: no declaration is looked
+  (`DataModel.readTy`, at the type's declaration and the value's record: no declaration is looked
   up for the type, so no coherence between the two is asked);
 * code is excepted: a closure's and a Π-closure's captures are typed, their code is not; a sealed
   program only fits.
 
 The lemma's one side condition (`NoProp`, the trial's exception (b)): no constructor value of a
 `Prop` declaration (it means `⋆`; the checker's D42 invariant). The trial's exception (c), a data
-code off the program's declarations, is gone with the read typed by the type (`ReadProto`): a field
+code off the program's declarations, is gone with the read typed by the type (`DataModel.readTy`): a field
 of a member of ANY data code fits the type the read gives it. What still reads the program's
 declarations is the MEANING of a value (a checker value names its declaration by string).
 -/
@@ -99,7 +100,7 @@ type the read gives it in a value of `d'` (none: nothing asked, a junk leaf). -/
 inductive HWTFields : IndDecl → IndDecl → Rec → Nat → Nat → List Sem → List Value → Prop
   | nil {d d' : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} : HWTFields d d' r c i e []
   | cons {d d' : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {v : Value} {vs : List Value} :
-      (∀ U, ReadProto.readTy K.dm d' r c i e (meanV K ρ φ (.plain (K.dm.fieldTyR d r c i e)) v) = some U →
+      (∀ U, K.dm.readTy d' r c i e (meanV K ρ φ (.plain (K.dm.fieldTyR d r c i e)) v) = some U →
         HWT (.plain (K.dm.fieldTyR d r c i e)) U v) →
       HWTFields d d' r c (i + 1) (e ++ [meanV K ρ φ (.plain (K.dm.fieldTyR d r c i e)) v]) vs →
       HWTFields d d' r c i e (v :: vs)
@@ -255,17 +256,17 @@ theorem POk.cons {d : IndDecl} {i : Nat} {e : List Sem} {m : Sem} {ms : List Sem
 /-- Fields `fs`, from index `i` after the earlier `e`, are members of the types the read gives them
 in a value of `d'` at `r`. -/
 def FOk (dm : DataModel) (d' : IndDecl) (r : Rec) (c i : Nat) (e fs : List Sem) : Prop :=
-  ∀ j f, fs[j]? = some f → ∀ U, ReadProto.readTy dm d' r c (i + j) (e ++ fs.take j) f = some U → f ∈ₛ[dm.read] U
+  ∀ j f, fs[j]? = some f → ∀ U, dm.readTy d' r c (i + j) (e ++ fs.take j) f = some U → f ∈ₛ[dm.read] U
 
 theorem FOk.cons {d' : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {m : Sem} {ms : List Sem}
     (h : FOk dm d' r c i e (m :: ms)) :
-    (∀ U, ReadProto.readTy dm d' r c i e m = some U → m ∈ₛ[dm.read] U) ∧ FOk dm d' r c (i + 1) (e ++ [m]) ms := by
+    (∀ U, dm.readTy d' r c i e m = some U → m ∈ₛ[dm.read] U) ∧ FOk dm d' r c (i + 1) (e ++ [m]) ms := by
   refine ⟨fun U hU => h 0 m rfl U (by simpa using hU), fun j v hv U hU => ?_⟩
   refine h (j + 1) v (by simpa using hv) U ?_
   rw [show i + (j + 1) = i + 1 + j by omega]
   simpa [List.take_succ_cons] using hU
 
-/-- **A member's fields fit the types the read gives them** (`ReadProto.fits_readTy`), whatever the
+/-- **A member's fields fit the types the read gives them** (`DataModel.fits_readTy`), whatever the
 data code: no declaration is found by name. -/
 theorem fOk_of_mem {d' : IndDecl} {r : Rec} {n : String} {c : Nat} {gs : List Sem}
     (hm : dm.Mem d' r (.dat n r c gs)) : FOk dm d' r c 0 [] gs := by
@@ -276,8 +277,8 @@ theorem fOk_of_mem {d' : IndDecl} {r : Rec} {n : String} {c : Nat} {gs : List Se
   subst hc
   have hfit := DataModel.fitsM_get dm.sig d' r c _ 0 [] gs hfits j f hf
   simp only [Nat.zero_add, List.nil_append] at hfit hU
-  rw [ReadProto.readTy_fit dm hfit] at hU
-  exact ReadProto.fits_readTy dm hfit hU
+  rw [dm.readTy_fit hfit] at hU
+  exact dm.fits_readTy hfit hU
 
 end
 
@@ -445,7 +446,7 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 /-- **The payoff, composed**: where a successful strict run from a good state returns the meaning of
 a value `v` (read at `h`) with no `Prop` constructor value inside, `v` is hereditarily well typed at
 the run's type, unless the result is the error-type escape. (It inherits `fund_all`'s guesses; and
-`FundCtx` is uninhabited while `MemReads` asks its partly moved form, `ReadProto.not_typed_below`.) -/
+`FundCtx` is uninhabited while `MemReads` asks its partly moved form, `ReadProto.not_memReads_dep`.) -/
 theorem hwt_of_run (hc : FundCtx K) {t : Term} (ht : t.valsOk (ValsP K ρ φ)) {tl : Bool} {hint : TyS}
     {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s) (hr : runT K ρ φ tl hint t s = some (r, s'))
     {v : Value} {h : TyS} (hv : meanV K ρ φ h v = r.1) (hcv : NoProp K v) :

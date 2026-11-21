@@ -98,18 +98,31 @@ variable (dm : DataModel) (Γ : List IndDecl) (T : TyS)
 theorem md_deref (s : Sem) : Sem.step dm Γ T .deref s = some (s, T) := rfl
 theorem md_field_proof : (Sem.step dm Γ T (.field g) .proof).map Prod.fst = some .proof := rfl
 theorem md_field_moved : Sem.step dm Γ T (.field g) .moved = none := rfl
-theorem md_field_dat (r : Rec) (a b : Sem) :
+/-- At a type of `T`'s declaration where the field's read type is defined (route (c): a read is typed
+by the type it starts at). -/
+theorem md_field_dat (r r₀ : Rec) (a b : Sem) (d : IndDecl) (hT : T.m.dataCode? = some (d, r₀))
+    (hd : d.name = "T") (hU : (dm.readTy d r 0 0 [] a).isSome) :
     (Sem.step dm Γ T (.field g) (.dat "T" r 0 [a, b])).map Prod.fst = some a := by
-  simp [Sem.step, Sem.stepField, g]
+  obtain ⟨U, hU⟩ := Option.isSome_iff_exists.mp hU
+  simp [Sem.step, Sem.stepField, g, hT, hd, hU]
 theorem md_field_otherCtor (r : Rec) (a : Sem) : Sem.step dm Γ T (.field g) (.dat "T" r 1 [a]) = none := by
-  simp [Sem.step, Sem.stepField, g]
+  simp only [Sem.step, Sem.stepField, g]
+  split
+  · split
+    · exact if_neg (fun h => absurd h.2 (by decide))
+    · rfl
+  · rfl
 theorem md_field_otherDecl (r : Rec) (a : Sem) : Sem.step dm Γ T (.field g) (.dat "U" r 0 [a]) = none := by
   simp [Sem.step, g]
 theorem md_pred_succ : (Sem.step dm Γ T (.proj 0) (.el0 Nat 1)).map Prod.fst = some (.el0 Nat 0) := by
   simp [Sem.step, Sem.asNat, Sem.as]
 theorem md_pred_zero : Sem.step dm Γ T (.proj 0) (.el0 Nat 0) = none := by
   simp [Sem.step, Sem.asNat, Sem.as]
-theorem md_proj_moved : Sem.step dm Γ T (.proj 0) .moved = none := rfl
+theorem md_proj_moved : Sem.step dm Γ T (.proj 0) .moved = none := by
+  simp only [Sem.step, show Sem.moved.asNat = none from rfl]
+  split
+  · rename_i heq; cases heq
+  · rfl
 theorem md_proj_proof : (Sem.step dm Γ T (.proj 2) .proof).map Prod.fst = some .proof := rfl
 
 /-- The drop's write through `*` at `proof` is made (DP1's cell): `*` is the identity. -/

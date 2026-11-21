@@ -219,6 +219,101 @@ theorem read_wholeFields : dm.read.WholeFields := by
   · exact DataLib.mem_whole dm.sig d r _ ((DataLib.mem_iff_meanC dm.sig d r _).2 ⟨_, rfl⟩)
   · simp [Sem.whole]
 
+/-! ## The type a read gives a field (route (c), 2026-11-21; `Strict/ReadProto.lean` the prototype)
+
+A field is typed from the TYPE the read starts at (a data code carries its declaration) and the
+value's own record, through the universal signature: no declaration is looked up by name. The
+declaration is needed for one thing only, which earlier fields are index fields (the record's key
+projects to them, `projIdx`). `readTy` is THE function for "the type a read gives a field": the
+run's read (`Places.Sem.stepField`), open membership (`OMem`) and the read lemma use it. -/
+
+/-- The declaration and record of a data code, at any carrier level (lifts included). -/
+def _root_.Ochr.Meaning.Code1.dataCode? : {A : Type 1} → Code1 A → Option (IndDecl × Rec)
+  | _, .lift _ c => c.dataCode?
+  | _, _ => none
+
+def _root_.Ochr.Meaning.Code2.dataCode? : {A : Type 2} → Code2 A → Option (IndDecl × Rec)
+  | _, .lift _ c => c.dataCode?
+  | _, _ => none
+
+def _root_.Ochr.Meaning.TyM.dataCode? : TyM → Option (IndDecl × Rec)
+  | .t0 _ c => c.dataCode?
+  | .t1 _ c => c.dataCode?
+  | .t2 _ c => c.dataCode?
+
+/-- The data code of `d` at `r` over the model's carrier, whatever `d`'s sort (a `sub` shape's members). -/
+noncomputable def rawTy (d : IndDecl) (r : Rec) : TyM := .t0 (dm.car d r) (.data d r (dm.car d r))
+
+/-- A leaf code that is a data code over the model's own carrier (the junk leaf `LeafOk` excludes). -/
+def OwnCarrier {B : Type} (c : Code0 B) : Prop := ∃ d r, c.dataCode? = some (d, r) ∧ B = dm.car d r
+
+open Classical in
+/-- The type a field of a shape is read at: the type whose members are the values that fit it;
+none at a junk leaf (no type has its tagged elements as members). -/
+noncomputable def shapeReadTy : Shape → Option TyM
+  | .leaf B c => if dm.OwnCarrier c then none else some (.t0 B c)
+  | .sub d r => some (dm.rawTy d r)
+  | .prf d r => some (TyM.prop (Nonempty (dm.car d r)))
+
+/-- **The type field `i` of constructor `c` is read at**, in a value of declaration `d` at its own
+record `r`, given the earlier fields and the field itself: the shape's; a constructor value in a
+data field at ITS OWN record (D112: a tree field keeps the type its own record gives). -/
+noncomputable def readTy (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) (f : Sem) : Option TyM :=
+  match dm.sig.shape d r c i (earlier.map Sem.small), f with
+  | .sub d' _, .dat _ r' _ _ => some (dm.rawTy d' r')
+  | sh, _ => dm.shapeReadTy sh
+
+/-- **A fitting value is a member of the type its shape is read at.** -/
+theorem fits_readTy {sh : Shape} {f : Sem} {U : TyM} (hf : FitsOneM dm.sig sh f) (hU : dm.shapeReadTy sh = some U) :
+    f ∈ₛ[dm.read] U := by
+  cases sh with
+  | leaf B c =>
+    simp only [shapeReadTy] at hU
+    split at hU
+    · cases hU
+    · rename_i hown
+      cases hU
+      obtain ⟨b, rfl⟩ := hf
+      refine ⟨b, ?_⟩
+      cases c with
+      | data d r A =>
+        have hA : B ≠ dm.car d r := fun h => hown ⟨d, r, rfl, h⟩
+        show dm.readFn d r B b = _
+        simp only [readFn, dif_neg hA, encLeaf]
+      | err => exact b.elim
+      | prop P => rfl
+      | nat => rfl
+      | unit => rfl
+      | pi C t => rfl
+  | sub d r =>
+    simp only [shapeReadTy, Option.some.injEq] at hU
+    subst hU
+    obtain ⟨x, rfl⟩ := (dm.mem_iff_meanC d r f).1 hf
+    exact ⟨x, show dm.read.read d r (dm.car d r) x = _ from dm.read_car x⟩
+  | prf d r =>
+    simp only [shapeReadTy, Option.some.injEq] at hU
+    subst hU
+    obtain ⟨rfl, v, hv⟩ := hf
+    obtain ⟨x, -⟩ := (dm.mem_iff_meanC d r v).1 hv
+    exact ⟨⟨⟨x⟩⟩, rfl⟩
+
+/-- For a value that fits the field's shape, the field's type is the shape's. -/
+theorem readTy_fit {d : IndDecl} {r : Rec} {c i : Nat} {earlier : List Sem} {f : Sem}
+    (hf : FitsOneM dm.sig (dm.sig.shape d r c i (earlier.map Sem.small)) f) :
+    dm.readTy d r c i earlier f = dm.shapeReadTy (dm.sig.shape d r c i (earlier.map Sem.small)) := by
+  unfold readTy
+  generalize dm.sig.shape d r c i (earlier.map Sem.small) = sh at hf ⊢
+  cases sh with
+  | sub d' r₀ =>
+    cases f with
+    | dat n r' c' fs =>
+      obtain ⟨_, _, he, _⟩ := (DataLib.mem_iff dm.sig d' r₀ _).1 hf
+      simp only [Sem.dat.injEq] at he
+      obtain ⟨-, rfl, -⟩ := he
+      rfl
+    | _ => rfl
+  | _ => rfl
+
 /-- A whole constructor value that is OPEN in the data type `T` (D64): it names `T`'s declaration
 and record and its fields are whole (a field may lie outside the type its earlier fields give; the
 checker types such a field by its content until [Repack]). Membership's `pmem` admits it, as the

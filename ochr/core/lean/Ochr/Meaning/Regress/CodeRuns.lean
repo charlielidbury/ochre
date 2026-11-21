@@ -659,7 +659,7 @@ fields (`Sem.stepField`). -/
 theorem run_list34 (hint : TyS) (s : SState) :
     run (Kp dmP [listD] G) ρ φ hint (consT 3 (consT 4 nilT)) s = some ((semL [3, 4], .plain (dmP.tyM listD psN)), s) ∧
       indTag (semL [3, 4]) (.plain (dmP.tyM listD psN)) = .el0 Nat 1 ∧
-      Sem.stepField dmP [listD] 1 1 (semL [3, 4]) = some (semL [4], .plain (dmP.tyM listD psN)) := by
+      Sem.stepField dmP (.plain (dmP.tyM listD psN)) 1 1 (semL [3, 4]) = some (semL [4], .plain (dmP.tyM listD psN)) := by
   refine ⟨run_cons G ρ φ 3 _ [4] s (fun hint => run_cons G ρ φ 4 _ [] s (fun hint => run_nil G ρ φ hint s) hint) hint,
     rfl, rfl⟩
 
@@ -747,7 +747,7 @@ theorem run_tree (hint : TyS) (s : SState) :
     run (Kp dmP ΓR G) ρ φ hint (nodeT 1 (rconsT (nodeT 2 rnilT) rnilT)) s
         = some ((nodeV 1 (consV (nodeV 2 nilV) nilV), .plain (dmP.tyM roseD psN)), s) ∧
       indTag (nodeV 1 (consV (nodeV 2 nilV) nilV)) (.plain (dmP.tyM roseD psN)) = .el0 Nat 0 ∧
-      Sem.stepField dmP ΓR 0 1 (nodeV 1 (consV (nodeV 2 nilV) nilV))
+      Sem.stepField dmP (.plain (dmP.tyM roseD psN)) 0 1 (nodeV 1 (consV (nodeV 2 nilV) nilV))
         = some (consV (nodeV 2 nilV) nilV, .plain (dmP.tyM listD psR)) := by
   refine ⟨run_node G ρ φ 1 _ _ s (fun hint => run_lrCons G ρ φ _ _ _ _ s
       (fun hint => run_node G ρ φ 2 _ _ s (fun hint => run_lrNil G ρ φ hint s) nil_mem hint)

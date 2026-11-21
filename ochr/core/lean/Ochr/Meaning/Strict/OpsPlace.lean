@@ -260,7 +260,12 @@ theorem follow_proof (dm : DataModel) (Γ : List IndDecl) : ∀ (T : TyS) (steps
     | proj i =>
       cases i with
       | zero =>
-        simp only [Sem.step, Sem.asNat, Sem.as, Sem.stepField, Option.bind_some] at h
+        have hs : Sem.step dm Γ T (.proj 0) .proof = some (.proof, .plain TyM.err) := by
+          simp only [Sem.step, Sem.asNat, Sem.as]
+          split
+          · rename_i heq; cases heq
+          · rfl
+        rw [hs, Option.bind_some] at h
         obtain ⟨hx, hU | hU⟩ := follow_proof dm Γ _ sts x U h
         · exact ⟨hx, .inr (by rw [hU]; rfl)⟩
         · exact ⟨hx, .inr hU⟩
