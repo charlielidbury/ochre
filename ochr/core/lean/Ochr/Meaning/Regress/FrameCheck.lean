@@ -137,7 +137,7 @@ theorem id1_start (c : Sem) : FrameRel (fun l => l) (SPg selfB d c r) [0] (SPg s
     · simp [SBs, h] at hq
   held := fun l hl => by
     have h0 : l = 0 := by simpa [SState.Live, liveLabels_SBs] using hl
-    subst h0; simp [SPg, SBs]
+    subst h0; simp [SPg, SBs, yB]; rfl
   lentTop := fun l x hx => by
     constructor
     · intro hm
@@ -184,7 +184,7 @@ theorem id1_after (T : TyM) (c c₀ : Sem) :
   held := fun l hl => by
     have h01 : l = 0 ∨ l = 1 := by
       have := hl; simp only [SState.Live, liveLabels_SB2] at this; simpa using this
-    rcases h01 with rfl | rfl <;> simp [SPg2, SB2]
+    rcases h01 with rfl | rfl <;> simp [SPg2, SB2, yB] <;> rfl
   lentTop := fun l x hx => by
     obtain ⟨pos, path, fill⟩ := x
     by_cases h1 : l = 1

@@ -128,9 +128,12 @@ structure FrameRel (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (s s' : SS
   /-- the same holders in the top frame, renamed; the cells hold nothing, and the closure nothing else -/
   topShape : ∀ p, p.frameOf = s₀.topIdx → s.shape p = (s'.shape (upPos ks.length p)).map σ
   clShape : ∀ q l, s'.shape q = some l → ∃ p, p.frameOf = s₀.topIdx ∧ q = upPos ks.length p
-  /-- the same records for the frame's labels, and the same held types but for the parameters' (in
-  place the caller's, in the closure none: a parameter's holder is a binding, typed by its type) -/
-  held : ∀ l, s'.Live l → s.heldMem (σ l) = s'.heldMem l ∧ (σ l ∉ ks → s.heldTy (σ l) = s'.heldTy l)
+  /-- the same held types for the frame's labels, and the same records but for the parameters' (docs/31
+  D113's note, made in D129: a parameter's record is in place the content when the caller's borrow was
+  made, in the closure the argument, and they differ when the caller wrote through the borrow before
+  the call; no run reads a parameter's record, while the strict ends read every held type, and at the
+  call the parameters' held types agree by the call's strict test, `BorrowArgsTyped`) -/
+  held : ∀ l, s'.Live l → (σ l ∉ ks → s.heldMem (σ l) = s'.heldMem l) ∧ s.heldTy (σ l) = s'.heldTy l
   /-- the same sites in the top frame, renamed; only the frame's labels have one there; the closure
   has no other -/
   lentTop : ∀ l (x : Site), x.pos.frameOf = s₀.topIdx →
@@ -173,9 +176,8 @@ with that clause, is `Steps/FrameFrag.RunFrameS` (a named proposition); proved o
 written: what reads a state reads the top frame, the holders and sites at the top frame, or the records of
 the frame's labels; what writes the caller's frames is [End] of a frame label and a call's fixing of its
 consumed arguments; a label issued is renamed by `σ`'s fresh clause; a closure formed in the body means
-its body's runs from the extended states, related again. Also open about `FrameRel` (D113): its `held`
-clause asks the parameters' records (`heldMem`) to agree, which fails at the call whenever a borrow
-argument was written through before the call. -/
+its body's runs from the extended states, related again. D113's note on `FrameRel.held` (it asked the
+parameters' records to agree) is applied in D129: see the clause. -/
 
 /-- The caller's frames tell apart any two lists of whole members of the parameters' types (`Ts`): what
 an `Id` observation in place needs (a place lent to a parameter reads its final content directly, or
