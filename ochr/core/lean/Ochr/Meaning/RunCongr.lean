@@ -196,7 +196,7 @@ theorem lentOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv
     lentOk K φ p s ↔ lentOk K φ' p s := by
   unfold lentOk
   split
-  · exact or_congr Iff.rfl (stateOk_congr K hφ hi)
+  · exact or_congr Iff.rfl (or_congr Iff.rfl (stateOk_congr K hφ hi))
   · exact Iff.rfl
 
 theorem assignAt_congr (hφ : ∀ l, L l → φ l = φ' l) {s₁ : SState} (hi₁ : RInv L s₁) (p : Place) (v : Sem)

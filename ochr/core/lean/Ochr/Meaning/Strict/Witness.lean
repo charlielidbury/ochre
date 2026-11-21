@@ -258,7 +258,7 @@ theorem run_refill (dm : DataModel) (ρ : Assignment) (hint : TyS) :
   rw [hinv, if_pos]
   unfold lentOk
   rw [show resolve sA' (pred 0) = some (.bind 0 0, [.proj 0]) from rfl]
-  exact .inr (stateOk_sA' dm [])
+  exact .inr (.inr (stateOk_sA' dm []))
 
 /-- **The fundamental lemma applied to the refill**, from the state the move left (good by the lemma
 applied to the move). -/
@@ -550,7 +550,7 @@ theorem run_borrow (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS) :
   rw [invalidate_sE1, if_pos]
   unfold lentOk
   rw [show resolve (sE2 dm) (.field gN (.var 0)) = some (.bind 0 0, [.field gN]) from rfl]
-  exact .inr (stateOk_sE2 dm)
+  exact .inr (.inr (stateOk_sE2 dm))
 
 /-- **The fundamental lemma applied to a borrow of an index with a dependent sibling.** -/
 theorem w_borrowIndex (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS) :

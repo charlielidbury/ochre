@@ -554,7 +554,7 @@ theorem lentOk_deref_S₅ (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : S
   have hr : resolve (S₅ F n b k c w) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₅]
   unfold lentOk; rw [hr]
-  exact .inr (stateOk_S₅ K φ F n b k c w hb hw)
+  exact .inr (.inl rfl)
 
 /-- `peek(c1)` on `S₅`: the backward function's component for `c1` at the written value, when it
 is a number; `err` (not whole, so the read fails) otherwise. -/

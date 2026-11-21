@@ -1087,8 +1087,9 @@ theorem borrowPlace_field_sgood {p : Place} {s s₁ : SState} {r : Res} (hs : SG
   have hr : resolve (invalidate K φ p _) p = some (pos, steps) :=
     (resolve_envLe (hE.trans (invalidate_props K φ (fun _ => True) p hrinv).2.1) p).trans hres
   unfold lentOk at hok; rw [hr] at hok
-  rcases hok with h0 | hok
+  rcases hok with h0 | h0 | hok
   · exact absurd (hsteps ▸ h0) hfield.1
+  · exact absurd (hsteps ▸ h0) hfield.2
   · exact sgood_of_stateOk hS hok
 
 /-- **A borrow's strict content test**: the result is a member whose fresh label records its type and
@@ -1476,8 +1477,9 @@ theorem setContent_field_sgood {s s₁ : SState} (hs : SGood K.dm K.Γ φ s) {p 
     ((setContent_envLe K φ h).trans (invalidate_props K φ (fun _ => True) p hS₁.acyc).2.1)
   have hr : resolve (invalidate K φ p s₁) p = some (.bind f i, steps) := (resolve_envLe hE p).trans hres
   unfold lentOk at hok; rw [hr] at hok
-  rcases hok with h0 | hok
+  rcases hok with h0 | h0 | hok
   · exact absurd h0 hst.1
+  · exact absurd h0 hst.2
   · exact sgood_of_stateOk hS hok
 
 /-- The type of a place at a root or through `*`: its binding's stored type. -/

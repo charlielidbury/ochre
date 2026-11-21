@@ -501,10 +501,13 @@ def StateOk (s : SState) : Prop :=
 /-- STRICT below a root (the dependent-values unit; the checker's tests where lent parts are
 unknowns): after a write or a borrow at a field path, and D112's invalidation, every position holds
 an open member of its type at every typed future (a write of an index, or a lent index, could leave
-a later field outside the type the read gives it; the invalidation's ends pass contents on). -/
+a later field outside the type the read gives it; the invalidation's ends pass contents on). A
+write or a borrow at a root or through `*` (`[]`, `[*]`) is whole, tested by the clause itself (the
+orchestrator's rule, 2026-11-21, tests the FIELD paths; testing `[*]` too rejected a write through a
+reference in a call frame whose other positions are not open members, `Regress/CallInPlace`). -/
 def lentOk (p : Place) (s : SState) : Prop :=
   match resolve s p with
-  | some (_, steps) => steps = [] ∨ StateOk K φ s
+  | some (_, steps) => steps = [] ∨ steps = [.deref] ∨ StateOk K φ s
   | none => True
 
 /-- D112 [Open]: a write or a borrow of `p` invalidates the places `Decisions.invalidated` gives:
