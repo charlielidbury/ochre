@@ -64,6 +64,20 @@ def stX1 : MState := { env := #[{ binds := #[bN "x" (.succ .zero)] }] }
   [0, 1, 2].all fun m => !isOk (Ochr.eval m true t none) stX1 1000
 #guard isOk (Ochr.eval 3 true .zero none) stX1 1000
 
+-- `DropBorrowInv`: the drop of `y ↦ borrow_0 S(Z)` gives `x` its content back and pops `y`; another
+-- live borrow (`z`, `w`) is kept; the tail's value parked meanwhile (a number, another label's borrow)
+def bindsD : Array Binding :=
+  #[bN "x" (.loan 0), bN "z" (.loan 1), bR "w" (.borrow 1 .zero), bR "y" (.borrow 0 (.succ .zero))]
+def frD (tmp : Value) (T : Value) : Frame := { binds := bindsD, temps := #[tmp], tempTys := #[some T] }
+def stD (tmp : Value) (T : Value) : MState := { env := #[frD tmp T], nextLoan := 2 }
+#guard vals (outSt (Ochr.dropTopBind 100) (stD (.borrow 1 .zero) (.tRef .tNat)) 1000) == [.succ .zero, .loan 1, .borrow 1 .zero]
+#guard vals (outSt (Ochr.dropTopBind 100) (stD .zero .tNat) 1000) == [.succ .zero, .loan 1, .borrow 1 .zero]
+#guard vals (outSt (Ochr.dropTopBind 100) { stD .zero .tNat with typing := true } 1000) ==
+  [.succ .zero, .loan 1, .borrow 1 .zero]
+-- `SeqBorInv`: `&x; x` from `x ↦ S(Z)`: the discard ends the borrow, `x` is read back
+#guard outVal (Ochr.evalCore 100 true (.seq (.borrow (.var 0)) (.place (.var 0))) none) stX1 1000 == (.succ .zero, some .tNat)
+#guard isOk (Ochr.evalCore 100 true (.seq (.borrow (.var 0)) (.place (.var 0))) none) { stX1 with curTail := true } 1000
+
 end FragGuards
 
 end Ochr.Meaning.Steps.Form

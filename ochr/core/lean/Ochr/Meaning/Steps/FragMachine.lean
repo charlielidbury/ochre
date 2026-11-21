@@ -64,4 +64,39 @@ def EvalLow : Prop :=
   ∀ (m : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
     m < 3 → (∀ w, t ≠ .val w) → ¬ Runs (Ochr.eval m typed t hint) st bh r st'
 
+/-! ## For the open cases (`let` and `;` ending a borrow; lead10, stated for the machine lane's review) -/
+
+/-- **[Drop] of a `let`'s binding holding a borrow** (`dropTopBind`, the top binding `y ↦ borrow_l c`,
+`c` a number, lent by the number binding `px`; a fragment environment, `FEnd`): after a quiet
+stretch (the end's [Repack] of `c` at `Nat`), `endBorrow l` (`y ↦ ⊥`, `px ↦ c`), then the binding is
+popped. The tail's value is parked as a temporary meanwhile (a number, `()` or another label's
+borrow: `FEnd` asks only that no temporary hold a loan). -/
+def DropBorrowInv : Prop :=
+  ∀ (n : Nat) (st st' : MState) (bh : Nat) (fr : Frame) (b : Binding) (px : Pos) (l : Nat) (c : Value),
+    st.env[st.env.size - 1]? = some fr → fr.binds.back? = some b → b.val = .borrow l c →
+    FEnd st.env px (.bind (st.env.size - 1) (fr.binds.size - 1)) l c →
+    Runs (Ochr.dropTopBind n) st bh () st' →
+    ∃ st₁, Quiet st st₁ ∧ KeepsInv st st₁ ∧
+      Kern { st₁ with env := Env.popBindE (endE st₁.env px (.bind (st.env.size - 1) (fr.binds.size - 1)) c) } st'
+
+/-- **`evalCore` of a typed `u; w` whose first part is a borrow** (`.seq`; `SeqInv` for the value
+`borrow_l c`, `c` a number, lent by the number binding `px`): `dropValue` parks it, ends `l` (`px ↦ c`,
+the parked holder `⊥`) and pops it, after a quiet stretch (the end's [Repack]); then `w` as in
+`SeqInv`. -/
+def SeqBorInv : Prop :=
+  ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
+    (D : Decisions),
+    Mode st → st.tailNext = false → st.tailDecl = none → DecTab D st' →
+    Runs (Ochr.evalCore (n + 1) true (.seq u w) hint) st bh (v, T?) st' →
+    ∃ (st₀ st₁ stW : MState) (v₀ : Value) (T₀ : Option Value) (bh₁ bh₂ : Nat),
+      Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧
+      (stW.tailDecl = none ∨ stW.tailDecl = st.curDecl) ∧ Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, T₀) st₁ ∧
+      DecTab D st₁ ∧
+      (∀ l c px, v₀ = .borrow l c → c.Num → (∀ q ∈ allPos st₁.env, FVal (valAt st₁.env q)) →
+        valAt st₁.env px = .loan l → px ∈ allPos st₁.env →
+        (∀ q ∈ allPos st₁.env, ∀ w', valAt st₁.env q ≠ .borrow l w') →
+        ∃ st₂, Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ Kern { st₂ with env := Env.setAtE st₂.env px c } stW) ∧
+      ModeEq st₁ stW ∧ stW.tailNext = st.curTail ∧
+      Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st'
+
 end Ochr.Meaning.Steps.Form
