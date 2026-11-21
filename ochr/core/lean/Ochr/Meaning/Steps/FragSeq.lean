@@ -4,7 +4,7 @@ import Ochr.Meaning.Steps.FragLet
 # The fragment's `u; w` (lead11)
 
 The first part's value dropped: a number or `()` ends nothing (`SeqInv`, proved by the machine lane;
-`seqI_core` here); a borrow is ended by the drop (`SeqBorInv`; the case `FragCases.seqBor`).
+`seqI_core` here); a borrow is ended by the drop (`SeqBorInv`; `FragSeqB.seqB_core`).
 -/
 
 namespace Ochr.Meaning.Steps.Form

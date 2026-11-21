@@ -83,7 +83,9 @@ def DropBorrowInv : Prop :=
 `borrow_l c`, `c` a number, lent by the number binding `px`): `dropValue` parks it, ends `l` (`px ↦ c`,
 the parked holder `⊥`) and pops it, after a quiet stretch (the end's [Repack]); then `w` as in
 `SeqInv`. The mode is kept only under the antecedent (lead11, as `SeqInv`: unconditional it would ask
-the ending machinery of any value to keep the mode, a whole-machine fact). -/
+the ending machinery of any value to keep the mode, a whole-machine fact). The invariant is kept across the quiet stretch WITH the value parked (lead12;
+first stated as `KeepsInv st₁ st₂`, on the states without it, where `px` holds a loan whose borrow is
+nowhere, which `Inv` need not admit: unusable). -/
 def SeqBorInv : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -96,8 +98,8 @@ def SeqBorInv : Prop :=
       (∀ l c px, v₀ = .borrow l c → c.Num → (∀ q ∈ allPos st₁.env, FVal (valAt st₁.env q)) →
         valAt st₁.env px = .loan l → px ∈ allPos st₁.env →
         (∀ q ∈ allPos st₁.env, ∀ w', valAt st₁.env q ≠ .borrow l w') →
-        ∃ st₂, Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ Kern { st₂ with env := Env.setAtE st₂.env px c } stW ∧
-          ModeEq st₁ stW) ∧
+        ∃ st₂, Quiet st₁ st₂ ∧ KeepsInv (st₁.withTempT v₀ T₀) (st₂.withTempT v₀ T₀) ∧
+          Kern { st₂ with env := Env.setAtE st₂.env px c } stW ∧ ModeEq st₁ stW) ∧
       stW.tailNext = st.curTail ∧
       Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st'
 
@@ -200,5 +202,36 @@ def AssignDerefInvF : Prop :=
         ∃ st₂, Quiet st₁ st₂ ∧ ((∀ T, T₀ = some T → (T == .tNat) = true) → KeepsInv st₁ st₂) ∧ ModeEq st₁ st' ∧
           ckVarPos st₂.env i = some (.bind f j) ∧ st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧
           Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st'
+
+/-! ## For `&x` with other borrows live (lead12) -/
+
+/-- **`InvLend` with other borrows live** (state-level; the fragment's `&x`, `FragBorrow.borF_core`):
+a binding stored at `Nat` read `.other`, holding a number, lent at the counter, the borrow in flight.
+`InvLend` asked that no loan be live anywhere; here other loans may be live, at a fragment
+environment (every position a fragment value, `FVal`; every temporary a number or `()`: the fragment
+parks no borrow across a sub-term). Not run (`Inv` is not computable). -/
+def InvLendG : Prop :=
+  ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (f j : Nat) (T? : Option Value),
+    PlaceLocal D → Pos.bind f j ∈ allPos st.env → (valAt st.env (.bind f j)).Num →
+    (∀ b, st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.ty = some .tNat ∧ b.decl = .other) →
+    (∀ q ∈ allPos st.env, FVal (valAt st.env q)) →
+    (∀ f' i, Pos.temp f' i ∈ allPos st.env → (valAt st.env (.temp f' i)).Num ∨ valAt st.env (.temp f' i) = .unit) →
+    Inv D Γ st.norm →
+    Inv D Γ (({ st with env := Env.setAtE st.env (.bind f j) (.loan st.nextLoan), nextLoan := st.nextLoan + 1 } :
+      MState).withTempT (.borrow st.nextLoan (valAt st.env (.bind f j))) T?).norm
+
+/-- **`⊥` in flight popped** (state-level; lead12, the `;` after a borrow: the discard ends the borrow,
+leaving `⊥` in the temporary, then pops it). `InvPopInert` for `⊥`. Not run. -/
+def InvPopBot : Prop :=
+  ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (T? : Option Value),
+    Inv D Γ (st.withTempT .bot T?).norm → Inv D Γ st.norm
+
+/-- **A moved binding overwritten by a number** (state-level; lead12, `x := u` after `x` was moved):
+`InvSetNum` for an old content `⊥`, at a binding stored at `Nat` read `.other`. Not run. -/
+def InvSetBotNum : Prop :=
+  ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (f j : Nat) (v₀ : Value),
+    PlaceLocal D → (∀ b, st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .other ∧ b.ty = some .tNat) →
+    valAt st.env (.bind f j) = .bot → v₀.Num → Inv D Γ st.norm →
+    Inv D Γ { st with env := Env.setAtE st.env (.bind f j) v₀ }.norm
 
 end Ochr.Meaning.Steps.Form

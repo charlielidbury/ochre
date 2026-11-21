@@ -576,7 +576,7 @@ theorem rel_setBorrowNum {π : Nat → Nat} {st : MState} {s : SState} {f i : Na
         simp only [Value.anyAtom, Bool.or_eq_true, borrow_beq_loan, Bool.false_or] at ha
         rcases ha with ha | ha
         · exact beq_iff_eq.mp ha
-        · rw [hv'.inert.anyAtom _ (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
+        · rw [hv'.inert.anyAtom _ (by rfl) (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
       subst hal
       refine ⟨_, List.mem_map_of_mem hp, ?_⟩
       rw [hw0]; simp [Value.anyAtom]

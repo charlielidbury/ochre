@@ -46,17 +46,22 @@ theorem _root_.Ochr.Value.Num.not_borrow {v : Value} (h : v.Num) : ∀ l w, v �
 holder shape. Numbers (`Value.Num.inert`) and `()` (`Value.inert_unit`): what a step leaves in
 flight without touching the relation's bookkeeping. -/
 structure _root_.Ochr.Value.Inert (v : Value) : Prop where
-  anyAtom : ∀ P : Value → Bool, P .zero = false → P .unit = false → (∀ w, P (.succ w) = false) → v.anyAtom P = false
+  anyAtom : ∀ P : Value → Bool, P .zero = false → P .unit = false → P .bot = false → (∀ w, P (.succ w) = false) →
+    v.anyAtom P = false
   hasAbs : ∀ σ, v.hasAbs σ = false
   holdsBorrow : ∀ l, v.holdsBorrow l = false
   sitesOf : ∀ l pos path, v.sitesOf l pos path = []
   shape : shapeOf v = none
 
 theorem _root_.Ochr.Value.Num.inert {v : Value} (h : v.Num) : v.Inert :=
-  ⟨fun _ h0 _ hs => h.anyAtom h0 hs, h.hasAbs, h.holdsBorrow, h.sitesOf, by cases h <;> rfl⟩
+  ⟨fun _ h0 _ _ hs => h.anyAtom h0 hs, h.hasAbs, h.holdsBorrow, h.sitesOf, by cases h <;> rfl⟩
 
 theorem _root_.Ochr.Value.inert_unit : Value.Inert .unit :=
-  ⟨fun _ _ hu _ => by simp [Value.anyAtom, hu], fun _ => rfl, fun _ => rfl, fun _ _ _ => by simp [Value.sitesOf], rfl⟩
+  ⟨fun _ _ hu _ _ => by simp [Value.anyAtom, hu], fun _ => rfl, fun _ => rfl, fun _ _ _ => by simp [Value.sitesOf], rfl⟩
+
+/-- `⊥` is inert (lead12: a borrow ended in flight leaves `⊥` there, which `;` then pops). -/
+theorem _root_.Ochr.Value.inert_bot : Value.Inert .bot :=
+  ⟨fun _ _ _ hb _ => by simp [Value.anyAtom, hb], fun _ => rfl, fun _ => rfl, fun _ _ _ => by simp [Value.sitesOf], rfl⟩
 
 /-! ## The checker's environment with a temporary pushed -/
 
@@ -218,7 +223,7 @@ theorem rel_withTemp_inert {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Na
     rcases hw with hw | hw
     · exact ⟨w, hw, ha⟩
     · simp only [List.mem_singleton] at hw; subst hw
-      rw [hv.anyAtom _ (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
+      rw [hv.anyAtom _ (by rfl) (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
   · intro ψ hψ p hp
     cases p with
     | temp => exact absurd trivial hp

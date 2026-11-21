@@ -1,10 +1,10 @@
-import Ochr.Meaning.Steps.FragSeq
+import Ochr.Meaning.Steps.FragAsg
 
 /-!
-# The fragment theorem (lead10, lead11)
+# The fragment theorem (lead10, lead11, lead12)
 
 `frag_sim`: `eval_sim` for every term of the fragment, by induction on the typing, from the facts
-about the checker bundled as `FragFacts` and the cases not yet proved (`FragCases`).
+about the checker (and the decision table) bundled as `FragFacts`; every case is proved (lead12).
 -/
 
 namespace Ochr.Meaning.Steps.Form
@@ -35,37 +35,29 @@ structure FragFacts (D : Decisions) : Prop where
   popUnit : InvPopUnit
   bindUnit : InvBindUnit
   seqInv : SeqInv
-
-/-- **The steps of the fragment not yet proved**, each in the form the induction uses: from its
-sub-terms' steps at every extension of `Δ` and the assignment, the step at `evalCore`. The cases
-`Z`, `S` and the read are proved (`frag_sim`); these are the lead's open work (`OPEN.md`), stated
-here so that the induction is checked now. -/
-structure FragCases (K : RunCtx) (φ : Future) : Prop where
-  bor : ∀ Γ i, Γ[i]? = some .nat → ∀ m (Δ : Nat → TyS) (ρ : Assignment),
-    CoreSim { K with Δ := Δ } ρ φ (m + 1) (.borrow (.var i)) (FSt Γ) (· = true)
-  asg : ∀ Γ i u, Γ[i]? = some .nat → FTy Γ u .nat → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment), CoreSim { K with Δ := Δ } ρ φ (m + 1) (.assign (.var i) u) (FSt Γ) (· = true)
-  asgD : ∀ Γ i u, Γ[i]? = some .ref → FTy Γ u .nat → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment),
-      CoreSim { K with Δ := Δ } ρ φ (m + 1) (.assign (.deref (.var i)) u) (FSt Γ) (· = true)
-  seqBor : ∀ Γ u w B, FTy Γ u .ref → FTy Γ w B → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m w (FSt Γ) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment), CoreSim { K with Δ := Δ } ρ φ (m + 1) (.seq u w) (FSt Γ) (· = true)
+  borNum : BorrowNumInv
+  borLent : BorrowLentInv
+  borBot : BorrowBotInv
+  lendG : InvLendG
+  /-- D112's invalidation is empty (the fuel-free table's, by definition) -/
+  noInv : ∀ sc p, D.invalidated sc p = []
+  seqBor : SeqBorInv
+  popBot : InvPopBot
+  asgVar : AssignVarInv
+  setBotNum : InvSetBotNum
+  asgDeref : AssignDerefInvF
 
 /-- **The fragment theorem** (`eval_sim` at every fragment term): for every term the fragment types,
 every fuel, `Δ` and assignment, the step at `eval` from a state meeting `FSt`, by induction on the
-typing, each sub-term's step an induction hypothesis at every extension. `Z`, `S` and the read
-(a number, a lent variable, a moved one) are proved here; the other five cases are `FragCases`.
-Assumes facts about the checker alone (`EvalInv`, `ZeroInv`, `SuccInv`, `VarNumInv`, `VarLentInv`,
-`VarBotInv`, `EvalLow`, `FragNatRun`, `InvEnd`, `InvSteps`, `PlaceLocal`) and about the table
-(`FragDec`). -/
-theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.FundCtx K) (hcs : FragCases K φ) :
+typing, each sub-term's step an induction hypothesis at every extension. Every case is proved: `Z`,
+`S`, the read (`fvar_core`), `let` (`letF_core`), `;` (`seqI_core`, `seqB_core`), `&x` (`borF_core`),
+`x := u` (`asgF_core`), `*y := u` (`asgDF_core`). Assumes only the facts of `FragFacts`, about the
+checker alone and about its decision table (the list, with which are proved, is `OPEN.md`'s). -/
+theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.FundCtx K) :
     ∀ Γ t A, FTy Γ t A → ∀ n (Δ : Nat → TyS) (ρ : Assignment),
       EvalSim { K with Δ := Δ } ρ φ n t (FSt Γ) (· = true) := by
-  obtain ⟨hE, hZ, hS, hVN, hV, hVB, hIE, hI, hlow, hdec, hR, hPL, hL, hDN, hDB, hDL, hIU, hIBU, hSq⟩ := hf
+  obtain ⟨hE, hZ, hS, hVN, hV, hVB, hIE, hI, hlow, hdec, hR, hPL, hL, hDN, hDB, hDL, hIU, hIBU, hSq, hBN, hBL, hBB,
+    hILG, hNI, hSB, hIPB, hAV, hISB, hAD⟩ := hf
   have hnat := hR.nat
   intro Γ t A hty
   induction hty with
@@ -89,15 +81,17 @@ theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.Fu
   | bor Γ i hi =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.bor Γ i hi) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.bor Γ i hi m Δ ρ) n
+      (fun _ _ _ e => by cases e) (fun m => borF_core (K := { K with Δ := Δ }) hBN hBL hBB hIE hILG hPL hNI hi) n
   | asg Γ i u hi hu ih =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.asg Γ i u hi hu) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.asg Γ i u hi hu m (ih m) Δ ρ) n
+      (fun _ _ _ e => by cases e) (fun m => asgF_core (K := { K with Δ := Δ }) hAV hR hdec hI hIE hISB hPL hNI
+        ⟨hc.globals, hc.sorts⟩ hi hu (ih m Δ ρ)) n
   | asgD Γ i u hi hu ih =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.asgD Γ i u hi hu) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.asgD Γ i u hi hu m (ih m) Δ ρ) n
+      (fun _ _ _ e => by cases e) (fun m => asgDF_core (K := { K with Δ := Δ }) hAD hR hdec hI hPL hNI
+        ⟨hc.globals, hc.sorts⟩ hi hu (ih m Δ ρ)) n
   | letIn Γ x u w A B hu hw ihu ihw =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.letIn Γ x u w A B hu hw) (fun _ e => by cases e)
@@ -108,7 +102,8 @@ theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.Fu
     refine frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.seq Γ u w A B hu hw) (fun _ e => by cases e)
       (fun _ _ _ e => by cases e) (fun m => ?_) n
     by_cases hA : A = .ref
-    · subst hA; exact hcs.seqBor Γ u w B hu hw m (ihu m) (ihw m) Δ ρ
+    · subst hA
+      exact seqB_core (K := { K with Δ := Δ }) hSB hR hdec hIE hIPB hPL ⟨hc.globals, hc.sorts⟩ hu hw (ihu m Δ ρ) (ihw m)
     · exact seqI_core (K := { K with Δ := Δ }) hSq hR hdec hI ⟨hc.globals, hc.sorts⟩ hu hw hA (ihu m Δ ρ) (ihw m)
 
 end Ochr.Meaning.Steps.Form

@@ -138,6 +138,7 @@ import Ochr.Meaning.Steps.FragPush
 import Ochr.Meaning.Steps.FragLet
 import Ochr.Meaning.Steps.FragSeq
 import Ochr.Meaning.Steps.FragSim
+import Ochr.Meaning.Steps.FragTop
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects
