@@ -1,5 +1,21 @@
 # Machine lane: working note (keep current; a successor continues from this alone)
 
+## START HERE (machine4 → machine5, 2026-11-21 ~17:45; branch `spine-machine4`)
+
+- RULED (orchestrator): `PlaceLocal` (FormMachine) gains `unit : ∀ p n args, D.placeDecl [.unit] p ≠ .ind n args`,
+  proved for the fuel-free table by extending `placeLocal_ff` (PlaceLocalFF: add `.unit` to `InS`, recheck the
+  `ResIn` closure of `placeDeclD` under a `.unit` parent); NO separate hypothesis on `InvBindUnit`. Not started.
+  Why: `InvBindUnit` is FALSE at a free table (Inv's `fits` at a root read `.unit`; `().fitsInd n = false`).
+- The fragment's facts (`Steps/FragMachine.lean`), review state:
+  - PROVED (`Machine/FragFacts.lean`, root-imported): `VarBotInv`; `DropLentFail` (FALSE as first stated:
+    `findBorrow` answers the first holder; restated "the temporary is the only holder", consumer FragLet line).
+  - FALSE, fix ruled: `InvBindUnit` (above).
+  - TRUE by reading, not proved (plans under "machine4" below): `EvalLow`, `VarLentInv`, `DropBorrowInv`,
+    `InvEnd`, `InvPopUnit`, `AssignDerefInvF`.
+  - NOT read: `FragRun` (last), `FragDec` (decisions lane), `SeqBorInv`, `BorrowLentInv`, `BorrowBotInv`,
+    `AssignVarInv`; and `AssignNumInv`'s truth under D115 (the right-hand side now a temporary across the
+    type check) was NOT re-read (it is unproved).
+
 Worktree `/home/charlielidbury/repos/ochre-machine4`, branch `spine-machine4` (machine4, from 2026-11-21 night;
 before it machine3 in `ochre-machine3`/`spine-machine3`, machine2 in `ochre-machine2`/`spine-machine2`; push to your own branch; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
 the background), and `taskset -c 0-14 lake build OchrMeaning` before each push. Report to the lead
