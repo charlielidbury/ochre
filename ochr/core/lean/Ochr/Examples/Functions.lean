@@ -573,3 +573,100 @@ def inFlightPushes : List (String × String) :=
 #guard (inFlightTemps "ArgReturned").contains ["Snd : Π(x : &Nat) (y : Nat). Nat", "borrow_1 σ0 : &Nat"]
 -- a constructor's first field while the second is evaluated
 #guard (inFlightTemps "Fields").contains ["S(σ0) : Nat", "Add : Π(x : Nat) (y : Nat). Nat"]
+
+/-! ## A call's arguments stay in Ω until the callee binds them (D115)
+
+No value the machine holds lives only in the checker's own variables while anything runs or maps
+over Ω. A call holds its head and its arguments as temporaries of the caller's frame from their
+evaluation until the callee's frame binds them (or [Close] puts them in a sealed program's text, or
+P5 ends a proof call's borrow arguments unrun), and its result while [Lend] renames its label; a
+constructor holds its fields until its value is built, an assignment its right-hand side while
+it is checked, a borrow its value while [Open] invalidates, and a borrow-typed match its result
+while the join lends. Before D115 they were taken off the temporaries before the
+call ran its scaffolding, and held only in the checker's own variables: in that window a borrow
+argument had no holder in Ω, so its lender's loan read as a loan of an ended borrow (the meaning
+spine's (WF2), at 662,366 states of 770 declarations, inside private copies at call depth above 0).
+One program per operation that runs in that window, each with a closed run, and the rejected
+attempts to put a sibling's loan into an argument: a proof call's borrow arguments ending (P5),
+the marks of a borrow-returning call's lenders (rule 1), [Close]'s fills, [Rec]'s reading of the
+arguments, a call evaluated as another call's argument; and the join of a borrow-typed match, whose
+result is held while the join lends (its entry ends every borrow that could lend into the result
+first). `callArgsLive` reads every state at every call depth, private copies included
+(`Config.recordDeep`): every loan outside a sealed program is live. -/
+
+ochr CallArgs uses Nats, Fixtures {
+  -- the window inside a borrow parameter's type (the shape the sweep found, `Drops.Bad5Run`)
+  def Pass (a : Nat) : Unit := (let b = a; let x = TailM(&b); ())
+  def PassRun : Unit := Pass(1)
+  -- (1) P5: a proof call's borrow arguments end in the window, one by one
+  def P2 (x : &Nat) (y : &Nat) : True := refl
+  def UseP2 : Nat := (let a = 1; let b = 2; let h : True = P2(&a, &b); Add(a, b))
+  def UseP2Run : Eq(Nat, UseP2, 3) := refl
+  def UseP2R (x : &(Nat × Nat)) : Unit := (let h : True = P2(&(*x).0, &(*x).1); ())
+  def UseP2RRun : Eq(Nat × Nat, (let p = (1, 2); UseP2R(&p); p), (1, 2)) := refl
+  def P3 (x : &Nat) (n : Nat) : Eq(Nat, n, n) := refl
+  def UseP3 (n : Nat) (a : Nat) : Nat := (let h : Eq(Nat, n, n) = P3(&a, clone(n)); Add(a, n))
+  -- (2) rule 1: the lenders of a borrow-returning call's arguments are marked in the window
+  def M1 (n : Nat) (a : Nat) (b : Nat) : Nat := (let r = Pick(n, &a, &b); *r := 7; Add(a, b))
+  def M1Run0 : Eq(Nat, M1(0, 1, 2), 9) := refl
+  def M1Run1 : Eq(Nat, M1(1, 1, 2), 8) := refl
+  def M2 (n : Nat) (m : Nat) (a : Nat) (b : Nat) (c : Nat) : Nat := (let r = Pick(n, &a, &b); let s = Pick(m, &*r, &c); *s := 7; Add(Add(a, b), c))
+  def M2Run : Eq(Nat, M2(1, 0, 1, 2, 3), 11) := refl
+  def M3 (n : Nat) (m : Nat) (a : Nat) (b : Nat) (c : Nat) : Nat := (let r = Pick(n, &a, &b); let s = Pick(m, &c, r); *s := 7; Add(Add(a, b), c))
+  def M3Run : Eq(Nat, M3(0, 1, 1, 2, 3), 12) := refl
+  -- (3) [Close] in the window: stuck calls with borrow arguments, beside arguments mentioning unknowns
+  def C1 (n : Nat) (a : Nat) : Nat := (let b = clone(n); AddM(&a, b); a)
+  def C1Run : Eq(Nat, C1(2, 3), 5) := refl
+  def C2 (n : Nat) (a : Nat) (b : Nat) : Nat := (let r = Pick(clone(n), &a, &b); AddM(&*r, n); Add(a, b))
+  def C2Run : Eq(Nat, C2(1, 4, 5), 10) := refl
+  def C3 (n : Nat) (m : Nat) (a : Nat) (b : Nat) (c : Nat) : Nat := (let r = Pick(n, &a, &b); let s = Pick(m, r, &c); *s := 9; Add(Add(a, b), c))
+  def C3Run : Eq(Nat, C3(0, 1, 1, 2, 3), 12) := refl
+  -- (4) [Rec] in the window: a recursive call reads its arguments
+  def R1 (x : &Nat) (y : Nat) : Unit by x := match *x { Z => (), S p => R1(&p, clone(y)) }
+  def R2 (x : Nat) (y : &Nat) : Unit by x := match x { Z => (), S p => (AddM(&*y, 1); R2(p, &*y)) }
+  def R2Run : Eq(Nat, (let k = 0; R2(3, &k); k), 3) := refl
+  def R3 (x : &Nat) : &Nat by x := match *x { Z => x, S p => R3(&p) }
+  def R3Run : Eq(Nat, (let k = 2; let t = R3(&k); *t := 5; k), 7) := refl
+  -- (5) an argument holding a loan of a sibling's borrow: never formed ([Access], D106; P5's copy)
+  reject def S1 (a : Nat) : Unit := (let q = &a; AddM(q, a))
+  reject def S2 (a : Nat) : Unit := (let q = &a; AddM(&*q, a))
+  reject def S3 (a : Nat) : Unit := (let q = &a; let h : True = P2(q, &a); ())
+  -- (6) a call evaluated as another call's argument, inside the outer call's window
+  def N1 (n : Nat) (a : Nat) (b : Nat) : Nat := (AddM(Pick(clone(n), &a, &b), Add(n, 1)); Add(a, b))
+  def N1Run : Eq(Nat, N1(0, 1, 2), 4) := refl
+  -- (7) a borrow-typed match's result held while the join lends: a borrow the block takes by move
+  -- whose lender lies in the result's content is ended at the entry, so no mark can be left there
+  reject def JE (x : &(Nat × Nat)) : Nat := (let k = Z; let q = &(*x).0; let r : &(Nat × Nat) = match k { Z => (AddM(q, 1); &*x), S _ => (AddM(q, 2); &*x) }; clone((*r).0))
+  reject def JEU (k : Nat) (x : &(Nat × Nat)) : Nat := (let q = &(*x).0; let r : &(Nat × Nat) = match k { Z => (AddM(q, 1); &*x), S _ => (AddM(q, 2); &*x) }; clone((*r).0))
+  reject def JER (x : &(Nat × Nat)) : Nat := (let k = Z; let r0 = &*x; let q = &(*r0).0; let r : &(Nat × Nat) = match k { Z => (AddM(q, 1); r0), S _ => (AddM(q, 2); r0) }; clone((*r).0))
+  -- (8) the other values in flight: a borrow assigned (held while it is checked), a constructor's
+  -- fields (held while their types are checked)
+  def AssignB (a : Nat) (b : Nat) : Nat := (let r = &a; r := &b; *r := 3; Add(a, b))
+  def AssignBRun : Eq(Nat, AssignB(1, 2), 4) := refl
+  def CtorF (a : Nat) (b : Nat) : Nat × Nat := (let r = &a; *r := 2; (Add(clone(a), b), a))
+}
+
+#guard (run "CallArgs" CallArgs).rejectedWith [
+  ("S1", "[Access] reading or writing a ends a borrow that a value in flight holds"),
+  ("S2", "[Access] reading or writing a ends a borrow that a value in flight holds"),
+  ("S3", "[Call] argument 1 is ⊥ at the call point"),
+  ("JE", "[Read] q was moved out or its borrow ended"),
+  ("JEU", "[Read] q was moved out or its borrow ended"),
+  ("JER", "[Read] q was moved out or its borrow ended")]
+
+/-- Every state at every call depth of `CallArgs`'s rows, private copies included
+(`Config.recordDeep`), and its value in flight on an exit: every loan outside a sealed program is
+live, its borrow in Ω (D115: before it, a borrow argument was held outside Ω between its call's
+`popTemps` and the callee's frame, and its lender's loan read as a loan of an ended borrow). -/
+def callArgsLive : Bool :=
+  let r := runWith (some Prelude) "CallArgs" CallArgs { recordDeep := true, recordDeepPrivate := true }
+  r.rows.all fun row => row.trace.all fun
+    | .deep _ fl st =>
+      let env := match fl with
+        | some (v, T) => st.env.modify (st.env.size - 1) fun fr =>
+            { fr with temps := fr.temps.push v, tempTys := fr.tempTys.push T }
+        | none => st.env
+      (Ochr.allPos env).all fun p => (Ochr.valAt env p).outerLoans.all (Ochr.liveLoan env ·)
+    | _ => true
+
+#guard callArgsLive
