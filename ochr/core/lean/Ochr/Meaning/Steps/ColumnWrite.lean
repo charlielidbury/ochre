@@ -205,23 +205,31 @@ is lent at a binding holding a number); the field update is defined at every typ
 means its number, by the relation, at the futures it compares at, which every typed future of a good
 state is: `typedFut_rel`); the state after holds open members everywhere (`stateOk_setNum`). -/
 theorem assign_core (hA : AssignNumInv) (hIC : InvCore) (hc : Strict.FundCtx K) {n i : Nat} {u : Term}
-    {P Pu : MState → Prop} (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
+    {P Pu : MState → Prop} (hcu : ColTerm u) (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hP : ∀ st, P st → NumVar i st)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ (T : TyS) (s : SState), runT K ρ φ false T u s = runT K ρ φ false (.plain TyM.err) u s)
-    (hnum : ∀ st₀ st₁ bh hint v₀ T₀, Pu st₀ → Mode st₀ → DecTab K.D st₁ →
+    (hnum : ∀ st₀ st₁ bh hint v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
       Runs (Ochr.eval n true u hint) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ Env.erase st₀.env = Env.erase st₁.env)
     (hinv : ∀ sc, K.D.invalidated sc (.proj 0 (.var i)) = []) :
     CoreSim K ρ φ (n + 1) (.assign (.proj 0 (.var i)) u) P (· = true) := by
-  intro st st' typed hint v T? s π hPst hty hm htn hp hr hS hv hab hnh hfl _ hD bh h
+  intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
-  obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, w, hk₀, hm₀, htn₀, hru, hD₁, hq, hpos₂, hlk₂, hbw, hk', rfl, rfl⟩ :=
-    hA n i u hint st st' bh v T? K.D hm hD h
+  have htyped : ∀ f j b, ckVarPos st.env i = some (.bind f j) →
+      st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.ty.isSome := by
+    obtain ⟨f0, j0, b0, hpos0, hb0, -, ht0⟩ := hP st hPst
+    intro f j b hpos hb
+    rw [hpos0, Option.some.injEq, Pos.bind.injEq] at hpos
+    obtain ⟨rfl, rfl⟩ := hpos
+    rw [hb0, Option.some.injEq] at hb
+    subst hb; rw [ht0]; rfl
+  obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hpos₂, hlk₂, hbw, hk'i,
+    rfl, rfl⟩ := hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
   have hPu₀ := hPu st st₀ hk₀ hPst
-  obtain ⟨hv₀, he₀₁⟩ := hnum st₀ st₁ bh₁ hu' v₀ T₀ hPu₀ hm₀ hD₁ hru
+  obtain ⟨hv₀, he₀₁⟩ := hnum st₀ st₁ bh₁ hu' v₀ T₀ hPu₀ hm₀ htd₀ hD₁ hru
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv
   -- the step for `u`
-  have hOu := hu st₀ st₁ true hu' v₀ T₀ s π hPu₀ trivial hm₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hS hvu
+  have hOu := hu st₀ st₁ true hu' v₀ T₀ s π hPu₀ trivial hm₀ (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hvu
     (fun σ hσ => by rw [← hk₀.absTy]; exact hab σ (by simp [Term.anyAtom, hσ]))
     (by simpa [Term.hasHolePrim] using hnh)
     (by rw [scopeOf_rel hr]; exact hflu st hPst) (fun e => by cases e) hD₁ bh₁ hru
@@ -260,6 +268,7 @@ theorem assign_core (hA : AssignNumInv) (hIC : InvCore) (hc : Strict.FundCtx K) 
     rw [htyS]; simp only [Env.hintAt, hlk₂, htb']; rfl
   have hns : ∀ l, (valAt st₂.env (.bind f j)).sitesOf l (.bind f j) [] = [] := fun l => by
     rw [hvb₂]; exact hnb'.sitesOf l _ _
+  have hk' := hk'i hns
   have hacc : ∀ hit, s₁.access (.bind f j) hit = s₁ := fun _ => access_noSites (rel_noSites_at hr₂ hns)
   have haok : ∀ hit, AccessOk K φ s₁ (.bind f j) hit := fun _ => accessOk_noSites (rel_noSites_at hr₂ hns)
   have hshS : s₁.shape (.bind f j) = none := by
@@ -351,7 +360,7 @@ theorem assign_core (hA : AssignNumInv) (hIC : InvCore) (hc : Strict.FundCtx K) 
   · refine ⟨hp₁.ctx.of_eq ?_ ?_, ?_, ?_⟩
     · show st'.inds = st₁.inds; rw [← hk'.inds, ← hq.inds]
     · show st'.globals = st₁.globals; rw [← hk'.globals, ← hq.globals]
-    · exact hIC (n + 1) true _ hint st st' bh .unit (some .tUnit) K.D K.Γ hp.inv hD h
+    · exact hIC (n + 1) true _ hint st st' bh .unit (some .tUnit) K.D K.Γ (.assign i hcu) hp.inv hD h
     · have : Asg { K with Δ := Δ₁ } ρ₁ st'.norm := by rw [← hk'.norm]; exact hX
       exact asg_withTempT_inert this Value.inert_unit _
   · have hR := rel_setNum hr₂ hposA hposS (by rw [hvb₂]; exact hnb') (Value.Num.succ hv₀) hmS hgv
