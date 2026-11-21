@@ -142,7 +142,7 @@ def BorrowLentInv : Prop :=
     Runs (Ochr.evalCore (n + 1) true (.borrow (.var i)) hint) st bh (v, T?) st' →
     Mode st' ∧ ∃ st₁, Quiet st st₁ ∧ KeepsInv st st₁ ∧ v = .borrow st₁.nextLoan c ∧ T? = some (.tRef .tNat) ∧
       Kern { st₁ with env := Env.setAtE (endE st₁.env (.bind f j) (.bind f' j') c) (.bind f j) (.loan st₁.nextLoan),
-        nextLoan := st₁.nextLoan + 1 } st'
+                      nextLoan := st₁.nextLoan + 1 } st'
 
 /-- **`&x` of a MOVED number variable fails** (typed). -/
 def BorrowBotInv : Prop :=
