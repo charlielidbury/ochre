@@ -17,7 +17,7 @@ open Ochr.Meaning.Steps.Form
 
 /-- What a fragment term's typed run leaves: `FragRun`'s conclusion, with the counter. -/
 def RunOut (Γ : List Form.FT) (A : Form.FT) (st st' : MState) (v : Value) (T? : Option Value) : Prop :=
-  T? = some A.ty ∧ A.val v ∧ ModeEq st st' ∧ topReadings st' = topReadings st ∧ st'.env.size = st.env.size ∧
+  T? = some A.ty ∧ A.val v ∧ Form.ModeEq st st' ∧ topReadings st' = topReadings st ∧ st'.env.size = st.env.size ∧
     FStT Γ (st'.withTempT v T?) ∧ Fresh (st'.withTempT v T?)
 
 /-- **`FragRun` with the counter** (the restatement proposed to the lead). -/
@@ -46,7 +46,7 @@ theorem _root_.Ochr.Meaning.Steps.Form.FTy.notCall {Γ : List Form.FT} {t : Term
 theorem Fresh.kern {a b : MState} (hk : Kern a b) (h : Fresh a) : Fresh b :=
   h.of_erase hk.env (Nat.le_of_eq hk.nextLoan)
 
-theorem modeEq_of_modes {a b : MState} (ha : Mode a) (hb : Mode b) : ModeEq a b :=
+theorem modeEq_of_modes {a b : MState} (ha : Mode a) (hb : Mode b) : Form.ModeEq a b :=
   ⟨ha.headEval.trans hb.headEval.symm, ha.copying.trans hb.copying.symm, ha.inPlace.trans hb.inPlace.symm,
     ha.erased.trans hb.erased.symm⟩
 
@@ -139,5 +139,330 @@ theorem FSt.nat_at {Γ : List Form.FT} {s : MState} (h : FSt Γ s) {i k f j : Na
       · cases hck'
     · cases hck
   subst this; rw [hi] at hk; exact (Option.some.inj hk).symm
+
+/-! ## The read of a number variable -/
+
+theorem quiet_size {a b : MState} (hq : Quiet a b) : b.env.size = a.env.size := by
+  have := congrArg Array.size hq.env; simp only [Env.erase_size] at this; exact this.symm
+
+theorem lookup_of_erase {a b : MState} (he : a.env.erase = b.env.erase) {f j : Nat} {bx : Binding}
+    (hb : a.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some bx) :
+    b.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some bx := by
+  rw [← lookup_erase, ← he, lookup_erase]; exact hb
+
+theorem noLabel_bot : ∀ l, (Value.bot = .loan l ∨ ∃ c, Value.bot = .borrow l c) → l < 0 := by
+  intro l e; rcases e with e | ⟨c, e⟩ <;> cases e
+
+/-- What the read's end leaves, from the state its access left (`X`) and the kernel after it. -/
+theorem core_out_num {Γ : List Form.FT} {st₀ X st₁ : MState} {v : Value} {T? : Option Value}
+    (hX : FSt Γ X) (hfX : Fresh X) (hk : Kern X st₁) (hv : v.Num) (hT : T? = some .tNat) (hm₁ : Mode st₁)
+    (htr : topReadings X = topReadings st₀) (hsz : X.env.size = st₀.env.size) :
+    CoreOut Γ .nat st₀ st₁ v T? :=
+  have hP₁ := hX.kern hk
+  ⟨hT, hv, hm₁, by rw [← ColumnC.topReadings_kern hk, htr], by rw [size_of_kern hk, hsz],
+    hP₁.pushNum (.inl hv) _, (hfX.kern hk).pushNum (.inl hv) _ hP₁.frame⟩
+
+theorem core_var (D : Decisions) (Γ : List Form.FT) (i : Nat) (hi : Γ[i]? = some .nat) :
+    CoreCase D Γ (.place (.var i)) .nat := by
+  intro m st₀ st₁ hint bh v T? hP hfr hm htn htd hcd hD h
+  rcases hP.var_cases hi with ⟨f, j, b, hck, hb, hn, hty⟩ | ⟨f, j, b, f', j', l, c, hck, hb, hty, -, hF, -⟩ |
+    ⟨f, j, b, hck, hb, hbot, hty⟩
+  · obtain ⟨rfl, hT, hTs, hm₁, stq, hq, -, hcp, hmv⟩ :=
+      varNumInv m true i hint st₀ st₁ bh v T? f j b D hm hck hb hn (by rw [hty]; rfl) hD h
+    have hT' : T? = some .tNat := by
+      obtain ⟨T, e⟩ := Option.isSome_iff_exists.mp (hTs rfl)
+      have := hT T e; rw [hty] at this; rw [e, this]
+    have hPq : FSt Γ stq := hP.of_erase hq.env
+    have hfq : Fresh stq := hfr.of_erase hq.env hq.nextLoan
+    have htq : topReadings stq = topReadings st₀ := (ColumnC.topReadings_of_erase hq.env).symm
+    cases hc : D.copy (D.placeDecl (topReadings st₀) (.var i))
+    · have hk := hmv hc
+      have hbq := lookup_of_erase hq.env hb
+      have hp := (lookup_pos hbq).1
+      exact core_out_num (hPq.setInert hp (.inl (by rw [(lookup_pos hbq).2]; exact hn)) (.inr rfl)
+          (fun _ _ _ _ => holds_bot _))
+        (hfq.setAt hp (fun l e => absurd (noLabel_bot l e) (Nat.not_lt_zero l))) hk hn hT' hm₁
+        (by rw [topReadings_setAt, htq]) (by show (Env.setAtE stq.env (.bind f j) .bot).size = _; rw [size_setAtE, quiet_size hq])
+    · exact core_out_num hPq hfq (hcp hc) hn hT' hm₁ htq (quiet_size hq)
+  · obtain ⟨hvc, hT, hTs, hm₁, stq, hq, -, hcp, hmv⟩ :=
+      varLentInv m true i hint st₀ st₁ bh v T? f j b f' j' l c D hm hck hb hty hF hD h
+    have hT' : T? = some .tNat := by
+      obtain ⟨T, e⟩ := Option.isSome_iff_exists.mp (hTs rfl)
+      rw [e, hT T e]
+    have hvn : v.Num := hvc ▸ hF.c
+    have hPq : FSt Γ stq := hP.of_erase hq.env
+    have hfq : Fresh stq := hfr.of_erase hq.env hq.nextLoan
+    have hFq := (hF.of_erase hq.env).endAt
+    have hPe := hPq.ofEnd hFq
+    have hfe := hfq.ofEnd hFq
+    have hte : topReadings { stq with env := endE stq.env (.bind f j) (.bind f' j') c } = topReadings st₀ := by
+      rw [topReadings_endE, ← ColumnC.topReadings_of_erase hq.env]
+    have hse : (endE stq.env (.bind f j) (.bind f' j') c).size = st₀.env.size := by rw [size_endE, quiet_size hq]
+    cases hc : D.copy (D.placeDecl (topReadings st₀) (.var i))
+    · have hp : Pos.bind f j ∈ allPos (endE stq.env (.bind f j) (.bind f' j') c) := by
+        rw [FEnd.allPos_endE]; exact hFq.hpx
+      exact core_out_num (hPe.setInert hp (.inl (by rw [hFq.valAt_endE, if_pos rfl]; exact hFq.c)) (.inr rfl)
+          (fun _ _ _ _ => holds_bot _))
+        (hfe.setAt hp (fun l e => absurd (noLabel_bot l e) (Nat.not_lt_zero l))) (hmv hc) hvn hT' hm₁
+        (by rw [topReadings_setAt, hte])
+        (by show (Env.setAtE (endE stq.env (.bind f j) (.bind f' j') c) (.bind f j) .bot).size = _; rw [size_setAtE, hse])
+    · exact core_out_num hPe hfe (hcp hc) hvn hT' hm₁ hte hse
+  · exact absurd h (varBotInv m true i hint st₀ st₁ bh v T? f j b hck hb hbot hty)
+
+/-! ## `&x` -/
+
+theorem topReadings_lent (s : MState) (E : Env) (p : Pos) (w : Value) (k : Nat) :
+    topReadings { s with env := Env.setAtE E p w, nextLoan := k } = topReadings { s with env := E } := by
+  unfold topReadings
+  show (((Env.setAtE E p w).back?.map (fun fr : Frame => fr.binds.toList.map (·.decl))).getD []).reverse = _
+  rw [back_setAtE_any]
+
+theorem core_bor (D : Decisions) (Γ : List Form.FT) (i : Nat) (hi : Γ[i]? = some .nat) :
+    CoreCase D Γ (.borrow (.var i)) .ref := by
+  intro m st₀ st₁ hint bh v T? hP hfr hm htn htd hcd hD h
+  obtain ⟨f, j, b, hck, hb, hty, hrd, hv⟩ := hP.top i .nat hi
+  have hty' : b.ty = some .tNat := hty
+  have hrd' : b.decl = .other := hrd
+  rcases hv with hn | hbot | ⟨l, hl⟩
+  · obtain ⟨hm₁, stq, hq, -, rfl, rfl, hk⟩ := borrowNumInv m i hint st₀ st₁ bh v T? f j b D hm hck hb hn hty' hD h
+    have hPq : FSt Γ stq := hP.of_erase hq.env
+    have hfq : Fresh stq := hfr.of_erase hq.env hq.nextLoan
+    obtain ⟨hF, hf⟩ := hPq.lend hfq (lookup_of_erase hq.env hb) hn ⟨hty', hrd'⟩ (some (.tRef .tNat))
+    have hkw := hk.withTempT (.borrow stq.nextLoan b.val) (some (.tRef .tNat))
+    refine ⟨rfl, ⟨_, _, rfl, hn⟩, hm₁, ?_, ?_, hF.of_erase hkw.env, hf.kern hkw⟩
+    · rw [← ColumnC.topReadings_kern hk]
+      exact (topReadings_setAt stq _ _).trans (ColumnC.topReadings_of_erase hq.env).symm
+    · rw [size_of_kern hk]; show (Env.setAtE stq.env (.bind f j) _).size = _; rw [size_setAtE, quiet_size hq]
+  · exact absurd h (borrowBotInv m i hint st₀ st₁ bh v T? f j b hck hb hbot hty')
+  · obtain ⟨hp, hval⟩ := lookup_pos hb
+    obtain ⟨f', j', c, hF⟩ := hP.fend hp (by rw [hval, hl])
+    obtain ⟨hm₁, stq, hq, -, rfl, rfl, hk⟩ :=
+      borrowLentInv m i hint st₀ st₁ bh v T? f j b f' j' l c D hm hck hb hty' hF hD h
+    have hPq : FSt Γ stq := hP.of_erase hq.env
+    have hfq : Fresh stq := hfr.of_erase hq.env hq.nextLoan
+    have hFq := (hF.of_erase hq.env).endAt
+    obtain ⟨b', hb', hv', hty₂, hrd₂⟩ := lookup_endE_px (ph := .bind f' j') (c := c) (lookup_of_erase hq.env hb)
+    obtain ⟨hFT, hf⟩ := (hPq.ofEnd hFq).lend (hfq.ofEnd hFq) hb' (hv' ▸ hFq.c) ⟨hty₂.trans hty', hrd₂.trans hrd'⟩
+      (some (.tRef .tNat))
+    rw [hv'] at hFT hf
+    have hkw := hk.withTempT (.borrow stq.nextLoan c) (some (.tRef .tNat))
+    refine ⟨rfl, ⟨_, _, rfl, hFq.c⟩, hm₁, ?_, ?_, hFT.of_erase hkw.env, hf.kern hkw⟩
+    · rw [← ColumnC.topReadings_kern hk, topReadings_lent, topReadings_endE]
+      exact (ColumnC.topReadings_of_erase hq.env).symm
+    · rw [size_of_kern hk]
+      exact (size_setAtE _ _ _ _).trans ((size_endE _ _ _ _).trans (quiet_size hq))
+
+/-! ## `S(u)` -/
+
+/-- The induction's hypothesis at a sub-term: `frag_lift_run`'s conclusion. -/
+def EvalCase (D : Decisions) (Γ : List Form.FT) (t : Term) (A : Form.FT) : Prop :=
+  ∀ n hint st st' bh v T?, FSt Γ st → Fresh st → Mode st →
+    (st.tailDecl = none ∨ st.tailDecl = some (D.declOf (topReadings st) t)) → DecTab D st' →
+    Runs (Ochr.eval n true t hint) st bh (v, T?) st' → RunOut Γ A st st' v T?
+
+theorem core_succ {D : Decisions} {Γ : List Form.FT} {u : Term} (ihu : EvalCase D Γ u .nat) :
+    CoreCase D Γ (.succ u) .nat := by
+  intro m st₀ st₁ hint bh v T? hP hfr hm htn htd hcd hD h
+  obtain ⟨sa, sb, v₀, T₀, bh₁, hk₀, hma, -, htda, hru, rfl, rfl, hq, hme, hDb, -⟩ :=
+    Form.succInv m true u hint st₀ st₁ bh v T? hm htn htd h
+  obtain ⟨-, hv₀, hme₁, htr, hsz, hF, hf⟩ :=
+    ihu m none sa sb bh₁ v₀ T₀ (hP.kern hk₀) (hfr.kern hk₀) hma (.inl htda) (hDb D hD) hru
+  have hne : 0 < sb.env.size := by rw [hsz, size_of_kern hk₀]; exact hP.frame
+  have hP₁ := (hF.untemp (.inl hv₀)).of_erase hq.env
+  refine ⟨rfl, .succ hv₀, (hma.of_modeEq hme₁).of_modeEq hme, ?_, ?_, hP₁.pushNum (.inl (.succ hv₀)) _,
+    ((hf.untemp hne).of_erase hq.env hq.nextLoan).pushNum (.inl (.succ hv₀)) _ hP₁.frame⟩
+  · rw [← ColumnC.topReadings_of_erase hq.env, htr, ← ColumnC.topReadings_kern hk₀]
+  · rw [quiet_size hq, hsz, size_of_kern hk₀]
+
+/-! ## `x := u` -/
+
+/-- What a case's end leaves, from the state its last write left (`X`) and the kernel after it. -/
+theorem core_out_of {Γ : List Form.FT} {A : Form.FT} {st₀ X st₁ : MState} {v : Value} {T? : Option Value}
+    (hX : FSt Γ X) (hfX : Fresh X) (hk : Kern X st₁) (hA : A.val v) (hin : v.Num ∨ v = .unit) (hT : T? = some A.ty)
+    (hm₁ : Mode st₁) (htr : topReadings X = topReadings st₀) (hsz : X.env.size = st₀.env.size) :
+    CoreOut Γ A st₀ st₁ v T? :=
+  have hP₁ := hX.kern hk
+  ⟨hT, hA, hm₁, by rw [← ColumnC.topReadings_kern hk, htr], by rw [size_of_kern hk, hsz],
+    hP₁.pushNum hin _, (hfX.kern hk).pushNum hin _ hP₁.frame⟩
+
+theorem _root_.Ochr.Meaning.Steps.Form.FSt.holds_nat {Γ : List Form.FT} {s : MState} (h : FSt Γ s) {i f j : Nat}
+    (hi : Γ[i]? = some .nat) (hck : ckVarPos s.env i = some (.bind f j)) {w : Value} (hw : w.Num ∨ w = .bot) :
+    ∀ k A, Γ[k]? = some A → ckVarPos s.env k = some (.bind f j) → A.holds w := by
+  intro k A hk hck'
+  rw [FSt.nat_at h hi hck hk hck']
+  rcases hw with hw | hw
+  · exact .inl hw
+  · rw [hw]; exact holds_bot _
+
+theorem core_asg {D : Decisions} {Γ : List Form.FT} {i : Nat} {u : Term} (hi : Γ[i]? = some .nat)
+    (ihu : EvalCase D Γ u .nat) : CoreCase D Γ (.assign (.var i) u) .unit := by
+  intro m st₀ st₁ hint bh v T? hP hfr hm htn htd hcd hD h
+  obtain ⟨sa, sb, hu, v₀, T₀, bh₁, hk₀, hma, -, htda, hru, hDb, rfl, rfl, hpost⟩ :=
+    assignVarInv m i u hint st₀ st₁ bh v T? D hm htn htd (fun f j b hpos hb => (hP.natVar hi hpos b hb).1) hD h
+  obtain ⟨-, hv₀, hme₁, htr, hsz, hF, hf⟩ :=
+    ihu m hu sa sb bh₁ v₀ T₀ (hP.kern hk₀) (hfr.kern hk₀) hma (.inl htda) hDb hru
+  have hne : 0 < sb.env.size := by rw [hsz, size_of_kern hk₀]; exact hP.frame
+  have hPb := hF.untemp (.inl hv₀)
+  have hmb : Mode sb := hma.of_modeEq hme₁
+  obtain ⟨f, j, b, hck, hb, -, -, hhold⟩ := hPb.top i .nat hi
+  obtain ⟨sc, hq, -, hmode, hnum, hend⟩ := hpost f j b hck hb hv₀
+  have hPq : FSt Γ sc := hPb.of_erase hq.env
+  have hfq : Fresh sc := (hf.untemp hne).of_erase hq.env hq.nextLoan
+  have htq : topReadings sc = topReadings st₀ := by
+    rw [← ColumnC.topReadings_of_erase hq.env, htr, ← ColumnC.topReadings_kern hk₀]
+  have hszq : sc.env.size = st₀.env.size := by rw [quiet_size hq, hsz, size_of_kern hk₀]
+  have hckq : ckVarPos sc.env i = some (.bind f j) := by
+    rw [← ckVarPos_erase, ← hq.env, ckVarPos_erase]; exact hck
+  have hbq := lookup_of_erase hq.env hb
+  have hp := (lookup_pos hbq).1
+  have hnolab : ∀ l, (v₀ = .loan l ∨ ∃ c, v₀ = .borrow l c) → l < sc.nextLoan := fun l e => by
+    rcases e with e | ⟨c, e⟩ <;> rw [e] at hv₀ <;> cases hv₀
+  have hinert : ∀ w, (w.Num ∨ w = .bot) → b.val = w → CoreOut Γ .unit st₀ st₁ .unit (some .tUnit) := by
+    intro w hw e
+    have hk := hnum (by rw [e]; exact hw)
+    exact core_out_of (hPq.setInert hp (by rw [(lookup_pos hbq).2, e]; exact hw) (.inl hv₀) (hPq.holds_nat hi hckq (.inl hv₀)))
+      (hfq.setAt hp hnolab) hk rfl (.inr rfl) rfl (hmb.of_modeEq (hmode (by rw [e]; rcases hw with hw | hw; exact .inl hw; exact .inr (.inl hw))))
+      (by rw [topReadings_setAt, htq]) (by show (Env.setAtE sc.env (.bind f j) v₀).size = _; rw [size_setAtE, hszq])
+  rcases hhold with hn | hbot | ⟨l, hl⟩
+  · exact hinert _ (.inl hn) rfl
+  · exact hinert _ (.inr rfl) hbot
+  · obtain ⟨hpb, hvalb⟩ := lookup_pos hb
+    obtain ⟨f', j', c, hFE⟩ := hPb.fend hpb (by rw [hvalb, hl])
+    have hFq := (hFE.of_erase hq.env).endAt
+    have hPe := hPq.ofEnd hFq
+    have hpe : Pos.bind f j ∈ allPos (endE sc.env (.bind f j) (.bind f' j') c) := by
+      rw [FEnd.allPos_endE]; exact hFq.hpx
+    exact core_out_of (hPe.setInert hpe (.inl (by rw [hFq.valAt_endE, if_pos rfl]; exact hFq.c)) (.inl hv₀)
+        (hPe.holds_nat hi ((ckVarPos_endE _ _ _ _ _).trans hckq) (.inl hv₀)))
+      ((hfq.ofEnd hFq).setAt hpe hnolab) (hend f' j' l c hFE) rfl (.inr rfl) rfl
+      (hmb.of_modeEq (hmode (.inr (.inr ⟨f', j', l, c, hFE⟩))))
+      (by rw [topReadings_setAt, topReadings_endE, htq])
+      (by show (Env.setAtE (endE sc.env (.bind f j) (.bind f' j') c) (.bind f j) v₀).size = _
+          rw [size_setAtE, size_endE, hszq])
+
+/-! ## `*y := u` -/
+
+/-- The variables at a variable's position have its type. -/
+theorem FSt.ty_at {Γ : List Form.FT} {s : MState} {i k f j : Nat} {A B : Form.FT} (hi : Γ[i]? = some B)
+    (hck : ckVarPos s.env i = some (.bind f j)) (hk : Γ[k]? = some A)
+    (hck' : ckVarPos s.env k = some (.bind f j)) : A = B := by
+  have : k = i := by
+    unfold ckVarPos at hck hck'
+    split at hck
+    · split at hck'
+      · have e1 := (Pos.bind.inj (Option.some.inj hck)).2
+        have e2 := (Pos.bind.inj (Option.some.inj hck')).2
+        omega
+      · cases hck'
+    · cases hck
+  subst this; rw [hi] at hk; exact (Option.some.inj hk).symm
+
+/-- A write at a binding that keeps its labels, from a fragment state: a fragment state. -/
+theorem _root_.Ochr.Meaning.Steps.Form.FSt.setKeep {Γ : List Form.FT} {s : MState} (h : FSt Γ s) {f j : Nat}
+    {w : Value} (hp : Pos.bind f j ∈ allPos s.env) (hw : FVal w)
+    (hl : ∀ l, w = .loan l ↔ valAt s.env (.bind f j) = .loan l)
+    (hb : ∀ l, (∃ c, w = .borrow l c) ↔ (∃ c, valAt s.env (.bind f j) = .borrow l c))
+    (hholds : ∀ i A, Γ[i]? = some A → ckVarPos s.env i = some (.bind f j) → A.holds w) :
+    FSt Γ { s with env := Env.setAtE s.env (.bind f j) w } := by
+  refine (h.toT.setAt hp hw hl hb hholds).toFSt ?_
+  intro f' i hq
+  show (valAt (Env.setAtE s.env (.bind f j) w) _).Num ∨ _
+  rw [temps_setAt_bind]
+  exact h.temps f' i (by have := hq; rwa [show allPos (Env.setAtE s.env (.bind f j) w) = allPos s.env from allPos_setAtE _ _ _] at this)
+
+theorem core_asgD {D : Decisions} {Γ : List Form.FT} {i : Nat} {u : Term} (hi : Γ[i]? = some .ref)
+    (ihu : EvalCase D Γ u .nat) : CoreCase D Γ (.assign (.deref (.var i)) u) .unit := by
+  intro m st₀ st₁ hint bh v T? hP hfr hm htn htd hcd hD h
+  obtain ⟨sa, sb, hu, v₀, T₀, bh₁, hk₀, hma, -, htda, hru, hDb, rfl, rfl, hnbot, hpost⟩ :=
+    assignDerefInvF m i u hint st₀ st₁ bh v T? D hm htn htd (fun f j b hpos hb => (hP.refVar hi hpos b hb).1) hD h
+  obtain ⟨-, hv₀, hme₁, htr, hsz, hF, hf⟩ :=
+    ihu m hu sa sb bh₁ v₀ T₀ (hP.kern hk₀) (hfr.kern hk₀) hma (.inl htda) hDb hru
+  have hne : 0 < sb.env.size := by rw [hsz, size_of_kern hk₀]; exact hP.frame
+  have hPb := hF.untemp (.inl hv₀)
+  obtain ⟨f, j, b, hck, hb, -, -, hhold⟩ := hPb.top i .ref hi
+  rcases hhold with hbot | ⟨l, w, hbl, hw⟩
+  · exact absurd hbot (hnbot f j b hck hb)
+  obtain ⟨sc, hq, -, hme, hck₂, hb₂, hk⟩ := hpost f j b l w hck hb hbl hw
+  have hPq : FSt Γ sc := hPb.of_erase hq.env
+  have hfq : Fresh sc := (hf.untemp hne).of_erase hq.env hq.nextLoan
+  have hp := (lookup_pos hb₂).1
+  have hval : valAt sc.env (.bind f j) = .borrow l w := by rw [(lookup_pos hb₂).2, hbl]
+  have hlt : l < sc.nextLoan := hfq _ hp l (.inr ⟨w, hval⟩)
+  refine core_out_of (hPq.setKeep hp (.bor l hv₀) (fun l' => ?_) (fun l' => ?_) (fun k A hk hck' => ?_))
+    (hfq.setAt hp (fun l' e => ?_)) hk rfl (.inr rfl) rfl ((hma.of_modeEq hme₁).of_modeEq hme)
+    (by rw [topReadings_setAt, ← ColumnC.topReadings_of_erase hq.env, htr, ← ColumnC.topReadings_kern hk₀])
+    (by show (Env.setAtE sc.env (.bind f j) _).size = _; rw [size_setAtE, quiet_size hq, hsz, size_of_kern hk₀])
+  · rw [hval]; exact ⟨fun e => (by cases e), fun e => (by cases e)⟩
+  · rw [hval]; exact ⟨fun ⟨_, e⟩ => ⟨w, by cases e; rfl⟩, fun ⟨_, e⟩ => ⟨v₀, by cases e; rfl⟩⟩
+  · rw [FSt.ty_at hi hck₂ hk hck']; exact .inr ⟨l, v₀, rfl, hv₀⟩
+  · rcases e with e | ⟨c, e⟩
+    · cases e
+    · cases e; exact hlt
+
+/-! ## `let` -/
+
+/-- Binding the value in flight keeps the counter above every label. -/
+theorem Fresh.pushBind {s : MState} {v : Value} {T : Option Value} (h : Fresh (s.withTempT v T))
+    (hne : 0 < s.env.size) (x : Hint) (ty : Option Value) (p : Bool) (d : DeclInfo) :
+    Fresh { s with env := Env.pushBindE s.env x ty v p d } := by
+  obtain ⟨fr, hfr⟩ : ∃ fr, s.env[s.env.size - 1]? = some fr :=
+    ⟨_, Array.getElem?_eq_getElem (by omega : s.env.size - 1 < s.env.size)⟩
+  obtain ⟨hA, hnew, -⟩ := push_view hfr v T
+  have hs : Fresh s := h.untemp hne
+  obtain ⟨A, B, h1, h2⟩ := allPos_pushBindE s.env x ty v p d fr hfr hne
+  intro q hq l e
+  have e' : valAt (Env.pushBindE s.env x ty v p d) q = .loan l ∨
+      ∃ w, valAt (Env.pushBindE s.env x ty v p d) q = .borrow l w := e
+  have hq' : q ∈ A ++ Pos.bind (s.env.size - 1) fr.binds.size :: B := h2 ▸ hq
+  by_cases ep : q = .bind (s.env.size - 1) fr.binds.size
+  · subst ep
+    rw [valAt_pushBindE_new s.env x ty v p d fr hfr] at e'
+    exact h (.temp (s.env.size - 1) fr.temps.size) (by rw [hA]; simp) l (by rw [hnew]; exact e')
+  · have hqE : q ∈ allPos s.env := by
+      rw [h1, List.mem_append]; rw [List.mem_append, List.mem_cons] at hq'
+      rcases hq' with hq' | hq' | hq'
+      · exact .inl hq'
+      · exact absurd hq' ep
+      · exact .inr hq'
+    rw [valAt_pushBindE_ne s.env x ty v p d fr hfr q ep] at e'
+    exact hs q hqE l e'
+
+theorem modeEq_form {a b : MState} (h : ModeEq a b) : Form.ModeEq a b :=
+  ⟨h.headEval, h.copying, h.inPlace, h.erased⟩
+
+theorem core_let {D : Decisions} (hdec : FragDec D) {Γ : List Form.FT} {x : Hint} {u w : Term} {A B : Form.FT}
+    (hu : FTy Γ u A) (hw : FTy (A :: Γ) w B) (ihu : EvalCase D Γ u A) (ihw : EvalCase D (A :: Γ) w B) :
+    CoreCase D Γ (.letIn x u w) B := by
+  intro m st₀ st₁ hint bh v T? hP hfr hm htn htd hcd hD h
+  obtain ⟨du, sa, sb, sB, s₂, s₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hma, -, htda, htdB, hru, hdu, hkB, hmeB, -,
+    hrw, hrd, hk₃, hme₃, hD₁, hD₂⟩ := Form.letInv m x u w hint st₀ st₁ bh v T? D hm htn htd hD h
+  obtain ⟨rfl, hv₀, hme₁, htr₁, hsz₁, hF₁, hf₁⟩ :=
+    ihu m none sa sb bh₁ v₀ T₀ (hP.kern hk₀) (hfr.kern hk₀) hma (.inl htda) hD₁ hru
+  have hduA : du = A.rd := hdu.symm.trans (hdec Γ u A st₀ hu hP).2
+  subst hduA
+  have hneb : 0 < sb.env.size := by rw [hsz₁, size_of_kern hk₀]; exact hP.frame
+  have hszp : (Env.pushBindE sb.env x (some A.ty) v₀ p A.rd).size = sb.env.size := by simp [Env.pushBindE]
+  obtain ⟨frb, hfrb⟩ : ∃ fr, sb.env[sb.env.size - 1]? = some fr :=
+    ⟨_, Array.getElem?_eq_getElem (by omega : sb.env.size - 1 < sb.env.size)⟩
+  have hPB : FSt (A :: Γ) sB := (fst_push hF₁ hv₀ x p).kern hkB
+  have hfB : Fresh sB := (hf₁.pushBind hneb x (some A.ty) p A.rd).kern hkB
+  have hmB : Mode sB := (hma.of_modeEq hme₁).of_modeEq hmeB
+  have htdB' : sB.tailDecl = none ∨ sB.tailDecl = some (D.declOf (topReadings sB) w) :=
+    .inr (by rw [htdB, hcd, (hdec Γ _ B st₀ (.letIn Γ x u w A B hu hw) hP).2, (hdec (A :: Γ) w B sB hw hPB).2])
+  obtain ⟨hT, hr, hme₂, htr₂, hsz₂, hF₂, hf₂⟩ := ihw m none sB s₂ bh₂ r T? hPB hfB hmB htdB' hD₂ hrw
+  obtain ⟨hF₃, hf₃, hme₃', htt₃, htr₃, hsz₃⟩ := frag_drop hF₂ hf₂ hrd
+  have hne₂ : 0 < s₂.env.size := by
+    rw [hsz₂, size_of_kern hkB]; exact Nat.lt_of_lt_of_eq hneb hszp.symm
+  have hvr : v = r := popped_of_topTemps hne₂ htt₃ hk₃
+  subst hvr
+  have hm₂ : Mode s₂ := hmB.of_modeEq hme₂
+  have hm₂' : Mode (s₂.withTempT v T?) := ⟨hm₂.headEval, hm₂.copying, hm₂.inPlace, hm₂.erased⟩
+  have hm₃ : Mode s₃ := hm₂'.of_modeEq (modeEq_form hme₃')
+  refine ⟨hT, hr, hm₃.of_modeEq hme₃, ?_, ?_, hF₃.of_erase hk₃.env, hf₃.kern hk₃⟩
+  · rw [← topReadings_withTempT st₁ v T?, ← ColumnC.topReadings_kern hk₃, htr₃, topReadings_withTempT, htr₂,
+      ← ColumnC.topReadings_kern hkB, topReadings_pushBindE sb.env x (some A.ty) v₀ p A.rd _ hfrb sb rfl, List.tail_cons, htr₁,
+      ← ColumnC.topReadings_kern hk₀]
+  · rw [← size_withTempT st₁ v T?, size_of_kern hk₃, hsz₃, size_withTempT, hsz₂, size_of_kern hkB]
+    exact hszp.trans (hsz₁.trans (size_of_kern hk₀))
 
 end Ochr.Meaning.Steps.Machine
