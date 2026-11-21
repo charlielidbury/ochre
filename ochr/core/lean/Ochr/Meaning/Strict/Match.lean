@@ -80,17 +80,19 @@ theorem sgood_tagOf {p : Place} {tag : Sem → TyS → Sem} {s s' : SState} {tg 
   obtain ⟨pos, steps, -, rfl⟩ := tagOf_some K φ h
   exact access_sgood hs pos _
 
-/-- The drop's write: the place accessed and written `⊥`, unless it is a copy or the write fails (at a
-root or through `*`, `sgood_setAt_pmem`; at a field path, the dependent-values guess
-`setContent_field_moved_sgood`). -/
+open Classical in
+/-- The drop's write: the place accessed and written `⊥`, unless it is a copy or the write is undefined
+at some typed future (at a root or through `*`, `sgood_setAt_pmem`; at a field path, the
+dependent-values guess `setContent_field_moved_sgood`, whose strict test is this one). -/
 theorem sgood_dropAt_write {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place) {f i : Nat}
     (hpos : Pos.bind f i ∈ s.positions) (steps : List Step) :
     SGood K.dm K.Γ φ (let s' := s.access (.bind f i) (dataHit steps)
       if K.D.copy (K.D.placeDecl (scopeOf s) q) = true then s else
-      match Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) (s'.typedFuture φ)) with
-      | none => s
-      | some _ => s'.setAt (.bind f i) fun φ' =>
-          (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) φ')).getD .err) := by
+      if ∀ ψ, TypedFut K φ s' ψ → (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps
+          (s'.valAt (.bind f i) ψ)).isSome then
+        s'.setAt (.bind f i) fun φ' =>
+          (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) φ')).getD .err
+      else s) := by
   dsimp only
   split
   · exact hs
@@ -99,18 +101,20 @@ theorem sgood_dropAt_write {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place) 
       rw [access_positions]; exact hpos
     generalize s.access (Pos.bind f i) (dataHit steps) = s' at hs' hpos' ⊢
     split
-    · exact hs
     · rename_i hu
       by_cases hst : steps = [] ∨ steps = [Step.deref]
       · have e : (fun φ' => (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps
             (s'.valAt (.bind f i) φ')).getD .err) = fun _ => .moved := by
-          funext φ'; rcases hst with rfl | rfl <;> rfl
+          funext φ'; rcases hst with rfl | rfl
+          · rw [Sem.updAt.eq_def]; rfl
+          · rw [Sem.updAt.eq_def]; dsimp only; rw [Sem.updAt.eq_def]; rfl
         rw [e]
         exact sgood_setAt_pmem hs' hpos' (fun _ _ _ => .moved _) (fun _ _ => .moved _)
       · have hsc : setContent K φ (.bind f i) steps .moved s' = some (⟨⟩, s'.setAt (.bind f i) fun φ' =>
             (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) φ')).getD .err) := by
-          unfold setContent; dsimp only; rw [hu]
+          unfold setContent; dsimp only; rw [if_pos hu]
         exact setContent_field_moved_sgood hs' ⟨fun e => hst (.inl e), fun e => hst (.inr e)⟩ hsc
+    · exact hs
 
 /-- The drop of one place at a join: a borrow held at a root ends; otherwise the write. -/
 theorem sgood_dropAt {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place) {f i : Nat}

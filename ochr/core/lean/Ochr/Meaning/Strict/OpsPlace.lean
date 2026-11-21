@@ -728,8 +728,8 @@ theorem readPlace_fund (p : Place) (hp : p.steps.2 = [] ∨ p.steps.2 = [.deref]
     exact ⟨hgoodT _ rfl, (fun l hl => by cases hl), hlou, hs₁⟩
   | false =>
     rw [if_neg (by simp)] at h
-    have hsc : setContent K φ (.bind f i) steps .moved s₁ = some (⟨⟩, s₁.setAt (.bind f i) fun _ => .moved) := by
-      rcases hst with rfl | rfl <;> rfl
+    have hsc : setContent K φ (.bind f i) steps .moved s₁ = some (⟨⟩, s₁.setAt (.bind f i) fun _ => .moved) :=
+      setContent_root K φ _ _ _ hst
     rw [hsc] at h
     simp only [Option.bind_some, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
@@ -1140,8 +1140,8 @@ theorem invalidateOne_sgood {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place)
       obtain ⟨⟨⟩, s₂⟩ := x
       dsimp only
       by_cases hst : steps = [] ∨ steps = [.deref]
-      · have e : setContent K φ (.bind f i) steps .moved s₁ = some (⟨⟩, s₁.setAt (.bind f i) fun _ => .moved) := by
-          rcases hst with rfl | rfl <;> rfl
+      · have e : setContent K φ (.bind f i) steps .moved s₁ = some (⟨⟩, s₁.setAt (.bind f i) fun _ => .moved) :=
+          setContent_root K φ _ _ _ hst
         rw [e] at hsc
         simp only [Option.some.injEq, Prod.mk.injEq] at hsc
         rw [← hsc.2]
@@ -1435,7 +1435,8 @@ theorem assignAt_sgood {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
           exact ⟨s₁.endLabel l, endLabel_sgood hs₁ l, by rw [endLabel_positions]; exact hpos₁,
             fun q => by rw [tyAt_endLabel, hty₁], by rw [heldTy_endLabel, hHT₁], by rw [heldMem_endLabel, hHM₁], hsc⟩
       have e3 : s₃ = s₂.setAt (.bind f i) fun _ => v := by
-        have : setContent K φ (Pos.bind f i) [] v s₂ = some (⟨⟩, s₂.setAt (.bind f i) fun _ => v) := rfl
+        have : setContent K φ (Pos.bind f i) [] v s₂ = some (⟨⟩, s₂.setAt (.bind f i) fun _ => v) :=
+          setContent_root K φ _ _ _ (.inl rfl)
         rw [this] at hsc₂; simp only [Option.some.injEq, Prod.mk.injEq] at hsc₂; exact hsc₂.2.symm
       subst e3
       have hs₃ : SGood K.dm K.Γ φ (s₂.setAt (.bind f i) fun _ => v) :=
@@ -1452,7 +1453,8 @@ theorem assignAt_sgood {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
         · rw [heldTy_setAt, heldMem_setAt, hHT₂, hHM₂]; exact hlab'.2
     · -- through `*`: the holder's content written whole
       have e3 : s₃ = s₁.setAt (.bind f i) fun _ => v := by
-        have : setContent K φ (Pos.bind f i) [.deref] v s₁ = some (⟨⟩, s₁.setAt (.bind f i) fun _ => v) := rfl
+        have : setContent K φ (Pos.bind f i) [.deref] v s₁ = some (⟨⟩, s₁.setAt (.bind f i) fun _ => v) :=
+          setContent_root K φ _ _ _ (.inr rfl)
         simp only [List.isEmpty_cons, Bool.false_eq_true, if_false] at hsc
         rw [this] at hsc; simp only [Option.some.injEq, Prod.mk.injEq] at hsc; exact hsc.2.symm
       subst e3

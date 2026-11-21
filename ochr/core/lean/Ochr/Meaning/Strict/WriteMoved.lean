@@ -68,6 +68,13 @@ theorem succAt_not_whole (r : Rec) {x : Sem} (hx : ¬ x.whole) : Sem.succAt r x 
   | some n => exact absurd (by rw [eq_el0_of_asNat hn]; simp [Sem.whole]) hx
   | none => simp only; rw [if_neg hx]
 
+/-- **Writing `⊥` at a path of an open member leaves an open member**, where the write is defined (the
+model lemma of the orchestrator's write rule, 2026-11-21: the run tests that the write is defined at
+every typed future; this says the result is then open). -/
+theorem omem_updAt_moved : ∀ (steps : List Step) {U : TyS} {T : TyM} {x y : Sem}, dm.OMem Γ T x →
+    Sem.updAt dm Γ U (fun _ => .moved) steps x = some y → dm.OMem Γ T y := by
+  sorry
+
 end
 
 end Ochr.Meaning.Strict
