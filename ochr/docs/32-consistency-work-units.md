@@ -207,7 +207,35 @@ Decided and not yet on main (they move up into the list when they land):
   def BoomF : False := AbsurdV(Bad)
   ```
   After the fix `x := refl` is rejected: a proof, a borrow or a type cannot be written into a data field. Writing data there (`x := O`), then the index, then repairing the field, stays as it is.
-- **A dependent field that is not a data type behaves like a proof field** (to be D112). If a field's type, for some value of the index, is a number, a unit, a function or a proposition, then rewriting the index sets the field to "moved", and assigning it checks the value against the type at the current index. Rejected afterwards: reading such a field after rewriting its index (read it first); writing it before its index (write the index first); keeping a borrow of it across the index write (end the borrow first). A tagged value's tag and payload can still be changed in place, tag first. Fields whose type is a data type at every index (a vector's buffer) are unchanged. No program of the suite or the case studies changes verdict. Self-contained examples follow when it lands.
+- **A dependent field that is not a data type behaves like a proof field** (D112; on main since 2026-11-21 at 59e9bee7; rebuilt and the examples below re-checked independently). A dependent field whose type is a data type at every index (a vector's buffer) is unchanged. Any other dependent field (its type is a number, a unit, a function or a proposition at some index) is set to "moved" when its index is written or borrowed, and an assignment to it is checked at the current index. No case study changes; one test row added by the previous night's fix changes verdict; check time unchanged. Each pair below was accepted before; the first is now rejected, the second is the rewrite. With the `Nat` prelude:
+  ```
+  inductive Bit := B0 | B1
+  def Payload (b : Bit) : Type := match b { B0 => Nat, B1 => Unit, }
+  inductive Tagged := MkT(b : Bit, x : Payload(b))
+  -- 1. reading the payload after changing the tag: take it out first
+  reject def ReadAfter (p : &Tagged) : Nat := match *p { MkT(b, x) => match b { B0 => (b := B1; let old = x; x := (); old), B1 => 0, }, }
+  def TakeFirst (p : &Tagged) : Nat := match *p { MkT(b, x) => match b { B0 => (let old = x; b := B1; x := (); old), B1 => 0, }, }
+  -- 2. writing the payload before the tag: tag first
+  reject def PayloadFirst (p : &Tagged) : Unit := match *p { MkT(b, x) => (x := (); b := B1), }
+  def TagFirst (p : &Tagged) : Unit := match *p { MkT(b, x) => (b := B1; x := ()), }
+  -- 3. using a borrow of the payload after the tag changed: use it first
+  reject def UseAfter (p : &Tagged) : Unit := match *p { MkT(b, x) => match b { B0 => (let r = &x; b := B1; *r := 5; x := ()), B1 => (), }, }
+  def UseBefore (p : &Tagged) : Unit := match *p { MkT(b, x) => match b { B0 => (let r = &x; *r := 5; b := B1; x := ()), B1 => (), }, }
+
+  inductive Void : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  -- 4. parking a number in a field whose type is a data type at every index: leave it moved out
+  reject def Park (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := 5; x := old), }
+  def NoPark (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := old), }
+
+  inductive PosN := MkPosN(n : Nat, h : Eq(Nat, n, 1))
+  -- 5. reading a proof after a match one arm of which writes its index: read it before
+  reject def ReadProofAfter (c0 : PosN) : Unit := (let c = c0; match c { MkPosN(n, h) => (match S(Z) { Z => (n := n; ()), S(m) => (), }; let h2 = h; ()), }; ())
+  def ReadProofBefore (c0 : PosN) : Unit := (let c = c0; match c { MkPosN(n, h) => (let h2 = h; match S(Z) { Z => (n := n; ()), S(m) => (), }; ()), }; ())
+  ```
+  Found while landing: the check of such a field assigned while its index is lent is needed for soundness itself (a number would pass at `Nat` and the borrow could then move the index to where the field's type is empty).
 - **A borrow is never left without its end** (to be D111). Overwriting content that held a borrow below the top of a value ended nothing, and the lender kept a loan for ever. D110 removed the one known way to get there; this closes it at the root.
 - **Where the checker looks a stuck program up among its records, it compares exactly** (to be D108). Its equality on values ignores the type parameters a constructor value records and the names of binders; that is right inside conversion, where both sides have one type, and wrong as a lookup key, where two programs that mean different things could match. On all of the roughly 36,000 lookups of the suite the match was already exact, so no verdict should change.
 - **A loop in the checker is bounded by the fuel** (to be D109). The loop that refines the places a stuck match captures was written as a `while`, which Lean builds on a partial function, against the checker's own standard that all its code is total. Nothing about a stuck match could be proved while it stood. Running out of fuel there becomes the usual "I don't know". A list of every other construct of that kind is being drawn up.
