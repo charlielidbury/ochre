@@ -216,8 +216,29 @@ whole block, the same shape as (a) but relational; see the queue).
 - `column_B_free` (`ColumnBFree.lean`, root-imported), `dropNoopInvM` (DropNoopInv + `ModeEq st st'`;
   FormMachine's `DropNoopInv` NOT restated: no consumer needs the mode; its `holdsBorrow` hypothesis
   is unused).
-- NEXT: step 5 of the brief (merge `origin/main`: D115/D116; regenerate `gen/`; repair; list sorries),
-  only after telling the orchestrator.
+- Step 5 DONE (24cd8862): `origin/main` (D115, D116) merged; generator re-run (the scripts hard-code
+  `/repos/ochre-machine/`: copy them to a scratch dir and `sed` the path to your worktree first);
+  `borrowNumInv`, `assignDerefInv` re-proved for D115's temporaries (statements unchanged); signature
+  repairs in Statements/CallAsm/Regress listed in the commit. Then `origin/spine-lead11` (the fragment)
+  merged (5960bec8).
+- THE FRAGMENT'S FACTS (`Steps/FragMachine.lean`; queue at the top of `Meaning/OPEN.md`). Proofs in
+  `Steps/Machine/FragFacts.lean` (root-imported). Reviewed against the code (2026-11-21):
+  - `DropLentFail`: FALSE as first stated (`findBorrow` answers the FIRST holder: another binding
+    holding the same borrow made the drop succeed); restated with "the temporary is the only holder"
+    (consumer: `FStT.bor1`), PROVED. `VarBotInv`: PROVED.
+  - `InvBindUnit`: FALSE at a free table (`fits` at a root read `.unit`; PlaceLocal pins only `.other`,
+    `.ref .other`); sent to the orchestrator: add `PlaceLocal.unit` and prove it in `placeLocal_ff`
+    (extend `InS` with `.unit`, recheck the `ResIn` closure of `placeDeclD`). Await the ruling.
+  - TRUE by reading, not proved: `EvalLow` (evalAt runs evalCore one fuel down on both branches, and
+    `onFail` rethrows; prove once "a run of `evalAt (k+1)` contains a run of `evalCore k`", useful
+    beyond this); `VarLentInv` (generalise `VarEndInv.lean`'s `runs_endTopLoan_two`/`runs_endBorrow_two`
+    to an `FEnd` environment: `findBorrow` = the holder by `bor1`, the D106 test sees a binding,
+    `repackCheck` of a number is the identity at any type (`runs_repackCheck_num`), `substEnv` puts `c` at
+    `px` only (`loan1`), `lendEnv` no-op, holder `⊥`: `endE`); `DropBorrowInv` (the same end, from
+    `dropTopBind`; the quiet stretch is the identity); `InvEnd` and `InvPopUnit` (as `invEndRead'`,
+    `invPopBind'`); `AssignDerefInvF` (y ↦ ⊥: the inner access's content fails).
+  - Not reviewed: `FragRun` (last), `FragDec` (decisions lane), `SeqBorInv`, `BorrowLentInv`,
+    `BorrowBotInv`, `AssignVarInv`.
 
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
@@ -383,6 +404,10 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21 ~17:30, `spine-machine4` (main d8440de3 and `spine-lead11` 1b4ed5a8 merged): `OchrMeaning`
+green; column_C_free, column_B_free, assignDerefInv, borrowNumInv, varEndInv, varBotInv,
+dropLentFail: standard axioms.
 
 2026-11-21 night, `spine-machine4` (machine4; `spine` 847f05ab and `spine-machine3` 761d0ce9 merged):
 `OchrMeaning` green; `varEndInv`, `assignDerefInv`, `dropNoopInvM`, `column_B_free`, `column_C_free`
