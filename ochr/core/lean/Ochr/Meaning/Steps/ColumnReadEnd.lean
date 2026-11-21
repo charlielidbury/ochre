@@ -284,14 +284,15 @@ theorem asg_afterEnd {st : MState} {xv : Value} (ha : Asg K ρ st.norm) (hxv : �
 /-- **The read of `x` that ends `y`'s borrow, at `evalCore`** (`B`'s read: `ReadPre`). The strict
 run's end passes (`EndOk`: `y`'s content is a whole member of `Nat` at every typed future, through
 the relation); the value read is `w`, read through the future at `y`'s content. -/
-theorem readEnd_core (hVE : VarEndInv) (hIC : InvCore) {n : Nat} {P : MState → Prop}
-    (hP : ∀ st, P st → ∃ l w, ReadPre st l w) :
+theorem readEnd_core (hVE : VarEndInv) (hI : InvSteps) (hPL : PlaceLocal K.D) {n : Nat} {P : MState → Prop}
+    (hP : ∀ st, P st → ∃ l w, ReadPre st l w)
+    (hdx : ∀ st, P st → ∀ b, st.env[0]?.bind (fun fr : Frame => fr.binds[0]?) = some b → b.decl = .other) :
     CoreSim K ρ φ (n + 1) (.place (.var 1)) P (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl hok hD bh h
   subst hty
   obtain ⟨l, w, hpre⟩ := hP st hPst
   have hAR : AtRead K ρ st l w := hpre.atRead
-  obtain ⟨rfl, hT, -, st₁, hq, hcopy, hmove⟩ :=
+  obtain ⟨rfl, hT, -, st₁, hq, hki, hcopy, hmove⟩ :=
     hVE n true hint st st' bh v T? l w K.D hm hpre.pos hpre.x hpre.y hpre.num hpre.tyx hD h
   obtain ⟨mw, hmw⟩ := hpre.num.vmean
   obtain ⟨bx, hlkx, -⟩ := hpre.lookup 0 (by omega)
@@ -405,7 +406,16 @@ theorem readEnd_core (hVE : VarEndInv) (hIC : InvCore) {n : Nat} {P : MState →
   have hpre₁ : ReadPre st₁ l v := hpre.of_erase hq.env
   have hr₁ : Rel K ρ φ π st₁ s := hr.of_quiet hq hp.labels
   have ha₁ : Asg K ρ st₁.norm := Asg.of_quiet hq hp.asg hp.inv.wf6
-  have hinv := hIC (n + 1) true (.place (.var 1)) hint st st' bh v T? K.D K.Γ (.var 1) hp.inv hD h
+  have hdx₁ : ∀ b, st₁.env[0]?.bind (fun fr : Frame => fr.binds[0]?) = some b → b.decl = .other := fun b hb =>
+    hdx st hPst b (by rw [← lookup_erase, hq.env, lookup_erase]; exact hb)
+  have hinv : Inv K.D K.Γ (st'.withTempT v T?).norm := by
+    have h₁ : Inv K.D K.Γ st₁.norm := hki K.D K.Γ hp.inv
+    refine hI.pushInert K.D K.Γ st' _ _ (.inl hpre₁.num) ?_
+    cases hc : K.D.copy (K.D.placeDecl (DecideScope.topReadings st) (.var 1))
+    · rw [← (hmove hc).norm]
+      exact hI.endRead K.D K.Γ st₁ l v .bot hPL hdx₁ hpre₁.pos hpre₁.x hpre₁.y hpre₁.num (.inr rfl) h₁
+    · rw [← (hcopy hc).norm]
+      exact hI.endRead K.D K.Γ st₁ l v v hPL hdx₁ hpre₁.pos hpre₁.x hpre₁.y hpre₁.num (.inl rfl) h₁
   have hmeanV : ∀ ψ hint', meanV K ρ ψ hint' v = .el0 Nat mw := fun ψ hint' => by
     rw [← meanV_eq_mean]; exact hmw _ _ _ _ _ _
   have hagree : ∀ T, T? = some T →

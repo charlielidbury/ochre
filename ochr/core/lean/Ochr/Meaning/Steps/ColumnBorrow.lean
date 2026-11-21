@@ -607,13 +607,13 @@ def BorrowPre (i : Nat) (st : MState) : Prop :=
 (`BorrowPre`). The strict run's tests pass: the access ends nothing; the content, the number, is a
 member of `Nat`; the invalidation is empty; the write is at a root. The renaming is extended at the
 new label, and the result's label is the checker's, renamed. -/
-theorem borrow_core (hB : BorrowNumInv) (hIC : InvCore) {n i : Nat} {P : MState → Prop}
+theorem borrow_core (hB : BorrowNumInv) (hI : InvSteps) {n i : Nat} {P : MState → Prop}
     (hP : ∀ st, P st → BorrowPre i st) (hinv : ∀ sc, K.D.invalidated sc (.var i) = []) :
     CoreSim K ρ φ (n + 1) (.borrow (.var i)) P (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
   obtain ⟨⟨f, j, b, hpos, hlk, hnum, htyb⟩, hnl, hfs⟩ := hP st hPst
-  obtain ⟨-, st₁, hq, rfl, rfl, hk⟩ := hB n i hint st st' bh v T? f j b K.D hm hpos hlk hnum htyb hD h
+  obtain ⟨-, st₁, hq, hki, rfl, rfl, hk⟩ := hB n i hint st st' bh v T? f j b K.D hm hpos hlk hnum htyb hD h
   -- the checker's state after the quiet step: the same Ω up to temporaries' types
   have hlk₁ : st₁.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b := by
     rw [← lookup_erase, ← hq.env, lookup_erase]; exact hlk
@@ -689,7 +689,8 @@ theorem borrow_core (hB : BorrowNumInv) (hIC : InvCore) {n i : Nat} {P : MState 
   · refine ⟨hp.ctx.of_eq ?_ ?_, ?_, ?_⟩
     · show st'.inds = st.inds; rw [← hk.inds, ← hq.inds]
     · show st'.globals = st.globals; rw [← hk.globals, ← hq.globals]
-    · exact hIC (n + 1) true _ hint st st' bh _ _ K.D K.Γ (.borrow i) hp.inv hD h
+    · rw [← (hk.withTempT _ _).norm]
+      exact hI.lend K.D K.Γ st₁ f j b _ hlk₁ hnum htyb hnl₁ (hki K.D K.Γ hp.inv)
     · have hA₁ : Asg K ρ st₁.norm := Asg.of_quiet hq hp.asg hp.inv.wf6
       have hX : Asg K ρ (({ st₁ with env := Env.setAtE st₁.env (.bind f j) (.loan st₁.nextLoan), nextLoan := st₁.nextLoan + 1 } : MState).withTempT (.borrow st₁.nextLoan b.val) (some (.tRef .tNat))).norm := by
         refine hA₁.of_refd rfl rfl rfl rfl rfl fun σ hσ => ?_

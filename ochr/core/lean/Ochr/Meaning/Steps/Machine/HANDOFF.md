@@ -1,7 +1,7 @@
 # Machine lane: working note (keep current; a successor continues from this alone)
 
-Worktree `/home/charlielidbury/repos/ochre-machine`, branch `spine-machine` (push there; never `spine`
-or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
+Worktree `/home/charlielidbury/repos/ochre-machine2`, branch `spine-machine2` (machine2, from 2026-11-21 evening;
+push there; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
 the background), and `taskset -c 0-14 lake build OchrMeaning` before each push. Report to the lead
 (`main`) by SendMessage, then end the turn. Owned: `Steps/MachineMono.lean`, everything under
 `Steps/Machine/`. Never edit the checker or other files (to check a consumer, copy it into a scratch
@@ -52,6 +52,97 @@ decisions reach is `FuelLe` itself one fuel up (`decideFuelLe`, `jdFuelLe`, `jaF
 own form as `decide_fuel_agree'` (`DecideFuelFF.lean`); `DecisionsFF` imports only `Statements`, so it
 can import `DecideFuel` and take that proof term verbatim. NOT the block captures (`ckBlockCaps` runs the machine: a fuel induction over the
 whole block, the same shape as (a) but relational; see the queue).
+
+### machine2: `DecTab.back` and the column's inversions (2026-11-21 evening)
+
+- `DecBack.lean`: `decTab_back` (= `MachineMono.DecTab.back`, = `ColumnC.DecBack`). One-way simulation
+  `Fwd R x` = `Keep x` and every success from `s₁` is one from each `R`-related `s₂` (same value,
+  budget, log). Keep is bundled so binds need `R` only at start states. Relations: `TabLe` (tables;
+  `declCopy` at raw states), `LiveLe` (+ mode, + top readings when `liveScope`), `EnvTab` (+ same
+  frames: the `scopeState` pairs), `LiveEq` (a state against `scopeState` at its own readings:
+  `decTab_declOf_at`, `decTab_placeDecl_at`, the machine's own reading is the table's).
+- `Inv.lean`: run inversions (`runs_get_bind`/`runs_modify_bind` as `Iff.rfl` for `rw`, `Runs.tick_bind`,
+  `Runs.log_bind`, `Runs.onFail_inv`, `Runs.located_inv` (equal up to `locs`), `Runs.noteValue_inv`,
+  Keep lemmas, `preFlags_inv`, the `peel` macro for SMALL hypotheses).
+- `EvalInv.lean`: `evalAt_inv`, `evalInvR`. `StepInv.lean`: `quiet_conv` (D103), `expectTy_inv`,
+  `succInvR`, `letInvR`, inversions of `refineDecl`, `getFlags`, `pushBind`, `pushTemp`, `popTemp`.
+- TECHNIQUE (what worked): `unfold Ochr.evalCore at h` is fast (no zeta); peel `tick`/`get`/`wanted`;
+  then either `change Runs (case's do block) _ _ _ _ at h` (cheap for small cases, `succInvR`) or
+  `simp only [Term.placeOperand?] at h` (reduces the 40-arm match to the case, `letInvR`; a verbatim
+  `change` for `let` took 4 min and failed). Equation lemmas: `f.eq_1` is the `n+1` case where it
+  exists (`eval`, `dropTopBind`, `conv`, `endLoansOfTopBind`); `evalAt.eq_1`/`evalCore`'s time out.
+  Big hypotheses: never `simp`/`split` (zeta duplicates join points, `split`'s simp hits its step
+  limit): targeted `rw [runs_get_bind]`, `rw [if_pos]` with the condition as a side goal,
+  `Runs.bind_inv`, and `clear` what `obtain := Runs.bind_inv h` leaves behind. Witnesses: an `rfl`
+  or a hypothesis about `st₀.field` in an anonymous constructor assigns the state metavariable by
+  first-order approximation before the run does: give states explicitly, or `?_` and fill after,
+  `by exact ⟨rfl, …⟩` to delay. A record literal spanning lines must keep its fields at one indent.
+- Proposed forms (reported to the lead; each docstring says why): `EvalInvR` (pre-pass pinned by the
+  reading, not `D.flags`), `SuccInvR` (typed clause on `T₀` as returned, no `some`), `LetInvR` (`u`'s
+  reading at the ENTRY, `T₀ : Option`, `ModeEq` for the mode, no Inv clause, no `0 < size`).
+  `AssignNumInv` is FALSE without `b.ty = some .tNat` (a field step under a non-number is a match).
+- `ReadInv.lean`: `varNumInv` (= the lead's `VarNumInv`, exact). `BorrowInv.lean`: `borrowNumInv` (= the
+  lead's `BorrowNumInv`, exact, spine-lead8). The read machinery at a variable holding a number:
+  `NumAt`, `runs_placeType_var`, `runs_repackAt_num`, `runs_accessPath_num`, `runs_accessInside_num`,
+  `runs_content_var`, `runs_readPlace_num`, `runs_borrowPlace_num`, `runs_copyRead_inv`,
+  `runs_isCapture_inv`, `runs_unsizedCheck_num`, `runs_openWrite_var`, `runs_freshLoan_inv`.
+  Two traps: a case split on `bd.val`'s shape (`rcases hx _ hn.num with e | ⟨w, e⟩; rw [e] at h`)
+  reduces readPlace's `match v`; `obtain ⟨rfl, rfl⟩` on a state equation may eliminate the NAMED state
+  (`st`) in favour of the local one, so state a sub-lemma over an arbitrary state (`varNum_read`)
+  rather than naming states after substitutions.
+- Ruled by the orchestrator (2026-11-21, OPEN.md on spine-lead8): `InvCore` DROPPED; the invariant is
+  carried by state-level lemmas `Inv D Γ st.norm → Inv D Γ st'.norm`, one per kernel shape an
+  inversion fact concludes (first column: a number binding set to ⊥, a binding pushed at Nat holding
+  a number, the top binding popped, a number temporary pushed, `setAtE (.succ v₀)`; the borrow
+  column's five are listed in OPEN.md). The lead states them in `FormMachine.lean`; this lane proves
+  them. `Inv` under `Kern` is free (`Kern a b` is `a.norm = b.norm`).
+- Reviewed (reported 2026-11-21): `AssignDerefInv` FALSE by reading (y's old content a borrow:
+  assignPlace's [Drop] ends it; fix `(∀ m z, w ≠ .borrow m z)` in the Kern clause's antecedent);
+  `SeqInv` needs `ModeEq st₁ stW` for `Mode stW` and loses its Inv clause; lead8's LetInv conjunct
+  `topReadings st₁ = topReadings st` is provable only for u without a write (Z, S, variables, let:
+  an induction through `eval`; a write at a non-Nat variable runs the [Proj] match); `VarEndInv` true
+  (its work: `endTopLoan`/`endBorrow` inverted at the two-binding state).
+- `InvShape.lean`: `inv_of_kern` (free), `runs_conv_of_beq` / `runs_expectTy_of_beq` (a comparison of
+  `==`-equal values is the identity: the column's `S(u)` with `u : Nat`). Its docstring warns: the
+  state-level lemmas over a push/pop of a binding meet `ShapeFacts.fits`, which reads `D.placeDecl`
+  at the TOP READINGS, so they need the table aligned at the new state; a number set where a place
+  reads `.ind n _` violates `fits`. The general "every run keeps `absTy.size = nextAbs`" (WF6 across a
+  private exit) is a whole-machine induction like `machineGrows`, to schedule when a step needs it.
+- `lead9` (origin/spine-lead9 332b0a1e) adopted `SuccInvR`/`LetInvR` word for word, deleted `InvCore` and
+  `ColTerm`, and bundled ten state-level Props as `InvSteps` (top of `OPEN.md`); `column_C_ff` now
+  assumes exactly `VarNumInv` + `InvSteps`. Its finding: `Inv` across a `Quiet` stretch is not
+  state-level (`Quiet` leaves `nextAbs` and the new unknowns' types free; WF6's `absTy.size = nextAbs`
+  and WF8/WF11 on `absTy` read them). It added `KeepsInv st st₁` beside each `Quiet` (in `VarNumInv`,
+  `BorrowNumInv`, `AssignNumInv`, `AssignDerefInv`, `VarEndInv`) and `InvExpectTy` for `S`. This
+  RESTATES `VarNumInv` and `BorrowNumInv` (proved here in the earlier form).
+- JUDGEMENT (machine2) between `KeepsInv` (lead9's) and extending `Quiet` with two fields (`nextAbs` in
+  step with `absTy`'s size; the new unknowns' types clean): both are true of the code, and for a
+  comparison of values that are not `==` BOTH rest on the same whole-machine invariant (every run keeps
+  `absTy.size = nextAbs` and makes only clean types: an induction of `machineGrows`' size), so neither
+  avoids it in general. For the columns NOW, `KeepsInv` is cheaper: every `Quiet` witness in
+  `varNumInv` and `borrowNumInv` is the state itself (`Quiet.refl`), so the new conjunct is
+  `fun _ _ h => h`, a one-line change to each proof; `InvExpectTy` for the column's `S(u)` with
+  `u : Nat` follows from `runs_expectTy_of_beq` (the check is the identity). Extending `Quiet` is the
+  more uniform endpoint but forces `quiet_conv` to prove the two fields for EVERY comparison at once,
+  i.e. the whole-machine induction immediately. Recommendation: keep `KeepsInv` now; move to the
+  extended `Quiet` (with the induction) when a column first needs a comparison of unequal values.
+- NEXT, in order (the orchestrator's, 2026-11-21 night):
+  1. settle the `KeepsInv` / `Quiet` decision above with the orchestrator (recommended: `KeepsInv`);
+  2. the ten `InvSteps` (review each for truth first; note `ShapeFacts.fits` reads `D.placeDecl` at
+     the TOP READINGS: a push/pop needs the table aligned at the new state, and a number where a
+     place reads `.ind n _` violates `fits`);
+  3. re-prove `VarNumInv` and `BorrowNumInv` in lead9's restated form (add `fun _ _ h => h`);
+  4. `VarEndInv` (the inversion of `endTopLoan`/`endBorrow` at the two-binding state);
+  5. the unconditional corollary of `ColumnCFF.column_C_ff` (`varNumInv` + the `InvSteps`);
+  6. then merge `origin/main` into the proof line (D115 at 226dcdd6: calls' heads and arguments,
+     constructor fields, an assignment's right-hand side, a borrow made during invalidation, an arm's
+     result at the join, the comparison's generic arguments held as typed temporaries; `evalCall`,
+     `callFn`, `runBodyCore`, `closeCall`, `evalCtor`, `joinEnds`, `convFnRun` changed; D116 pending:
+     `clone` of a proof place returns the proof), re-run the generator (`gen/`, "Regenerating" above)
+     so `machineGrows` holds, repair `Steps/` minimally, list every `sorry` left with its reason; a
+     statement the change makes false is a finding.
+  Still owed from the borrow column's review: `AssignDerefInv` and `SeqInv` in their fixed forms, the
+  LetInv readings conjunct for a write-free `u`.
 
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
@@ -217,6 +308,10 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21 night, `spine-machine2` (machine2; `spine` 63ca5e66 and `spine-lead8` 73ce48c3 merged): `OchrMeaning`
+green; `DecTab.back`, `DropNoopInv`, `EvalInvR`, `SuccInvR`, `LetInvR`, `VarNumInv`, `BorrowNumInv`, `runs_expectTy_of_beq` proved
+(`FormFacts` prints their axioms).
 
 2026-11-21 evening, `spine-machine` 6ad1cd32e (after merging `spine` c0c95fb6 and `spine-lead7`; the root
 imports `Steps/Machine/FormFacts`): `OchrMeaning` green. Since the merge with `spine` 1e226c6a the whole lane builds; `machineGrows` has NO

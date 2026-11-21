@@ -205,9 +205,12 @@ run leaves Ω as it was. The strict run's tests all pass: the access ends nothin
 is lent at a binding holding a number); the field update is defined at every typed future (there `x`
 means its number, by the relation, at the futures it compares at, which every typed future of a good
 state is: `typedFut_rel`); the state after holds open members everywhere (`stateOk_setNum`). -/
-theorem assign_core (hA : AssignNumInv) (hIC : InvCore) (hc : Strict.FundCtx K) {n i : Nat} {u : Term}
-    {P Pu : MState → Prop} (hcu : ColTerm u) (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
+theorem assign_core (hA : AssignNumInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (hc : Strict.FundCtx K)
+    {n i : Nat} {u : Term}
+    {P Pu : MState → Prop} (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hP : ∀ st, P st → NumVar i st)
+    (hdx : ∀ st, P st → ∀ f j b, ckVarPos st.env i = some (.bind f j) →
+      st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .other)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ (T : TyS) (s : SState), runT K ρ φ false T u s = runT K ρ φ false (.plain TyM.err) u s)
     (hnum : ∀ st₀ st₁ bh hint v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
@@ -224,7 +227,7 @@ theorem assign_core (hA : AssignNumInv) (hIC : InvCore) (hc : Strict.FundCtx K) 
     obtain ⟨rfl, rfl⟩ := hpos
     rw [hb0, Option.some.injEq] at hb
     subst hb; exact ht0
-  obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hpos₂, hlk₂, hbw, hk'i,
+  obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hki, -, hpos₂, hlk₂, hbw, hk'i,
     rfl, rfl⟩ := hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
   have hPu₀ := hPu st st₀ hk₀ hPst
   obtain ⟨hv₀, he₀₁⟩ := hnum st₀ st₁ bh₁ hu' v₀ T₀ hPu₀ hm₀ htd₀ hD₁ hru
@@ -361,7 +364,15 @@ theorem assign_core (hA : AssignNumInv) (hIC : InvCore) (hc : Strict.FundCtx K) 
   · refine ⟨hp₁.ctx.of_eq ?_ ?_, ?_, ?_⟩
     · show st'.inds = st₁.inds; rw [← hk'.inds, ← hq.inds]
     · show st'.globals = st₁.globals; rw [← hk'.globals, ← hq.globals]
-    · exact hIC (n + 1) true _ hint st st' bh .unit (some .tUnit) K.D K.Γ (.assign i hcu) hp.inv hD h
+    · have h₁ : Inv K.D K.Γ st₁.norm := hI.popInert K.D K.Γ st₁ v₀ T₀ (.inl hv₀) hp₁.inv
+      have h₂ : Inv K.D K.Γ st'.norm := by
+        rw [← hk'.norm]
+        exact hI.setNum K.D K.Γ st₂ f j _ hPL
+          (fun b' hb' => hdx st hPst f j b'
+            (by rw [← ckVarPos_erase, hk₀.env.trans (he₀₁.trans hq.env), ckVarPos_erase]; exact hpos₂)
+            (by rw [← lookup_erase, hk₀.env.trans (he₀₁.trans hq.env), lookup_erase]; exact hb'))
+          (by rw [hvb₂]; exact hnb') (.succ hv₀) (hki K.D K.Γ h₁)
+      exact hI.pushInert K.D K.Γ st' _ _ (.inr rfl) h₂
     · have : Asg { K with Δ := Δ₁ } ρ₁ st'.norm := by rw [← hk'.norm]; exact hX
       exact asg_withTempT_inert this Value.inert_unit _
   · have hR := rel_setNum hr₂ hposA hposS (by rw [hvb₂]; exact hnb') (Value.Num.succ hv₀) hmS hgv
