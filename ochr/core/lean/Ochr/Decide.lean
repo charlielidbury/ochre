@@ -91,6 +91,8 @@ def ctorIsProof (ty : String) : M Bool := do
 /-- D45: large elimination (a match on a proof producing a non-proof) is allowed only
 from a subsingleton: zero constructors, or one whose fields are all propositions. -/
 def largeElim (d : IndDecl) : M Bool := do
+  -- D107: a type being declared has no constructors yet in its entry: not known to be a subsingleton
+  if d.declaring then return false
   match d.ctors with
   | [] => pure true
   | [(_, fields)] => fields.allM fun (_, FT) => fieldTermIsProp d FT
@@ -305,6 +307,8 @@ def declCopy (fuel : Nat) (r : DeclInfo) : M Bool := do
   | .ind n args =>
     let d ← lookupInd n
     if d.copy || d.sort == 0 then return true
+    -- D107: a type being declared has no constructors yet in its entry: not known to be a copy
+    if d.declaring then return false
     if d.ctors.any (fun (_, fs) => fs.any fun (_, FT) => FT.mentionsTInd n) then return false
     -- D64: a type with a dependent constructor is a copy type only when declared `copy`
     if (List.range d.ctors.length).any d.dependent then return false

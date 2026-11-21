@@ -1317,6 +1317,7 @@ def placeType? (fuel : Nat) (p : Place) : M (Option Value) := do
     | some (.tInd n _) =>
       -- D81: field `i` of the type's one constructor, the place its pattern variable names
       let d ← lookupInd n
+      if d.declaring then err (d.declaringMsg s!"{← ppPlace q}.{i}")
       let [(_, fields)] := d.ctors
         | err s!"{← ppPlace q}.{i}: {n} has {d.ctors.length} constructors, and `.{i}` names a field of a type with exactly one (use match)"
       let some (fname, _) := fields[i]?
@@ -1381,6 +1382,7 @@ def projMatch (fuel : Nat) (q : Place) (i : Nat) (k : Place → Term) : M (Place
   let some n := n?
     | err s!"{pq}.{i}: {pq} is not known to be of an inductive type (`.{i}` names a field of a type with one constructor)"
   let d ← lookupInd n
+  if d.declaring then err (d.declaringMsg s!"{pq}.{i}")
   let [(cn, fields)] := d.ctors
     | err s!"{pq}.{i}: {n} has {d.ctors.length} constructors, and `.{i}` names a field of a type with exactly one (use match)"
   let some (fname, FT) := fields[i]?
@@ -1654,6 +1656,7 @@ from its fields' types; a parameter no field determines (the `A` of `Nil`) is un
 def indValType? (fuel : Nat) (t : String) (c : Nat) (fs : List Value) : M (Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let d ← lookupInd t
+  if d.declaring then err (d.declaringMsg s!"a value of {t}")
   if d.params.isEmpty then return some (.tInd t [])
   let some (_, fields) := d.ctors[c]? | err s!"{t} has no constructor {c}"
   let mut sol := Array.replicate d.params.length none
@@ -2605,6 +2608,7 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
     (hint : Option Value) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let d ← lookupInd ty
+  if d.declaring then err (d.declaringMsg s!"the constructor {h.name}")
   if d.abstract && (← atRuntime) then
     err s!"[K3] the constructor {h.name} of the abstract type {ty} at runtime, outside model code (an `implemented by` body, or a function taking or returning an unsized value)"
   let some (_, fields) := d.ctors[c]? | err s!"{ty} has no constructor {c}"
@@ -3323,7 +3327,10 @@ def scrutType (fuel : Nat) (p : Place) (ty : String) : M (IndDecl × List Value)
   match ← placeType fuel' p with
   | .tInd n ps =>
     if ty != "" && n != ty then err s!"[Match] on {← ppPlace p} : {Value.tInd n ps}, with the constructors of {ty}"
-    pure (← lookupInd n, ps)
+    let d ← lookupInd n
+    -- D107: not a type whose declaration is being checked
+    if d.declaring then err (d.declaringMsg s!"a match on {← ppPlace p}")
+    pure (d, ps)
   | T => err s!"[Match] on {← ppPlace p}, whose type {T} is not an inductive type{if ty == "And" then " (And(True, P) ≡ P: match on the conjunct instead)" else ""}"
 termination_by structural fuel
 
@@ -4243,6 +4250,7 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
         checkTail fuel' u k
     | .tInd n ps =>
       let d ← lookupInd n
+      if d.declaring then err (d.declaringMsg s!"split {f}")
       for c in List.range d.ctors.length do
         inWorld w do
           let r ← ctorRefinement fuel' d ps c

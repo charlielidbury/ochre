@@ -525,6 +525,21 @@ ochr DepFields uses Logic, WordType, Options {
   reject def Boom2 : False := K(bad)
   -- twin of Boom2: over `BadOk`: from any `BadOk` (there is no closed one without a `Void`)
   def Boom2Ok (x : BadOk) : False := KOk(x)
+  -- D107: nested at its own parameter `A`, which it passes to `NegIf`: `QN(Unit, Zero)` is
+  -- `QN(Unit, Zero) → Void` (Curry's paradox; the paper's example, appendix [Ind-decl])
+  reject inductive QN (A : Type) (n : Word) := MkQN(z : QN(QN(A, n), Succ(Zero)), e : Eq(Word, n, Zero)) | StopN(f : NegIf(n, A), h : IsSucc(n))
+  -- twin of QN: `StopN` holds an `A`, so `A` is nestable in `QNOk`
+  inductive QNOk (A : Type) (n : Word) := MkQNOk(z : QNOk(QNOk(A, n), Succ(Zero)), e : Eq(Word, n, Zero)) | StopNOk(a : A, h : IsSucc(n))
+  reject def DeltaQ (x : QN(Unit, Zero)) : False := (
+    match x {
+      MkQN(z, e) => match z {
+        MkQN(z2, e2) => e2,
+        StopN(f, h) => absurdV(f(x)),
+      },
+      StopN(f, h) => h,
+    }
+  )
+  reject def BoomQ : False := DeltaQ(MkQN[Unit, Zero](StopN[QN(Unit, Zero), Succ(Zero)](λ(y : QN(Unit, Zero)) : Void => (let p = DeltaQ(y); let k : Void = match p {}; k), refl), refl))
   -- a type function whose value is a Π at the generic telescope is not first-order data
   def Neg (A : Type) : Type := Π(x : A). Void
   reject inductive NegBox (A : Type) := MkNegBox(f : Neg(A))
@@ -560,8 +575,10 @@ ochr DepFields uses Logic, WordType, Options {
   ("GetLent", "the proof assigned to h (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⌈IsSucc(σ1)⌉, expected ⌈IsSucc(σ2)⌉"),
   ("BoomGetLent", "unknown constant GetLent"),
   ("RefillLentLive", "the proof assigned to h (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⊤, expected ⌈IsSucc(σ2)⌉"),
-  ("Bad", "field b of MkBad : NBox(Bad): Bad occurs at the parameter A of NBox, which NBox passes to a type function"),
+  ("Bad", "field b of MkBad : NBox(Bad): Bad occurs at the parameter A of NBox, which is not nestable in NBox"),
   ("Boom2", "unknown constant K"),
+  ("QN", "field z of MkQN : QN(QN(A, n), Succ(Zero)): QN occurs at the parameter A of QN, which is not nestable in QN"),
+  ("DeltaQ", "unknown inductive type QN"), ("BoomQ", "unknown"),
   ("NegBox", "field f of MkNegBox : Neg(A) computes to Π")]
 
 /-! ## Stuck blocks are calls (D72)

@@ -93,7 +93,20 @@ structure IndDecl where
                             -- positions and model code (`implemented by` bodies, model functions)
   unsized : Bool := false   -- declared `unsized` (K2): at runtime, outside model code, a place of this type is
                             -- only borrowed (never read, moved, assigned or matched)
+  nestable : List Bool := [] -- D107: which parameters are nestable (`Check.nestableSet`), in declaration order;
+                            -- computed from the fields and stored by [Ind-decl], empty until then
+  declaring : Bool := false -- D107: the entry [Ind-decl] holds while checking this declaration's own fields, with no
+                            -- constructors yet: they are not known, so a match with no arms on it is not vacuous
 deriving Inhabited
+
+/-- D107: the error of a term that reads the constructors of a type whose declaration is being
+checked (a match on an earlier field of that type, with or without arms, a field projection of
+it, one of its constructors, a split on it): while `D` is declared its entry has no constructors,
+and a reader of the entry would answer as if `D` were empty (`W(let k : False = match b {}; k)`
+with `b : D` was accepted). A decision that reads them and cannot reject answers conservatively
+instead (`declCopy`, `largeElim`; η and the join's grain see no single constructor). -/
+def IndDecl.declaringMsg (d : IndDecl) (what : String) : String :=
+  s!"{what} reads the constructors of {d.name}, which are not known while {d.name} is declared (D107)"
 
 /-- [Ind-decl] (D71, Fording): parameter `i` of `d` is a *type parameter* when its declared
 type is syntactically a sort (`A : Type`, `P : Prop`); any other parameter (`n : Word`,

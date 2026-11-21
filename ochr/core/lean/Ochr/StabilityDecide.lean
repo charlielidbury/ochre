@@ -206,8 +206,10 @@ theorem readsSig_largeElim (d : IndDecl) : ReadsSig (largeElim d) := by
   unfold largeElim
   split
   · exact .pure _
-  · exact ReadsSig.allM _ (fun _ => readsSig_fieldTermIsProp _ _) _
-  · exact .pure _
+  · split
+    · exact .pure _
+    · exact ReadsSig.allM _ (fun _ => readsSig_fieldTermIsProp _ _) _
+    · exact .pure _
 
 /-- The erasure pre-pass's flags for a term, given its declared reading, read only the term's
 syntax and the reading (it fails on a reading with no declared type, D63). -/
