@@ -161,6 +161,8 @@ import Ochr.Meaning.Steps.ColumnIFix
 import Ochr.Meaning.Steps.ColumnIRun
 import Ochr.Meaning.Steps.ParGuards
 import Ochr.Meaning.Steps.FrameGuards
+import Ochr.Meaning.Steps.CallGuards
+import Ochr.Meaning.Steps.ColumnJ
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects
