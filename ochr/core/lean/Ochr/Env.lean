@@ -581,10 +581,43 @@ def popTemp : M Value := do
   | some v => modifyFrame f (fun fr => { fr with temps := fr.temps.pop, tempTys := fr.tempTys.pop }); pure v
   | none => err "internal: no temporary to pop"
 
+/-- D115: the top frame's last `n` temporaries, read in place (a constructor's fields while its
+field types are checked). -/
+def topTemps (n : Nat) : M (Array Value) := do
+  let ts := (← get).env[(← get).env.size - 1]!.temps
+  if ts.size < n then err s!"internal: {n} temporaries expected, {ts.size} held"
+  pure (ts.extract (ts.size - n) ts.size)
+
 def popTemps (n : Nat) : M (Array Value) := do
   let mut out := #[]
   for _ in [0:n] do out := out.push (← popTemp)
   pure out.reverse
+
+/-- D115: a call's head and arguments, the last `n + 1` temporaries of frame `f` (the head first),
+read in place. A call holds them there, in Ω, from their evaluation until the callee's frame binds
+them, a sealed program's text takes them ([Close]), or they end (P5): every value the machine
+holds is in Ω while anything else runs (D104), so whatever maps over Ω (an [End], a fill, a mark)
+reaches them, and a loan of an argument's borrow is live. -/
+def callTemps (f n : Nat) : M (Value × Array Value) := do
+  let ts := (← get).env[f]!.temps
+  if ts.size < n + 1 then err s!"internal: a call of {n} argument(s) holds only {ts.size} temporaries"
+  let base := ts.size - (n + 1)
+  pure (ts[base]!, ts.extract (base + 1) ts.size)
+
+/-- D115: the position of argument `i` of the call whose `n` arguments are the last temporaries of
+frame `f` (`callTemps`). -/
+def callArgPos (f n i : Nat) : M Pos := do
+  let sz := (← get).env[f]!.temps.size
+  if sz < n + 1 || i ≥ n then err s!"internal: no argument {i} among a call's {n} temporaries"
+  pure (.temp f (sz - n + i))
+
+/-- D115: take a call's head and arguments off frame `f` (`callTemps`), where the callee's frame
+binds them or a sealed program's text has taken them. -/
+def takeCallTemps (f n : Nat) : M (Value × Array Value) := do
+  let r ← callTemps f n
+  let base := (← get).env[f]!.temps.size - (n + 1)
+  modifyFrame f fun fr => { fr with temps := fr.temps.extract 0 base, tempTys := fr.tempTys.extract 0 base }
+  pure r
 
 /-- The position of de Bruijn variable `i` in the top frame. -/
 def varPos (i : Nat) : M Pos := do

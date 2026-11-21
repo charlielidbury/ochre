@@ -92,8 +92,9 @@ def liveLoan (env : Env) (l : Nat) : Bool := (findBorrow env l).isSome
 argument's hint, [Call-type], the declared call type, a deferred parameter type) TAKES a borrow
 argument from the position that holds it, leaving `⊥` there in the copy, so the copy's binding
 is the borrow's one holder rather than a second one beside the caller's temporary or the callee's
-parameter (each label has one holder: the meaning spine's (WF1)). An argument in flight (popped
-from the temporaries) has no holder in Ω, and nothing is taken. Only a discarded copy differs. -/
+parameter (each label has one holder: the meaning spine's (WF1)). D115: a call's arguments are
+held in Ω, as temporaries, until the callee's frame binds them, so the borrow is always found
+there (or in the parameter, once bound). Only a discarded copy differs. -/
 def takeArgBorrow (w : Value) : M Unit := do
   let .borrow l _ := w | return
   let env := (← get).env
