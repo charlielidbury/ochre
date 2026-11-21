@@ -130,6 +130,52 @@ theorem runs_mapState_fold {f : Value → M Value} {φ : Value → Value} {P : V
   obtain ⟨e6, e7⟩ := runs_pure_inv h1
   exact ⟨e6, e7⟩
 
+/-- **An end of one borrow** (`FEnd` without its clause on temporaries, which no end reads): every
+position a fragment value, `loan_l` at `px` only, `borrow_l c` (`c` a number) at `ph` only. The form the
+discard of a borrow in flight meets (`dropValue`: the borrow is the pushed temporary). -/
+structure EndAt (E : Env) (px ph : Pos) (l : Nat) (c : Value) : Prop where
+  vals : ∀ q ∈ allPos E, FVal (valAt E q)
+  hpx : px ∈ allPos E
+  hph : ph ∈ allPos E
+  x : valAt E px = .loan l
+  y : valAt E ph = .borrow l c
+  c : c.Num
+  loan1 : ∀ q ∈ allPos E, valAt E q = .loan l → q = px
+  bor1 : ∀ q ∈ allPos E, ∀ w, valAt E q = .borrow l w → q = ph
+
+theorem _root_.Ochr.Meaning.Steps.Form.FEnd.endAt {E : Env} {px ph : Pos} {l : Nat} {c : Value}
+    (h : FEnd E px ph l c) : EndAt E px ph l c :=
+  ⟨h.vals, h.hpx, h.hph, h.x, h.y, h.c, h.loan1, h.bor1⟩
+
+namespace EndAt
+variable {E : Env} {px ph : Pos} {l : Nat} {c : Value} (h : EndAt E px ph l c)
+include h
+
+theorem ne : ph ≠ px := fun e => by have := h.y; rw [e, h.x] at this; cases this
+
+theorem valAt_endE (q : Pos) :
+    valAt (endE E px ph c) q = if q = px then c else if q = ph then .bot else valAt E q := by
+  unfold endE
+  split
+  · next e => subst e; exact Ochr.Meaning.Steps.valAt_setAtE_self _ (by rw [allPos_setAtE]; exact h.hpx)
+  · next e =>
+    rw [valAt_setAtE_other _ _ _ _ e]
+    split
+    · next e' => subst e'; exact Ochr.Meaning.Steps.valAt_setAtE_self _ h.hph
+    · next e' => exact valAt_setAtE_other _ _ _ _ e'
+
+theorem vals_endE : ∀ q ∈ allPos (endE E px ph c), FVal (valAt (endE E px ph c) q) := by
+  intro q hq
+  rw [FEnd.allPos_endE] at hq
+  rw [h.valAt_endE]
+  split
+  · exact .num h.c
+  · split
+    · exact .bot
+    · exact h.vals q hq
+
+end EndAt
+
 /-- `tyAt` only reads. -/
 theorem runs_tyAt_state {p : Pos} {s s' : MState} {b : Nat} {T? : Option Value}
     (h : Runs (Ochr.tyAt p) s b T? s') : s' = s := by
@@ -176,7 +222,7 @@ theorem runs_lendV_fval {k l : Nat} {to : List Nat} {v r : Value} {st st' : MSta
 /-- **The tail of an end in a fragment environment**: the holder `⊥`, `substEnv` gives `c` to the one
 position holding `loan_l`, `lendEnv` changes nothing. -/
 theorem runs_endTail_fend {k : Nat} {s s' : MState} {b : Nat} {px ph : Pos} {l : Nat} {c : Value}
-    (hF : FEnd s.env px ph l c)
+    (hF : EndAt s.env px ph l c)
     (h : Runs (do Ochr.setAt ph .bot; Ochr.substEnv k (.loan l) c false
                   let e ← get; Ochr.lendEnv k (.ended l (liveLoansIn e.env c))) s b () s') :
     s' = { s with env := endE s.env px ph c } := by
@@ -254,7 +300,7 @@ theorem runs_endTail_fend {k : Nat} {s s' : MState} {b : Nat} {px ph : Pos} {l :
 [Repack] of a number passes and changes nothing; D98's test passes, a number being whole; an
 observation's frame, where one is open, may reject the end). -/
 theorem runs_endBorrow_fend {k : Nat} {s s' : MState} {b : Nat} {px ph : Pos} {l : Nat} {c : Value}
-    (hF : FEnd s.env px ph l c) (h : Runs (Ochr.endBorrow k l) s b () s') :
+    (hF : EndAt s.env px ph l c) (h : Runs (Ochr.endBorrow k l) s b () s') :
     s' = { s with env := endE s.env px ph c } := by
   have hfb : findBorrow s.env l = some ph := by
     refine findBorrow_unique hF.hph (by rw [hF.y]; simp [Value.holdsBorrow]) (fun q hq hh => ?_)
@@ -325,7 +371,7 @@ theorem runs_endBorrow_fend {k : Nat} {s s' : MState} {b : Nat} {px ph : Pos} {l
         · exact hK h
     · exact hK h
 
-theorem findBorrow_fend {E : Env} {px ph : Pos} {l : Nat} {c : Value} (hF : FEnd E px ph l c) :
+theorem findBorrow_fend {E : Env} {px ph : Pos} {l : Nat} {c : Value} (hF : EndAt E px ph l c) :
     findBorrow E l = some ph := by
   refine findBorrow_unique hF.hph (by rw [hF.y]; simp [Value.holdsBorrow]) (fun q hq hh => ?_)
   obtain ⟨w, hw⟩ := (FVal.holdsBorrow (hF.vals q hq) l).mp hh
@@ -342,11 +388,11 @@ theorem runs_endTopLoan_fend {k : Nat} {site : String} {p? : Option Place} {s s'
   | succ k =>
     unfold Ochr.endTopLoan at h
     peel h
-    rw [findBorrow_fend hF] at h
+    rw [findBorrow_fend hF.endAt] at h
     simp only at h
     peel h
     split at h
     · obtain ⟨_, _, _, he, _⟩ := Runs.bind_inv h; simp only [runs_err_iff] at he
-    · exact runs_endBorrow_fend hF h
+    · exact runs_endBorrow_fend hF.endAt h
 
 end Ochr.Meaning.Steps.Machine
