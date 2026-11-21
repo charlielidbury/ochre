@@ -265,4 +265,154 @@ theorem closureRun_J2 (hB : BodyLazyInv) (hN : InvNumA)
     rw [hcl] at hag
     exact ⟨ρ', Δ', π', rs.1, rs.2, rfl, _, hmean.trans hag.1⟩
 
+/-! ## `Pre` and `LazyNum` at the callee state -/
+
+theorem allPos_stCJ2 : allPos stCJ2.env = [.bind 0 0, .bind 1 0, .bind 1 1] := by
+  rw [allPos_eq]; simp [stCJ2, frameAllPos, List.range_succ]
+
+theorem values_stCJ2 : Env.values stCJ2.env = [.bot, .gfn "I", .succ .zero] := by
+  rw [Env.values, allPos_stCJ2]; rfl
+
+theorem bind_stCJ2 {f i : Nat} {b : Binding} (h : stCJ2.env[f]?.bind (fun fr => fr.binds[i]?) = some b) :
+    (f = 0 ∧ i = 0 ∧ b = xB .bot) ∨ (f = 1 ∧ i = 0 ∧ b = selfU) ∨ (f = 1 ∧ i = 1 ∧ b = nLazy (.succ .zero)) := by
+  rcases f with _ | _ | f
+  · rcases i with _ | i
+    · simp [stCJ2] at h; exact .inl ⟨rfl, rfl, h.symm⟩
+    · simp [stCJ2] at h
+  · rcases i with _ | _ | i
+    · simp [stCJ2] at h; exact .inr (.inl ⟨rfl, rfl, h.symm⟩)
+    · simp [stCJ2] at h; exact .inr (.inr ⟨rfl, rfl, h.symm⟩)
+    · simp [stCJ2] at h
+  · simp [stCJ2] at h
+
+theorem ckContent_stCJ2 {p : Place} {v : Value} (h : ckContent stCJ2.env p = some v) :
+    v = .gfn "I" ∨ v = .succ .zero ∨ v = .zero := by
+  rcases hp : p.steps with ⟨i, path⟩
+  simp only [ckContent, hp] at h
+  unfold ckVarPos at h
+  by_cases hi : i < 2
+  · have hi' : i < stCJ2.env[stCJ2.env.size - 1]!.binds.size := hi
+    rw [if_pos hi'] at h
+    simp only [Option.bind_some] at h
+    have hv : ∀ w : Value, (w = .gfn "I" ∨ w = .succ .zero) → w.follow path = some v →
+        v = .gfn "I" ∨ v = .succ .zero ∨ v = .zero := by
+      rintro w hw hf
+      rcases path with _ | ⟨s, _ | ⟨s', ss⟩⟩
+      · simp [Value.follow] at hf; rcases hw with rfl | rfl
+        · exact .inl hf.symm
+        · exact .inr (.inl hf.symm)
+      · rcases hw with rfl | rfl <;> cases s <;> simp [Value.follow, stepV] at hf
+        rename_i k
+        rcases k with _ | k <;> simp [stepV] at hf
+        exact .inr (.inr hf.symm)
+      · rcases hw with rfl | rfl <;> cases s <;> simp [Value.follow, stepV] at hf
+        rename_i k
+        rcases k with _ | k <;> simp [stepV] at hf
+    rcases i with _ | _ | i
+    · exact hv _ (.inr rfl) h
+    · exact hv _ (.inl rfl) h
+    · omega
+  · have hi' : ¬ i < stCJ2.env[stCJ2.env.size - 1]!.binds.size := hi
+    rw [if_neg hi'] at h; cases h
+
+theorem not_refd_stCJ2 (σ : Nat) : ¬ stCJ2.Refd σ := fun h => by
+  have := MState.refd_lt stCJ2 0 ?_ ?_ ?_ ?_ ?_ ?_ ?_ σ h
+  · omega
+  · intro v hv σ hσ; rw [values_stCJ2] at hv
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hv
+    rcases hv with rfl | rfl | rfl <;> exact (Bool.false_ne_true hσ).elim
+  · intro f i b T hb hT σ hσ
+    rcases bind_stCJ2 hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [xB, selfU, nLazy] at hT <;> subst hT <;>
+      exact (Bool.false_ne_true hσ).elim
+  · intro f i b P ws j hb hT σ hσ
+    rcases bind_stCJ2 hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [xB, selfU, nLazy] at hT
+    obtain ⟨rfl, rfl, rfl⟩ := hT
+    rcases hσ with h | ⟨w, hw, h⟩
+    · exact (Bool.false_ne_true h).elim
+    · simp at hw; subst hw; exact (Bool.false_ne_true h).elim
+  · intro G hG; simp [stCJ2] at hG
+  · intro m σ' h; simp [stCJ2] at h
+  · intro σ' v h; simp [stCJ2] at h
+  · intro σ' T h; simp [stCJ2] at h
+
+theorem norm_stCJ2 : stCJ2.norm = stCJ2 := by simp [stCJ2, MState.norm, Env.erase, Frame.erase]
+
+/-- **`Inv` at the callee state.** -/
+theorem inv_stCJ2 (D : Decisions) : Inv D [] stCJ2 := by
+  have hvals : ∀ v ∈ Env.values stCJ2.env, v = .bot ∨ v = .gfn "I" ∨ v = .succ .zero := fun v hv => by
+    rw [values_stCJ2] at hv; simpa using hv
+  have hpos : ∀ p ∈ allPos stCJ2.env, p = .bind 0 0 ∨ p = .bind 1 0 ∨ p = .bind 1 1 := fun p hp => by
+    rw [allPos_stCJ2] at hp; simpa using hp
+  refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
+    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+  · intro p hp; rcases hpos p hp with rfl | rfl | rfl <;> exact Bool.false_ne_true
+  · intro p _ q _ l h; rw [shape_stCJ2] at h; cases h
+  · intro v hv l hl; rcases hvals v hv with rfl | rfl | rfl <;> cases hl
+  · intro l; rw [values_stCJ2]; exact Nat.zero_le _
+  · exact ⟨fun a => ⟨a, fun b ⟨p, hp, w, hw, _⟩ => by rcases hpos p hp with rfl | rfl | rfl <;> cases hw⟩⟩
+  · intro v hv; rcases hvals v hv with rfl | rfl | rfl <;> exact Bool.false_ne_true
+  · intro σ h; exact absurd h (not_refd_stCJ2 σ)
+  · intro T hT; simp [stCJ2] at hT
+  · intro σ r h; simp [stCJ2] at h
+  · rfl
+  · intro v hv l hl; rcases hvals v hv with rfl | rfl | rfl <;> cases hl
+  · intro v hv; rcases hvals v hv with rfl | rfl | rfl <;> rfl
+  · intro f i b hb T hT
+    rcases bind_stCJ2 hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [xB, selfU, nLazy] at hT <;> subst hT <;> rfl
+  · intro T hT; simp [stCJ2] at hT
+  · intro G hG; simp [stCJ2] at hG
+  · intro v hv; rcases hvals v hv with rfl | rfl | rfl <;> rfl
+  · intro f i b hb; rcases bind_stCJ2 hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+    · exact ⟨fun T hT l => by simp [xB] at hT; subst hT; rfl, fun P ws j h => by simp [xB] at h⟩
+    · exact ⟨fun T hT l => by simp [selfU] at hT; subst hT; rfl, fun P ws j h => by simp [selfU] at h⟩
+    · refine ⟨fun T hT l => by simp [nLazy] at hT, fun P ws j h l => ?_⟩
+      simp [nLazy] at h; obtain ⟨rfl, rfl, rfl⟩ := h
+      exact ⟨rfl, fun w hw => by simp at hw; subst hw; rfl⟩
+  · intro T hT; simp [stCJ2] at hT
+  · intro G hG; simp [stCJ2] at hG
+  · intro n σ h; simp [stCJ2] at h
+  · intro σ v h; simp [stCJ2] at h
+  · intro k l hk; rw [liveLoan_stCJ2] at hk; cases hk
+  · intro pos path _ l hl; rw [liveLoan_stCJ2] at hl; cases hl
+  · intro v hv l; rcases hvals v hv with rfl | rfl | rfl <;> rfl
+  · intro v hv; rcases hvals v hv with rfl | rfl | rfl <;> rfl
+  · intro p v n args _ _ h; simp at h
+  · intro v hv l hl; rcases hvals v hv with rfl | rfl | rfl <;> cases hl
+  · intro v hv; rcases hvals v hv with rfl | rfl | rfl <;> rfl
+  · intro p _ h; rcases ckContent_stCJ2 h with h | h | h <;> cases h
+  · intro σ r h; simp [stCJ2] at h
+  · intro σ r h; simp [stCJ2] at h
+  · intro σ l h; simp [stCJ2] at h
+  · intro l h; exact absurd h (occurs_stCJ2 l)
+
+section
+variable {K : RunCtx} {ρ : Assignment}
+
+/-- **`Pre` at the callee state**, at every context whose part a check does not change holds of the caller
+(`CtxS` reads only the globals and the declarations) and which has no declarations. -/
+theorem pre_stCJ2 (hc : CtxS K stX.norm) (hΓ : K.Γ = []) : Pre K ρ stCJ2 := by
+  refine ⟨?_, ?_, ?_⟩ <;> rw [norm_stCJ2]
+  · exact hc.of_eq rfl rfl
+  · rw [hΓ]; exact inv_stCJ2 K.D
+  · refine ⟨⟨fun σ h => absurd h (not_refd_stCJ2 σ), ?_, ?_, ?_⟩, fun σ h => absurd h (not_refd_stCJ2 σ), ?_,
+      fun σ h => absurd h (not_refd_stCJ2 σ)⟩
+    · intro n σ h; simp [stCJ2] at h
+    · intro σ v h; simp [stCJ2] at h
+    · intro σ r h; simp [stCJ2] at h
+    · intro G h; simp [MState.goalM, stCJ2] at h
+
+/-- **`LazyNum` at the callee state** (what the untyped body step asks), at every table reading `Nat` as a
+parameter `.other` at the empty scope. -/
+theorem lazyNum_stCJ2 (hpd : K.D.paramDecls [] [.nat] = [.other]) {st : MState} (hk : Kern stCJ2 st)
+    (htd : st.tailDecl = none) : CallBody.LazyNum K ρ [.other, .pi .other] st := by
+  have hck : ckVarPos st.env 0 = some (.bind 1 1) := by rw [← ckVarPos_erase, ← hk.env, ckVarPos_erase]; rfl
+  have hb : st.env[1]?.bind (fun fr : Frame => fr.binds[1]?) = some (nLazy (.succ .zero)) := by
+    rw [← lookup_erase, ← hk.env, lookup_erase]; rfl
+  have hh : Env.hintAt K.dm K.M K.Γ ρ st.env (.bind 1 1) = Env.hintAt K.dm K.M K.Γ ρ stCJ2.env (.bind 1 1) := by
+    simp only [Env.hintAt, hb]; rfl
+  refine ⟨⟨1, 1, _, hck, hb, .succ .zero, rfl, by rw [hh]; exact hint_nLazy hpd⟩, ?_, htd⟩
+  rw [← ColumnC.topReadings_kern hk]; rfl
+
+end
+
 end Ochr.Meaning.Steps.Form.CallJ2
