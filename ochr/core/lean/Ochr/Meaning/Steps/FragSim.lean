@@ -1,10 +1,10 @@
 import Ochr.Meaning.Steps.FragAsg
 
 /-!
-# The fragment theorem (lead10, lead11)
+# The fragment theorem (lead10, lead11, lead12)
 
 `frag_sim`: `eval_sim` for every term of the fragment, by induction on the typing, from the facts
-about the checker bundled as `FragFacts` and the cases not yet proved (`FragCases`).
+about the checker (and the decision table) bundled as `FragFacts`; every case is proved (lead12).
 -/
 
 namespace Ochr.Meaning.Steps.Form
@@ -45,29 +45,19 @@ structure FragFacts (D : Decisions) : Prop where
   popBot : InvPopBot
   asgVar : AssignVarInv
   setBotNum : InvSetBotNum
-
-/-- **The steps of the fragment not yet proved**, each in the form the induction uses: from its
-sub-terms' steps at every extension of `Δ` and the assignment, the step at `evalCore`. The cases
-`Z`, `S` and the read are proved (`frag_sim`); these are the lead's open work (`OPEN.md`), stated
-here so that the induction is checked now. -/
-structure FragCases (K : RunCtx) (φ : Future) : Prop where
-  asgD : ∀ Γ i u, Γ[i]? = some .ref → FTy Γ u .nat → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment),
-      CoreSim { K with Δ := Δ } ρ φ (m + 1) (.assign (.deref (.var i)) u) (FSt Γ) (· = true)
+  asgDeref : AssignDerefInvF
 
 /-- **The fragment theorem** (`eval_sim` at every fragment term): for every term the fragment types,
 every fuel, `Δ` and assignment, the step at `eval` from a state meeting `FSt`, by induction on the
-typing, each sub-term's step an induction hypothesis at every extension. `Z`, `S` and the read
-(a number, a lent variable, a moved one) are proved here; the other five cases are `FragCases`.
-Assumes facts about the checker alone (`EvalInv`, `ZeroInv`, `SuccInv`, `VarNumInv`, `VarLentInv`,
-`VarBotInv`, `EvalLow`, `FragNatRun`, `InvEnd`, `InvSteps`, `PlaceLocal`) and about the table
-(`FragDec`). -/
-theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.FundCtx K) (hcs : FragCases K φ) :
+typing, each sub-term's step an induction hypothesis at every extension. Every case is proved: `Z`,
+`S`, the read (`fvar_core`), `let` (`letF_core`), `;` (`seqI_core`, `seqB_core`), `&x` (`borF_core`),
+`x := u` (`asgF_core`), `*y := u` (`asgDF_core`). Assumes only the facts of `FragFacts`, about the
+checker alone and about its decision table (the list, with which are proved, is `OPEN.md`'s). -/
+theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.FundCtx K) :
     ∀ Γ t A, FTy Γ t A → ∀ n (Δ : Nat → TyS) (ρ : Assignment),
       EvalSim { K with Δ := Δ } ρ φ n t (FSt Γ) (· = true) := by
   obtain ⟨hE, hZ, hS, hVN, hV, hVB, hIE, hI, hlow, hdec, hR, hPL, hL, hDN, hDB, hDL, hIU, hIBU, hSq, hBN, hBL, hBB,
-    hILG, hNI, hSB, hIPB, hAV, hISB⟩ := hf
+    hILG, hNI, hSB, hIPB, hAV, hISB, hAD⟩ := hf
   have hnat := hR.nat
   intro Γ t A hty
   induction hty with
@@ -100,7 +90,8 @@ theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.Fu
   | asgD Γ i u hi hu ih =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.asgD Γ i u hi hu) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.asgD Γ i u hi hu m (ih m) Δ ρ) n
+      (fun _ _ _ e => by cases e) (fun m => asgDF_core (K := { K with Δ := Δ }) hAD hR hdec hI hPL hNI
+        ⟨hc.globals, hc.sorts⟩ hi hu (ih m Δ ρ)) n
   | letIn Γ x u w A B hu hw ihu ihw =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.letIn Γ x u w A B hu hw) (fun _ e => by cases e)
