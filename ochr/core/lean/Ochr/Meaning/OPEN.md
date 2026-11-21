@@ -14,6 +14,13 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## `K` CLOSED AT THE COLUMN LEVEL; `K`'S STEP; THE FIRST CALLER OF `K` (lead20, 2026-11-22, `spine-lead20`; docs/31 D141, D145, D146)
+
+- **D141 built**: `OutGood`'s final clause at the futures typed for the result (`HeldTyped` at `BodyOut.held`). `ColumnW.closure_mem_K`, **`ColumnW.column_K_ff` (NO assumed fact)**.
+- **`K`'s body step** `ColumnW.body_simK` ASSUMES 2 checker facts, unproved: `BodyKInv` (lead18) and `InvMoveBorrow` (NEW, state-level, `Steps/BorrowParStepK.lean`: a binding holding a borrow of a numeral over unknowns set to `⊥` with the borrow pushed as the top temporary keeps `Inv`; its `K` instance `#guard`ed). The relation after is the general `MoveOut.rel_moveOut` (no assumed fact).
+- **Facts about the checker (machine lane), stated and `#guard`ed, unproved:** `ColumnW.CallKInv` (`Steps/CallKGuards.lean`: `K(&x)` from `x ↦ S(Z)` returns `borrow₁ S(Z) : &Nat` or a borrow of a sealed call, ends at `stLY`: `x ↦ lent₁ loan₁`, counter 2).
+- Open: `L`'s call step (D146's list); `body_simK` at `K`'s concrete start; `Q`; `J2` (unchanged).
+
 ## THE BORROW-PARAMETER COLUMNS `W`, `K`; D138 BUILT; D137 (B)'S TEST (lead19, 2026-11-22, `spine-lead19`; docs/31 D140 to D144)
 
 - **D138 built**: a borrow parameter's cell is its label's loan site (`fixStep`). `rel_startW`, `rel_startK` (every clause of `Rel` at the start), no assumed fact. `FrameProp.FrameRel.lentCl` restated (a closure may lend at its cells).

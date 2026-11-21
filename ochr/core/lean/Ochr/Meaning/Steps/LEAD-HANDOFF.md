@@ -1,4 +1,19 @@
-# Lead handoff (nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+# Lead handoff (twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+
+## TWENTIETH LEAD (lead20, 2026-11-22; `spine-lead20`, branched from `spine-lead19` f6c59f58): D141 built; `K`'s step and column; the first caller of `K`
+
+**Built (standard axioms; docs/31 D141, D145, D146).**
+- D141, RULED AND BUILT (0e66669e): `OutGood`'s final clause is at the futures typed for the result: `HeldTyped R held ψ` (`Run.lean`, beside `TypedFut`; `typedFut_iff_held`) at `BodyOut.held out args o` (`Steps/Statements.lean`: the returned label at the codomain's content type, the label the `.fix` pop keeps; none at a data codomain, so a data codomain is the old clause, `heldTyped_data`). No result holds two labels (core D48; `&&Nat` rejected, `#guard` in `BorrowParGuards`). Consumers changed: `Closure.goodFrom_start` (+`hdata`), `ClosureRef.refLeafFrom_start` (+`href`, `heldTyped_upd`), `ClosureStage.stageFn_good(_ref)` (`held_weakCod`), `fill_outGood`. `closure_mem_K` (no assumed fact) replaces `closure_ref_hyp_false_K`; `not_outGood_K` refutes the old clause (`OutGoodEvery`); `outGood'_K`.
+- D145 (13456ccf): `Steps/MoveOut.lean` `rel_moveOut` (GENERAL: a binding's borrow moved into flight keeps `Rel`; no assumed fact). `Steps/BorrowParStepK.lean` `body_simK` (assumes checker facts `BodyKInv`, `InvMoveBorrow` (new, state-level)). `Steps/ColumnK.lean` `column_K_run`, `column_K_ff` (NO assumed fact).
+- D146 (56cde5c5): `Steps/CallKGuards.lean`: `L : Nat := let x = S(Z); let y = K(&x); *y := Z; x` pinned (the call runs `K`'s body, then [Lend]: fresh label `1`, `x ↦ lent₁ loan₁`, fill site); `CallKInv` stated. The restated clause is enough at the call (no finding).
+
+**Not done, in order.**
+1. `L`'s call step (docs/31 D146's list): the context with `K`'s global (as `ColumnJ.KJ`), an application lemma exposing the state after `callOf` at a returned borrow (`closure_apply_ref'` hides it), `Rel` with `π[1 ↦ k]`, `Pre` via `CallKInv`; then `let y`, `*y := Z`, the read of `x`.
+2. `body_simK` at `K`'s concrete start (`Pre` at `stK`, `SGood` at `SBW` in `KB "K" outK`, as `BorrowParPre` for `W`); optionally `InvMoveBorrow`'s `K` instance by hand (as `inv_stW`).
+3. `Q`'s step and `column_Q_ff`/`_def` (docs/31 D137), unchanged.
+4. `J2`'s `Pre`/`Rel` after the call, the `let`, `column_J2_ff`, unchanged.
+
+**Traps.** `MState.mean`'s `val` at a TEMPORARY position does not unify with `Env.mean … (Env.pushTempE …) ?p` when `?p` is a metavariable (lazy delta unfolds `Env.mean` on the concrete side): give the position explicitly (`hmean₂ χ (.temp …)`), `show` works only with variable positions. `rw [if_neg (fun e => by cases e)]` picks the FIRST `ite` in the goal, possibly on the wrong side: use `simp only [eq_false …, if_false]`. `Value.Num` excludes `.abs`; use `Value.NumA`/`InertA` for a numeral over unknowns. `ColumnBorrow`'s `newTemp`, `shape_pushTempShaped` etc. live in namespace `SStateB`; `heldTy_pushTempShaped`, `tyAt_pushTempShaped`, `heldMem_pushTempShaped` in `Strict`. Probing a program: `runMachine (checkDef d) { st with cfg := { derivation := true, trace := true } }` for the trace, `recordDeep := true` for the bodies a call runs.
 
 ## NINETEENTH LEAD (lead19, 2026-11-21/22; `spine-lead19`, branched from `spine-lead18` 773a8d8e): D138 built; the borrow-parameter columns; D137 (B)'s regression
 
