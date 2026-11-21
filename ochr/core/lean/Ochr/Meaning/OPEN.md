@@ -14,6 +14,16 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FIRST SPLIT, AND J2'S CALLEE (lead16, 2026-11-21, `spine-lead16`; docs/31 D131, D132)
+
+Open statements added, none with `sorry` (all are named hypotheses):
+- **Facts about the checker (machine lane), stated and `#guard`ed, unproved:** `ColumnP.SplitPInv` (`Steps/SplitP.lean`: `checkTail` of `P`'s body from `stP`'s kernel, in the plain mode, with a continuation keeping the counters in world `Z` (`KeepsAtZ`), ran the continuation at two leaves with the kernels `leafZ` (on `Z : Nat`) and `leafS` (on `σ1 : Nat`); guards in `Steps/SplitGuards.lean`); `ColumnP.FixRunP` (`Steps/ColumnP.lean`: `checkDef defP` inverted to the body's `checkTail` from `stP`'s kernel, with a continuation keeping the counters in world `Z`; guarded by the derivation).
+- **The form:** `Out`/`Ext` unchanged; a wrapper for tail position, `FormTail.TailOut`/`TailSim` (some leaf where the continuation ran, with `Out` there).
+
+Proved (standard axioms): `ColumnPSplit.split_outP`/`split_simP` (`TailSim` for `P`'s body from every related reference state; checker: `SplitPInv`; model: none); `ColumnP.column_P_ff` (checker: `SplitPInv`; model: none); `column_P_def` (+ `FixRunP`); `CallJ2.rel_calleeJ2`, `pre_stCJ2`, `lazyNum_stCJ2`, `hint_nLazy`, `hpi_of_globals` (no assumption); `CallJ2.closureRun_J2` (checker: `BodyLazyInv`, `InvNumA`; model: none; without `FundCtx`/`SGood`/`FrameStart`).
+
+Open at `J2` (docs/31 D132): the checker's call decomposed (to state and guard), the table at the callee body's end (`BodyLazyInv` asks a whole `DecTab` there; narrowing proposed), the reference's run of `I(x)`, `callOf` of `J2`'s own closure, the `let` around the call.
+
 ## THE FRAME PROPERTY (model6, 2026-11-21, `spine-model6`; docs/31 D129, D130)
 
 - **`FrameJ2` PROVED** (`Steps/FrameFrag.frameJ2_holds`, no assumption). `closureRun_of_checker_free` (D128's steps (3)+(4)): checker facts `BodyLazyInv`, `InvNumA`; model facts: none.
