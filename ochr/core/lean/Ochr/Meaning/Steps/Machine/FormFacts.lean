@@ -2,6 +2,7 @@ import Ochr.Meaning.Steps.FormMachine
 import Ochr.Meaning.Steps.DropOne
 import Ochr.Meaning.Steps.ColumnC
 import Ochr.Meaning.Steps.Machine.InvShape
+import Ochr.Meaning.Steps.Machine.InvSteps
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
@@ -90,6 +91,22 @@ theorem dropNoopInv : DropNoopInv := by
       have := runs_modify_inv h₂
       subst this
       exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+/-- The type check of a value without a type does nothing. -/
+theorem runs_expectTy_none {n : Nat} {w : String} {A : Value} {st st' : MState} {b : Nat}
+    (h : Runs (Ochr.expectTy n w none A) st b () st') : st' = st := by
+  cases n with
+  | zero => unfold Ochr.expectTy at h; simp only [runs_exhausted_iff] at h
+  | succ k => unfold Ochr.expectTy at h; peel h; exact (runs_pure_inv h).2
+
+/-- `InvExpectTy` for a type `==` the expected one (machine3's proposed form, 2026-11-21): the check
+is the identity. For arbitrary types it is the whole-machine fact that a comparison makes only clean
+unknowns and keeps `absTy.size = nextAbs` and `absDecl` sorted (not state-level, unscheduled). -/
+theorem invExpectTyEq (n : Nat) (w : String) (T : Option Value) (A : Value) (st st' : MState) (bh : Nat)
+    (hT : ∀ T₀, T = some T₀ → (T₀ == A) = true) (h : Runs (Ochr.expectTy n w T A) st bh () st') : KeepsInv st st' := by
+  cases T with
+  | none => rw [runs_expectTy_none h]; exact fun _ _ h => h
+  | some T₀ => rw [runs_expectTy_of_beq (hT T₀ rfl) h]; exact fun _ _ h => h
+
 #print axioms decBack
 #print axioms dropNoopInv
 #print axioms evalInvR
@@ -98,5 +115,16 @@ theorem dropNoopInv : DropNoopInv := by
 #print axioms varNumInv
 #print axioms borrowNumInv
 #print axioms runs_expectTy_of_beq
+#print axioms invExpectTyEq
+#print axioms invPushInert
+#print axioms invPopInert
+#print axioms invSetBot
+#print axioms invLend
+#print axioms invSetNum'
+#print axioms invWriteDeref'
+#print axioms invBindNum'
+#print axioms invBindBorrow'
+#print axioms invPopBind'
+#print axioms invEndRead'
 
 end Ochr.Meaning.Steps.Machine
