@@ -210,7 +210,7 @@ fragment state, at any hint (the hint the checker hands a write's right-hand sid
 value of the term's type at its type, in the same mode, with the top frame's readings and the
 number of frames kept, and leaves a fragment state with that value in flight. -/
 def FragRun (D : Decisions) : Prop :=
-  ∀ Γ u A n hint st st' bh v T?, FTy Γ u A → FSt Γ st → Mode st →
+  ∀ Γ u A n hint st st' bh v T?, FTy Γ u A → FSt Γ st → (∀ l, st.norm.Occurs l → l < st.norm.nextLoan) → Mode st →
     (st.tailDecl = none ∨ st.tailDecl = some (D.declOf (DecideScope.topReadings st) u)) → DecTab D st' →
     Runs (Ochr.eval n true u hint) st bh (v, T?) st' →
     T? = some A.ty ∧ A.val v ∧ ModeEq st st' ∧ DecideScope.topReadings st' = DecideScope.topReadings st ∧
@@ -220,13 +220,14 @@ def FragRun (D : Decisions) : Prop :=
 alone, by induction over the fragment from the inversion facts; for the machine lane: the part of
 the fragment's run facts the `S` case reads). -/
 def FragNatRun (D : Decisions) : Prop :=
-  ∀ Γ u n st st' bh v T?, FTy Γ u .nat → FSt Γ st → Mode st → st.tailDecl = none → DecTab D st' →
+  ∀ Γ u n st st' bh v T?, FTy Γ u .nat → FSt Γ st → (∀ l, st.norm.Occurs l → l < st.norm.nextLoan) → Mode st →
+    st.tailDecl = none → DecTab D st' →
     Runs (Ochr.eval n true u none) st bh (v, T?) st' → v.Num ∧ T? = some .tNat
 
 /-- `FragNatRun` is the `Nat` part of `FragRun`. -/
 theorem FragRun.nat {D : Decisions} (h : FragRun D) : FragNatRun D :=
-  fun Γ u n st st' bh v T? hu hP hm htd hD hr => by
-    obtain ⟨hT, hv, -⟩ := h Γ u .nat n none st st' bh v T? hu hP hm (.inl htd) hD hr
+  fun Γ u n st st' bh v T? hu hP hfr hm htd hD hr => by
+    obtain ⟨hT, hv, -⟩ := h Γ u .nat n none st st' bh v T? hu hP hfr hm (.inl htd) hD hr
     exact ⟨hv, hT⟩
 
 /-- **The reference's run of a fragment term reads no hint** (each clause the fragment uses hands its

@@ -145,7 +145,7 @@ theorem sim_bodyB (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hB : BorrowNumIn
       (fun st hst => by rw [hst.readings, declOf_SZ hd]; exact duC_ok)
       (succ_core hS hI hz.restrict (fun a b h ha => ha.kern h) (fun st hst => by rw [hst.readings]; exact flags_Z hd)
         (fun s => by rw [runT_zero, runT_zero])
-        (fun st₀ st₁ bh v₀ T₀ hT₀ hm₀ htd₀ hD₁ h => by
+        (fun st₀ st₁ bh v₀ T₀ hT₀ _ hm₀ htd₀ hD₁ h => by
           obtain ⟨rfl, rfl, -, -⟩ := run_zero hE hZ hm₀ hD₁ (by rw [hT₀.readings]; exact flags_Z hd)
             (by rw [hT₀.readings]; exact declOf_Z_ok hd) htd₀ h
           exact ⟨.zero, fun T hT => by cases hT; rfl⟩))
