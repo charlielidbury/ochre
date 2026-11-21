@@ -121,6 +121,7 @@ import Ochr.Meaning.Steps.Machine.ColumnCFree
 import Ochr.Meaning.Steps.Machine.ColumnBFree
 import Ochr.Meaning.Steps.Machine.FragFacts
 import Ochr.Meaning.Steps.Machine.FragInv
+import Ochr.Meaning.Steps.Machine.FragRuns
 import Ochr.Meaning.Steps.ColumnWrite
 import Ochr.Meaning.Steps.ColumnB
 import Ochr.Meaning.Steps.ColumnBStart
