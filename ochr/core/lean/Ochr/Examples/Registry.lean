@@ -53,7 +53,7 @@ def programs : List (String × Block) :=
    ("FrozenReadings", FrozenReadings), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("PiSorts", PiSorts), ("BorrowTypes", BorrowTypes), ("BlockRow", BlockRow), ("FnBorrows", FnBorrows),
-   ("Abstraction", Abstraction), ("DepFields", DepFields), ("StuckBlocks", StuckBlocks), ("LentIndex", LentIndex), ("StrongUpdate", StrongUpdate), ("LeafFields", LeafFields), ("MarkedFields", MarkedFields), ("OpenAttacks", OpenAttacks), ("EarlyEnd", EarlyEnd), ("JBlocks", JBlocks), ("Producers", Producers), ("DirectArm", DirectArm), ("Sugar", Sugar),
+   ("Abstraction", Abstraction), ("DepFields", DepFields), ("StuckBlocks", StuckBlocks), ("LentIndex", LentIndex), ("StrongUpdate", StrongUpdate), ("LeafFields", LeafFields), ("MarkedFields", MarkedFields), ("MarkedTableTree1", MarkedTableTree1), ("MarkedTableTree2", MarkedTableTree2), ("MarkedTableLeaf1", MarkedTableLeaf1), ("MarkedTableLeaf2", MarkedTableLeaf2), ("MarkedNested", MarkedNested), ("OpenAttacks", OpenAttacks), ("EarlyEnd", EarlyEnd), ("JBlocks", JBlocks), ("Producers", Producers), ("DirectArm", DirectArm), ("Sugar", Sugar),
    ("SugarOwnBool", SugarOwnBool), ("SugarNoBool", SugarNoBool),
    ("FordVec", FordVec), ("FordLe", FordLe), ("FordRel", FordRel), ("FordAttack", FordAttack), ("InductiveModel", InductiveModel)]
 
@@ -74,7 +74,7 @@ def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 2908
+def Ochr.Registry.expectedTotal : Nat := 3526
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal
