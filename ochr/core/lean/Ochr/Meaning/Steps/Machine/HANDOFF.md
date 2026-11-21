@@ -403,7 +403,8 @@ in the 7cb2cd800..HEAD commit messages and the report). Points that matter for p
 a PROOF reading of `#0` makes the read a statement (env restored) but then `declCopy` is `true`, so `BodyLazyInv`'s copy
 branch covers it; `.any` → no pre-pass, `leafProof` false.
 
-PROVED (standard axioms; NOT root-imported yet — add `ConstRunJ`, and the rest once `CallJInv` closes):
+PROVED (standard axioms; root-imported through `ColumnJFree.lean`, whose `ColumnJ.column_J_def4` is `column_J_def`
+with `ConstRunJ` discharged: it ASSUMES 4 facts, `FixRunI`, `CallJInv`, `VarNumAInv`, `InvNumA`):
 - `ConstRunJ.lean`: `constRunJ : ColumnJ.ConstRunJ` (checkDef's guards via `rfl`-decided conditions; `keep_declared`,
   `keep_fuelLeft`, `keep_undeclaredCheck`; `runs_evalType_nat` for the goal).
 - `CallJLeaves.lean`: `piNat`'s decisions at every fuel (`fnClass` 0, `isPropV`, `declKind`, `paramDecls`, `paramFlags`,
@@ -611,8 +612,9 @@ The earlier queue (still owed, after the column):
 ## Build state
 
 2026-11-21, `spine-machine8` (machine8): `OchrMeaning` green after merging main 9c6ebe88; the new files
-(`CallJLeaves`, `CallJEval`, `NoStuck`, `CallJBody`, `ConstRunJ`) build (`lake build Ochr.Meaning.Steps.Machine.<File>`),
-standard axioms, not root-imported.
+(`CallJLeaves`, `CallJEval`, `NoStuck`, `CallJBody`, `ConstRunJ`, `ColumnJFree`) build in the default build
+(root imports `ColumnJFree`), standard axioms; `fund_all`, `column_C_free`, `column_B_free`, `frag_run_free` no assumed
+fact; `column_I_def` 3 facts as before; `column_J_def4` 4 facts. The stray `example … sorry` in `Inv.lean` is removed.
 
 2026-11-21, `spine-machine7` (machine7; from `spine-machine6` 117a755e6): `OchrMeaning` green; `frag_run_free`,
 `fragOpen_ff`, `fragRun`, `fragRunF`: standard axioms (no fact assumed).
