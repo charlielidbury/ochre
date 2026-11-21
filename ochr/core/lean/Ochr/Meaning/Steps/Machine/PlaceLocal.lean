@@ -17,13 +17,7 @@ namespace Ochr.Meaning.Steps.Machine
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.DecideScope
 open Ochr.Meaning.Steps.Form
 
-/-- A place's reading depends only on its root variable's reading and its steps, and under a root
-read `.other` or `.ref .other` no place reads an inductive. -/
-structure PlaceLocal (D : Decisions) : Prop where
-  root : ∀ (sc sc' : List DeclInfo) (p p' : Place), p.steps.2 = p'.steps.2 →
-    sc.getD p.steps.1 .other = sc'.getD p'.steps.1 .other → D.placeDecl sc p = D.placeDecl sc' p'
-  other : ∀ p n args, D.placeDecl [.other] p ≠ .ind n args
-  ref : ∀ p n args, D.placeDecl [.ref .other] p ≠ .ind n args
+/-! `PlaceLocal` itself is the lead's (`FormMachine.lean`, adopted word for word); its lemmas here. -/
 
 /-- The place with its root renamed to `var 0`. -/
 def _root_.Ochr.Place.toRoot0 (p : Place) : Place := p.mapRoot fun _ => .var 0
@@ -64,7 +58,7 @@ theorem topReadings_getD_of_ckVarPos {st : MState} {i f j : Nat} (h : ckVarPos s
   · cases h
 
 /-- Under `PlaceLocal`, a place rooted at a binding of the top frame read `r` reads as at `[r]`. -/
-theorem PlaceLocal.at_binding {D : Decisions} (hL : PlaceLocal D) {st : MState} {p : Place} {f j : Nat}
+theorem _root_.Ochr.Meaning.Steps.Form.PlaceLocal.at_binding {D : Decisions} (hL : PlaceLocal D) {st : MState} {p : Place} {f j : Nat}
     (h : ckVarPos st.env p.steps.1 = some (.bind f j)) {b : Binding}
     (hb : st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b) :
     D.placeDecl (topReadings st) p = D.placeDecl [b.decl] p.toRoot0 :=

@@ -289,7 +289,7 @@ theorem inv_setAt {D : Decisions} {Γ : List IndDecl} {s : MState} {f j : Nat} {
 
 /-- Under `PlaceLocal`, no place rooted at a binding read `r` reads an inductive, for `r` one of the
 two readings the columns bind. -/
-theorem PlaceLocal.noInd {D : Decisions} (hL : PlaceLocal D) {st : MState} {f j : Nat} {r : DeclInfo}
+theorem _root_.Ochr.Meaning.Steps.Form.PlaceLocal.noInd {D : Decisions} (hL : PlaceLocal D) {st : MState} {f j : Nat} {r : DeclInfo}
     (hr : r = .other ∨ r = .ref .other)
     (hd : ∀ b, st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = r)
     {p : Place} (h : ckVarPos st.env p.steps.1 = some (.bind f j)) (n : String) (args : List DeclInfo) :

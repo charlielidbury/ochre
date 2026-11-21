@@ -3,6 +3,7 @@ import Ochr.Meaning.Steps.DropOne
 import Ochr.Meaning.Steps.ColumnC
 import Ochr.Meaning.Steps.Machine.InvShape
 import Ochr.Meaning.Steps.Machine.InvSteps
+import Ochr.Meaning.Steps.Machine.PlaceLocalFF
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
@@ -107,6 +108,12 @@ theorem invExpectTyEq (n : Nat) (w : String) (T : Option Value) (A : Value) (st 
   | none => rw [runs_expectTy_none h]; exact fun _ _ h => h
   | some T₀ => rw [runs_expectTy_of_beq (hT T₀ rfl) h]; exact fun _ _ h => h
 
+/-- **The state-level lemmas, all proved** (`InvSteps.lean`; the six of the machine lane's review in
+the forms `FormMachine.lean` adopted, 2026-11-21). -/
+theorem invSteps : InvSteps :=
+  ⟨invPushInert, invPopInert, invSetBot, invSetNum', invBindNum', invBindBorrow', invPopBind', invLend,
+    invWriteDeref', invEndRead', invExpectTyEq⟩
+
 #print axioms decBack
 #print axioms dropNoopInv
 #print axioms evalInvR
@@ -126,5 +133,7 @@ theorem invExpectTyEq (n : Nat) (w : String) (T : Option Value) (A : Value) (st 
 #print axioms invBindBorrow'
 #print axioms invPopBind'
 #print axioms invEndRead'
+#print axioms invSteps
+#print axioms placeLocal_ff
 
 end Ochr.Meaning.Steps.Machine
