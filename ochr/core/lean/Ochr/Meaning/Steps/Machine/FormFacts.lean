@@ -116,6 +116,9 @@ theorem invSteps : InvSteps :=
   ⟨invPushInert, invPopInert, invSetBot, invSetNum', invBindNum', invBindBorrow', invPopBind', invLend,
     invWriteDeref', invEndRead', invExpectTyEq⟩
 
+/-- **`SeqInv`, proved** (the statement as restated by machine3 with the lead's permission). -/
+theorem seqInv : SeqInv := seqInvR
+
 #print axioms decBack
 #print axioms dropNoopInv
 #print axioms evalInvR
