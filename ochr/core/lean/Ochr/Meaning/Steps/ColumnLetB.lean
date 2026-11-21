@@ -804,4 +804,93 @@ theorem assignDeref_core (hA : AssignDerefInv) (hIC : InvCore) (hc : Strict.Fund
 
 end
 
+/-! ## `u; w`, for a first part whose value is `()` -/
+
+section
+variable {K : RunCtx} {ρ : Assignment} {φ : Future}
+
+/-- The sequence clause of the strict run, where the aligned table does not erase it. -/
+theorem runT_seq (tl : Bool) (hint : TyS) (u w : Term) (s : SState)
+    (hfl : K.D.flags (scopeOf s) (.seq u w) = (false, false)) :
+    runT K ρ φ tl hint (.seq u w) s = (do
+      let r ← runT K ρ φ false (.plain TyM.err) u
+      SM.guardMod (DiscardOk K φ r.2) (discardEnd r.2)
+      runT K ρ φ tl hint w) s := by
+  rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _; rw [hfl]; rfl
+
+theorem asg_of_withTempT {st : MState} {v : Value} {T? : Option Value} (h : Asg K ρ (st.withTempT v T?).norm) :
+    Asg K ρ st.norm :=
+  h.of_refd rfl rfl rfl rfl rfl fun σ hσ => refd_mono_withTempT v T? σ hσ
+
+/-- **A typed `u; w` at `evalCore`**, for a first part whose value is `()` (so its drop ends
+nothing on either side): the step for `u`, then the step for `w` from the state after it, the
+reference's discarded result holding no label. -/
+theorem seq_core (hSq : SeqInv) (hc : Strict.FundCtx K) {n : Nat} {u w : Term} {Pseq Pu Pw : MState → Prop}
+    (hcu : ColTerm u)
+    (htail : ∀ st stW, Pseq st → Pw stW →
+      K.D.declOf (DecideScope.topReadings st) (.seq u w) = K.D.declOf (DecideScope.topReadings stW) w)
+    (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → Pseq a → Pu b)
+    (hw : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), EvalSim { K with Δ := Δ' } ρ' φ n w Pw (· = true))
+    (hflu : ∀ st, Pseq st → K.D.flags (DecideScope.topReadings st) u = (false, false))
+    (hflw : ∀ st, Pw st → K.D.flags (DecideScope.topReadings st) w = (false, false))
+    (hunit : ∀ st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
+      Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ → v₀ = .unit)
+    (hPw : ∀ (st st₀ st₁ : MState) (bh : Nat) (v₀ : Value) (T₀ : Option Value), Pseq st → Kern st st₀ → Mode st₀ →
+      st₀.tailDecl = none → DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ → Pw st₁)
+    (hPwk : ∀ a b, Kern a b → Pw a → Pw b)
+    (hwv : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), w.valsOk (Strict.ValsP { K with Δ := Δ' } ρ' φ))
+    (hwa : ∀ m, w.absBelow m) (hwn : w.hasHolePrim = false)
+    (hwcong : ∀ (Δ' : Nat → TyS) (ρ' : Assignment) tl hint s,
+      runT { K with Δ := Δ' } ρ' φ tl hint w s = runT K ρ φ tl hint w s)
+    (hwhint : ∀ tl hint s, runT K ρ φ tl hint w s = runT K ρ φ tl (.plain TyM.err) w s) :
+    CoreSim K ρ φ (n + 1) (.seq u w) Pseq (· = true) := by
+  intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
+  subst hty
+  obtain ⟨st₀, st₁, stW, v₀, T₀, bh₁, bh₂, hk₀, hm₀, htn₀, htd₀, htdW, hru, hD₁, hdrop, hmW, htnW, hrw, hinvW⟩ :=
+    hSq n u w hint st st' bh v T? K.D K.Γ hm htn htd hD h
+  obtain rfl := hunit st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ hD₁ hru
+  have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv.1
+  -- the step for `u`
+  have hOu := hu st₀ st₁ true none .unit T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
+    (hr.of_kern hk₀) hS hvu
+    (fun σ hσ => by rw [← hk₀.absTy]; exact hab σ (by simp [Term.anyAtom, hσ])) (by simp [Term.hasHolePrim] at hnh; exact hnh.1)
+    (by rw [scopeOf_rel hr]; exact hflu st hPst) (fun e => by cases e) hD₁ bh₁ hru
+  rw [htn₀] at hOu
+  obtain ⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, -, -, hlu, hp₁, hr₁⟩ := hOu
+  have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
+  obtain ⟨-, -, -, hS₁⟩ := Strict.fund_all hc u hvu false (.plain TyM.err) s s₁ ru hS hxu'
+  have hrul : ru.2.label = none := by rw [hlu]; rfl
+  -- the drop of `()`: nothing on either side
+  have hkW : Kern st₁ stW := hdrop (fun _ => rfl) rfl
+  have hrW : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stW s₁ := (rel_of_withTempT_inert Value.inert_unit hr₁).of_kern hkW
+  have hpW : Pre { K with Δ := Δ₁ } ρ₁ stW :=
+    ⟨hp₁.ctx.of_eq (by show stW.inds = st₁.inds; rw [← hkW.inds]) (by show stW.globals = st₁.globals; rw [← hkW.globals]),
+     hinvW hcu hp.inv, by rw [← hkW.norm]; exact asg_of_withTempT hp₁.asg⟩
+  -- the step for `w`
+  have hPW : Pw stW := hPwk _ _ hkW (hPw st st₀ st₁ bh₁ .unit T₀ hPst hk₀ hm₀ htd₀ hD₁ hru)
+  have htdW' : stW.tailDecl = none ∨ stW.tailDecl = some (K.D.declOf (DecideScope.topReadings stW) w) := by
+    rcases htdW with e | e
+    · exact .inl e
+    · exact .inr (by rw [e, hcd, htail st stW hPst hPW])
+  have hOw := hw Δ₁ ρ₁ stW st' true none v T? s₁ π₁ hPW rfl hmW htdW' hpW hrW hS₁ (hwv Δ₁ ρ₁)
+    (fun σ hσ => hwa _ σ hσ) hwn (by rw [scopeOf_rel hrW]; exact hflw stW hPW) (fun e => by cases e) hD bh₂ hrw
+  rw [htnW] at hOw
+  obtain ⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩ := hOw
+  have hxw' : runT K ρ φ st.curTail (hintM K ρ hint) w s₁ = some (rw', s₂) := by
+    rw [hwhint, ← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
+  have hxs : runT K ρ φ st.curTail (hintM K ρ hint) (.seq u w) s = some (rw', s₂) := by
+    rw [runT_seq _ _ u w s hfl]
+    simp only [bind, Option.bind]
+    rw [hxu']
+    simp only
+    rw [SM.guardMod_of (by unfold DiscardOk; rw [hrul]; trivial)]
+    simp only
+    have hd : discardEnd ru.2 s₁ = s₁ := by unfold discardEnd; rw [hrul]
+    rw [hd]; exact hxw'
+  have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
+    (he₁.congr hk₀.absTy hk₀.nextLoan hkW.absTy hkW.nextLoan).trans he₂
+  exact ⟨ρ₂, Δ₂, π₂, rw', s₂, hext, hxs, hmw, haw, hlw, hp₂, hr₂⟩
+
+end
+
 end Ochr.Meaning.Steps.Form

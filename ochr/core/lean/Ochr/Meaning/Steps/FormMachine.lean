@@ -241,10 +241,11 @@ def AssignDerefInv : Prop :=
 holds no borrow and no loan: `u` evaluated with no hint from the entry's kernel, in mode, the
 one-shot flag clear; its value dropped (`dropValue`: nothing ends; a value holding a loan has its
 borrowers ended, `endLoansOfTopTemp`, so the loans' condition is needed; lead8); `w` evaluated with
-no hint (a typed run's tail), in mode, in the sequence's tail position. -/
+no hint (a typed run's tail), in mode, in the sequence's tail position; the invariant holds where
+`w` starts (as `LetInv`'s last conjunct). -/
 def SeqInv : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
-    (D : Decisions),
+    (D : Decisions) (Γ : List IndDecl),
     Mode st → st.tailNext = false → st.tailDecl = none → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) true (.seq u w) hint) st bh (v, T?) st' →
     ∃ (st₀ st₁ stW : MState) (v₀ : Value) (T₀ : Option Value) (bh₁ bh₂ : Nat),
@@ -252,7 +253,7 @@ def SeqInv : Prop :=
       (stW.tailDecl = none ∨ stW.tailDecl = st.curDecl) ∧ Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, T₀) st₁ ∧
       DecTab D st₁ ∧ ((∀ l, v₀.holdsBorrow l = false) → v₀.loans = [] → Kern st₁ stW) ∧ Mode stW ∧
       stW.tailNext = st.curTail ∧
-      Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st'
+      Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st' ∧ (ColTerm u → Inv D Γ st.norm → Inv D Γ stW.norm)
 
 /-- **`evalCore` of a read of `x` lent to `y`'s borrow** (`.place (.var 1)` at the state of `B`'s
 read: one frame, `x ↦ loan_l : Nat`, `y ↦ borrow_l w : &Nat`, `w` a number): the access ends `l`
