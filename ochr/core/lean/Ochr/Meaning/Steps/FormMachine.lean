@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.FormKern
+import Ochr.Meaning.Steps.ColumnPlumb
 
 /-!
 # Facts about the checker alone that the column of `Steps/Form.lean` uses (lead7; for the machine lane)
@@ -90,5 +91,50 @@ def SuccInv : Prop :=
       T? = some .tNat ∧ Quiet st₁ st' ∧ (∀ D, DecTab D st' → DecTab D st₁) ∧
       (typed = true → ∃ (T : Value) (st₂ : MState) (bh₂ : Nat), T₀ = some T ∧
         Runs (Ochr.expectTy n "the argument of S" (some T) .tNat) st₁ bh₂ () st₂ ∧ Kern st₂ st')
+
+/-- **`evalCore` of a variable holding a number** (`.place (.var i)`; the column's read): the value is
+the binding's, its type the binding's stored type (a typed run has one); the run's [Repack] and the
+access are quiet (a number holds no dependent constructor, no loan); then the read copies or moves as
+the aligned copy decision says: a copy leaves the kernel, a move writes `⊥` at the binding. -/
+def VarNumInv : Prop :=
+  ∀ (n : Nat) (typed : Bool) (i : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
+    (T? : Option Value) (f j : Nat) (b : Binding) (D : Decisions),
+    Mode st → ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+    b.val.Num → DecTab D st' →
+    Runs (Ochr.evalCore (n + 1) typed (.place (.var i)) hint) st bh (v, T?) st' →
+    v = b.val ∧ (∀ T, T? = some T → b.ty = some T) ∧ (typed = true → T?.isSome) ∧ Mode st' ∧
+    ∃ st₁, Quiet st st₁ ∧
+      (D.copy (D.placeDecl (DecideScope.topReadings st) (.var i)) = true → Kern st₁ st') ∧
+      (D.copy (D.placeDecl (DecideScope.topReadings st) (.var i)) = false →
+        Kern { st₁ with env := Env.setAtE st₁.env (.bind f j) .bot } st')
+
+/-- **`evalCore` of a typed `let h = u; w`**: `u` evaluated with no hint from the entry's kernel, in
+mode, the one-shot flag clear, to a value at a type; the binding's reading the aligned table's at
+the state after `u`; the binding pushed; `w` evaluated (no hint: a typed run's tail has none) from
+there, in mode, in the `let`'s tail position; its result pushed as a temporary at its type; the
+binding dropped (`dropTopBind`); the temporary popped, which is the `let`'s value. The table aligned
+at the end is aligned at the states between, and the invariant holds where `w` starts. -/
+def LetInv : Prop :=
+  ∀ (n : Nat) (h : Hint) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
+    (T? : Option Value) (D : Decisions) (Γ : List IndDecl),
+    Mode st → DecTab D st' → Runs (Ochr.evalCore (n + 1) true (.letIn h u w) hint) st bh (v, T?) st' →
+    ∃ (du : DeclInfo) (st₀ st₁ stB st₂ st₃ : MState) (v₀ r T₀ : Value) (p : Bool) (bh₁ bh₂ bh₃ : Nat),
+      Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧
+      Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, some T₀) st₁ ∧
+      D.declOf (DecideScope.topReadings st₁) u = du ∧
+      Kern { st₁ with env := Env.pushBindE st₁.env h (some T₀) v₀ p du } stB ∧ Mode stB ∧
+      stB.tailNext = st.curTail ∧
+      Runs (Ochr.eval n true w none) stB bh₂ (r, T?) st₂ ∧
+      Runs (Ochr.dropTopBind n) (st₂.withTempT r T?) bh₃ () st₃ ∧
+      Kern st₃ (st'.withTempT v T?) ∧
+      DecTab D st₁ ∧ DecTab D st₂ ∧ (Inv D Γ st.norm → Inv D Γ stB.norm)
+
+/-- **[Drop] of a binding that holds no borrow and has no site** (`dropTopBind`): it ends nothing and
+pops the binding. -/
+def DropNoopInv : Prop :=
+  ∀ (n : Nat) (st st' : MState) (bh : Nat) (fr : Frame) (b : Binding),
+    st.env[st.env.size - 1]? = some fr → fr.binds.back? = some b → b.val.loans = [] →
+    (∀ l w, b.val ≠ .borrow l w) → (∀ l, b.val.holdsBorrow l = false) →
+    Runs (Ochr.dropTopBind n) st bh () st' → Kern { st with env := Env.popBindE st.env } st'
 
 end Ochr.Meaning.Steps.Form

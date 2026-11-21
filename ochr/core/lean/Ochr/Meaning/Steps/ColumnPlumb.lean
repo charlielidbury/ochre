@@ -358,14 +358,6 @@ theorem rel_popBind_rd {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat �
   rel_popBind_noSites hr fr b hfr hb
     (fun l => sitesOf_nil_of_hasLoan l _ [] b.val (hasLoan_false_of_loans_nil hnl l (hrd l))) hnb
 
-/-- **(P2) The top binding popped, where it holds no borrow and no loan, keeps the relation**: the
-checker pops it, the reference drops its last binding (`SState.dropLast`). -/
-theorem rel_popBind {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
-    (hr : Rel K ρ φ π st s) (fr : Frame) (b : Binding) (hfr : st.env[st.env.size - 1]? = some fr)
-    (hb : fr.binds.back? = some b) (hnl : b.val.loans = []) (hnb : ∀ l, b.val.holdsBorrow l = false) :
-    Rel K ρ φ π { st with env := Env.popBindE st.env } s.dropLast := by
-  sorry
-
 /-- **(P3) A `let`'s lenders, where nothing is lent at its binding**: the reference's end of the
 borrows lent at the top binding does nothing when no live label is lent there. -/
 theorem letLenders_noop {s : SState} (fr : SFrame) (hfr : s.env.getLast? = some fr)
