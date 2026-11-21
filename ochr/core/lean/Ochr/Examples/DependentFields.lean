@@ -1072,6 +1072,109 @@ ochr LeafFields uses Nats {
   ("FunctionIntoTree", "the assigned value has type Π(u : Unit). Nat, expected ⌈Fin1(σ1)⌉"),
   ("FunctionIntoLeaf", "the assigned value has type Π(u : Unit). Nat, expected ⌈Payload(σ1)⌉")]
 
+/-! ## A field lent to a borrow a call returned (D112, amended)
+
+A field lent to the borrow a call returns holds a mark over its content (`lent_g`, static ends,
+D90/D99). Paths and the repack read through a mark; typing did not (`valType?` had no case for
+one), so on main at 14aeb9cd a field so lent took its declared type at a rewritten index (`A2`,
+`Direct`: a closed proof of `False` through `Boom`, the red team's), and after D112, which closed
+that fallback, an ordinary read of such a field was rejected (`LeafLegit`, `LeafLegit2`,
+`TreeLegit`). Typing now reads through a mark as through a loan, so a plain borrow and a borrow
+returned by a call give the same verdict and message, row by row: a read, a write through it, a
+re-borrow and a move of the field, each with and without an index write, in a tree field and in a
+leaf field (`…Plain` against `…Ret`). The census rows read after an index write each form of
+content a typed run leaves in a dependent field that the earlier blocks do not: a stuck program,
+a fill of a stuck call's returned borrow, an unknown, a mark over a mark; each reads at the type
+its content determines, and none reaches the error for a content of unreadable type. -/
+ochr MarkedFields uses Nats {
+  inductive Void : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  def AbsurdV (v : Void) : False := match v {}
+  def Keep (r : &One) : &One := r
+  def KeepN (r : &Nat) : &Nat := r
+  def Payload (b : Nat) : Type := match b { Z => Nat, S(m) => Unit, }
+  inductive L := MkL(b : Nat, p : Payload(b))
+  reject def A2 : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; let k : Void = x; k), })
+  reject def Boom : False := AbsurdV(A2)
+  reject def Direct : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; x), })
+  def LeafLegit : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k : Nat = p; k), })
+  def LeafLegit2 : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); *r := 6; let k : Nat = p; k), })
+  def TreeLegit : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); let k : One = x; k), })
+  def TreeHonest : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := S(S(Z)); let y : One = x; y), })
+  -- census: each form of content a typed run can leave in a dependent field, read after the index changes
+  def StuckOne (k : Nat) : One := match k { Z => O, S(m) => O, }
+  def CensusStuck (k : Nat) : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := StuckOne(k); n := S(S(Z)); let y : One = x; y), })
+  reject def CensusStuckVoid (k : Nat) : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := StuckOne(k); n := Z; let y : Void = x; y), })
+  def PickOne (k : Nat) (a : &One) (b : &One) : &One := match k { Z => a, S(m) => b, }
+  def CensusFill (k : Nat) : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let w = O; let r = PickOne(k, &x, &w); n := S(S(Z)); let y : One = x; y), })
+  reject def CensusFillVoid (k : Nat) : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let w = O; let r = PickOne(k, &x, &w); n := Z; let y : Void = x; y), })
+  reject def CensusUnknown (c0 : V) : Void := (let c = c0; match c { MkV(n, x) => (n := Z; let y : Void = x; y), })
+  def CensusMarkMark : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(Keep(&x)); n := S(S(Z)); let y : One = x; y), })
+  reject def CensusMarkMarkVoid : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(Keep(&x)); n := Z; let y : Void = x; y), })
+  def LeafLegitRuns : Eq(Nat, LeafLegit, 5) := refl
+  def LeafLegit2Runs : Eq(Nat, LeafLegit2, 6) := refl
+  def TreeLegitRuns : Eq(One, TreeLegit, O) := refl
+  def TreeReadPlain : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; let k : One = x; k), })
+  def TreeReadRet : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); let k : One = x; k), })
+  reject def TreeReadIdxPlain : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; n := Z; let k : Void = x; k), })
+  reject def TreeReadIdxRet : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; let k : Void = x; k), })
+  def TreeWritePlain : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; *r := O; let k : One = x; k), })
+  def TreeWriteRet : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); *r := O; let k : One = x; k), })
+  reject def TreeWriteIdxPlain : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; *r := O; n := Z; let k : Void = x; k), })
+  reject def TreeWriteIdxRet : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); *r := O; n := Z; let k : Void = x; k), })
+  def TreeRebPlain : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; let s = &x; let k : One = *s; k), })
+  def TreeRebRet : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); let s = &x; let k : One = *s; k), })
+  reject def TreeRebIdxPlain : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; n := Z; let s = &x; let k : Void = *s; k), })
+  reject def TreeRebIdxRet : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; let s = &x; let k : Void = *s; k), })
+  def TreeMovePlain : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; let k = x; k), })
+  def TreeMoveRet : One := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); let k = x; k), })
+  reject def TreeMoveIdxPlain : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = &x; n := Z; let k = x; k), })
+  reject def TreeMoveIdxRet : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; let k = x; k), })
+  def LeafReadPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let k : Nat = p; k), })
+  def LeafReadRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k : Nat = p; k), })
+  reject def LeafReadIdxPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let k : Nat = p; k), })
+  reject def LeafReadIdxRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let k : Nat = p; k), })
+  def LeafWritePlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; *r := 6; let k : Nat = p; k), })
+  def LeafWriteRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); *r := 6; let k : Nat = p; k), })
+  reject def LeafWriteIdxPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; *r := 6; b := S(Z); let k : Nat = p; k), })
+  reject def LeafWriteIdxRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); *r := 6; b := S(Z); let k : Nat = p; k), })
+  def LeafRebPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let s = &p; let k : Nat = clone(*s); k), })
+  def LeafRebRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let s = &p; let k : Nat = clone(*s); k), })
+  reject def LeafRebIdxPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let s = &p; 0), })
+  reject def LeafRebIdxRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let s = &p; 0), })
+  def LeafMovePlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let k = p; k), })
+  def LeafMoveRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k = p; k), })
+  reject def LeafMoveIdxPlain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let k = p; k), })
+  reject def LeafMoveIdxRet : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let k = p; k), })
+}
+
+#guard (run "MarkedFields" MarkedFields).rejectedWith [
+  ("A2", "the ascribed term has type One, expected Void"),
+  ("Boom", "unknown constant A2"),
+  ("Direct", "the body of Direct has type One, but the goal is Void"),
+  ("CensusStuckVoid", "the ascribed term has type One, expected Void"),
+  ("CensusFillVoid", "the ascribed term has type One, expected Void"),
+  ("CensusUnknown", "the ascribed term has type ⌈Fin1(σ1)⌉, expected Void"),
+  ("CensusMarkMarkVoid", "the ascribed term has type One, expected Void"),
+  ("TreeReadIdxPlain", "the ascribed term has type One, expected Void"),
+  ("TreeReadIdxRet", "the ascribed term has type One, expected Void"),
+  ("TreeWriteIdxPlain", "the ascribed term has type One, expected Void"),
+  ("TreeWriteIdxRet", "the ascribed term has type One, expected Void"),
+  ("TreeRebIdxPlain", "the ascribed term has type One, expected Void"),
+  ("TreeRebIdxRet", "the ascribed term has type One, expected Void"),
+  ("TreeMoveIdxPlain", "the body of TreeMoveIdxPlain has type One, but the goal is Void"),
+  ("TreeMoveIdxRet", "the body of TreeMoveIdxRet has type One, but the goal is Void"),
+  ("LeafReadIdxPlain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafReadIdxRet", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafWriteIdxPlain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafWriteIdxRet", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafRebIdxPlain", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("LeafRebIdxRet", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("LeafMoveIdxPlain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("LeafMoveIdxRet", "[Read] c.p was moved out or its borrow ended (reading ⊥)")]
+
 /-! ## Opened dependent values, attacked (D110, D112)
 
 The attack of the dependent-values lane (`Meaning/Dep/HANDOFF.md`), as asserted rows. In order:

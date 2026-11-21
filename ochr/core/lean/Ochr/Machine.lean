@@ -1453,7 +1453,9 @@ def depFieldType (fuel : Nat) (d : IndDecl) (ps : List Value) (g : FieldRef) (q 
     | err s!"{← ppPlace q}.{g.name}: no such field"
   fire .Field fun _ => s!"{g.name}: {T}, from the earlier fields' contents"
   if declared || !d.fieldDependent g.ctor g.idx then return T
-  let c := fs.getD g.idx .bot
+  -- D112 amended: a mark (`lent_g`, a place lent to a borrow a call returned) is the content it
+  -- marks, for typing as for paths and the repack (`lentUnknown`)
+  let c := (fs.getD g.idx .bot).unmark
   -- a moved field has its declared type (any read of it is an error)
   if c == .bot then return T
   -- D110: a proof field holds `⋆` at its declared type; a data field never holds a proof (a strong
@@ -1498,6 +1500,8 @@ def packedErr (fuel : Nat) (v : Value) (T : Value) : M (Option String) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match v with
   | .bot => pure (some s!"it holds {v} (moved out, or a proof invalidated by a write to a field its type mentions)")
+  -- D112 amended: a mark is checked as the content it marks
+  | .gloan _ w => packedErr fuel' w T
   | .proof => pure (if ← isPropV fuel' T then none else some s!"a proof where {T} is expected")
   | .ind t c _ ps fs =>
     if !(← hasDependent v) && (← convVal fuel' v T) then return none
@@ -1556,6 +1560,8 @@ def valType? (fuel : Nat) (v : Value) : M (Option Value) := do
     pure (some (.sort (← sortOf fuel' v)))
   | .sealed t =>
     sealedType? fuel' t
+  -- D112 amended: a mark is its content's type, as a loan is its borrow's content's
+  | .gloan _ w => valType? fuel' w
   | .loan l =>
     -- a live loan's value is its borrow's content: a place lent out has that content's type
     let env := (← get).env
