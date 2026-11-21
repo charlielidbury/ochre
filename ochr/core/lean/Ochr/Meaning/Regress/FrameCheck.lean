@@ -33,14 +33,15 @@ theorem bindRen_id (b : SBinding) : BindRen (fun l => l) b b := by
 
 /-- The top-frame clause where both frames hold the same bindings and the in-place one no temporary
 (at the call), or one temporary after the cell (after `&*x`). -/
-theorem top_same (bs : List SBinding) (ts : List SVal) (cell : SVal) :
-    ∃ F F', [SFrame.mk bs ts].getLast? = some F ∧ [({} : SFrame), SFrame.mk bs (cell :: ts)] = [{}, F'] ∧ F.binds.length = F'.binds.length ∧
+theorem top_same (C : SFrame) (bs : List SBinding) (ts : List SVal) :
+    ∃ F F', [SFrame.mk bs ts].getLast? = some F ∧ [C, SFrame.mk bs ts].getLast? = some F' ∧ F.binds.length = F'.binds.length ∧
       (∀ (i : Nat) b b', F.binds[i]? = some b → F'.binds[i]? = some b' → BindRen (fun l => l) b b') ∧
-      F'.temps.length = [0].length + F.temps.length ∧
-      ∀ (j : Nat) v, F.temps[j]? = some v → ∃ v', F'.temps[j + [0].length]? = some v' ∧ ∀ ψ, v ψ = v' (renF (fun l => l) ψ) := by
-  refine ⟨_, _, rfl, rfl, rfl, fun i b b' h h' => ?_, by simp; omega, fun j v hv => ⟨v, by simpa using hv, fun _ => rfl⟩⟩
+      F'.temps.length = F.temps.length ∧
+      ∀ (j : Nat) v, F.temps[j]? = some v → ∃ v', F'.temps[j]? = some v' ∧ ∀ ψ, v ψ = v' (renF (fun l => l) ψ) := by
+  refine ⟨_, _, rfl, rfl, rfl, fun i b b' h h' => ?_, rfl, fun j v hv => ⟨v, hv, fun _ => rfl⟩⟩
   have h1 : bs[i]? = some b := by simpa using h
-  rw [h1] at h'; cases h'; exact bindRen_id b
+  have h2 : bs[i]? = some b' := by simpa using h'
+  rw [h1] at h2; cases h2; exact bindRen_id b
 
 theorem cellsOf_SBs (selfB : SBinding) (d : DeclInfo) (c r : Sem) : cellsOf 1 (SBs selfB d c r) = [fun ψ => ψ 0] := rfl
 
@@ -175,7 +176,7 @@ theorem id1_after (T : TyM) (c c₀ : Sem) :
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
       rcases i with _ | _ | i <;> simp [upPos, SB2, SPg2]
   clShape := fun q l hq => by
-    by_cases h1 : q = .temp 1 1
+    by_cases h1 : q = .temp 1 0
     · exact ⟨.temp 1 0, rfl, h1⟩
     · by_cases h2 : q = .bind 1 1
       · exact ⟨.bind 1 1, rfl, h2⟩

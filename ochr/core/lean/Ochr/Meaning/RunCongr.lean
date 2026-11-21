@@ -531,8 +531,10 @@ noncomputable def fixStep (sa : SState × List Sem × List Pos) (ap : Sem × PiD
   let d : DeclInfo := match fb.1[acc.length]? with | some b => b.2 | none => .other
   if ap.2.isRef then
     let (l, s) := s.freshLoan
-    let s := s.pushTemp fun ψ => ψ l
-    let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
+    -- docs/31 D126: the cell is a binding of frame 0, `x° ↦ loan l` at the content type, as the
+    -- checker's `checkFix` makes it
+    let cell : Pos := .bind 0 (((s.env[0]?).map (·.binds.length)).getD 0)
+    let s := s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }
     -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
     let s := pushBindShaped ((s.setHeldMem l ap.1).setHeldTy l T.m) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
     (s, acc ++ [ap.1], cells ++ [cell])
@@ -671,11 +673,12 @@ theorem pushTemp_last (s : SState) (v : SVal) (hne : s.env ≠ []) :
     simp
   · simp [SState.valAt, SState.pushTemp, List.getElem?_modify, e2]
 
-/-- The forming invariant: the frame's state has the invariant, the counter is past the start, and
-every cell is a temporary ordered at the start (or the state has no frame at all). -/
+/-- The forming invariant: the frame's state has the invariant, the counter is past the start, the
+closure's frame is above frame 0, and every cell is a cell of the state (a binding of frame 0, docs/31
+D126) ordered at the start. -/
 def FormInv (L : Nat → Prop) (start : Nat) (sa : SState × List Sem × List Pos) : Prop :=
-  RInv L sa.1 ∧ start ≤ sa.1.nextLoan ∧
-    ∀ c ∈ sa.2.2, IsTemp c ∧ ((c ∈ sa.1.positions ∧ Ordered L sa.1 start (sa.1.valAt c)) ∨ sa.1.env = [])
+  RInv L sa.1 ∧ start ≤ sa.1.nextLoan ∧ 0 < sa.1.topIdx ∧
+    ∀ c ∈ sa.2.2, IsCell sa.1 c ∧ c ∈ sa.1.positions ∧ Ordered L sa.1 start (sa.1.valAt c)
 
 theorem valAt_pushBind_old (s : SState) (b : SBinding) {q : Pos} (hq : q ∈ s.positions) :
     (s.pushBind b).valAt q = s.valAt q := by
@@ -753,11 +756,17 @@ theorem pushBindShaped_setHeldTy (s : SState) (l : Nat) (T : TyM) (b : SBinding)
     simp only [SState.setHeldTy_env]
     cases h : ((s.takeLabel k).pushBind b).env.getLast? <;> rfl
 
+theorem topIdx_pushBindShaped (s : SState) (b : SBinding) : (pushBindShaped s b).topIdx = s.topIdx := by
+  unfold SState.topIdx; rw [(envPush_pushBindShaped s b).1]
+
+theorem topIdx_pushBind' (s : SState) (b : SBinding) : (s.pushBind b).topIdx = s.topIdx := by
+  simp [SState.pushBind, SState.topIdx]
+
 theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : FormInv L start sa) (ap : Sem × PiDom) :
     FormInv L start (fixStep fb sa ap) := by
   obtain ⟨s, acc, cells⟩ := sa
-  obtain ⟨hi, hst, hcells⟩ := h
-  dsimp only at hi hst hcells
+  obtain ⟨hi, hst, htop, hcells⟩ := h
+  dsimp only at hi hst htop hcells
   unfold fixStep
   dsimp only
   split
@@ -771,12 +780,25 @@ theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : For
     have hshape₀ : s₀.shape = s.shape := by rw [← hs₀]
     have hnl₀ : s₀.nextLoan = s.nextLoan + 1 := by rw [← hs₀]
     have henv₀ : s₀.env = s.env := by rw [← hs₀]
-    generalize hT : (s₀.pushTemp fun ψ => ψ s.nextLoan) = T
-    have hiT : RInv (fun y => L y ∨ y = s.nextLoan) T := by rw [← hT]; exact rinv_pushTemp_read hi₀ _
+    have htop₀ : s₀.topIdx = s.topIdx := by unfold SState.topIdx; rw [henv₀]
+    obtain ⟨fr0, h0⟩ : ∃ fr0, s₀.env[0]? = some fr0 := by
+      rw [henv₀]
+      cases e : s.env with
+      | nil => simp [SState.topIdx, e] at htop
+      | cons fr0 _ => exact ⟨fr0, rfl⟩
+    have h0' : s.env[0]? = some fr0 := by rw [← henv₀]; exact h0
+    simp only [h0', Option.map_some, Option.getD_some]
+    generalize hcb : ({ ty := TyS.plain (match fb.1[acc.length]? with | some b => b.1 acc | none => TyS.plain (ap.2.dom acc)).m, val := fun ψ => ψ s.nextLoan, decl := DeclInfo.other } : SBinding) = cb
+    have hcbv : cb.val = fun ψ => ψ s.nextLoan := by rw [← hcb]
+    generalize hT : s₀.pushCell cb = T
+    have hiT : RInv (fun y => L y ∨ y = s.nextLoan) T := by rw [← hT]; exact rinv_pushCell_read hi₀ cb _ hcbv
     have hliveT : ∀ y, T.Live y ↔ s.Live y := by
-      intro y; rw [← hT, live_pushTemp hi₀.2.2, hlive₀]
+      intro y; rw [← hT, live_pushCell hi₀.2.2, hlive₀]
     have hshapeT : T.shape = s.shape := by rw [← hT, ← hshape₀]; rfl
     have hnlT : T.nextLoan = s.nextLoan + 1 := by rw [← hT, ← hnl₀]; rfl
+    have htopT : T.topIdx = s.topIdx := by rw [← hT, pushCell_topIdx, htop₀]
+    obtain ⟨hmT, hvT⟩ := pushCell_last s₀ cb fr0 h0
+    rw [hT] at hmT hvT
     generalize hb : ({ ty := { (match fb.1[acc.length]? with | some b => b.1 acc | none => TyS.plain (ap.2.dom acc)) with label := some s.nextLoan }, val := fun _ => ap.1, decl := (match fb.1[acc.length]? with | some b => b.2 | none => DeclInfo.other) } : SBinding) = b
     have hbl : b.ty.label = some s.nextLoan := by rw [← hb]
     have hi'' : RInv (fun y => L y ∨ y = s.nextLoan) (pushBindShaped T b) :=
@@ -784,68 +806,53 @@ theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : For
         rw [hbl] at hl; cases hl
         refine ⟨.inr (.inl fun q x hq => ?_), by rw [hnlT]; exact Nat.lt_succ_self _⟩
         rw [hshapeT] at hq; exact (hi.2.2 q x hq).2
-    have henvT : T.env.length = s.env.length := by rw [← hT, (envLe_pushTemp _ _).1, henv₀]
-    have henv' : (pushBindShaped T b).env.length = s.env.length := by
-      rw [(envPush_pushBindShaped T b).1, henvT]
-    by_cases he : s.env = []
-    · have he' : (pushBindShaped T b).env = [] := List.eq_nil_of_length_eq_zero (by rw [henv', he]; rfl)
-      refine ⟨rinv_drop_one hi'' (.inr (indep_of_env_nil he' _)), ?_, fun c hc => ?_⟩
-      · rw [nextLoan_pushBindShaped, hnlT]; exact Nat.le_succ_of_le hst
-      · rcases List.mem_append.mp hc with hc | hc
-        · exact ⟨(hcells c hc).1, .inr he'⟩
-        · simp only [List.mem_singleton] at hc; subst hc; exact ⟨trivial, .inr he'⟩
-    · have hneT : T.env ≠ [] := fun h => he (List.eq_nil_of_length_eq_zero (by rw [← henvT, h]; rfl))
-      have hlive' : ∀ y, (pushBindShaped T b).Live y ↔ s.Live y ∨ y = s.nextLoan := by
-        intro y
-        rw [live_pushBindShaped hiT.2.2 b hneT y, hliveT, hbl]
-        constructor
-        · rintro (h | h)
-          · exact .inl h
-          · exact .inr (Option.some.inj h).symm
-        · rintro (h | h)
-          · exact .inl h
-          · exact .inr (by rw [h])
-      refine ⟨rinv_drop_one hi'' (.inl ((hlive' _).mpr (.inr rfl))), ?_, fun c hc => ?_⟩
-      · rw [nextLoan_pushBindShaped, hnlT]; exact Nat.le_succ_of_le hst
-      · have hmemT : ∀ q ∈ s.positions, q ∈ T.positions := fun q hq => by
-          rw [← hT]; exact mem_positions_pushTemp _ _ (by rw [hpos₀]; exact hq)
-        have hvalT : ∀ q ∈ s.positions, T.valAt q = s.valAt q := fun q hq => by
-          rw [← hT, valAt_pushTemp_old _ _ (by rw [hpos₀]; exact hq), hval₀]
-        rcases List.mem_append.mp hc with hc | hc
-        · obtain ⟨ht, hc'⟩ := hcells c hc
-          rcases hc' with ⟨hcm, ho⟩ | he''
-          · refine ⟨ht, .inl ⟨mem_positions_pushBindShaped b (hmemT c hcm), ?_⟩⟩
-            refine ordered_step ho ?_ (fun y h1 h2 => ?_) (fun y h1 h2 => ?_)
-            · rcases valAt_pushBindShaped_old b (hmemT c hcm) with e | e
-              · exact .inl (by rw [e, hvalT c hcm])
-              · exact .inr ⟨_, e⟩
-            · rcases (hlive' y).mp h1 with h | rfl
-              · exact absurd h h2
-              · exact .inl hst
-            · exact absurd ((hlive' y).mpr (.inl h1)) h2
-          · exact absurd he'' he
-        · simp only [List.mem_singleton] at hc
-          subst hc
-          rw [← hT] at hneT ⊢
-          have hne₀ : s₀.env ≠ [] := by rw [henv₀]; exact he
-          obtain ⟨hm, hv⟩ := pushTemp_last s₀ (fun ψ => ψ s.nextLoan) hne₀
-          refine ⟨trivial, .inl ⟨mem_positions_pushBindShaped b hm, ?_⟩⟩
-          rw [hT] at hm hv ⊢
-          rcases valAt_pushBindShaped_old b hm with e | e
-          · rw [e, hv]
-            intro ψ ψ' hψ
-            exact hψ s.nextLoan (.inr ⟨(hlive' _).mpr (.inr rfl), hst⟩)
-          · rw [e]; exact FT.const _ _
-  · refine ⟨pushBind_rinv hi _ ap.1 rfl, hst, fun c hc => ?_⟩
-    obtain ⟨ht, hc'⟩ := hcells c hc
-    refine ⟨ht, ?_⟩
-    rcases hc' with ⟨hcm, ho⟩ | he
-    · refine .inl ⟨mem_positions_pushBind _ _ hcm, ?_⟩
-      rw [valAt_pushBind_old _ _ hcm]
-      exact ordered_step ho (.inl rfl)
-        (fun y h1 h2 => absurd ((live_pushBind hi.2.2 _ y).mp h1) h2)
-        (fun y h1 h2 => absurd ((live_pushBind hi.2.2 _ y).mpr h1) h2)
-    · exact .inr (by simp [SState.pushBind, he])
+    have hneT : T.env ≠ [] := by
+      intro he
+      have : Pos.bind 0 fr0.binds.length ∈ T.positions := hmT
+      rw [positions_eq, he] at this; simp at this
+    have hlive' : ∀ y, (pushBindShaped T b).Live y ↔ s.Live y ∨ y = s.nextLoan := by
+      intro y
+      rw [live_pushBindShaped hiT.2.2 b hneT y, hliveT, hbl]
+      constructor
+      · rintro (h | h)
+        · exact .inl h
+        · exact .inr (Option.some.inj h).symm
+      · rintro (h | h)
+        · exact .inl h
+        · exact .inr (by rw [h])
+    have htop' : (pushBindShaped T b).topIdx = s.topIdx := by rw [topIdx_pushBindShaped, htopT]
+    refine ⟨rinv_drop_one hi'' (.inl ((hlive' _).mpr (.inr rfl))), ?_, by rw [htop']; exact htop, fun c hc => ?_⟩
+    · rw [nextLoan_pushBindShaped, hnlT]; exact Nat.le_succ_of_le hst
+    · have hmemT : ∀ q ∈ s.positions, q ∈ T.positions := fun q hq => by
+        rw [← hT]; exact mem_positions_pushCell _ _ (by rw [hpos₀]; exact hq)
+      have hvalT : ∀ q ∈ s.positions, T.valAt q = s.valAt q := fun q hq => by
+        rw [← hT, valAt_pushCell_old _ _ (by rw [hpos₀]; exact hq), hval₀]
+      rcases List.mem_append.mp hc with hc | hc
+      · obtain ⟨hcell, hcm, ho⟩ := hcells c hc
+        refine ⟨by unfold IsCell; rw [htop']; exact hcell, mem_positions_pushBindShaped b (hmemT c hcm), ?_⟩
+        refine ordered_step ho ?_ (fun y h1 h2 => ?_) (fun y h1 h2 => ?_)
+        · rcases valAt_pushBindShaped_old b (hmemT c hcm) with e | e
+          · exact .inl (by rw [e, hvalT c hcm])
+          · exact .inr ⟨_, e⟩
+        · rcases (hlive' y).mp h1 with h | rfl
+          · exact absurd h h2
+          · exact .inl hst
+        · exact absurd ((hlive' y).mpr (.inl h1)) h2
+      · simp only [List.mem_singleton] at hc
+        subst hc
+        refine ⟨.inr (by rw [htop']; exact htop), mem_positions_pushBindShaped b hmT, ?_⟩
+        rcases valAt_pushBindShaped_old b hmT with e | e
+        · rw [e, hvT, hcbv]
+          intro ψ ψ' hψ
+          exact hψ s.nextLoan (.inr ⟨(hlive' _).mpr (.inr rfl), hst⟩)
+        · rw [e]; exact FT.const _ _
+  · refine ⟨pushBind_rinv hi _ ap.1 rfl, hst, by rw [topIdx_pushBind']; exact htop, fun c hc => ?_⟩
+    obtain ⟨hcell, hcm, ho⟩ := hcells c hc
+    refine ⟨by unfold IsCell; rw [topIdx_pushBind']; exact hcell, mem_positions_pushBind _ _ hcm, ?_⟩
+    rw [valAt_pushBind_old _ _ hcm]
+    exact ordered_step ho (.inl rfl)
+      (fun y h1 h2 => absurd ((live_pushBind hi.2.2 _ y).mp h1) h2)
+      (fun y h1 h2 => absurd ((live_pushBind hi.2.2 _ y).mpr h1) h2)
 
 theorem foldl_fixStep_inv {start : Nat} : ∀ (xs : List (Sem × PiDom)) (sa : SState × List Sem × List Pos),
     FormInv L start sa → FormInv L start (xs.foldl (fixStep fb) sa)
@@ -859,9 +866,9 @@ end FixProps
 section FixCongr
 variable (K : RunCtx) (ρ : Assignment) {φ φ' : Future} {L : Nat → Prop} {fb : List PBind × PBind}
 
-theorem formInv_init {s : SState} (hi : RInv L s) (b : SBinding) (c : Sem) (hb : b.val = fun _ => c) :
+theorem formInv_init {s : SState} (hi : RInv L s) (ht : 0 < s.topIdx) (b : SBinding) (c : Sem) (hb : b.val = fun _ => c) :
     FormInv L s.nextLoan (s.pushBind b, [], []) :=
-  ⟨pushBind_rinv hi b c hb, Nat.le_refl _, fun _ hc => by cases hc⟩
+  ⟨pushBind_rinv hi b c hb, Nat.le_refl _, by rw [topIdx_pushBind']; exact ht, fun _ hc => by cases hc⟩
 
 theorem fixBodyAt_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
     (hb : ∀ hint s₂, RInv L s₂ → runT K ρ φ true hint body s₂ = runT K ρ φ' true hint body s₂)
@@ -870,7 +877,7 @@ theorem fixBodyAt_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none
   unfold fixBodyAt
   dsimp only
   have hF := foldl_fixStep_inv (fb := fb) (args.zip ps) _
-    (formInv_init (L := L) (rinv_under hi) { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
+    (formInv_init (L := L) (rinv_under hi) (under_topIdx_pos s) { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
   generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F at hF ⊢
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
@@ -887,29 +894,23 @@ theorem fixBodyAt_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none
 has no positions). -/
 theorem finals_of_pop {s₂ s₃ : SState} {start : Nat} (hi₃ : RInv L s₃) (e₃ : EnvLe s₂ s₃) (o₃ : OrdKeep L s₂ s₃)
     (hst₂ : start ≤ s₂.nextLoan) {cells : List Pos}
-    (hcells : ∀ c ∈ cells, IsTemp c ∧ ((c ∈ s₂.positions ∧ Ordered L s₂ start (s₂.valAt c)) ∨ s₂.env = []))
+    (hcells : ∀ c ∈ cells, IsCell s₂ c ∧ c ∈ s₂.positions ∧ Ordered L s₂ start (s₂.valAt c))
     (keep : Option Nat) : ∀ c ∈ cells, FT (fun y => L y ∨ some y = keep)
       (((s₃.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)).foldl endLabel s₃).valAt c) := by
   intro c hc
-  obtain ⟨ht, hc'⟩ := hcells c hc
-  rcases hc' with ⟨hcm, ho⟩ | he
-  · exact ordered_after_pop hi₃.1 hi₃.2.1 _ _ (o₃.2 _ c hst₂ (.inl ht) hcm ho)
-  · have he₄ := env_nil_of_envLe (envLe_foldl_endLabel
-      (s₃.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)) s₃) (env_nil_of_envLe e₃ he)
-    have : c ∉ ((s₃.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)).foldl endLabel s₃).positions := by
-      rw [positions_eq, he₄]; simp
-    rw [valAt_of_not_mem _ _ this]; exact FT.const _ _
+  obtain ⟨ht, hcm, ho⟩ := hcells c hc
+  exact ordered_after_pop hi₃.1 hi₃.2.1 _ _ (o₃.2 _ c hst₂ ht hcm ho)
 
 theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState} (hi : RInv L s)
     (ps : List PiDom) (out : PiCod) (piT : TyM) (body : Term) (selfM : Sem) (args : List Sem) (o : BodyOut)
     (h : fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args = some o) : FinalsIn L out.isRef o := by
   have hF := foldl_fixStep_inv (fb := fb) (args.zip ps) _
-    (formInv_init (L := L) (rinv_under hi) { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
+    (formInv_init (L := L) (rinv_under hi) (under_topIdx_pos s) { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
   unfold fixBodyAt at h
   dsimp only at h
   generalize hFF : (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F at hF h
   obtain ⟨s₂, acc, cells⟩ := F
-  obtain ⟨hi₂, hst₂, hcells⟩ := hF
+  obtain ⟨hi₂, hst₂, -, hcells⟩ := hF
   dsimp only at h hi₂ hst₂ hcells
   split at h
   · rename_i r R s₃ hrun

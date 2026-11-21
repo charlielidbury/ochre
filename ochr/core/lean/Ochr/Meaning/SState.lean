@@ -273,14 +273,20 @@ the holders and the sites move up with their frames. A closure's body runs in it
 checker's `checkFix` frames, frame 0 for the borrow parameters' cells and the top frame holding the
 captures, `self` and the parameters. For a global (formed in `[{}]`) the body's state is
 `[{}, {self, params}]`; for a closure value (its code run in `stateOf 0 caps`), `[{}, {caps, self,
-params}]`. -/
+params}]`. A state with no frame (never a run's) is padded with one, so the closure's frame is always
+above frame 0. -/
 def under (s : SState) : SState :=
-  { s with env := {} :: s.env,
+  { s with env := {} :: (if s.env.isEmpty then [{}] else s.env),
            shape := fun p => p.down?.bind s.shape,
            lent := fun l => (s.lent l).map fun x => { x with pos := x.pos.up } }
 
 def pushBind (s : SState) (b : SBinding) : SState :=
   { s with env := s.env.modify s.topIdx fun fr => { fr with binds := fr.binds ++ [b] } }
+
+/-- Push a binding on frame 0 (a closure's cell, docs/31 D126: the checker's `checkFix` binds a borrow
+parameter's cell `x° ↦ loan l` in frame 0, below the body's frame). -/
+def pushCell (s : SState) (b : SBinding) : SState :=
+  { s with env := s.env.modify 0 fun fr => { fr with binds := fr.binds ++ [b] } }
 
 def pushTemp (s : SState) (v : SVal) : SState :=
   { s with env := s.env.modify s.topIdx fun fr => { fr with temps := fr.temps ++ [v] } }

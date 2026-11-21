@@ -1362,9 +1362,9 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let cd := K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c
     let bodyAt (selfT : TyM) (selfM : Sem) (args : List Sem) : Option BodyOut :=
       -- the frame: `self`, then the parameters. A borrow parameter is set up as the generic call
-      -- is ([Def]): a fresh label `lᵢ`, a *cell* (a temporary of the frame: temporaries do not
-      -- shift de Bruijn indices) reading `lᵢ`'s final content, and the parameter holding the
-      -- content as the borrow's holder (D14). Returning the parameter returns its label.
+      -- is ([Def]): a fresh label `lᵢ`, a *cell* (a binding of frame 0, below the body's frame,
+      -- docs/31 D126) reading `lᵢ`'s final content, and the parameter holding the content as the
+      -- borrow's holder (D14). Returning the parameter returns its label.
       -- docs/31 D126: under a fresh bottom frame (`SState.under`), as the checker's `checkFix`
       -- frames the body: frame 0 for the cells, the top frame the captures, `self`, the parameters
       let s₁ := s.under.pushBind { ty := .plain selfT, val := fun _ => selfM, decl := .pi cd }
@@ -1375,8 +1375,10 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         let d : DeclInfo := match bs[acc.length]? with | some b => b.2 | none => .other
         if ap.2.isRef then
           let (l, s) := s.freshLoan
-          let s := s.pushTemp fun ψ => ψ l
-          let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
+          -- docs/31 D126: the cell is a binding of frame 0, `x° ↦ loan l` at the content type, as
+          -- the checker's `checkFix` makes it
+          let cell : Pos := .bind 0 (((s.env[0]?).map (·.binds.length)).getD 0)
+          let s := s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }
           -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
           let s := pushBindShaped ((s.setHeldMem l ap.1).setHeldTy l T.m) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
           (s, acc ++ [ap.1], cells ++ [cell])
