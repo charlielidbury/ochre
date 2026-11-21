@@ -1,5 +1,7 @@
 import Ochr.Meaning.Steps.ColumnStart
 import Ochr.Meaning.Steps.MachineMono
+import Ochr.Meaning.Steps.Machine.DecideFuelFF
+import Ochr.Meaning.Steps.Machine.FormFacts
 
 /-!
 # The column applied: `def C : Nat := let x = S(Z); x` (lead7)
@@ -366,18 +368,19 @@ theorem column_C (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) (
   rw [← hagree _ rfl]; rfl
 
 /-- **The decisions' alignment at the run's end, met** by the fuel-free table of the end state
-(`DecisionsFF.decTab_ff`), given that the checker's decision procedures agree across fuels
-(`DecideFuelAgree`, a fact about the checker alone, open in the machine lane). -/
-theorem column_C_ff (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) (hL : LetInv)
-    (hDN : DropNoopInv) (hIC : InvCore) (hback : DecBack) (hFA : ∀ st, DecideFuelAgree st) {g : Nat}
-    (hgrow : GrowsM (Ochr.eval (g + 9) true bodyC (some .tNat))) (dm : DataModel) (ρ : Assignment) (φ : Future)
+(`DecisionsFF.decTab_ff`), from the machine lane's theorems: the checker's decision procedures agree
+across fuels (`Machine.decide_fuel_agree'`), a run only extends the tables (`MachineMono.grows_eval`,
+from `machineGrows`), and `Z`'s inversion (`Machine.zeroInv`). -/
+theorem column_C_ff (hE : EvalInv) (hS : SuccInv) (hV : VarNumInv) (hL : LetInv)
+    (hDN : DropNoopInv) (hIC : InvCore) (hback : DecBack) {g : Nat} (dm : DataModel) (ρ : Assignment) (φ : Future)
     {st st' : MState} {bh : Nat} {v : Value} {T? : Option Value} (hk : Kern stC st) (hm : Mode st)
     (htd : st.tailDecl = none)
     (h : Runs (Ochr.eval (g + 9) true bodyC (some .tNat)) st bh (v, T?) st') :
     ∃ r s', runT (KC dm (checkerDecisionsFF st')) ρ φ st.tailNext (hintM (KC dm (checkerDecisionsFF st')) ρ (some .tNat))
         bodyC (SM' (KC dm (checkerDecisionsFF st')) ρ stC) = some (r, s') ∧
       r.1 = .el0 Nat 1 ∧ r.1 ∈ₛ[dm.read] TyM.nat ∧ r.2.m = TyM.nat :=
-  column_C hE hZ hS hV hL hDN hIC hback hgrow dm _ ρ φ hk hm htd (decTab_ff st' _ (fun _ => hFA _) (hFA st')) h
+  column_C hE Machine.zeroInv hS hV hL hDN hIC hback (grows_eval _ _ _ _) dm _ ρ φ hk hm htd
+    (decTab_ff st' _ (fun _ => Machine.decide_fuel_agree' _) (Machine.decide_fuel_agree' st')) h
 
 /-! ## The checker's side, run (not kernel-evaluable: `#guard`)
 
