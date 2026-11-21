@@ -205,6 +205,7 @@ import Ochr.Meaning.DataModel.Exists.FrameLocalCE
 import Ochr.Meaning.DataModel.Exists.FrameLocal.Vars
 import Ochr.Meaning.DataModel.Exists.FrameLocal.Prims
 import Ochr.Meaning.DataModel.Exists.FrameLocal.Join
+import Ochr.Meaning.DataModel.Exists.FrameLocal.Setup
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE
