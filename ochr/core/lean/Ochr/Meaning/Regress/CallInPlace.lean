@@ -344,8 +344,8 @@ theorem runArgs_borrowY (fT : TyM) :
     runArgs (Kc dm) ρ φ false fT [] [.borrow (.var 0)] ((emptyState 0).pushBind yB)
       = some ([(.el0 Nat 2, { yB.ty with label := some 0 })], Attack.S₂ yB 0 (.el0 Nat 2)) := by
   rw [Attack.pushBind_emptyState]
-  simp only [runArgs, Bool.false_and, SM.stmtIf, Bool.false_eq_true, if_false]
-  have hb : runT (Kc dm) ρ φ false (.plain (TyM.domAfter (Kc dm).dm.read fT [])) (.borrow (.var 0))
+  simp only [runArgs, Bool.false_and, SM.stmtIf, Bool.false_eq_true, if_false, Term.argHinted]
+  have hb : runT (Kc dm) ρ φ false (.plain TyM.err) (.borrow (.var 0))
       { env := [{ binds := [yB] }], shape := fun _ => none, nextLoan := 0 }
       = some ((.el0 Nat 2, { yB.ty with label := some 0 }), Attack.S₂ yB 0 (.el0 Nat 2)) := by
     rw [runT]
@@ -414,9 +414,9 @@ theorem useInc_callOf (hint : TyS) :
     unfold ContentOk; split
     · exact Attack.accessOk_noLive _ φ (Attack.liveLabels_of_noShape SI SI_shape) _ _
     · trivial
-  have hseq : run (Kc dm) ρ φ hint (.seq (.call (.val incClo) [.borrow (.var 0)] false) (.place (.var 0)))
+  have hseq : run (Kc dm) ρ φ (.plain TyM.err) (.seq (.call (.val incClo) [.borrow (.var 0)] false) (.place (.var 0)))
       ((emptyState 0).pushBind yB) = some ((.el0 Nat 3, Ty), SI) := by
-    show runT (Kc dm) ρ φ false hint _ _ = _
+    show runT (Kc dm) ρ φ false (.plain TyM.err) _ _ = _
     rw [runT]
     simp only [SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
     show (do let r ← run (Kc dm) ρ φ (.plain .err) _; SM.guardMod (DiscardOk (Kc dm) φ r.2) (discardEnd r.2); runT (Kc dm) ρ φ false hint (.place (.var 0))) _ = _
@@ -1215,10 +1215,10 @@ theorem useId1_callOf (hint : TyS) :
   have hb := bindR dm TU hTU
   obtain ⟨Ty, hy⟩ := readY_SR dm φ TU (yR1 dm) (mv1 dm) (fun _ => .moved) (fun _ => .el0 Nat 5)
     (yR1_five dm) (fun _ => by simp [Sem.whole]) (fun _ => Or.inl ⟨(5 : Nat), rfl⟩)
-  have hseq : run (Kc dm) ρ φ hint (.seq (.assign (.deref (.var 0)) (num 5)) (.place (.var 1)))
+  have hseq : run (Kc dm) ρ φ (.plain TyM.err) (.seq (.assign (.deref (.var 0)) (num 5)) (.place (.var 1)))
       (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved))
       = some ((.el0 Nat 5, Ty), (SR TU (yR1 dm) (fun _ => .el0 Nat 5) (mv1 dm) (fun _ => .moved)).endLabel 1) := by
-    show runT (Kc dm) ρ φ false hint _ _ = _
+    show runT (Kc dm) ρ φ false (.plain TyM.err) _ _ = _
     rw [runT]
     simp only [SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
     show (do let r ← run (Kc dm) ρ φ (.plain .err) _; SM.guardMod (DiscardOk (Kc dm) φ r.2) (discardEnd r.2); runT (Kc dm) ρ φ false hint (.place (.var 1))) _ = _

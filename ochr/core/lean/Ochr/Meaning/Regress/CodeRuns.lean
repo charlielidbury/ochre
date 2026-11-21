@@ -62,7 +62,7 @@ theorem run_letIn (x : Hint) (u w : Term) (hint : TyS) (s : SState) :
       (do
         let ((v, T), s) ← run (Kp dm Γ G) ρ φ (.plain .err) u s
         let s := pushBindShaped s { ty := T, val := fun _ => v, decl := .other }
-        let ((r, R), s) ← run (Kp dm Γ G) ρ φ hint w s
+        let ((r, R), s) ← run (Kp dm Γ G) ρ φ (.plain TyM.err) w s
         let held : Option Nat := match s.env.getLast? with
           | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
           | none => none
@@ -487,11 +487,11 @@ theorem idLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ (gId dm.read)) ρ
       (frame [fB Gf]) = some ((.el0 NN Gf, .plain (piTyL (lvl0 dm.read) tNN)), frame [fB Gf]) := by
     rw [run_call]
     simp only [SM.headOf, bind, run_const, Option.bind, runArgs, Bool.false_and, SM.stmtIf, Bool.false_eq_true,
-      if_false]
-    rw [show runT (Kp dm Γ (gId dm.read)) ρ φ false (TyS.plain (((gId dm.read) "id").snd.m.domAfter (Kp dm Γ (gId dm.read)).dm.read [])) (Term.pi [⟨"n"⟩] [Term.nat] Term.nat)
+      if_false, Term.argHinted]
+    rw [show runT (Kp dm Γ (gId dm.read)) ρ φ false (TyS.plain TyM.err) (Term.pi [⟨"n"⟩] [Term.nat] Term.nat)
         (frame [fB Gf]) = some ((.ty (piTyL (lvl0 dm.read) tNN), .plain (TyM.univ 1)), frame [fB Gf]) from run_piNN dm Γ (gId dm.read) ρ φ _ _ _]
     simp only
-    rw [show runT (Kp dm Γ (gId dm.read)) ρ φ false (TyS.plain (((gId dm.read) "id").snd.m.domAfter (Kp dm Γ (gId dm.read)).dm.read ([] ++ [Sem.ty (piTyL (lvl0 dm.read) tNN)])))
+    rw [show runT (Kp dm Γ (gId dm.read)) ρ φ false (TyS.plain TyM.err)
         (Term.place (Place.var 0)) = SM.guarded (ContentOk (Kp dm Γ (gId dm.read)) φ (.var 0)) (readPlace (Kp dm Γ (gId dm.read)) φ (.var 0) true) from rfl,
       readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole, fB]) (fn_good dm Gf)]
     simp only [pure]

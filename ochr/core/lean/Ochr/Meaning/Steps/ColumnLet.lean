@@ -160,7 +160,7 @@ theorem runT_letIn (tl : Bool) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
       let d := K.D.declOf (scopeOf s) u
       let ((v, T), s) ← runT K ρ φ false (.plain TyM.err) u s
       let s := pushBindShaped s { ty := T, val := fun _ => v, decl := d }
-      let ((r, R), s) ← runT K ρ φ tl hint w s
+      let ((r, R), s) ← runT K ρ φ tl (.plain TyM.err) w s
       let held : Option Nat := match s.env.getLast? with
         | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
         | none => none
@@ -297,8 +297,8 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : PlaceL
   have hll : letLenders s₂ = s₂ := letLenders_noop frs hlast (by
     rw [hpos]; exact rel_noSites_at hr₂ (fun l => by rw [hbv]; exact hns l _))
   -- the reference's `let`
-  have hxw' : runT K ρ φ st.curTail (hintM K ρ hint) w (s₁.pushBind bB) = some (rw', s₂) := by
-    rw [hwhint, ← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
+  have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w (s₁.pushBind bB) = some (rw', s₂) := by
+    rw [← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
   have hxl : runT K ρ φ st.curTail (hintM K ρ hint) (.letIn x u w) s = some (rw', s₂.dropLast) := by
     rw [runT_letIn _ _ x u w s hfl, hxu']
     have hllok : LetLendersOk K φ s₂ := by

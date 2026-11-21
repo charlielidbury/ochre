@@ -142,7 +142,7 @@ theorem run_letBorrow (ρ : Assignment) (x : Hint) (tl : Bool) (hint : TyS) :
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
   rw [run_borrowX]
   simp only [Bind.bind, Option.bind_some]
-  rw [pushBind_sG1, show runT (Kw dm []) ρ φw tl hint (.const "c") sG2 = some ((.el0 Nat 0, .plain TyM.nat), sG2) from rfl]
+  rw [pushBind_sG1, show runT (Kw dm []) ρ φw tl (.plain TyM.err) (.const "c") sG2 = some ((.el0 Nat 0, .plain TyM.nat), sG2) from rfl]
   simp only [Option.bind_some]
   simp only [getLast_sG2, topIdx_sG2, shape_sG2, frG2, List.length_cons, List.length_nil, if_true]
   rw [if_pos (endOk_sG2 dm)]

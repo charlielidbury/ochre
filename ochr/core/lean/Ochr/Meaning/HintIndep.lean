@@ -3,9 +3,11 @@ import Ochr.Meaning.Lemmas
 /-!
 # Hint-independence of a run with a hint-free tail
 
-The hint reaches a run only at its tail positions: the bodies of `let` and `;`, the arms of a
-match, `J`'s transported term, the operand of `peek`/`clone`/`inplace`, and at a tail an embedded
-value (`.val`, read at the hint) or a constructor term without parameters (`hint.data`). A term
+The hint reaches a run only through the operand of `peek`/`clone`/`inplace`, and there an
+embedded value (`.val`, read at the hint) or a constructor term without parameters (`hint.data`).
+Since docs/31 D119 the reference hands hints as the typed checker does, so a `let`'s or a `;`'s
+tail, a match's arms and `J`'s transported term run with no hint, whatever the outer hint is: those
+cases are one run on both sides. A term
 whose tails read none of these (`Term.tailHintFree`) runs to the same value and state at every
 hint; only the result's type component carries the hint. A value is `topHintFree` when the hint
 reaches its meaning through no bare constructor and no sealed program with a hint-reading tail.
@@ -154,63 +156,18 @@ mutual
 /-- **A run with a hint-free tail reads no hint**: same value, same state at every hint. -/
 theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = true → ∀ (h h' : TyS) (s : SState),
     (runT K ρ φ tl h t s).map resVS = (runT K ρ φ tl h' t s).map resVS
-  | tl, .letIn x u w, ht, h, h', s => by
-    simp only [Term.tailHintFree] at ht
+  | tl, .letIn x u w, _, h, h', s => by
+    -- the tails and arms run with no hint (docs/31 D119): the two runs are the same run
     rw [runT, runT]
-    refine erasedIf_resVS_congr _ ?_
-    cases hu : runT K ρ φ false (.plain .err) u s with
-    | none => simp only [Bind.bind, hu, Option.bind_none', Option.map_none]
-    | some x =>
-      obtain ⟨⟨v, T⟩, s₁⟩ := x
-      simp only [Bind.bind, hu, Option.bind_some']
-      exact bind_resVS_congr (runT_hintIndep tl w ht h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl =>
-        ite_map_resVS (by simp only [resVS, hl])))
-  | tl, .seq u w, ht, h, h', s => by
-    simp only [Term.tailHintFree] at ht
+  | tl, .seq u w, _, h, h', s => by
+    -- the tails and arms run with no hint (docs/31 D119): the two runs are the same run
     rw [runT, runT]
-    refine erasedIf_resVS_congr _ ?_
-    cases hu : runT K ρ φ false (.plain .err) u s with
-    | none => simp only [Bind.bind, Monad.toBind, instMonadSM, hu]
-    | some x =>
-      simp only [Bind.bind, Monad.toBind, instMonadSM, hu]
-      cases hg : SM.guardMod (DiscardOk K φ x.1.2) (discardEnd x.1.2) x.2 with
-      | none => rfl
-      | some y =>
-        obtain ⟨_, s₂⟩ := y
-        exact runT_hintIndep tl w ht h h' _
-  | tl, .matchNat p z u, ht, h, h', s => by
-    simp only [Term.tailHintFree, Bool.and_eq_true] at ht
+  | tl, .matchNat p z u, _, h, h', s => by
+    -- the tails and arms run with no hint (docs/31 D119): the two runs are the same run
     rw [runT, runT]
-    refine erasedIf_resVS_congr _ ?_
-    cases hc : SM.guarded (TagOk K φ p) (tagOf K φ p natTag) s with
-    | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
-    | some x =>
-      obtain ⟨tg, s₁⟩ := x
-      simp only [Bind.bind, hc, Option.bind_some']
-      refine optCheck_bind_resVS fun _ => ?_
-      split <;> rename_i heq <;> (try simp only [heq])
-      all_goals first
-        | rfl
-        | exact bind_resVS_congr (runT_hintIndep tl z ht.1 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl =>
-            optCheck_bind_resVS fun _ => by simp only [Option.map_some, resVS, hl]))
-        | exact bind_resVS_congr (runT_hintIndep tl u ht.2 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl =>
-            optCheck_bind_resVS fun _ => by simp only [Option.map_some, resVS, hl]))
-  | tl, .matchInd p ty arms, ht, h, h', s => by
-    simp only [Term.tailHintFree] at ht
+  | tl, .matchInd p ty arms, _, h, h', s => by
+    -- the tails and arms run with no hint (docs/31 D119): the two runs are the same run
     rw [runT, runT]
-    refine erasedIf_resVS_congr _ ?_
-    cases hc : SM.guarded (TagOk K φ p) (tagOf K φ p indTag) s with
-    | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
-    | some x =>
-      obtain ⟨tg, s₁⟩ := x
-      simp only [Bind.bind, hc, Option.bind_some']
-      refine optCheck_bind_resVS fun _ => ?_
-      split <;> rename_i heq <;> (try simp only [heq])
-      all_goals first
-        | rfl
-        | exact bind_resVS_congr (runArm_hintIndep tl arms ht _ h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl =>
-            optCheck_bind_resVS fun _ => by simp only [Option.map_some, resVS, hl]))
-        | (split <;> first | rfl | exact anyArm_resVS fun c => runArm_hintIndep tl arms ht c h h' _)
   | tl, .ctor ty c hd ps args, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [runT, runT]

@@ -78,6 +78,15 @@ end
 theorem freeVars_substAbs (t : Term) : (Term.substAbs σ w t).freeVars = t.freeVars := by
   simp only [Term.freeVars, Term.freeOccs, placeOccs_substAbs]
 
+/-- The typed checker's hint forms (docs/31 D119) are syntactic heads, which a substitution keeps. -/
+theorem assignHinted_substAbs (t : Term) : (Term.substAbs σ w t).assignHinted = t.assignHinted := by
+  cases t <;> rfl
+theorem argHinted_substAbs (t : Term) : (Term.substAbs σ w t).argHinted = t.argHinted := by
+  cases t <;> rfl
+theorem fieldHinted_substAbs (t : Term) (d : IndDecl) (c i : Nat) :
+    (Term.substAbs σ w t).fieldHinted d c i = t.fieldHinted d c i := by
+  cases t <;> rfl
+
 end SyntaxAbs
 
 /-! ## Support: the pieces that read the term -/
@@ -310,7 +319,7 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
       show runT K ρ ψ tl hint (.assign p (Term.substAbs σ w u)) s = _
       have hfl : ∀ sc, K.D.flags sc (.assign p (Term.substAbs σ w u)) = K.D.flags sc (.assign p u) :=
         fun sc => hF.dec.1 sc (.assign p u)
-      rw [runT, runT]; simp only [hu, hfl]
+      rw [runT, runT]; simp only [hu, hfl, assignHinted_substAbs]
     | letIn h u v =>
       have hu := fun tl' => runT_substAbsSame hF tl' u
       have hv := fun tl' => runT_substAbsSame hF tl' v
@@ -521,14 +530,16 @@ theorem runArgs_substAbsSame (hF : AbsFillOK K ρ ψ σ w) (stmt : Bool) (fT : T
     runArgs K ρ ψ stmt fT earlier (Term.substAbsList σ w args) = runArgs K ρ ψ stmt fT earlier args
   | [], _ => rfl
   | a :: as, earlier => by
-    simp only [Term.substAbsList, runArgs, runT_substAbsSame hF false a, runArgs_substAbsSame hF stmt fT as, hF.dec.2.1]
+    simp only [Term.substAbsList, runArgs, runT_substAbsSame hF false a, runArgs_substAbsSame hF stmt fT as, hF.dec.2.1,
+      argHinted_substAbs]
 
 theorem runFields_substAbsSame (hF : AbsFillOK K ρ ψ σ w) (stmt : Bool) (d : IndDecl) (c : Nat) :
     ∀ (args : List Term) (i : Nat) (rh : Option Rec) (sol : List (Option Sem)) (earlier : List Sem),
     runFields K ρ ψ stmt d c i rh sol earlier (Term.substAbsList σ w args) = runFields K ρ ψ stmt d c i rh sol earlier args
   | [], _, _, _, _ => rfl
   | a :: as, i, rh, sol, earlier => by
-    simp only [Term.substAbsList, runFields, runT_substAbsSame hF false a, runFields_substAbsSame hF stmt d c as, hF.dec.2.1]
+    simp only [Term.substAbsList, runFields, runT_substAbsSame hF false a, runFields_substAbsSame hF stmt d c as, hF.dec.2.1,
+      fieldHinted_substAbs]
 
 theorem runParams_substAbsSame (hF : AbsFillOK K ρ ψ σ w) (d : IndDecl) :
     ∀ (args : List Term) (i : Nat) (earlier : List Sem),

@@ -161,6 +161,7 @@ import Ochr.Meaning.Strict.Typed
 import Ochr.Meaning.Strict.ReadProto
 import Ochr.Meaning.Strict.Witness
 import Ochr.Meaning.Strict.WitnessLet
+import Ochr.Meaning.Strict.WitnessHint
 import Ochr.Meaning.Strict.OpenFutureCE
 import Ochr.Meaning.Strict.FrameCE
 

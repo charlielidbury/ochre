@@ -121,7 +121,7 @@ theorem fund_seq {u w : Term} (hu : Fund K ρ φ u) (hw : Fund K ρ φ w) : Fund
     unfold discardEnd; unfold DiscardOk at hdok; split
     · rename_i l hl; rw [hl] at hdok; exact endLabel_sgood hs₁ _ hdok
     · exact hs₁
-  exact hw tl hint _ _ _ hs₂ h4
+  exact hw tl (.plain TyM.err) _ _ _ hs₂ h4
 
 /-- `let x = u; w`: `u`'s result bound (`sgood_pushBindShaped`), `w` run, the binding dropped
 (`sgood_letDrop`); the result's label record kept, its liveness by `RunPresInd.letDrop_rinv`. -/
@@ -140,7 +140,7 @@ theorem fund_letIn (_hc : FundCtx K) {x : Hint} {u w : Term} (hu : Fund K ρ φ 
     by_cases hne : s₁.env = []
     · rw [pushBindShaped_nil _ _ hne]; exact hs₁
     · exact sgood_pushBindShaped hs₁ _ rfl hv hlab hlou hne
-  obtain ⟨hg, hlab₃, hlou₃, hs₃⟩ := hw tl hint _ _ _ hs₂ h2
+  obtain ⟨hg, hlab₃, hlou₃, hs₃⟩ := hw tl (.plain TyM.err) _ _ _ hs₂ h2
   refine ⟨hg, hlab₃.of_held (heldSame_letDrop _ _), ?_, sgood_letDrop hs₃ hend⟩
   exact (letDrop_rinv (fun _ => True) hs₃.acyc hlou₃ _ (by unfold SState.dropped; cases s₃.env.getLast? <;> rfl)).2.1
 
@@ -189,7 +189,7 @@ theorem fund_matchNat (hc : FundCtx K) {p : Place} {z u : Term} (hz : Fund K ρ 
   obtain ⟨s₂, lend⟩ := me
   dsimp only at h₀ hs₁' hlend
   split at h₀
-  · cases h2 : runT K ρ φ tl hint z s₂ with
+  · cases h2 : runT K ρ φ tl (.plain TyM.err) z s₂ with
     | none => rw [h2] at h₀; cases h₀
     | some a =>
       rw [h2] at h₀
@@ -197,9 +197,9 @@ theorem fund_matchNat (hc : FundCtx K) {p : Place} {z u : Term} (hz : Fund K ρ 
       simp only [Option.bind_some, Option.bind_eq_some_iff] at h₀
       obtain ⟨_, hjd, h₀⟩ := h₀
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
-      obtain ⟨hg, hlab, hlou, hs₄⟩ := hz tl hint _ _ _ hs₁' h2
+      obtain ⟨hg, hlab, hlou, hs₄⟩ := hz tl (.plain TyM.err) _ _ _ hs₁' h2
       exact fund_join hc lend hlend _ _ hg hlab hlou hs₄ (optCheck_some hjd)
-  · cases h2 : runT K ρ φ tl hint u s₂ with
+  · cases h2 : runT K ρ φ tl (.plain TyM.err) u s₂ with
     | none => rw [h2] at h₀; cases h₀
     | some a =>
       rw [h2] at h₀
@@ -207,7 +207,7 @@ theorem fund_matchNat (hc : FundCtx K) {p : Place} {z u : Term} (hz : Fund K ρ 
       simp only [Option.bind_some, Option.bind_eq_some_iff] at h₀
       obtain ⟨_, hjd, h₀⟩ := h₀
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
-      obtain ⟨hg, hlab, hlou, hs₄⟩ := hu tl hint _ _ _ hs₁' h2
+      obtain ⟨hg, hlab, hlou, hs₄⟩ := hu tl (.plain TyM.err) _ _ _ hs₁' h2
       exact fund_join hc lend hlend _ _ hg hlab hlou hs₄ (optCheck_some hjd)
   · cases h₀
 
@@ -252,7 +252,7 @@ theorem fund_matchInd (hc : FundCtx K) {p : Place} {n : String} {arms : List (Hi
   dsimp only at h₀ hs₁' hlend
   split at h₀
   · rename_i c _
-    cases h2 : runArm K ρ φ tl hint c arms s₂ with
+    cases h2 : runArm K ρ φ tl (.plain TyM.err) c arms s₂ with
     | none => rw [h2] at h₀; cases h₀
     | some a =>
       rw [h2] at h₀
@@ -261,7 +261,7 @@ theorem fund_matchInd (hc : FundCtx K) {p : Place} {n : String} {arms : List (Hi
       obtain ⟨_, hjd, h₀⟩ := h₀
       have hjd := optCheck_some hjd
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
-      obtain ⟨hg, hlab, hlou, hs₄⟩ := fund_runArmS arms ha tl hint c _ _ _ hs₁' h2
+      obtain ⟨hg, hlab, hlou, hs₄⟩ := fund_runArmS arms ha tl (.plain TyM.err) c _ _ _ hs₁' h2
       split
       · exact ⟨hg, hlab, hlou, hs₄⟩
       · rename_i hnp
@@ -278,7 +278,7 @@ theorem fund_matchInd (hc : FundCtx K) {p : Place} {n : String} {arms : List (Hi
     split at h₀
     · obtain ⟨c, R, s₄, -, h2, hr, hs'⟩ := SM.anyArm_some h₀
       subst hr hs'
-      obtain ⟨hg, -, -, -⟩ := fund_runArmS arms ha tl hint c _ _ _ hs₁' h2
+      obtain ⟨hg, -, -, -⟩ := fund_runArmS arms ha tl (.plain TyM.err) c _ _ _ hs₁' h2
       refine ⟨hg, ?_, ?_, hs₁'⟩
       · intro l hl; simp at hl
       · intro l hl; simp at hl
@@ -321,7 +321,7 @@ theorem fund_J (hc : FundCtx K) {A a b P h t : Term} (ht : Fund K ρ φ t) :
   · rename_i r' R s₄ h2
     obtain ⟨hjd, h₀⟩ := open Classical in ite_none_some h₀
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
-    obtain ⟨hg, hlab, hlou, hs₄⟩ := ht false hint _ _ _ hs₁ h2
+    obtain ⟨hg, hlab, hlou, hs₄⟩ := ht false (.plain TyM.err) _ _ _ hs₁ h2
     exact fund_join hc (fun _ s => s) (fun _ _ => .inl rfl) _ _ hg hlab hlou hs₄ hjd
   · cases h₀
 

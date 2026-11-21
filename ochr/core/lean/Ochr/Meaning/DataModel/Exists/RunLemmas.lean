@@ -412,11 +412,12 @@ theorem callOf_val (R : DataRead) (fv : Res) (args args' : List Res) (s s₂ : S
 /-- `runArgs` at one argument: the argument's run (in place or on a copy), at the callee's first domain. -/
 theorem runArgs_one (K : RunCtx) (ρ : Assignment) (φ : Future) (stmt : Bool) (fT : TyM) (a : Term) (s : SState)
     {as : List Res} {s' : SState} (h : runArgs K ρ φ stmt fT [] [a] s = some (as, s')) :
-    ∃ v T s₁, runT K ρ φ false (.plain (fT.domAfter K.dm.read [])) a s = some ((v, T), s₁) ∧ as.map (·.1) = [v] := by
+    ∃ v T s₁, runT K ρ φ false (if a.argHinted then .plain (fT.domAfter K.dm.read []) else .plain TyM.err) a s =
+      some ((v, T), s₁) ∧ as.map (·.1) = [v] := by
   simp only [runArgs, bind] at h
   revert h
   generalize hb : (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) = b
-  cases hst : SM.stmtIf b (runT K ρ φ false (.plain (fT.domAfter K.dm.read [])) a) s with
+  cases hst : SM.stmtIf b (runT K ρ φ false (if a.argHinted then .plain (fT.domAfter K.dm.read []) else .plain TyM.err) a) s with
   | none => intro h; simp [hst] at h
   | some p =>
     obtain ⟨r, s₁⟩ := p

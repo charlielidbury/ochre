@@ -78,6 +78,15 @@ end
 theorem freeVars_substLoan (t : Term) : (Term.substLoan l w t).freeVars = t.freeVars := by
   simp only [Term.freeVars, Term.freeOccs, placeOccs_substLoan]
 
+/-- The typed checker's hint forms (docs/31 D119) are syntactic heads, which a substitution keeps. -/
+theorem assignHinted_substLoan (t : Term) : (Term.substLoan l w t).assignHinted = t.assignHinted := by
+  cases t <;> rfl
+theorem argHinted_substLoan (t : Term) : (Term.substLoan l w t).argHinted = t.argHinted := by
+  cases t <;> rfl
+theorem fieldHinted_substLoan (t : Term) (d : IndDecl) (c i : Nat) :
+    (Term.substLoan l w t).fieldHinted d c i = t.fieldHinted d c i := by
+  cases t <;> rfl
+
 end Syntax
 
 /-! ## Support: the pieces that read the term -/
@@ -371,7 +380,7 @@ theorem runT_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (t : Term) (h
       show runT K ρ ψ tl hint (.assign p (Term.substLoan l w u)) s = _
       have hfl : ∀ sc, K.D.flags sc (.assign p (Term.substLoan l w u)) = K.D.flags sc (.assign p u) :=
         fun sc => hF.dec.1 sc (.assign p u)
-      rw [runT, runT]; simp only [hu, hfl]
+      rw [runT, runT]; simp only [hu, hfl, assignHinted_substLoan]
     | letIn h u v =>
       have hu := fun tl' => runT_substSame hF tl' u
       have hv := fun tl' => runT_substSame hF tl' v
@@ -582,14 +591,16 @@ theorem runArgs_substSame (hF : FillOK K ρ ψ l w) (stmt : Bool) (fT : TyM) :
     runArgs K ρ ψ stmt fT earlier (Term.substLoanList l w args) = runArgs K ρ ψ stmt fT earlier args
   | [], _ => rfl
   | a :: as, earlier => by
-    simp only [Term.substLoanList, runArgs, runT_substSame hF false a, runArgs_substSame hF stmt fT as, hF.dec.2.1]
+    simp only [Term.substLoanList, runArgs, runT_substSame hF false a, runArgs_substSame hF stmt fT as, hF.dec.2.1,
+      argHinted_substLoan]
 
 theorem runFields_substSame (hF : FillOK K ρ ψ l w) (stmt : Bool) (d : IndDecl) (c : Nat) :
     ∀ (args : List Term) (i : Nat) (rh : Option Rec) (sol : List (Option Sem)) (earlier : List Sem),
     runFields K ρ ψ stmt d c i rh sol earlier (Term.substLoanList l w args) = runFields K ρ ψ stmt d c i rh sol earlier args
   | [], _, _, _, _ => rfl
   | a :: as, i, rh, sol, earlier => by
-    simp only [Term.substLoanList, runFields, runT_substSame hF false a, runFields_substSame hF stmt d c as, hF.dec.2.1]
+    simp only [Term.substLoanList, runFields, runT_substSame hF false a, runFields_substSame hF stmt d c as, hF.dec.2.1,
+      fieldHinted_substLoan]
 
 theorem runParams_substSame (hF : FillOK K ρ ψ l w) (d : IndDecl) :
     ∀ (args : List Term) (i : Nat) (earlier : List Sem),

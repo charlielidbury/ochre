@@ -512,8 +512,8 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : Place
   have hll : letLenders s₂ = s₂ := letLenders_noop frs hlast (by
     rw [hpos]; exact rel_noSites_at hr₂ (fun l => by rw [hbv]; exact hns l _))
   -- the reference's `let`
-  have hxw' : runT K ρ φ st.curTail (hintM K ρ hint) w (pushBindShaped s₁ bB) = some (rw', s₂) := by
-    rw [hwhint, ← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
+  have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w (pushBindShaped s₁ bB) = some (rw', s₂) := by
+    rw [← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
   have hxl : runT K ρ φ st.curTail (hintM K ρ hint) (.letIn x u w) s = some (rw', s₂.dropLast) := by
     rw [runT_letIn _ _ x u w s hfl, hxu']
     have hllok : LetLendersOk K φ s₂ := by
@@ -829,7 +829,7 @@ theorem runT_seq (tl : Bool) (hint : TyS) (u w : Term) (s : SState)
     runT K ρ φ tl hint (.seq u w) s = (do
       let r ← runT K ρ φ false (.plain TyM.err) u
       SM.guardMod (DiscardOk K φ r.2) (discardEnd r.2)
-      runT K ρ φ tl hint w) s := by
+      runT K ρ φ tl (.plain TyM.err) w) s := by
   rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _; rw [hfl]; rfl
 
 theorem asg_of_withTempT {st : MState} {v : Value} {T? : Option Value} (h : Asg K ρ (st.withTempT v T?).norm) :
@@ -892,8 +892,8 @@ theorem seq_core (hSq : SeqInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n : Nat
     (fun σ hσ => hwa _ σ hσ) hwn (by rw [scopeOf_rel hrW]; exact hflw stW hPW) (fun e => by cases e) hD bh₂ hrw
   rw [htnW] at hOw
   obtain ⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩ := hOw
-  have hxw' : runT K ρ φ st.curTail (hintM K ρ hint) w s₁ = some (rw', s₂) := by
-    rw [hwhint, ← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
+  have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w s₁ = some (rw', s₂) := by
+    rw [← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
   have hxs : runT K ρ φ st.curTail (hintM K ρ hint) (.seq u w) s = some (rw', s₂) := by
     rw [runT_seq _ _ u w s hfl]
     simp only [bind, Option.bind]

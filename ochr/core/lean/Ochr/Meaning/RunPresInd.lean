@@ -148,7 +148,7 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
     (∃ t, t ∈ args ∧ run K ρ φ hint t s = some (r, s')) ∨
     (∃ p, readPlace K φ p true s = some (r, s')) ∨
     -- `J`: its transported term's entry, its run, its join
-    (∃ t s₂, t ∈ args ∧ run K ρ φ hint t (matchEntry K φ true t s).1 = some (r, s₂) ∧
+    (∃ t s₂, t ∈ args ∧ run K ρ φ (.plain TyM.err) t (matchEntry K φ true t s).1 = some (r, s₂) ∧
       s' = joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim n args) s₂) := by
   have prem : ∀ (xs : List Term), (SM.onCopy (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k)
       (pure (.proof, .plain (TyM.prop True))))) s = some (r, s') → s' = s ∧ r.2.label = none :=
@@ -212,7 +212,7 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
     have key' : ∀ b : Bool × Bool, SM.erasedIf b (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (run K ρ φ hint u)) s = some (r, s') →
         (s' = s ∧ r.2.label = none) ∨ (∃ t, t ∈ [u] ∧ run K ρ φ hint t s = some (r, s')) ∨
         (∃ p, readPlace K φ p true s = some (r, s')) ∨
-        (∃ t s₂, t ∈ [u] ∧ run K ρ φ hint t (matchEntry K φ true t s).1 = some (r, s₂) ∧
+        (∃ t s₂, t ∈ [u] ∧ run K ρ φ (.plain TyM.err) t (matchEntry K φ true t s).1 = some (r, s₂) ∧
           s' = joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim n [u]) s₂) :=
       fun b h => (key b h).imp_right (Or.imp_right Or.inl)
     rcases hn with rfl | rfl | rfl <;> (rw [runT] at h; exact key' _ h)
@@ -779,7 +779,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     have es : s₂ = discardEnd x.2 s₁ := (SM.guardMod_some h2a).2
     subst es
     obtain ⟨hi₁', e₁', o₁'⟩ := discardEnd_props L hi₁ x.2
-    obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl w hint _ s' r hi₁' h2
+    obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl w (.plain TyM.err) _ s' r hi₁' h2
     exact ⟨hi₂, hy₂, e₁.trans (e₁'.trans e₂), o₁.trans e₁ (o₁'.trans e₁' o₂)⟩
   | tl, .succ u, hint, s, s', r, hi, h => by
     rw [runT] at h
@@ -846,7 +846,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         · exact ⟨.inl h', hn⟩
         · exact ⟨.inr (.inr h'), hn⟩
     have o₂ := ordKeep_pushBindShaped hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u } hy₁
-    obtain ⟨hi₃, hy₃, e₃, o₃⟩ := runT_rinv hK tl w hint _ s₃ (r', R) hi₂ h2
+    obtain ⟨hi₃, hy₃, e₃, o₃⟩ := runT_rinv hK tl w (.plain TyM.err) _ s₃ (r', R) hi₂ h2
     dsimp only
     refine ⟨(letDrop_rinv L hi₃ hy₃ _ ?_).1, (letDrop_rinv L hi₃ hy₃ _ ?_).2.1,
       e₁.trans (envLe_letDrop ((envPush_pushBindShaped _ _).trans_le e₃) _),
@@ -873,7 +873,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     have o₁ := o₀.trans e₀ o₁'
     split at h
     · try dsimp only at h
-      cases h2 : runT K ρ φ tl hint z s₁ with
+      cases h2 : runT K ρ φ tl (.plain TyM.err) z s₁ with
       | none => rw [h2] at h; cases h
       | some a =>
         rw [h2] at h
@@ -881,12 +881,12 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         simp only [Option.bind_some, Option.bind_eq_some_iff] at h
         obtain ⟨_, -, h⟩ := h
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl z hint _ s₂ (r', R) hi₁ h2
+        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl z (.plain TyM.err) _ s₂ (r', R) hi₁ h2
         exact lend_post L _ (hlend _ _) ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
           e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
           o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
     · try dsimp only at h
-      cases h2 : runT K ρ φ tl hint u s₁ with
+      cases h2 : runT K ρ φ tl (.plain TyM.err) u s₁ with
       | none => rw [h2] at h; cases h
       | some a =>
         rw [h2] at h
@@ -894,7 +894,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         simp only [Option.bind_some, Option.bind_eq_some_iff] at h
         obtain ⟨_, -, h⟩ := h
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl u hint _ s₂ (r', R) hi₁ h2
+        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl u (.plain TyM.err) _ s₂ (r', R) hi₁ h2
         exact lend_post L _ (hlend _ _) ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
           e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
           o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
@@ -920,7 +920,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     split at h
     · rename_i c _
       try dsimp only at h
-      cases h2 : runArm K ρ φ tl hint c arms s₁ with
+      cases h2 : runArm K ρ φ tl (.plain TyM.err) c arms s₁ with
       | none => rw [h2] at h; cases h
       | some a =>
         rw [h2] at h
@@ -928,7 +928,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         simp only [Option.bind_some, Option.bind_eq_some_iff] at h
         obtain ⟨_, -, h⟩ := h
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runArm_rinv hK tl arms hint _ _ s₂ (r', R) hi₁ h2
+        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runArm_rinv hK tl arms (.plain TyM.err) _ _ s₂ (r', R) hi₁ h2
         have hj : ∀ sj, sj = lend R.label (joinDrop K φ (movedPlaces φ s₁) (.matchInd p n arms) s₂) ∨ sj = s₂ →
             RInv L sj ∧ (∀ y, R.label = some y → LoU1 sj y) ∧ EnvLe s sj ∧ OrdKeep L s sj := by
           rintro sj (rfl | rfl)
@@ -1029,7 +1029,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     · exact ⟨(readPlace_rinv K φ L h' hi).1, (readPlace_rinv K φ L h' hi).2, readPlace_envLe K φ h',
         readPlace_ordKeep K φ h' hi⟩
     · obtain ⟨hi₁, e₁, o₁⟩ := matchEntry_props K φ L true t hi
-      obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runAll_rinv hK args t ht hint _ s₂ r hi₁ h'
+      obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runAll_rinv hK args t ht (.plain TyM.err) _ s₂ r hi₁ h'
       exact ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
         e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
         o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩

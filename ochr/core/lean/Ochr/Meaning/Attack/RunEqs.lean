@@ -89,7 +89,7 @@ theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x :
         let d := K.D.declOf (scopeOf s) u
         let ((v, T), s) ← runT K ρ φ false (.plain .err) u s
         let s := pushBindShaped s { ty := T, val := fun _ => v, decl := d }
-        let ((r, R), s) ← runT K ρ φ false hint w s
+        let ((r, R), s) ← runT K ρ φ false (.plain .err) w s
         let held : Option Nat := match s.env.getLast? with
           | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
           | none => none
