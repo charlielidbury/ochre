@@ -5,21 +5,12 @@ import Ochr.Meaning.Strict.Good
 
 Each operation the strict run performs on the model state, shown to keep `SGood`: a whole write of a
 binding (`sgood_setAt_const`), an end (`endAt_sgood`), [Access] (`access_sgood`), and below them the
-facts they share. A write of a MEMBER keeps the read clause by the data layer's read lemma
-(`MemReads`: a member's whole read paths give members, `ReadMember.follow_below_member` under
-`ReadCoherent`), taken here as a hypothesis on the data model.
+facts they share. (There is no read clause to keep since the dependent-values unit: reads are strict,
+`Run.ReadGood`, so the data layer's read hypothesis `MemReads` is gone.)
 -/
 
 namespace Ochr.Meaning.Strict
 open Ochr.Meaning
-
-/-- **A data-layer fact the lemma consumes** (from `ReadMember.follow_below_member`, under the data
-model's `ReadCoherent` for every record a type can name): a whole member's whole read paths give
-members of the types the read gives them (or the type is `err`: a read through `⋆` gives `⋆` at
-`err`). -/
-def MemReads (dm : DataModel) (Γ : List IndDecl) : Prop :=
-  ∀ (T : TyS) (w v : Sem), w ∈ₛ[dm.read] T.m → DataModel.MovedOf Γ v w → ∀ steps x U,
-    Sem.follow dm Γ T v steps = some (x, U) → x.whole → x ∈ₛ[dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x)
 
 /-- On `⊥`, a read gives `⊥` or nothing. -/
 theorem follow_moved' (dm : DataModel) (Γ : List IndDecl) : ∀ (T : TyS) (steps : List Step) (x : Sem) (U : TyS),
@@ -40,14 +31,6 @@ theorem Future.upd_comm (ψ : Future) {a b : Nat} (h : a ≠ b) (x y : Sem) :
   funext l
   simp only [Future.upd]
   by_cases ha : l = a <;> by_cases hb : l = b <;> simp_all
-
-/-- Read paths of a partly moved member (`MemReads` at a `PMem`; `⊥` reads nothing whole). -/
-theorem MemReads.pmem {dm : DataModel} {Γ : List IndDecl} (hMR : MemReads dm Γ) {T : TyS} {v : Sem}
-    (hv : PMem dm.read Γ v T.m) (steps : List Step) (x : Sem) (U : TyS)
-    (hf : Sem.follow dm Γ T v steps = some (x, U)) (hx : x.whole) : x ∈ₛ[dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x) := by
-  rcases hv with rfl | ⟨t, -, hm, ht⟩
-  · rw [follow_moved' dm Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
-  · exact hMR T t v ht hm steps x U hf hx
 
 section
 variable {dm : DataModel} {Γ : List IndDecl} {φ : Future}
@@ -109,8 +92,8 @@ theorem valAt_setAt_const {s : SState} {pos : Pos} (hpos : pos ∈ s.positions) 
 /-- **A binding written whole with a member of its stored type** (an assignment's write at a root or
 through a borrow, `*r := v`, writes the holder's content whole) keeps the invariant: where the binding
 holds a borrow, its stored type is the label's content type (`holderTy`), so the value is a member of
-that too; its read paths are a member's (`MemReads`). -/
-theorem sgood_setAt_const (hMR : MemReads dm Γ) {s : SState} {f i : Nat} {v : Sem} (hs : SGood dm Γ φ s)
+that too. -/
+theorem sgood_setAt_const {s : SState} {f i : Nat} {v : Sem} (hs : SGood dm Γ φ s)
     (hv : v ∈ₛ[dm.read] (s.tyAt (.bind f i)).m) : SGood dm Γ φ (s.setAt (.bind f i) fun _ => v) := by
   have hpos : Pos.bind f i ∈ s.positions := by
     by_cases hn : Pos.bind f i ∈ s.positions
@@ -119,9 +102,7 @@ theorem sgood_setAt_const (hMR : MemReads dm Γ) {s : SState} {f i : Nat} {v : S
     rw [tyAt_of_not_mem hn] at hv
     exact DataModel.err_mem_false _ v hv
   have hval := valAt_setAt_const hpos v
-  have hw := mem_whole dm.read_wholeFields hv
-  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ p l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_,
-    fun ψ hψ f' i' steps x U hf hx => ?_⟩
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ p l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_⟩
   · rw [typedF_setAt] at hψ
     show GoodVal _ _ ((s.setAt _ _).valAt _ ψ) ((s.setAt _ _).tyAt _).m
     rw [hval, tyAt_setAt]
@@ -134,30 +115,22 @@ theorem sgood_setAt_const (hMR : MemReads dm Γ) {s : SState} {f i : Nat} {v : S
     split
     · rename_i hq; subst hq
       rw [← hs.holderTy f i l hl]
-      exact .inr ⟨v, hw, .refl v, hv⟩
+      exact .mem hv
     · exact hs.holder ψ hψ p l hl
   · rw [liveLabels_setAt, heldTy_setAt, heldMem_setAt]; exact hs.held
   · rw [SState.shape_setAt] at hl; rw [tyAt_setAt, heldTy_setAt]; exact hs.holderTy f' i' l hl
   · exact SState.setAt_rinv hs.acyc _ _ (fun _ _ _ => rfl) (fun _ _ _ _ _ => rfl)
   · exact SState.readsBelow_setAt hs.fresh _ _ (fun l ⟨_, _, h⟩ => absurd rfl h)
-  · rw [typedF_setAt] at hψ
-    rw [hval, tyAt_setAt] at hf
-    split at hf
-    · rename_i hq; injection hq with h1 h2; subst h1; subst h2
-      exact hMR _ v v hv (.refl v) steps x U hf hx
-    · exact hs.read ψ hψ f' i' steps x U hf hx
 
-/-- **A position written with a constant that is a partly moved member of its types** (a member, or
+/-- **A position written with a constant that is an open member of its types** (a member, or
 `⊥`: a write of a member, a move out of a whole position) keeps the invariant: at a binding the value
-is a partly moved member of its stored type, at a holder of its label's content type. Its read paths are
-then a partly moved member's (`MemReads.pmem`). -/
-theorem sgood_setAt_pmem (hMR : MemReads dm Γ) {s : SState} {p : Pos} {v : Sem} (hs : SGood dm Γ φ s)
-    (hp : p ∈ s.positions) (hb : ∀ f i, p = .bind f i → PMem dm.read Γ v (s.tyAt p).m)
-    (hh : ∀ l, s.shape p = some l → PMem dm.read Γ v (s.heldTy l)) :
+is an open member of its stored type, at a holder of its label's content type. -/
+theorem sgood_setAt_pmem {s : SState} {p : Pos} {v : Sem} (hs : SGood dm Γ φ s)
+    (hp : p ∈ s.positions) (hb : ∀ f i, p = .bind f i → PMem dm Γ v (s.tyAt p).m)
+    (hh : ∀ l, s.shape p = some l → PMem dm Γ v (s.heldTy l)) :
     SGood dm Γ φ (s.setAt p fun _ => v) := by
   have hval := valAt_setAt_const hp v
-  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_,
-    fun ψ hψ f' i' steps x U hf hx => ?_⟩
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_⟩
   · rw [typedF_setAt] at hψ
     show GoodVal _ _ ((s.setAt _ _).valAt _ ψ) ((s.setAt _ _).tyAt _).m
     rw [hval, tyAt_setAt]
@@ -174,18 +147,12 @@ theorem sgood_setAt_pmem (hMR : MemReads dm Γ) {s : SState} {p : Pos} {v : Sem}
   · rw [SState.shape_setAt] at hl; rw [tyAt_setAt, heldTy_setAt]; exact hs.holderTy f' i' l hl
   · exact SState.setAt_rinv hs.acyc _ _ (fun _ _ _ => rfl) (fun _ _ _ _ _ => rfl)
   · exact SState.readsBelow_setAt hs.fresh _ _ (fun l ⟨_, _, h⟩ => absurd rfl h)
-  · rw [typedF_setAt] at hψ
-    rw [hval, tyAt_setAt] at hf
-    split at hf
-    · rename_i hq; subst hq
-      exact hMR.pmem (hb f' i' rfl) steps x U hf hx
-    · exact hs.read ψ hψ f' i' steps x U hf hx
 
 /-- **An end keeps the invariant** (`endAt`: the holder `r` of `l` reads `⊥`, every other position its
 old meaning at `ψ := ψ'.upd l (r's content at ψ')`). That `ψ` is typed for the state before: it agrees
-with `φ` off the live labels before (they include `l`), at `l` it is `r`'s content, a partly moved
+with `φ` off the live labels before (they include `l`), at `l` it is `r`'s content, an open
 member of `heldTy l` (`holder`, at `ψ'` with `l` set to its record, which `r` does not read), and
-elsewhere it is `ψ'`. Why the typed futures give a live label a PARTLY moved member: a borrow may
+elsewhere it is `ψ'`. Why the typed futures give a live label an OPEN member: a borrow may
 end with parts of its content moved out (D53 (h)), and its lenders then read those parts moved. -/
 theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh : s.holderOf l = some r) :
     SGood dm Γ φ (s.endAt l r) := by
@@ -206,8 +173,7 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
     by_cases e : l' = l
     · subst e
       rw [Future.upd_same]
-      have hm : PMem dm.read Γ (s.heldMem l') (s.heldTy l') :=
-        .inr ⟨_, mem_whole dm.read_wholeFields (hs.held l' hl'), .refl _, hs.held l' hl'⟩
+      have hm : PMem dm Γ (s.heldMem l') (s.heldTy l') := .mem (hs.held l' hl')
       have ht : TypedF dm Γ φ s (ψ'.upd l' (s.heldMem l')) := by
         refine ⟨fun y hy => ?_, fun y hy => ?_⟩
         · have hne : y ≠ l' := fun e => hy (e ▸ hl')
@@ -221,13 +187,13 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
     · rw [Future.upd_other _ _ e]
       have := hψ' l' (SState.live_endAt hr hl' e); rwa [hHT] at this
   refine ⟨fun ψ' hψ' f i hpi => ?_, fun ψ' hψ' p l'' hl'' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_,
-    ?_, fun ψ' hψ' f i steps x U hf hx => ?_⟩
+    ?_⟩
   · show GoodVal _ _ ((s.endAt l r).valAt _ ψ') ((s.endAt l r).tyAt _).m
     rw [hTy]
     have hp : Pos.bind f i ∈ s.positions := by rwa [SState.endAt_positions] at hpi
     rw [SState.endAt_valAt s l r _ hp]
     split
-    · exact .inl (.inl rfl)
+    · exact .inl (.moved _)
     · exact hs.bind _ (key ψ' hψ') f i hp
   · rw [SState.endAt_shape] at hl''
     simp only at hl''
@@ -249,17 +215,6 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
     rwa [SState.endLabel_eq hh] at this
   · have := SState.readsBelow_endLabel hs.fresh l
     rwa [SState.endLabel_eq hh] at this
-  · rw [hTy] at hf
-    by_cases hp : Pos.bind f i ∈ s.positions
-    · rw [SState.endAt_valAt s l r _ hp] at hf
-      dsimp only at hf
-      split at hf
-      · rw [follow_moved' dm Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
-      · exact hs.read _ (key ψ' hψ') f i steps x U hf hx
-    · rw [SState.endAt_valAt_not_mem s l r _ hp] at hf
-      have hf' : Sem.follow dm Γ (s.tyAt (.bind f i)) (s.valAt (.bind f i) (ψ'.upd l (s.valAt r ψ'))) steps = some (x, U) := by
-        rwa [SState.valAt_of_not_mem s _ hp] at hf ⊢
-      exact hs.read _ (key ψ' hψ') f i steps x U hf' hx
 
 theorem endLabel_sgood {s : SState} (hs : SGood dm Γ φ s) (l : Nat) : SGood dm Γ φ (s.endLabel l) := by
   cases h : s.holderOf l with

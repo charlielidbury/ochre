@@ -445,8 +445,9 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 /-- **The payoff, composed**: where a successful strict run from a good state returns the meaning of
 a value `v` (read at `h`) with no `Prop` constructor value inside, `v` is hereditarily well typed at
-the run's type, unless the result is the error-type escape. (It inherits `fund_all`'s guesses; and
-`FundCtx` is uninhabited while `MemReads` asks its partly moved form, `ReadProto.not_memReads_dep`.) -/
+the run's type, unless the result is the error-type escape. (It inherits `fund_all`'s guesses.
+`FundCtx` no longer asks the read hypothesis `MemReads`, whose partly moved form is false,
+`ReadProto.not_memReads_dep`: reads are strict, `Run.ReadGood`.) -/
 theorem hwt_of_run (hc : FundCtx K) {t : Term} (ht : t.valsOk (ValsP K ρ φ)) {tl : Bool} {hint : TyS}
     {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s) (hr : runT K ρ φ tl hint t s = some (r, s'))
     {v : Value} {h : TyS} (hv : meanV K ρ φ h v = r.1) (hcv : NoProp K v) :

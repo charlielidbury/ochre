@@ -314,14 +314,6 @@ theorem readTy_fit {d : IndDecl} {r : Rec} {c i : Nat} {earlier : List Sem} {f :
     | _ => rfl
   | _ => rfl
 
-/-- A whole constructor value that is OPEN in the data type `T` (D64): it names `T`'s declaration
-and record and its fields are whole (a field may lie outside the type its earlier fields give; the
-checker types such a field by its content until [Repack]). Membership's `pmem` admits it, as the
-checker's state does (`Regress/OpenWriteDep`). -/
-def OpenIn (_R : DataRead) : TyM → Sem → Prop
-  | .t0 _ (.data d r _), .dat n' r' _ fs => d.name = n' ∧ r = r' ∧ ∀ f ∈ fs, f.whole
-  | _, _ => False
-
 mutual
 /-- `s` is `t` with some of its parts moved out: `moved` is anything with all of it moved, a
 partly moved constructor value is one with some fields moved out, and a partly moved number is a
@@ -339,15 +331,64 @@ inductive MovedOfList (Γ : List IndDecl) : List Sem → List Sem → Prop
   | cons {f g : Sem} {fs gs : List Sem} : MovedOf Γ f g → MovedOfList Γ fs gs → MovedOfList Γ (f :: fs) (g :: gs)
 end
 
-/-- Membership for a possibly partly moved value (docs/18 part (b) at a binding holding a value
-some field of which was moved out): the value is `⊥` outright, or it is some whole member of the
-type with parts moved out (`MovedOf`). For a whole value this is membership (`pmem_of_mem`). -/
-def pmem (R : DataRead) (Γ : List IndDecl) (s : Sem) (T : TyM) : Prop :=
-  s = .moved ∨ ∃ t : Sem, t.whole ∧ MovedOf Γ s t ∧ (t ∈ₛ[R] T ∨ OpenIn R T t)
+mutual
+/-- **Open membership** (D64, D112; route (c); the dependent-values unit, 2026-11-21): what a position
+holds. `moved`; a member; a partly moved number; or a constructor value of the type's declaration at
+the type's record each of whose fields is `moved` or an open member of the type the READ gives it
+(`readTy`), at some completion of the earlier fields' moved parts (the current earlier fields are
+one: `MovedOfList.refl`). A tree field is read at its own record (D112), so a value whose index was
+rewritten under a tree field is open, not a member; a whole value is a member exactly when closed
+(`closed_iff_mem`). -/
+inductive OMem (Γ : List IndDecl) : TyM → Sem → Prop
+  | moved (T : TyM) : OMem Γ T .moved
+  | mem {T : TyM} {s : Sem} : s ∈ₛ[dm.read] T → OMem Γ T s
+  | succ {T : TyM} {s : Sem} (n : Nat) : Sem.el0 Nat (n + 1) ∈ₛ[dm.read] T → OMem Γ TyM.nat s →
+      OMem Γ T (.dat "Nat" natRec 1 [s])
+  | dat {T : TyM} {d : IndDecl} {r : Rec} {c : Nat} {fs : List Sem} :
+      T.dataCode? = some (d, r) → c < d.ctors.length → fs.length = arity d c →
+      OFields Γ d r c 0 [] fs → OMem Γ T (.dat d.name r c fs)
 
-theorem pmem_of_mem (R : DataRead) (Γ : List IndDecl) {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ[R] T) :
-    pmem R Γ s T :=
-  .inr ⟨s, hw, .refl s, .inl h⟩
+/-- The fields of an open value, one by one, after the earlier ones. -/
+inductive OFields (Γ : List IndDecl) : IndDecl → Rec → Nat → Nat → List Sem → List Sem → Prop
+  | nil {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} : OFields Γ d r c i e []
+  | cons {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {f : Sem} {fs : List Sem} :
+      OField Γ d r c i e f → OFields Γ d r c (i + 1) (e ++ [f]) fs → OFields Γ d r c i e (f :: fs)
+
+/-- One field of an open value, at a completion `e'` of the earlier fields: `moved`; a partly moved
+member of the field's shape (its declared type, fitting); or an open member of the type the read
+gives it (a tree at its own record, D112). -/
+inductive OField (Γ : List IndDecl) : IndDecl → Rec → Nat → Nat → List Sem → Sem → Prop
+  | moved {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} : OField Γ d r c i e .moved
+  | fits {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {f : Sem} (e' : List Sem) (t : Sem) :
+      MovedOfList Γ e e' → t.whole → MovedOf Γ f t → FitsOneM dm.sig (dm.sig.shape d r c i (e'.map Sem.small)) t →
+      OField Γ d r c i e f
+  | at {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {f : Sem} (e' : List Sem) (U : TyM) :
+      MovedOfList Γ e e' → dm.readTy d r c i e' f = some U → OMem Γ U f → OField Γ d r c i e f
+end
+
+/-- Partial membership IS open membership (the dependent-values unit: the old "below a whole member,
+or open" definition admitted junk, `Dep/Records`, and its partly moved form read wrong types). -/
+def pmem (Γ : List IndDecl) (s : Sem) (T : TyM) : Prop := dm.OMem Γ T s
+
+theorem pmem_of_mem (Γ : List IndDecl) {s : Sem} {T : TyM} (_hw : s.whole) (h : s ∈ₛ[dm.read] T) :
+    dm.pmem Γ s T :=
+  .mem h
+
+theorem pmem_moved (Γ : List IndDecl) (T : TyM) : dm.pmem Γ .moved T := .moved T
+
+/-- `MovedOfList` is reflexive. -/
+theorem movedOfList_refl' (Γ : List IndDecl) : ∀ (fs : List Sem), MovedOfList Γ fs fs
+  | [] => .nil
+  | f :: fs => .cons (.refl f) (movedOfList_refl' Γ fs)
+
+theorem movedOfList_append {Γ : List IndDecl} : ∀ {a b c d : List Sem}, MovedOfList Γ a b → MovedOfList Γ c d →
+    MovedOfList Γ (a ++ c) (b ++ d)
+  | [], [], _, _, .nil, h => h
+  | _ :: _, _ :: _, _, _, .cons h hs, h' => .cons h (movedOfList_append hs h')
+
+theorem movedOfList_length {Γ : List IndDecl} : ∀ {a b : List Sem}, MovedOfList Γ a b → a.length = b.length
+  | [], [], .nil => rfl
+  | _ :: _, _ :: _, .cons _ hs => by simp [movedOfList_length hs]
 
 end DataModel
 

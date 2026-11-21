@@ -223,27 +223,29 @@ theorem readPlace_ordKeep {p : Place} {copy : Bool} {s s' : SState} {r : Res}
     split at h
     · cases h
     · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        exact o₁
-      · cases hs : setContent K φ pos steps .moved s₁ with
-        | none => rw [hs] at h; cases h
-        | some y =>
-          obtain ⟨⟨⟩, s₂⟩ := y
-          rw [hs] at h
-          have o₂ := o₁.trans e₁ (setContent_ordKeep K φ hpb hs)
-          have e₂ := e₁.trans (setContent_envLe K φ hs)
-          obtain ⟨hi₂, hsh₂, hpos₂⟩ := setContent_rinv K φ L hs hi₁
-          simp only [Option.some.injEq, Prod.mk.injEq] at h
+      · cases h
+      · split at h
+        · simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl⟩ := h
-          split
-          · rename_i l hlab
-            have hlive : s₂.Live l := by
-              split at hlab
-              · exact live_of_shape (by rw [hpos₂]; exact hpos) (by rw [hsh₂]; exact hlab)
-              · cases hlab
-            exact o₂.trans e₂ (ordKeep_transfer hi₂.2.2 hlive _)
-          · exact o₂
+          exact o₁
+        · cases hs : setContent K φ pos steps .moved s₁ with
+          | none => rw [hs] at h; cases h
+          | some y =>
+            obtain ⟨⟨⟩, s₂⟩ := y
+            rw [hs] at h
+            have o₂ := o₁.trans e₁ (setContent_ordKeep K φ hpb hs)
+            have e₂ := e₁.trans (setContent_envLe K φ hs)
+            obtain ⟨hi₂, hsh₂, hpos₂⟩ := setContent_rinv K φ L hs hi₁
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl⟩ := h
+            split
+            · rename_i l hlab
+              have hlive : s₂.Live l := by
+                split at hlab
+                · exact live_of_shape (by rw [hpos₂]; exact hpos) (by rw [hsh₂]; exact hlab)
+                · cases hlab
+              exact o₂.trans e₂ (ordKeep_transfer hi₂.2.2 hlive _)
+            · exact o₂
 
 theorem borrowPlace_ordKeep {p : Place} {s s' : SState} {r : Res}
     (h : borrowPlace K φ p s = some (r, s')) (hi : RInv L s) : OrdKeep L s s' := by

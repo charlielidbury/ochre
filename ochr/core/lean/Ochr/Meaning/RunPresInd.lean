@@ -523,9 +523,137 @@ theorem foldAccess_props {α : Type} (g : SState → α → SState)
     obtain ⟨hi₂, e₂, o₂⟩ := foldAccess_props g hg xs hi₁
     exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
+/-- D112's invalidation keeps the invariant: each step an access and a write of `⊥`. -/
+theorem invalidateOne_props (q : Place) {s : SState} (hi : RInv L s) :
+    RInv L (invalidateOne K φ s q) ∧ EnvLe s (invalidateOne K φ s q) ∧ OrdKeep L s (invalidateOne K φ s q) := by
+  unfold invalidateOne
+  split
+  · rename_i pos steps hr
+    have hia := access_rinv hi pos (dataHit steps)
+    have hea := envLe_access s pos (dataHit steps)
+    have hoa := ordKeep_access hi pos (dataHit steps)
+    have hpb : ¬ IsTemp pos := resolve_bind hr
+    dsimp only
+    split
+    · rename_i u s'' hs
+      obtain ⟨hi₂, -, -⟩ := setContent_rinv K φ L hs hia
+      exact ⟨hi₂, hea.trans (setContent_envLe K φ hs), hoa.trans hea (setContent_ordKeep K φ hpb hs)⟩
+    · exact ⟨hia, hea, hoa⟩
+  · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+
+theorem invalidate_props (p : Place) {s : SState} (hi : RInv L s) :
+    RInv L (invalidate K φ p s) ∧ EnvLe s (invalidate K φ p s) ∧ OrdKeep L s (invalidate K φ p s) := by
+  unfold invalidate
+  generalize K.D.invalidated (scopeOf s) p = qs
+  induction qs generalizing s with
+  | nil => exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+  | cons q qs ih =>
+    simp only [List.foldl_cons]
+    obtain ⟨hi₁, e₁, o₁⟩ := invalidateOne_props K φ L q hi
+    obtain ⟨hi₂, e₂, o₂⟩ := ih hi₁
+    exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
+
+theorem lou_setContent {pos : Pos} {steps : List Step} {v : Sem} {s s' : SState}
+    (h : setContent K φ pos steps v s = some (⟨⟩, s')) {y : Nat} (hy : LoU1 s y) : LoU1 s' y := by
+  unfold setContent at h
+  simp only at h
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, rfl⟩ := h
+    exact lou_setAt hy pos _ fun hu ψ x => by simp only [hu pos ψ x]
+  · cases h
+
+theorem lou_invalidateOne (q : Place) {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) :
+    LoU1 (invalidateOne K φ s q) y := by
+  unfold invalidateOne
+  split
+  · rename_i pos steps _
+    have hya := lou_access L hi hy pos (dataHit steps)
+    dsimp only
+    split
+    · rename_i u s'' hs
+      exact lou_setContent K φ hs hya
+    · exact hya
+  · exact hy
+
+theorem lou_invalidate (p : Place) {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) :
+    LoU1 (invalidate K φ p s) y := by
+  unfold invalidate
+  generalize K.D.invalidated (scopeOf s) p = qs
+  induction qs generalizing s with
+  | nil => exact hy
+  | cons q qs ih =>
+    simp only [List.foldl_cons]
+    exact ih (invalidateOne_props K φ L q hi).1 (lou_invalidateOne K φ L q hi hy)
+
+/-- [Assign]'s write keeps the invariant (the `.assign` clause's tail before D112's invalidation). -/
+theorem assignAt_rinv {p : Place} {v : Sem} {lab : Option Nat} {s₁ s' : SState} {r : Res}
+    (h : assignAt K φ p v lab s₁ = some (r, s')) (hi₁ : RInv L s₁) (hy₁ : LoU s₁ lab) :
+    RInv L s' ∧ r.2.label = none ∧ EnvLe s₁ s' ∧ OrdKeep L s₁ s' := by
+    unfold assignAt at h
+    cases hr : resolve s₁ p with
+    | none => rw [hr] at h; cases h
+    | some ps =>
+    obtain ⟨pos, steps⟩ := ps
+    rw [hr] at h
+    dsimp only at h
+    have mid : ∀ s₂ : SState, s₂ = s₁ ∨ s₂ = s₁.access pos (dataHit steps) →
+        RInv L s₂ ∧ pos ∈ s₂.positions ∧ EnvLe s₁ s₂ ∧ OrdKeep L s₁ s₂ ∧ LoU s₂ lab := by
+      rintro s₂ (rfl | rfl)
+      · exact ⟨hi₁, resolve_mem hr, EnvLe.refl _, OrdKeep.refl _, hy₁⟩
+      · exact ⟨access_rinv hi₁ pos _, by rw [access_positions]; exact resolve_mem hr, envLe_access _ _ _,
+          ordKeep_access hi₁ pos _, fun l hl => lou_access L hi₁ (hy₁ l hl) pos _⟩
+    generalize hs₂ : (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
+      else s₁.access pos (dataHit steps)) = s₂ at h
+    obtain ⟨hi₂, hpos₂, e₂, o₂, hy₂⟩ := mid s₂ (by rw [← hs₂]; split <;> simp)
+    have hpb : ¬ IsTemp pos := resolve_bind hr
+    split at h
+    · cases h
+    rename_i s₄ h3
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+    dsimp only
+    obtain ⟨hi₄, e₄, o₄, hpos₄, hy₄, hroot⟩ := assign_mid K φ L hi₂ hpos₂ hpb hy₂ h3
+    split
+    · rename_i l
+      obtain ⟨hc, hold⟩ := hroot rfl
+      refine ⟨hold_rinv L hi₄ pos hpos₄ hc (hy₄ l rfl) hold, rfl, ?_, ?_⟩
+      · exact e₂.trans (e₄.trans (envLe_hold _ _ _))
+      · exact o₂.trans e₂ (o₄.trans e₄ (ordKeep_hold hpos₄ (hy₄ l rfl) hold))
+    · exact ⟨hi₄, rfl, e₂.trans e₄, o₂.trans e₂ o₄⟩
+
+/-- A fold whose every step keeps the invariant. -/
+theorem fold_props {α : Type} (g : SState → α → SState)
+    (hg : ∀ s a, RInv L s → RInv L (g s a) ∧ EnvLe s (g s a) ∧ OrdKeep L s (g s a)) :
+    ∀ (xs : List α) (s : SState), RInv L s → RInv L (xs.foldl g s) ∧ EnvLe s (xs.foldl g s) ∧ OrdKeep L s (xs.foldl g s)
+  | [], s, hi => ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+  | x :: xs, s, hi => by
+    simp only [List.foldl_cons]
+    obtain ⟨hi₁, e₁, o₁⟩ := hg s x hi
+    obtain ⟨hi₂, e₂, o₂⟩ := fold_props g hg xs _ hi₁
+    exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
+
+/-- One capture at a block's entry: its access, and D112's invalidation for a capture by `&`. -/
+theorem entryCap_props (s : SState) (qk : Place × Nat) (hi : RInv L s) :
+    RInv L (entryCap K φ s qk) ∧ EnvLe s (entryCap K φ s qk) ∧ OrdKeep L s (entryCap K φ s qk) := by
+  have hacc : ∀ (o : Option (Pos × List Step)),
+      RInv L (match o with | some (pos, steps) => s.access pos (dataHit steps) | none => s) ∧
+      EnvLe s (match o with | some (pos, steps) => s.access pos (dataHit steps) | none => s) ∧
+      OrdKeep L s (match o with | some (pos, steps) => s.access pos (dataHit steps) | none => s) := by
+    intro o
+    rcases o with _ | ⟨pos, steps⟩
+    · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+    · exact ⟨access_rinv hi pos _, envLe_access _ _ _, ordKeep_access hi pos _⟩
+  unfold entryCap
+  dsimp only
+  obtain ⟨hi₁, e₁, o₁⟩ := hacc (resolve s qk.1)
+  split
+  · obtain ⟨hi₂, e₂, o₂⟩ := invalidate_props K φ L qk.1 hi₁
+    exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
+  · exact ⟨hi₁, e₁, o₁⟩
+
 /-- [Entry]'s accesses keep the invariant. -/
 theorem entryAccess_props (bc : List Place × List (Place × Nat)) {s : SState} (hi : RInv L s) :
-    RInv L (entryAccess bc s) ∧ EnvLe s (entryAccess bc s) ∧ OrdKeep L s (entryAccess bc s) := by
+    RInv L (entryAccess K φ bc s) ∧ EnvLe s (entryAccess K φ bc s) ∧ OrdKeep L s (entryAccess K φ bc s) := by
   unfold entryAccess
   obtain ⟨hi₁, e₁, o₁⟩ := foldAccess_props L entryReroot (fun s q => by
     unfold entryReroot
@@ -536,12 +664,7 @@ theorem entryAccess_props (bc : List Place × List (Place × Nat)) {s : SState} 
       · exact .inr ⟨pos, _, rfl⟩
       · exact .inl rfl
     · exact .inl rfl) bc.1 hi
-  obtain ⟨hi₂, e₂, o₂⟩ := foldAccess_props L entryCap (fun s qk => by
-    unfold entryCap
-    split
-    · rename_i pos steps _
-      exact .inr ⟨pos, _, rfl⟩
-    · exact .inl rfl) bc.2 hi₁
+  obtain ⟨hi₂, e₂, o₂⟩ := fold_props L (entryCap K φ) (fun s qk hi => entryCap_props K φ L s qk hi) bc.2 _ hi₁
   exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
 /-- **[Entry] at a match** keeps the invariant, and its lending only adds sites. -/
@@ -550,7 +673,7 @@ theorem matchEntry_props (ent : Bool) (mt : Term) {s : SState} (hi : RInv L s) :
       OrdKeep L s (matchEntry K φ ent mt s).1 := by
   unfold matchEntry
   split
-  · exact entryAccess_props L _ hi
+  · exact entryAccess_props K φ L _ hi
   · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
 
 theorem matchEntry_lend (ent : Bool) (mt : Term) (s : SState) (lab : Option Nat) (s₂ : SState) :
@@ -592,9 +715,21 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
     rotate_left
     · exact rinv_pure L hi hl
-    have h := (SM.strictS_some h).1
-    exact ⟨(borrowPlace_rinv K φ L h hi).1, (borrowPlace_rinv K φ L h hi).2, borrowPlace_envLe K φ h,
-      borrowPlace_ordKeep K φ h hi⟩
+    cases hb : SM.strictS K.dm.read (borrowPlace K φ p) s with
+    | none => rw [hb] at h; cases h
+    | some y =>
+      obtain ⟨r₀, s₁⟩ := y
+      rw [hb] at h
+      dsimp only at h
+      obtain ⟨-, h⟩ := open Classical in ite_none_some h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      have hb' := (SM.strictS_some hb).1
+      obtain ⟨hi₁, hy₁⟩ := borrowPlace_rinv K φ L hb' hi
+      obtain ⟨hi₂, e₂, o₂⟩ := invalidate_props K φ L p hi₁
+      refine ⟨hi₂, fun l hl => ?_, (borrowPlace_envLe K φ hb').trans e₂,
+        (borrowPlace_ordKeep K φ hb' hi).trans (borrowPlace_envLe K φ hb') o₂⟩
+      exact lou_invalidate K φ L p hi₁ (hy₁ l hl)
   | tl, .val v, hint, s, s', r, hi, h => by
     obtain ⟨T, e, hT⟩ := run_val_eq K ρ φ hint v s
     rw [e] at h
@@ -888,38 +1023,20 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     obtain ⟨⟨⟨v, R⟩, s₁⟩, h2, h⟩ := h
     dsimp only at h
     obtain ⟨-, h⟩ := open Classical in ite_none_some h
-    unfold assignAt at h
-    -- the right-hand side runs first, then the place is accessed (not at a holder root)
     obtain ⟨hi₁, hy₁, e₁, o₁⟩ := runT_rinv hK false u _ s s₁ (v, R) hi h2
-    cases hr : resolve s₁ p with
-    | none => rw [hr] at h; cases h
-    | some ps =>
-    obtain ⟨pos, steps⟩ := ps
-    rw [hr] at h
-    dsimp only at h
-    have mid : ∀ s₂ : SState, s₂ = s₁ ∨ s₂ = s₁.access pos (dataHit steps) →
-        RInv L s₂ ∧ pos ∈ s₂.positions ∧ EnvLe s₁ s₂ ∧ OrdKeep L s₁ s₂ ∧ LoU s₂ R.label := by
-      rintro s₂ (rfl | rfl)
-      · exact ⟨hi₁, resolve_mem hr, EnvLe.refl _, OrdKeep.refl _, hy₁⟩
-      · exact ⟨access_rinv hi₁ pos _, by rw [access_positions]; exact resolve_mem hr, envLe_access _ _ _,
-          ordKeep_access hi₁ pos _, fun l hl => lou_access L hi₁ (hy₁ l hl) pos _⟩
-    generalize hs₂ : (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
-      else s₁.access pos (dataHit steps)) = s₂ at h
-    obtain ⟨hi₂, hpos₂, e₂, o₂, hy₂⟩ := mid s₂ (by rw [← hs₂]; split <;> simp)
-    have hpb : ¬ IsTemp pos := resolve_bind hr
-    split at h
-    · cases h
-    rename_i s₄ h3
-    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-    dsimp only
-    obtain ⟨hi₄, e₄, o₄, hpos₄, hy₄, hroot⟩ := assign_mid K φ L hi₂ hpos₂ hpb hy₂ h3
-    split
-    · rename_i l hR _ _
-      obtain ⟨hc, hold⟩ := hroot rfl
-      refine ⟨hold_rinv L hi₄ pos hpos₄ hc (hy₄ l hR) hold, (fun _ hl => by cases hl), ?_, ?_⟩
-      · exact e₁.trans (e₂.trans (e₄.trans (envLe_hold _ _ _)))
-      · exact o₁.trans e₁ (o₂.trans e₂ (o₄.trans e₄ (ordKeep_hold hpos₄ (hy₄ l hR) hold)))
-    · exact ⟨hi₄, (fun _ hl => by cases hl), e₁.trans (e₂.trans e₄), o₁.trans e₁ (o₂.trans e₂ o₄)⟩
+    cases ha : assignAt K φ p v R.label s₁ with
+    | none => rw [ha] at h; cases h
+    | some y =>
+      obtain ⟨r₀, s₃⟩ := y
+      rw [ha] at h
+      dsimp only at h
+      obtain ⟨-, h⟩ := open Classical in ite_none_some h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      obtain ⟨hi₃, hl₃, e₃, o₃⟩ := assignAt_rinv K φ L ha hi₁ hy₁
+      obtain ⟨hi₄, e₄, o₄⟩ := invalidate_props K φ L p hi₃
+      exact ⟨hi₄, (fun l hl => by rw [hl₃] at hl; cases hl), e₁.trans (e₃.trans e₄),
+        o₁.trans e₁ (o₃.trans e₃ o₄)⟩
 
 theorem runAll_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (ts : List Term) (t : Term), t ∈ ts →
     ∀ (hint : TyS) (s s' : SState) (r : Res), RInv L s → run K ρ φ hint t s = some (r, s') →

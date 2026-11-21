@@ -61,6 +61,12 @@ structure Decisions : Type where
   paths). Its alignment with `Machine.blockCaptures` is D90's first obligation (docs/31 D37); the
   instance is `BlockCaps.staticBlockCaps`. -/
   blockCaps : List DeclInfo → List Place → Term → List Place × List (Place × Nat) := fun _ _ _ => ([], [])
+  /-- D112 [Open], the dependent-values unit: the places a write or a borrow of `p` invalidates (set
+  to `⊥`): for each field step `(q, g)` of `p` with `g` an index field of its constructor, every
+  sibling `q.j` whose declared field type mentions `g` and is a proof field or a LEAF field (a field
+  not a data inductive at every instance). From declarations alone; its alignment with
+  `Machine.openWrite` is a statement for the simulation. -/
+  invalidated : List DeclInfo → Place → List Place := fun _ _ => []
 
 /-- The scope after a telescope of parameter types: each parameter's reading, read in the scope
 of the earlier ones, innermost first (`Decide.telescope`). -/

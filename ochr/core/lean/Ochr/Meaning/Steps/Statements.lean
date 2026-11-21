@@ -1140,7 +1140,7 @@ makes `conv` answer `false` more often, so no hypothesis on it. -/
 def conv_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (v w : Value) (T : TyM)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hv : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) v) T) (hw : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) w) T)
+    (hv : DataModel.pmem K.dm K.Γ (meanV K ρ φ (.plain T) v) T) (hw : DataModel.pmem K.dm K.Γ (meanV K ρ φ (.plain T) w) T)
     (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.conv fuel v w) st bh true st'),
     meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w ∧ KeptAfter st st' ∧
@@ -1671,7 +1671,7 @@ def valType_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (bh : Nat) (h : Runs (Ochr.valType? fuel v) st bh (some T) st'),
     (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ') ∧
     (TypedFuture K.dm K.M K.Γ ρ st φ →
-      DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v) (meanV K ρ noFuture (.plain .err) T).asTy)
+      DataModel.pmem K.dm K.Γ (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v) (meanV K ρ noFuture (.plain .err) T).asTy)
 
 /-- [Borrow] keeps (WF1)–(WF3): the fresh label is held once, at the destination; the lent
 place's content holds no live loan (after [Access]), so the borrow relation stays acyclic. -/

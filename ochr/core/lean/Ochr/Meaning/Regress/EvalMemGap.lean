@@ -176,7 +176,7 @@ theorem good_withBind_mem (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
     (st : MState) (b : Binding) (T : Value) (hT : b.ty = some T) (fr : Frame)
     (hfr : st.env[st.env.size - 1]? = some fr) (hg : Good dm C Γ ρ (st.withBind b)) :
     ∀ φ, TypedFuture dm C Γ ρ (st.withBind b) φ →
-      DataModel.pmem dm.read Γ (Value.mean dm C Γ ρ φ (Value.tyS dm C Γ ρ T) b.val) (Value.tyM dm C Γ ρ (fun _ => .err) T) := by
+      DataModel.pmem dm Γ (Value.mean dm C Γ ρ φ (Value.tyS dm C Γ ρ T) b.val) (Value.tyM dm C Γ ρ (fun _ => .err) T) := by
   intro φ hφ
   have hb' := withBind_bind st b fr hfr
   have hp : MState.posTyM dm C Γ ρ (st.withBind b) (.bind (st.env.size - 1) fr.binds.size) =

@@ -157,19 +157,21 @@ theorem readPlace_envLe {p : Place} {copy : Bool} {s s' : SState} {r : Res}
     split at h
     · cases h
     · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        rw [← h.2]; exact e₁
-      · cases hs : setContent K φ pos steps .moved s₁ with
-        | none => rw [hs] at h; cases h
-        | some y =>
-          obtain ⟨⟨⟩, s₂⟩ := y
-          rw [hs] at h
-          have e₂ := e₁.trans (setContent_envLe K φ hs)
-          simp only [Option.some.injEq, Prod.mk.injEq] at h
-          rw [← h.2]
-          split
-          · exact e₂.trans ((envLe_takeLabel _ _).trans (envLe_pushTempShaped _ _ _))
-          · exact e₂
+      · cases h
+      · split at h
+        · simp only [Option.some.injEq, Prod.mk.injEq] at h
+          rw [← h.2]; exact e₁
+        · cases hs : setContent K φ pos steps .moved s₁ with
+          | none => rw [hs] at h; cases h
+          | some y =>
+            obtain ⟨⟨⟩, s₂⟩ := y
+            rw [hs] at h
+            have e₂ := e₁.trans (setContent_envLe K φ hs)
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            rw [← h.2]
+            split
+            · exact e₂.trans ((envLe_takeLabel _ _).trans (envLe_pushTempShaped _ _ _))
+            · exact e₂
 
 theorem borrowPlace_envLe {p : Place} {s s' : SState} {r : Res}
     (h : borrowPlace K φ p s = some (r, s')) : EnvLe s s' := by

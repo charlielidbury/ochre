@@ -44,7 +44,7 @@ theorem moved_not_whole : ¬ Sem.moved.whole := by simp [Sem.whole]
 partly moved member of the type. -/
 theorem pmem_partly (dm : DataModel) (Γ : List IndDecl) (d : IndDecl) (r : Rec) (c : Nat) (fs gs : List Sem)
     (hs : (d.sort == 0) = false) (hm : dm.Mem d r (.dat d.name r c gs)) (hfs : DataModel.MovedOfList Γ fs gs) :
-    DataModel.pmem dm.read Γ (.dat d.name r c fs) (dm.tyR d r) :=
+    DataModel.pmem dm Γ (.dat d.name r c fs) (dm.tyR d r) :=
   .inr ⟨_, DataLib.mem_whole dm.sig d r _ hm, .dat hfs, .inl ((DataModel.mem_tyR dm d r hs _).2 hm)⟩
 
 /-- **`pmem` as first stated now holds**: `Cons(h, ⊥)`, left by `match xs { Cons(h, t) => t }`, is

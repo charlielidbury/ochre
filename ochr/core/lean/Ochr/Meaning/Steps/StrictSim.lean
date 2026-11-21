@@ -62,7 +62,7 @@ structure StrictRun where
   SGood : RunCtx → Assignment → Future → SState → Prop
   fund : ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (t : Term) (s s' : SState) (r : Res),
     SGood K ρ φ s → runS K ρ φ tl h t s = some (r, s') →
-      DataModel.pmem K.dm.read K.Γ r.1 r.2.m ∧ SGood K ρ φ s'
+      DataModel.pmem K.dm K.Γ r.1 r.2.m ∧ SGood K ρ φ s'
 
 section
 variable (SR : StrictRun) (K : RunCtx) (ρ : Assignment) (φ : Future)
@@ -126,7 +126,7 @@ states are not compared (an inert loan in a sealed program reads the future ther
 theorem membershipT_of_sgood (π : Nat → Nat) (st : MState) (tt : TempTys) (s : SState)
     (hs : Rel K ρ φ π st s) (hS : ∀ ψ, RelF φ s ψ → TypedLive K s ψ → SR.SGood K ρ ψ s) :
     ∀ ψ, RelF φ s ψ → TypedLive K s ψ → ∀ p T, MState.posTyMT K.dm K.M K.Γ ρ st tt p = some T →
-      DataModel.pmem K.dm.read K.Γ (Env.meanT K.dm K.M K.Γ ρ (fun l => ψ (π l)) st.env tt p) T := by
+      DataModel.pmem K.dm K.Γ (Env.meanT K.dm K.M K.Γ ρ (fun l => ψ (π l)) st.env tt p) T := by
   sorry
 
 end

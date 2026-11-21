@@ -125,7 +125,7 @@ theorem fund_seq {u w : Term} (hu : Fund K ρ φ u) (hw : Fund K ρ φ w) : Fund
 
 /-- `let x = u; w`: `u`'s result bound (`sgood_pushBindShaped`), `w` run, the binding dropped
 (`sgood_letDrop`); the result's label record kept, its liveness by `RunPresInd.letDrop_rinv`. -/
-theorem fund_letIn (hc : FundCtx K) {x : Hint} {u w : Term} (hu : Fund K ρ φ u) (hw : Fund K ρ φ w) :
+theorem fund_letIn (_hc : FundCtx K) {x : Hint} {u w : Term} (hu : Fund K ρ φ u) (hw : Fund K ρ φ w) :
     Fund K ρ φ (.letIn x u w) := fun tl hint => by
   intro s s' r hs h
   rw [runT] at h
@@ -138,7 +138,7 @@ theorem fund_letIn (hc : FundCtx K) {x : Hint} {u w : Term} (hu : Fund K ρ φ u
   have hs₂ : SGood K.dm K.Γ φ (pushBindShaped s₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s₁) u }) := by
     by_cases hne : s₁.env = []
     · rw [pushBindShaped_nil _ _ hne]; exact hs₁
-    · exact sgood_pushBindShaped hc.reads hs₁ _ rfl hv hlab hlou hne
+    · exact sgood_pushBindShaped hs₁ _ rfl hv hlab hlou hne
   obtain ⟨hg, hlab₃, hlou₃, hs₃⟩ := hw tl hint _ _ _ hs₂ h2
   refine ⟨hg, hlab₃.of_held (heldSame_letDrop _ _), ?_, sgood_letDrop hs₃⟩
   exact (letDrop_rinv (fun _ => True) hs₃.acyc hlou₃ _ (by unfold SState.dropped; cases s₃.env.getLast? <;> rfl)).2.1
@@ -155,13 +155,13 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 /-- After an arm: the drop at the join and the lending keep the invariant, the arm's result's label
 record and liveness. -/
-theorem fund_join (hc : FundCtx K) {s₂ : SState} {r : Res} (lend : Option Nat → SState → SState)
+theorem fund_join (_hc : FundCtx K) {s₂ : SState} {r : Res} (lend : Option Nat → SState → SState)
     (hlend : ∀ lab s, lend lab s = s ∨ ∃ k xs, lend lab s = s.setLent k xs) (entry : List Place) (t : Term)
     (hg : GoodRes K.dm.read r) (hlab : LabOk K.dm s₂ r) (hlou : LoU s₂ r.2.label) (hs₂ : SGood K.dm K.Γ φ s₂) :
     GoodRes K.dm.read r ∧ LabOk K.dm (lend r.2.label (joinDrop K φ entry t s₂)) r ∧
       LoU (lend r.2.label (joinDrop K φ entry t s₂)) r.2.label ∧
       SGood K.dm K.Γ φ (lend r.2.label (joinDrop K φ entry t s₂)) := by
-  have hj := sgood_joinDrop hc.reads hs₂ entry t
+  have hj := sgood_joinDrop hs₂ entry t
   have hjl : LoU (joinDrop K φ entry t s₂) r.2.label := fun y hy =>
     joinDrop_lou K φ (fun _ => True) entry t hs₂.acyc (hlou y hy)
   have hjh := hlab.of_held (heldSame_joinDrop (K := K) (φ := φ) entry t s₂)
@@ -305,12 +305,12 @@ theorem fund_J (hc : FundCtx K) {A a b P h t : Term} (ht : Fund K ρ φ t) :
   · cases h₀
 
 /-- `clone`, `peek`, `inplace` of a term: a place read in place, or the term's run. -/
-theorem fund_inPlace (hc : FundCtx K) {u : Term} (hu : Fund K ρ φ u) {fl : Bool × Bool} (tl : Bool) (hint : TyS) :
+theorem fund_inPlace (_hc : FundCtx K) {u : Term} (hu : Fund K ρ φ u) {fl : Bool × Bool} (tl : Bool) (hint : TyS) :
     FundAt K.dm K.Γ φ (SM.erasedIf fl (SM.headOf u (fun p => readPlace K φ p true) (runT K ρ φ false hint u))) := by
   refine fund_erasedS ?_
   intro s s' r hs h
   rcases headOf_some' h with ⟨p, -, h⟩ | h
-  · exact readPlace_fund_all hc.reads p true s s' r hs h
+  · exact readPlace_fund_all p true s s' r hs h
   · exact hu false hint s s' r hs h
 
 end
@@ -324,7 +324,7 @@ section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 /-- One capture of a closure being formed: an access, then a move at the variable's root. -/
-theorem sgood_capStep (hc : FundCtx K) {s : SState} (hs : SGood K.dm K.Γ φ s) (i : Nat) :
+theorem sgood_capStep (_hc : FundCtx K) {s : SState} (hs : SGood K.dm K.Γ φ s) (i : Nat) :
     SGood K.dm K.Γ φ (capStep K s i) := by
   unfold capStep
   split
@@ -334,7 +334,7 @@ theorem sgood_capStep (hc : FundCtx K) {s : SState} (hs : SGood K.dm K.Γ φ s) 
     dsimp only
     split
     · exact hs₁
-    · exact sgood_setAt_pmem hc.reads hs₁ hp₁ (fun _ _ _ => .inl rfl) (fun _ _ => .inl rfl)
+    · exact sgood_setAt_pmem hs₁ hp₁ (fun _ _ _ => .moved _) (fun _ _ => .moved _)
   · exact hs
 
 theorem sgood_foldl_capStep (hc : FundCtx K) : ∀ (is : List Nat) {s : SState}, SGood K.dm K.Γ φ s →

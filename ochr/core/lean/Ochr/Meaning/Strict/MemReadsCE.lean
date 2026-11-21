@@ -10,6 +10,7 @@ fields read at `err`: `Fresh.C(5)` at a record giving field `0` a `Nat` leaf rea
 `MemReads` held in no model (kernel-checked at spine-model 9911399e). Route (c) types a read by the
 type it starts at (`DataModel.readTy`): `fresh_read` (its field at `Nat`), and
 `ReadMember.follow_good` (every read of a member of any data code gives a member) with no hypothesis.
+Since the dependent-values unit `MemReads` is deleted (reads are strict, `Run.ReadGood`).
 -/
 
 namespace Ochr.Meaning.Strict.MemReadsCE

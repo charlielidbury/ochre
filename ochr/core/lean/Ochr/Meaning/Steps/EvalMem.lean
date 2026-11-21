@@ -87,7 +87,7 @@ def TypedFutureT (ρ : Assignment) (st : MState) (tt : TempTys) (φ : Future) : 
 (partly moved) member of its stored type under every typed future; each stored type is a type. -/
 structure MembershipT (ρ : Assignment) (st : MState) (tt : TempTys) : Prop where
   pos : ∀ φ, TypedFutureT dm C Γ ρ st tt φ →
-    ∀ p T, MState.posTyMT dm C Γ ρ st tt p = some T → DataModel.pmem dm.read Γ (Env.meanT dm C Γ ρ φ st.env tt p) T
+    ∀ p T, MState.posTyMT dm C Γ ρ st tt p = some T → DataModel.pmem dm Γ (Env.meanT dm C Γ ρ φ st.env tt p) T
   absTy : ∀ σ, st.Refd σ → σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
   goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
   /-- every stored type is a type (has a level): the premise conversion's soundness needs of the
@@ -113,7 +113,7 @@ theorem goodT_push_mem (st : MState) (tt : TempTys) (v T : Value) (fr : Frame)
     (hfr : st.env[st.env.size - 1]? = some fr)
     (hg : GoodT K.dm K.M K.Γ ρ (st.withTemp v) (tt.push st (some T))) :
     ∀ ψ, TypedFutureT K.dm K.M K.Γ ρ (st.withTemp v) (tt.push st (some T)) ψ →
-      DataModel.pmem K.dm.read K.Γ (Value.mean K.dm K.M K.Γ ρ ψ (Value.tyS K.dm K.M K.Γ ρ T) v)
+      DataModel.pmem K.dm K.Γ (Value.mean K.dm K.M K.Γ ρ ψ (Value.tyS K.dm K.M K.Γ ρ T) v)
         (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T) := by
   intro ψ hψ
   have htmp : (st.withTemp v).env[st.env.size - 1]?.bind (·.temps[fr.temps.size]?) = some v := by
@@ -179,7 +179,7 @@ nothing, so this says an open non-member never lacks one: `OpenIn` arises only a
 def RepackSound (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (what : String) (v T : Value) (bh : Nat),
     Runs (Ochr.repackCheck fuel what v T) st bh () st' → ∀ ψ : Future,
-    DataModel.pmem dm.read Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ T) v) (Value.tyM dm C Γ ρ (fun _ => .err) T) →
+    DataModel.pmem dm Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ T) v) (Value.tyM dm C Γ ρ (fun _ => .err) T) →
     (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ T) v).whole →
     Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ T) v ∈ₛ[dm.read] Value.tyM dm C Γ ρ (fun _ => .err) T
 
@@ -187,11 +187,11 @@ def RepackSound (fuel : Nat) : Prop :=
 returned, conversion's soundness at the two types (their meanings agree), wholeness, and [Repack]'s
 content at the goal, the value is a whole member of the goal. -/
 theorem return_member (v T G : Value) (F : Future → Prop)
-    (hmem : ∀ ψ, F ψ → DataModel.pmem dm.read Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ T) v)
+    (hmem : ∀ ψ, F ψ → DataModel.pmem dm Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ T) v)
       (Value.tyM dm C Γ ρ (fun _ => .err) T))
     (hconv : Value.tyM dm C Γ ρ (fun _ => .err) T = Value.tyM dm C Γ ρ (fun _ => .err) G)
     (hwhole : ∀ ψ, F ψ → (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ G) v).whole)
-    (hrep : ∀ ψ, F ψ → DataModel.pmem dm.read Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ G) v)
+    (hrep : ∀ ψ, F ψ → DataModel.pmem dm Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ G) v)
       (Value.tyM dm C Γ ρ (fun _ => .err) G) → (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ G) v).whole →
       Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ G) v ∈ₛ[dm.read] Value.tyM dm C Γ ρ (fun _ => .err) G) :
     ∀ ψ, F ψ → Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ G) v ∈ₛ[dm.read] Value.tyM dm C Γ ρ (fun _ => .err) G ∧

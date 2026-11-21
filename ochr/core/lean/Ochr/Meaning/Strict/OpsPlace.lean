@@ -8,17 +8,20 @@ borrows, assignments
 
 PROVED (standard axioms): `sgood_transfer` (a move of a holder parks its borrow), `sgood_pushBindShaped`
 (a `let`'s binding; via `sgood_push_generic`), `sgood_dropLast`/`sgood_letDrop` (a `let`'s drop),
-`readPlace_fund` (a read at a root or through `*`, copied or moved), `sgood_borrow_root` and
-`borrowPlace_fund` at a root or through `*`, `sgood_hold` and `assignAt_sgood` at a root or through `*`.
+`readPlace_fund` (a read at a root or through `*`, copied or moved; the value good by the strict read
+test `ReadGood`), `sgood_borrow_root` and `borrowPlace_res` at a root or through `*`, `sgood_hold` and
+`assignAt_sgood` at a root or through `*`. The clauses' tails (D112's `invalidate`, then the strict
+test below a root `lentOk`): `borrow_fund`, `assign_tail_fund`, through `invalidate_sgood`.
 
 ADDED HYPOTHESES, each with its reason in the docstring: `LoU` of the label in flight
 (`sgood_pushBindShaped`, `assignAt_sgood`: the binding or root becomes its holder; `runT_rinv` gives it of
-every result); `readPlace_fund` at `[]`/`[*]` only (at a field path the read clause's `err` escape is
-not `GoodRes`'s, `follow_through_proof`; the field form is `readPlace_reads`).
+every result); `readPlace_fund` at `[]`/`[*]` only (a field path is `readPlace_fund_all`'s).
 
-GUESSES (sorry; the dependent-values area: a write at a FIELD path changes a part of a constructor
-value that later dependent fields' types read): `setContent_field_moved_sgood` (a move out of a
-field), `borrowPlace_field_sgood` (a field lent), `setContent_field_sgood` (a field assigned).
+GUESSES (sorry; a write at a FIELD path): `setContent_field_moved_sgood` (a move out of a field; FALSE
+as stated, kernel-checked: `Strict/FieldWriteCE`), `borrowPlace_field_sgood` (a field lent, then the
+invalidation and the strict test), `setContent_field_sgood` (a field assigned, the same). Every write of
+`⊥` at a field path (a read's move, the join's drop, D112's invalidation, so `invalidate_sgood` and
+with it the root cases of `borrow_fund`/`assign_tail_fund`) goes through the first.
 -/
 
 namespace Ochr.Meaning.Strict
@@ -90,10 +93,10 @@ theorem takeLabel_view {s : SState} {l : Nat} {r : Pos} (hr : s.holderOf l = som
   · rename_i h; subst h; exact valAt_setAt_self s _ _ hrpos
   · rename_i h; exact SState.valAt_setAt_ne s _ _ q (Ne.symm h)
 
-/-- A borrow's holder moves to a new temporary holding a partly moved member of its content type (a
+/-- A borrow's holder moves to a new temporary holding an open member of its content type (a
 move of a holder, `readPlace`). -/
 theorem sgood_transfer {s : SState} (hs : SGood K.dm K.Γ φ s) {l : Nat} (hl : l ∈ s.liveLabels) {v : Sem}
-    (hv : PMem K.dm.read K.Γ v (s.heldTy l)) :
+    (hv : PMem K.dm K.Γ v (s.heldTy l)) :
     SGood K.dm K.Γ φ ((s.takeLabel l).pushTempShaped (fun _ => v) l) := by
   have hsa := hs.acyc.2.2
   obtain ⟨r, hr⟩ := SState.holderOf_of_live hl
@@ -121,13 +124,12 @@ theorem sgood_transfer {s : SState} (hs : SGood K.dm K.Γ φ s) {l : Nat} (hl : 
     intro f i; rw [valAt_pushTempShaped_bind, hval₁]
   have hbty : ∀ q, ((s.takeLabel l).pushTempShaped (fun _ => v) l).tyAt q = s.tyAt q := by
     intro q; rw [tyAt_pushTempShaped, hty₁]
-  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_,
-    fun ψ hψ f i steps x U hf hx => ?_⟩
+  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_⟩
   · rw [hTF] at hψ
     rw [bind_mem_pushTempShaped, SState.takeLabel_positions] at hpi
     rw [hbval, hbty]
     split
-    · exact .inl (.inl rfl)
+    · exact .inl (.moved _)
     · exact hs.bind ψ hψ f i hpi
   · rw [hTF] at hψ
     rw [hHT]
@@ -152,11 +154,6 @@ theorem sgood_transfer {s : SState} (hs : SGood K.dm K.Γ φ s) {l : Nat} (hl : 
   · exact SState.transfer_rinv hs.acyc l hl v
   · exact SState.readsBelow_pushTempShaped (SState.readsBelow_takeLabel hs.fresh l) _ _
       (fun _ ⟨_, _, h⟩ => absurd rfl h)
-  · rw [hTF] at hψ
-    rw [hbval, hbty] at hf
-    split at hf
-    · rw [follow_moved' K.dm K.Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
-    · exact hs.read ψ hψ f i steps x U hf hx
 
 /-! ## Pushing a binding -/
 
@@ -280,24 +277,6 @@ theorem follow_proof (dm : DataModel) (Γ : List IndDecl) : ∀ (T : TyS) (steps
       · exact ⟨hx, .inr (by rw [hU]; rfl)⟩
       · exact ⟨hx, .inr hU⟩
 
-/-- A good result's read paths: a member's (`MemReads`), `⊥`'s (nothing whole), a type value's (itself, at
-the error type). -/
-theorem GoodRes.reads (hMR : MemReads K.dm K.Γ) {v : Sem} {T : TyS} (hv : GoodRes K.dm.read (v, T))
-    (steps : List Step) (x : Sem) (U : TyS) (hf : Sem.follow K.dm K.Γ T v steps = some (x, U)) (hx : x.whole) :
-    x ∈ₛ[K.dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x) := by
-  rcases hv with hv | hv | ⟨he, ⟨X, hX⟩ | hX⟩
-  · exact hMR T v v hv (.refl v) steps x U hf hx
-  · simp only at hv; subst hv
-    rw [follow_moved' K.dm K.Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
-  · simp only at hX; subst hX
-    obtain ⟨rfl, rfl⟩ := follow_ty K.dm K.Γ X T steps x U hf
-    exact .inr ⟨he, .inl ⟨X, rfl⟩⟩
-  · simp only at hX; subst hX
-    obtain ⟨rfl, hU⟩ := follow_proof K.dm K.Γ T steps x U hf
-    rcases hU with rfl | hU
-    · exact .inr ⟨he, .inr rfl⟩
-    · rw [hU]; exact .inr ⟨rfl, .inr rfl⟩
-
 theorem readsBelow_pushBind {s : SState} (hs : s.ReadsBelow) (b : SBinding) {c : Sem} (hb : b.val = fun _ => c) :
     (s.pushBind b).ReadsBelow := by
   intro q l ⟨ψ, x, hne⟩
@@ -335,7 +314,7 @@ theorem withShape_positions (S : SState) (sh : Pos → Option Nat) (q : Pos) :
 /-- **A binding pushed, abstractly** (both shapes of `pushBindShaped`): a new binding position `N`
 holding a good result `v` at `T`, recording `T`'s label, over a state `s₁` that is `s` with a label's old
 holder taken (`⊥`); the label is live in `s` or read by no one. -/
-theorem sgood_push_generic (hMR : MemReads K.dm K.Γ) {s s₁ S : SState} (hs : SGood K.dm K.Γ φ s) {f₀ i₀ : Nat}
+theorem sgood_push_generic {s s₁ S : SState} (hs : SGood K.dm K.Γ φ s) {f₀ i₀ : Nat}
     {v : Sem} {T : TyS} {lab : Option Nat} (hN : Pos.bind f₀ i₀ ∉ s.positions)
     (hpos : ∀ q, q ∈ S.positions ↔ q ∈ s.positions ∨ q = .bind f₀ i₀)
     (hval : ∀ q, q ≠ .bind f₀ i₀ → S.valAt q = s₁.valAt q) (hvalN : S.valAt (.bind f₀ i₀) = fun _ => v)
@@ -378,16 +357,15 @@ theorem sgood_push_generic (hMR : MemReads K.dm K.Γ) {s s₁ S : SState} (hs : 
         show (if y ∉ s.liveLabels ∧ lab = some y then φ y else ψ y) = _
         rw [if_neg (fun h => hc ⟨y, h.2, h.1⟩)]
       rw [e]
-  have hPv : ∀ l, lab = some l → PMem K.dm.read K.Γ v (s.heldTy l) := by
+  have hPv : ∀ l, lab = some l → PMem K.dm K.Γ v (s.heldTy l) := by
     intro l hl
     obtain ⟨h1, h2⟩ := hlab l (hlabT ▸ hl)
     rw [h1]
     rcases hv with hv | hv | ⟨he, -⟩
-    · exact .inr ⟨v, mem_whole K.dm.read_wholeFields hv, .refl v, hv⟩
-    · exact .inl hv
+    · exact .mem hv
+    · simp only at hv; rw [hv]; exact .moved _
     · rw [h1, he] at h2; exact absurd h2 (DataModel.err_mem_false _ _)
-  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, hacyc, hfresh,
-    fun ψ hψ f i steps x U hf hx => ?_⟩
+  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, hacyc, hfresh⟩
   · show GoodVal _ _ (S.valAt _ ψ) (S.tyAt _).m
     by_cases hq : Pos.bind f i = .bind f₀ i₀
     · rw [hq, hvalN, htyN]; exact hv.val K.dm.read_wholeFields K.Γ
@@ -395,7 +373,7 @@ theorem sgood_push_generic (hMR : MemReads K.dm K.Γ) {s s₁ S : SState} (hs : 
       rw [hval _ hq, hty _ hq]
       rcases h1val (.bind f i) with e | e
       · rw [e, ← hT2 ψ]; exact hs.bind _ (hT1 ψ hψ) f i hpi'
-      · rw [e]; exact .inl (.inl rfl)
+      · rw [e]; exact .inl (.moved _)
   · rw [hHT]
     by_cases hq : p = .bind f₀ i₀
     · subst hq; rw [hshN] at hl'; rw [hvalN]; exact hPv l' hl'
@@ -412,12 +390,6 @@ theorem sgood_push_generic (hMR : MemReads K.dm K.Γ) {s s₁ S : SState} (hs : 
     · rw [hq, htyN]; rw [hq, hshN] at hl'; exact (hlab l' (hlabT ▸ hl')).1.symm
     · rw [hty _ hq]; rw [hsh _ hq] at hl'
       exact hs.holderTy f i l' (h1sh _ l' hl').1
-  · by_cases hq : Pos.bind f i = .bind f₀ i₀
-    · rw [hq, hvalN, htyN] at hf; exact hv.reads hMR steps x U hf hx
-    · rw [hval _ hq, hty _ hq] at hf
-      rcases h1val (.bind f i) with e | e
-      · rw [e, ← hT2 ψ] at hf; exact hs.read _ (hT1 ψ hψ) f i steps x U hf hx
-      · rw [e] at hf; rw [follow_moved' K.dm K.Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
 
 /-- A `let`'s binding (`pushBindShaped`) of a good result whose label records its type.
 
@@ -427,7 +399,7 @@ live before, a position that read it would be read at a future the typed futures
 constrain there, and a label at or above the counter would break the label order (`RInv`'s `ShapeAt`).
 `RunPresInd.runT_rinv` concludes exactly this of every result (`LoU s' r.2.label`), so the lemma's
 induction carries it beside `LabOk`. -/
-theorem sgood_pushBindShaped (hMR : MemReads K.dm K.Γ) {s : SState} (hs : SGood K.dm K.Γ φ s) (b : SBinding)
+theorem sgood_pushBindShaped {s : SState} (hs : SGood K.dm K.Γ φ s) (b : SBinding)
     {v : Sem} (hb : b.val = fun _ => v) (hv : GoodRes K.dm.read (v, b.ty)) (hlab : LabOk K.dm s (v, b.ty))
     (hlou : LoU s b.ty.label) (hne : s.env ≠ []) : SGood K.dm K.Γ φ (pushBindShaped s b) := by
   have hsa := hs.acyc.2.2
@@ -454,7 +426,7 @@ theorem sgood_pushBindShaped (hMR : MemReads K.dm K.Γ) {s : SState} (hs : SGood
       cases h : s.shape (.bind f₀ i₀) with
       | none => rfl
       | some x => exact absurd (hsa _ x h).1 hN
-    refine sgood_push_generic hMR (s₁ := s) hs hN hpos (fun q hq => by rw [hval, if_neg hq])
+    refine sgood_push_generic (s₁ := s) hs hN hpos (fun q hq => by rw [hval, if_neg hq])
       (by rw [hval, if_pos rfl, hb]) (fun q hq => by rw [hty, if_neg hq]) (by rw [hty, if_pos rfl])
       (fun q _ => by rw [hsh]) (by rw [hsh, hshN]) (fun _ => .inl rfl) (fun q l' h => ⟨h, rfl⟩) hHT hHM
       (fun y => by rw [hlive, hl]) hv hlab hl.symm (fun l h => by cases h) hacyc hfresh
@@ -475,7 +447,7 @@ theorem sgood_pushBindShaped (hMR : MemReads K.dm K.Γ) {s : SState} (hs : SGood
     unfold pushBindShaped at hS; rw [hl] at hS; dsimp only at hS; rw [e2] at hS; dsimp only at hS
     rw [hN'] at hS
     subst hS
-    refine sgood_push_generic hMR (s₁ := s.takeLabel l) hs (by rwa [h1pos] at hN)
+    refine sgood_push_generic (s₁ := s.takeLabel l) hs (by rwa [h1pos] at hN)
       (fun q => by rw [withShape_positions, hpos, h1pos])
       (fun q hq => by rw [withShape_valAt, hval, if_neg hq])
       (by rw [withShape_valAt, hval, if_pos rfl, hb])
@@ -546,7 +518,7 @@ theorem sgood_dropLast {s : SState} (hs : SGood K.dm K.Γ φ s)
       rw [if_neg (fun h => hy h.1)]; exact hag y (fun h => hy (hlive_sub y h))
     · show PMem _ _ (if y ∈ s.liveLabels ∧ y ∉ s.dropLast.liveLabels then _ else ψ y) _
       split
-      · exact .inr ⟨_, mem_whole K.dm.read_wholeFields (hs.held y hy), .refl _, hs.held y hy⟩
+      · exact .mem (hs.held y hy)
       · rename_i hc
         have hy' : y ∈ s.dropLast.liveLabels := Classical.byContradiction fun h => hc ⟨hy, h⟩
         exact hψ y hy'
@@ -579,8 +551,7 @@ theorem sgood_dropLast {s : SState} (hs : SGood K.dm K.Γ φ s)
         show (if z ∈ s.liveLabels ∧ z ∉ s.dropLast.liveLabels then s.heldMem z else ψ z) = _
         rw [if_neg (fun h => hc ⟨z, h⟩)]
       rw [e]
-  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_,
-    fun ψ hψ f i steps x U hf hx => ?_⟩
+  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_⟩
   · obtain ⟨hpi', hd⟩ := SState.mem_positions_dropLast hpi
     show GoodVal _ _ (s.dropLast.valAt _ ψ) (s.dropLast.tyAt _).m
     rw [SState.valAt_dropLast s _ hd, tyAt_dropLast s _ hd, ← hT2 ψ]
@@ -604,12 +575,6 @@ theorem sgood_dropLast {s : SState} (hs : SGood K.dm K.Γ φ s)
       have hq : q ∉ s.dropLast.positions := fun h => (SState.mem_positions_dropLast h).2 hd
       apply hne; simp [SState.toMean, SState.valAt_of_not_mem _ _ hq]
     · exact hs.fresh q l ⟨ψ, x, by simpa [SState.toMean, SState.valAt_dropLast s _ hd] using hne⟩
-  · by_cases hd : some (Pos.bind f i) = s.dropped
-    · have hq : Pos.bind f i ∉ s.dropLast.positions := fun h => (SState.mem_positions_dropLast h).2 hd
-      rw [SState.valAt_of_not_mem _ _ hq] at hf
-      rw [follow_err K.dm K.Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
-    · rw [SState.valAt_dropLast s _ hd, tyAt_dropLast s _ hd, ← hT2 ψ] at hf
-      exact hs.read _ (hT1 ψ hψ) f i steps x U hf hx
 
 /-- A `let`'s drop: the borrow its binding holds ends, or the borrows lent at it end, then it goes. -/
 theorem sgood_letDrop {s : SState} (hs : SGood K.dm K.Γ φ s) :
@@ -687,46 +652,48 @@ theorem typedF_typedFuture {s : SState} (hs : SGood K.dm K.Γ φ s) : TypedF K.d
     rw [if_neg hl]
   · show PMem _ _ (if l ∈ s.liveLabels then s.heldMem l else φ l) _
     rw [if_pos hl]
-    exact .inr ⟨_, mem_whole K.dm.read_wholeFields (hs.held l hl), .refl _, hs.held l hl⟩
+    exact .mem (hs.held l hl)
 
 /-- A whole good value at the error type is a type value. -/
-theorem GoodVal.ty_of_err {v : Sem} {T : TyM} (h : GoodVal K.dm.read K.Γ v T) (hw : v.whole) (he : T = TyM.err) :
+theorem GoodVal.ty_of_err {v : Sem} {T : TyM} (h : GoodVal K.dm K.Γ v T) (hw : v.whole) (he : T = TyM.err) :
     NoData v := by
-  rcases h with (h | ⟨t, -, -, ht | ho⟩) | ⟨-, h⟩
-  · subst h; exact absurd hw (by simp [Sem.whole])
-  · rw [he] at ht; exact absurd ht (DataModel.err_mem_false _ _)
-  · rw [he] at ho; exact ho.elim
+  rcases h with h | ⟨-, h⟩
+  · subst he
+    cases h with
+    | moved => exact absurd hw (by simp [Sem.whole])
+    | mem h => exact absurd h (DataModel.err_mem_false _ _)
+    | succ n h => exact absurd h (DataModel.err_mem_false _ _)
+    | dat hdc => cases hdc
   · exact h
 
-/-- **A read at a root or through `*`** (the value is the binding's own content). -/
-theorem read_root_goodRes {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {f i : Nat} (hp : Pos.bind f i ∈ s₁.positions)
-    {steps : List Step} (hst : steps = [] ∨ steps = [.deref]) {v : Sem} {T' : TyS}
-    (hf : Sem.follow K.dm K.Γ (s₁.tyAt (.bind f i)) (s₁.valAt (.bind f i) (s₁.typedFuture φ)) steps = some (v, T'))
-    (hw : v.whole) : v = s₁.valAt (.bind f i) (s₁.typedFuture φ) ∧ T' = s₁.tyAt (.bind f i) ∧
-      GoodRes K.dm.read (v, s₁.tyAt (.bind f i)) := by
-  have hψ := typedF_typedFuture hs₁
-  have e : v = s₁.valAt (.bind f i) (s₁.typedFuture φ) ∧ T' = s₁.tyAt (.bind f i) := by
-    rcases hst with rfl | rfl
-    · simp only [Sem.follow, Option.some.injEq, Prod.mk.injEq] at hf; exact ⟨hf.1.symm, hf.2.symm⟩
-    · simp only [Sem.follow, Sem.step, Option.bind_some, Option.some.injEq, Prod.mk.injEq] at hf
-      exact ⟨hf.1.symm, hf.2.symm⟩
-  refine ⟨e.1, e.2, ?_⟩
-  rcases hs₁.read _ hψ f i steps v T' hf hw with h | h
-  · rw [e.2] at h; exact .inl h
-  · rw [e.2] at h; exact .inr (.inr h)
+/-- **A read at a root or through `*`**: the value is the binding's own content, at its stored type. -/
+theorem read_root_eq {s₁ : SState} {f i : Nat} {steps : List Step} (hst : steps = [] ∨ steps = [.deref])
+    {v : Sem} {T' : TyS}
+    (hf : Sem.follow K.dm K.Γ (s₁.tyAt (.bind f i)) (s₁.valAt (.bind f i) (s₁.typedFuture φ)) steps = some (v, T')) :
+    v = s₁.valAt (.bind f i) (s₁.typedFuture φ) ∧ T' = s₁.tyAt (.bind f i) := by
+  rcases hst with rfl | rfl
+  · simp only [Sem.follow, Option.some.injEq, Prod.mk.injEq] at hf; exact ⟨hf.1.symm, hf.2.symm⟩
+  · simp only [Sem.follow, Sem.step, Option.bind_some, Option.some.injEq, Prod.mk.injEq] at hf
+    exact ⟨hf.1.symm, hf.2.symm⟩
+
+/-- What the strict read test passes is a good result. -/
+theorem goodRes_of_readGood {R : DataRead} {v : Sem} {T : TyS} (h : ReadGood R T.m v) : GoodRes R (v, T) := by
+  rcases h with h | ⟨he, h⟩
+  · exact .inl h
+  · exact .inr (.inr ⟨he, h⟩)
+
+/-- `if ¬ p then none else a`, succeeding. -/
+theorem ite_not_none_some {α : Type _} {p : Prop} [Decidable p] {a : Option α} {b : α}
+    (h : (if ¬ p then none else a) = some b) : p ∧ a = some b := by
+  by_cases hp : p
+  · rw [if_neg (fun hn => hn hp)] at h; exact ⟨hp, h⟩
+  · rw [if_pos hp] at h; cases h
 
 /-- **A read of a place at a root or through `*`**, copied or moved: the value read is the binding's
-whole content, a member of its stored type (the read clause, at the typed future of the accessed
-state), or a type value at `err`; a move writes `⊥` there and, at a holder, parks the borrow.
-
-ADDED HYPOTHESIS `hp` (the path is `[]` or `[*]`). At a FIELD path two facts are missing:
-(1) for a copy, the read clause `ReadOk` allows any whole value at `err`, where `GoodRes` asks a type
-value; a read THROUGH `⋆` gives `⋆` at `err` (`Sem.stepField` on `⋆`, kernel-checked:
-`follow_through_proof`), which is no good result, so the copy case needs the read clause's escape to be
-`GoodRes`'s (or such reads classed as proofs, which `SM.erasedIf` runs and fails at `err`); the copy
-case is proved in that form (`readPlace_copy_reads`); (2) for a move, the write of `⊥` into a field
-(`readPlace_field_move_sgood`, a guess: the dependent-values area). -/
-theorem readPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) (hp : p.steps.2 = [] ∨ p.steps.2 = [.deref])
+whole content, good at its stored type by the strict read test (`ReadGood`); a move writes `⊥` there
+and, at a holder, parks the borrow. (A move at a FIELD path writes `⊥` into a field:
+`setContent_field_moved_sgood`, in `readPlace_fund_all`.) -/
+theorem readPlace_fund (p : Place) (hp : p.steps.2 = [] ∨ p.steps.2 = [.deref])
     (copy : Bool) : FundAt K.dm K.Γ φ (readPlace K φ p copy) := by
   intro s s' r hs h
   have hlou := (readPlace_rinv K φ (fun _ => True) h hs.acyc).2
@@ -746,15 +713,13 @@ theorem readPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) (hp : p.steps.2 = 
     rw [access_positions]; exact resolve_mem hres
   dsimp only at h
   generalize s.access (Pos.bind f i) (dataHit steps) = s₁ at h hf hT hs₁ hp₁
-  by_cases hw : v.whole
-  rotate_left
-  · rw [if_pos hw] at h; cases h
-  rw [if_neg (fun hn => hn hw)] at h
+  obtain ⟨hw, h⟩ := open Classical in ite_not_none_some h
+  obtain ⟨hrg, h⟩ := open Classical in ite_not_none_some h
   have hst : steps = [] ∨ steps = [.deref] := hsteps ▸ hp
-  obtain ⟨hv, hT', hgood⟩ := read_root_goodRes hs₁ hp₁ hst hf hw
+  obtain ⟨hv, hT'⟩ := read_root_eq hst hf
   have hTm : T.m = (s₁.tyAt (.bind f i)).m := by rw [hT, hT']; split <;> rfl
   have hgoodT : ∀ X : TyS, X.m = T.m → GoodRes K.dm.read (v, X) := by
-    intro X hX; unfold GoodRes at hgood ⊢; simp only at hgood ⊢; rw [hX, hTm]; exact hgood
+    intro X hX; exact goodRes_of_readGood (T := X) (by rw [hX]; exact hrg)
   cases copy with
   | true =>
     rw [if_pos rfl] at h
@@ -769,13 +734,13 @@ theorem readPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) (hp : p.steps.2 = 
     simp only [Option.bind_some, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     have hs₂ : SGood K.dm K.Γ φ (s₁.setAt (.bind f i) fun _ => .moved) :=
-      sgood_setAt_pmem hMR hs₁ hp₁ (fun _ _ _ => .inl rfl) (fun _ _ => .inl rfl)
+      sgood_setAt_pmem hs₁ hp₁ (fun _ _ _ => .moved _) (fun _ _ => .moved _)
     by_cases hsh : steps.isEmpty = true ∧ ∃ l, s₁.shape (.bind f i) = some l
     · obtain ⟨he, l, hl⟩ := hsh
       simp only [he, if_true, hl] at hlou ⊢
       have hlive : l ∈ (s₁.setAt (.bind f i) fun _ => .moved).liveLabels := by
         rw [liveLabels_setAt]; exact live_of_shape hp₁ hl
-      have hPv : PMem K.dm.read K.Γ v ((s₁.setAt (.bind f i) fun _ => .moved).heldTy l) := by
+      have hPv : PMem K.dm K.Γ v ((s₁.setAt (.bind f i) fun _ => .moved).heldTy l) := by
         rw [heldTy_setAt, hv]; exact hs₁.holder _ (typedF_typedFuture hs₁) _ l hl
       have hHT : ((((s₁.setAt (.bind f i) fun _ => .moved).takeLabel l).pushTempShaped (fun _ => v) l)).heldTy
           = s₁.heldTy := by
@@ -799,28 +764,32 @@ theorem readPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) (hp : p.steps.2 = 
       simp only [hlab] at hlou ⊢
       exact ⟨hgoodT _ rfl, (fun l hl => by cases hl), hlou, hs₂⟩
 
-/-- **GUESS (the dependent-values area): moving out a part at a FIELD path keeps the invariant.**
-`setContent … steps ⊥` at a path other than `[]`/`[*]` rebuilds a constructor value with that field
-`⊥` (`Sem.updAt`, `reDat`). The binding stays a partly moved member (`MovedOf`), and a holder's content
-too; what may fail is the READ clause at a LATER field of the same value whose declared type reads the
-moved one: reads type a field by its declaration at the CURRENT earlier fields (`Places.contentTyS`,
-`fieldTyR … (earlier.map Sem.small)`), and `⊥` reads small as `.other`, so the later field's read type
-changes while its value does not (`MkDP(n : Nat, x : if n = 0 then Nat else Unit)`, move `n` out, read
-`x`). Discharged if the signature gives `err` at an earlier field read `.other` (a read after a move out
-of an index is then at `err`), or if the checker forbids moving a field a later field's type reads. -/
+/-- **GUESS, FALSE AS STATED (kernel-checked: `FieldWriteCE.not_setContent_field_moved_sgood`, and
+through the read's move `FieldWriteCE.not_fund_all`): moving out a part at a FIELD path keeps the
+invariant.** `setContent … steps ⊥` writes `Sem.updAt … steps (old φ')` at EVERY future and `err` where
+that update fails; the run checks only the state's typed future. A position reading a live label at a
+strict prefix of `steps` is, at a typed future giving that label another open member (`⊥`, another
+number), a value the path does not enter, so it reads `err` there, no open member of anything; `SGood`
+does not tie a position's reads of live labels to the sites [Access] ends (`SState.lent`), so the
+[Access] before the write need not end that label. Where the update succeeds at every typed future the
+dependent-values part is expected to hold (a moved field is `OField.moved`; a later field keeps its
+completion, `⊥` being below anything in `MovedOfList`), modulo constructor values of a declaration
+named `Nat` (which `Sem.updAt` steps into as numbers, rebuilding at `natRec`). Repairs: the write
+`getD .moved` (`⊥` where the path is absent), a strict test that the update succeeds at every typed
+future, or an invariant in `SGood` tying reads of live labels to lent sites. -/
 theorem setContent_field_moved_sgood {s s' : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} {steps : List Step}
     (hst : steps ≠ [] ∧ steps ≠ [.deref]) (h : setContent K φ (.bind f i) steps .moved s = some (⟨⟩, s')) :
     SGood K.dm K.Γ φ s' := by
   sorry
 
-/-- **A read of a place at any path**: the value read is a member of the type the read gives it, or a
-value with no data at `err` (a field of `⋆`); the state is good (a move at a FIELD path through
-`setContent_field_moved_sgood`). -/
-theorem readPlace_fund_all (hMR : MemReads K.dm K.Γ) (p : Place) (copy : Bool) :
+/-- **A read of a place at any path**: the value read is good at the type the read gives it by the
+strict read test (`ReadGood`: a member, or `⋆`/a type value at `err`); the state is good (a move at a
+FIELD path through `setContent_field_moved_sgood`). -/
+theorem readPlace_fund_all (p : Place) (copy : Bool) :
     FundAt K.dm K.Γ φ (readPlace K φ p copy) := by
   intro s s' r hs h
   by_cases hp : p.steps.2 = [] ∨ p.steps.2 = [.deref]
-  · exact readPlace_fund hMR p hp copy s s' r hs h
+  · exact readPlace_fund p hp copy s s' r hs h
   · have hlou := (readPlace_rinv K φ (fun _ => True) h hs.acyc).2
     unfold readPlace at h
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
@@ -838,20 +807,12 @@ theorem readPlace_fund_all (hMR : MemReads K.dm K.Γ) (p : Place) (copy : Bool) 
     dsimp only at h
     generalize s.access (Pos.bind f i) (dataHit steps) = s₁ at h hf hT hs₁
     have hne : steps.isEmpty = false := by cases steps with | nil => exact absurd rfl hst.1 | cons _ _ => rfl
-    have hTm : T.m = T'.m := by rw [hT, hne]; rfl
-    by_cases hw : v.whole
-    rotate_left
-    · rw [if_pos hw] at h; cases h
-    rw [if_neg (fun hn => hn hw)] at h
-    have hread := hs₁.read _ (typedF_typedFuture hs₁) f i steps v T' hf hw
-    have hg : GoodRes K.dm.read (v, { T with label := none }) := by
-      rcases hread with hr | hr
-      · exact .inl (by simp only; rw [hTm]; exact hr)
-      · exact .inr (.inr (by simp only; rw [hTm]; exact hr))
-    have hg' : ∀ lab, GoodRes K.dm.read (v, { T with label := lab }) := fun _ => hg
+    obtain ⟨-, h⟩ := open Classical in ite_not_none_some h
+    obtain ⟨hrg, h⟩ := open Classical in ite_not_none_some h
+    have hg' : ∀ lab, GoodRes K.dm.read (v, { T with label := lab }) := fun _ => goodRes_of_readGood hrg
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h
-      exact ⟨hg, (fun l hl => by cases hl), hlou, hs₁⟩
+      exact ⟨hg' _, (fun l hl => by cases hl), hlou, hs₁⟩
     · simp only [Option.bind_eq_some_iff] at h
       obtain ⟨⟨⟨⟩, s₂⟩, h2, h⟩ := h
       simp only [hne, Bool.false_eq_true, if_false, Option.some.injEq, Prod.mk.injEq] at h
@@ -863,7 +824,7 @@ theorem readPlace_fund_all (hMR : MemReads K.dm K.Γ) (p : Place) (copy : Bool) 
 /-- **A fresh borrow of a binding, whole** (`&x`, `&*r`): the binding becomes the lender of the fresh
 label `l` (reading `l`'s final content), a new temporary holds the content `v` (a member of the
 binding's type), and `l` records that type and `v`. -/
-theorem sgood_borrow_root (hMR : MemReads K.dm K.Γ) {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {f i : Nat}
+theorem sgood_borrow_root {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {f i : Nat}
     (hp : Pos.bind f i ∈ s₁.positions) {v : Sem} (hv : v ∈ₛ[K.dm.read] (s₁.tyAt (.bind f i)).m) (xs : List Site) :
     SGood K.dm K.Γ φ (((((s₁.freshLoan.2.setAt (.bind f i) fun φ' => φ' s₁.nextLoan).pushTempShaped
       (fun _ => v) s₁.nextLoan).setLent s₁.nextLoan xs).setHeldTy s₁.nextLoan (s₁.tyAt (.bind f i)).m).setHeldMem
@@ -966,13 +927,12 @@ theorem sgood_borrow_root (hMR : MemReads K.dm K.Γ) {s₁ : SState} (hs₁ : SG
       have := hψ y ((hSlive y).2 (.inl hy)); rwa [hSHT, if_neg hyl] at this
   have hT2 : ∀ ψ q, s₁.valAt q (ψ.upd l (φ l)) = s₁.valAt q ψ := fun ψ q =>
     hs₁.indep_fresh q (by rw [hl]; exact Nat.le_refl l) ψ (φ l)
-  have hψl : ∀ ψ, TypedF K.dm K.Γ φ S ψ → PMem K.dm.read K.Γ (ψ l) Tm := by
+  have hψl : ∀ ψ, TypedF K.dm K.Γ φ S ψ → PMem K.dm K.Γ (ψ l) Tm := by
     rintro ψ ⟨-, hψ⟩; have := hψ l ((hSlive l).2 (.inr rfl)); rwa [hSHT, if_pos rfl] at this
   have hbval : ∀ f' i', S.valAt (.bind f' i') =
       if Pos.bind f' i' = .bind f i then (fun φ' => φ' l) else s₁.valAt (.bind f' i') := by
     intro f' i'; rw [hSval, valAt_pushTempShaped_bind, h3val]
-  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh,
-    fun ψ hψ f' i' steps x U hf hx => ?_⟩
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh⟩
   · show GoodVal _ _ (S.valAt _ ψ) (S.tyAt _).m
     rw [hbval, hSty]
     split
@@ -988,7 +948,7 @@ theorem sgood_borrow_root (hMR : MemReads K.dm K.Γ) {s₁ : SState} (hs₁ : SG
         rw [← hs₁.holderTy f i l' hsh3, hTm]; exact hψl ψ hψ
       · rw [← hT2]; exact hs₁.holder _ (hT1 ψ hψ) q l' hsh3
     · rw [hSHT, if_pos rfl, hSval, hv4]
-      exact .inr ⟨v, mem_whole K.dm.read_wholeFields hv, .refl v, hv⟩
+      exact .mem hv
   · rw [hSHM, hSHT]
     rcases (hSlive y).1 hy with h | rfl
     · have hyl : y ≠ l := fun e => hlnew (e ▸ h)
@@ -1000,31 +960,31 @@ theorem sgood_borrow_root (hMR : MemReads K.dm K.Γ) {s₁ : SState} (hs₁ : SG
       have hl'l : l' ≠ l := fun e => hlnew (e ▸ live_of_shape (h3pos ▸ hq3) hsh3)
       rw [hSty, hSHT, if_neg hl'l]; exact hs₁.holderTy f' i' l' hsh3
     · exact absurd rfl (hnb f' i')
-  · rw [hbval, hSty] at hf
-    split at hf
-    · rename_i hq; rw [hq] at hf
-      have : PMem K.dm.read K.Γ (ψ l) (s₁.tyAt (.bind f i)).m := by rw [hTm]; exact hψl ψ hψ
-      exact hMR.pmem this steps x U hf hx
-    · rw [← hT2] at hf; exact hs₁.read _ (hT1 ψ hψ) f' i' steps x U hf hx
 
-/-- **GUESS (the dependent-values area): a borrow of a FIELD keeps the invariant.** `&p.f` makes the
-lender's FIELD read the fresh label's final content (`Sem.updAt … (φ' l)`), so at a typed future the
-field holds some other (partly moved) member of its type, while the rest of the value is unchanged.
-What may fail is the READ clause (and `bind`'s membership) at a LATER field whose declared type reads
-the lent one: reads type a field by its declaration at the CURRENT earlier fields (`Places.contentTyS`,
-`fieldTyR … (earlier.map Sem.small)`), so the later field's read type moves with the future while its
-value does not (docs/31's `dws_Pair_dependent_fails`: a borrow of `p.0` of a dependent pair).
-Discharged if the checker forbids lending a field a later field's type reads (its dependent-field
-rules), or if the invariant compares a lender's later fields at the record's types only. -/
-theorem borrowPlace_field_sgood {p : Place} {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s)
-    (hfield : p.steps.2 ≠ [] ∧ p.steps.2 ≠ [.deref]) (h : borrowPlace K φ p s = some (r, s'))
-    (hm : r.1 ∈ₛ[K.dm.read] r.2.m) : SGood K.dm K.Γ φ s' := by
+/-- **GUESS (the dependent-values area): a borrow of a FIELD, then D112's invalidation, keeps the
+invariant where the strict test below a root passes.** `&p.f` makes the lender's FIELD read the fresh
+label's final content (`Sem.updAt … (φ' l)`); the run then invalidates (`invalidate`: [Access] and `⊥`
+at the places `Decisions.invalidated` gives) and tests that the lender's position holds an open member
+of its type at every typed future (`lentOk`, `Run.PosOk`), which is the bind and holder clauses AT THAT
+POSITION. Not proved: the state between the borrow and the test is not good (the lender's later
+dependent fields), so the invalidation's ends and writes are not covered by the lemmas for good states,
+and the test speaks of the lender's position only, while (a) an end inside the invalidation of a label
+the lender holds passes the lender's content (reading the fresh label) to that label's lenders, and (b)
+a `⊥` written at a field path of ANOTHER position is `err` at the typed futures where that path is
+absent (`setContent_field_moved_sgood`, false as stated: `Strict/FieldWriteCE`). With no places
+invalidated it holds (the lender's clauses are the test's; the rest read no fresh label). -/
+theorem borrowPlace_field_sgood {p : Place} {s s₁ : SState} {r : Res} (hs : SGood K.dm K.Γ φ s)
+    (hfield : p.steps.2 ≠ [] ∧ p.steps.2 ≠ [.deref]) (h : borrowPlace K φ p s = some (r, s₁))
+    (hm : r.1 ∈ₛ[K.dm.read] r.2.m) (hok : lentOk K φ p (invalidate K φ p s₁)) :
+    SGood K.dm K.Γ φ (invalidate K φ p s₁) := by
   sorry
 
-/-- **A borrow** (strict: the content is a member of the place's type). -/
-theorem borrowPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) :
-    FundAt K.dm K.Γ φ (SM.strictS K.dm.read (borrowPlace K φ p)) := by
-  intro s s' r hs h
+/-- **A borrow's strict content test**: the result is a member whose fresh label records its type and
+the content; at a root or through `*` the state is good (`sgood_borrow_root`). -/
+theorem borrowPlace_res (p : Place) {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s)
+    (h : SM.strictS K.dm.read (borrowPlace K φ p) s = some (r, s')) :
+    r.1 ∈ₛ[K.dm.read] r.2.m ∧ LabOk K.dm s' r ∧ LoU s' r.2.label ∧ borrowPlace K φ p s = some (r, s') ∧
+      ((p.steps.2 = [] ∨ p.steps.2 = [.deref]) → SGood K.dm K.Γ φ s') := by
   unfold SM.strictS at h
   cases hb : borrowPlace K φ p s with
   | none => rw [hb] at h; cases h
@@ -1060,8 +1020,7 @@ theorem borrowPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) :
       simp only [Option.some.injEq] at hl; subst hl
       simp only [SState.setHeldMem, SState.setHeldTy, if_true]
       exact ⟨trivial, hm⟩
-    refine ⟨.inl hm, hlab, hrinv.2, ?_⟩
-    by_cases hp : p.steps.2 = [] ∨ p.steps.2 = [.deref]
+    refine ⟨hm, hlab, hrinv.2, rfl, fun hp => ?_⟩
     · obtain ⟨T', hres, rfl, hf, hT⟩ := contentOf_view h1
       have hsteps : steps = p.steps.2 := by
         unfold resolve at hres; cases hv : s.varPos p.steps.1 <;> simp_all
@@ -1075,15 +1034,155 @@ theorem borrowPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) :
       have hp₁ : Pos.bind f i ∈ (s.access (.bind f i) (dataHit steps)).positions := by
         rw [access_positions]; exact resolve_mem hres
       generalize s.access (Pos.bind f i) (dataHit steps) = s₁ at hf hT hs₁ hp₁ hlab ⊢
-      obtain ⟨-, hT', -⟩ := read_root_goodRes hs₁ hp₁ hst hf hw
+      obtain ⟨-, hT'⟩ := read_root_eq hst hf
       have hTm : T.m = (s₁.tyAt (.bind f i)).m := by rw [hT, hT']; split <;> rfl
       have hlend : (fun φ' => (Sem.updAt K.dm K.Γ (s₁.freshLoan.2.tyAt (.bind f i)) (fun _ => φ' s₁.freshLoan.1)
           steps (s₁.freshLoan.2.valAt (.bind f i) φ')).getD .err) = fun φ' => φ' s₁.nextLoan := by
         funext φ'; rcases hst with rfl | rfl <;> rfl
       rw [hlend, hTm]
       have hv : v ∈ₛ[K.dm.read] (s₁.tyAt (.bind f i)).m := by rw [← hTm]; exact hm
-      exact sgood_borrow_root hMR hs₁ hp₁ hv _
-    · exact borrowPlace_field_sgood hs ⟨fun e => hp (.inl e), fun e => hp (.inr e)⟩ hb₀ hm
+      exact sgood_borrow_root hs₁ hp₁ hv _
+
+
+theorem heldTy_endLabel (s : SState) (l : Nat) : (s.endLabel l).heldTy = s.heldTy := by
+  unfold SState.endLabel; split <;> rfl
+
+theorem heldMem_endLabel (s : SState) (l : Nat) : (s.endLabel l).heldMem = s.heldMem := by
+  unfold SState.endLabel; split <;> rfl
+
+theorem heldTy_foldl_endLabel : ∀ (ls : List Nat) (s : SState), (ls.foldl SState.endLabel s).heldTy = s.heldTy
+  | [], _ => rfl
+  | l :: ls, s => by rw [List.foldl_cons, heldTy_foldl_endLabel ls, heldTy_endLabel]
+
+theorem heldMem_foldl_endLabel : ∀ (ls : List Nat) (s : SState), (ls.foldl SState.endLabel s).heldMem = s.heldMem
+  | [], _ => rfl
+  | l :: ls, s => by rw [List.foldl_cons, heldMem_foldl_endLabel ls, heldMem_endLabel]
+
+theorem heldTy_access (s : SState) (p : Pos) (hit : List Step → Bool) : (s.access p hit).heldTy = s.heldTy := by
+  unfold SState.access
+  generalize List.range s.liveLabels.length = ns
+  induction ns generalizing s with
+  | nil => rfl
+  | cons n ns ih => rw [List.foldl_cons, ih, heldTy_foldl_endLabel]
+
+theorem heldMem_access (s : SState) (p : Pos) (hit : List Step → Bool) : (s.access p hit).heldMem = s.heldMem := by
+  unfold SState.access
+  generalize List.range s.liveLabels.length = ns
+  induction ns generalizing s with
+  | nil => rfl
+  | cons n ns ih => rw [List.foldl_cons, ih, heldMem_foldl_endLabel]
+
+/-! ## D112's invalidation keeps the invariant -/
+
+theorem setContent_held {pos : Pos} {steps : List Step} {v : Sem} {s s' : SState}
+    (h : setContent K φ pos steps v s = some (⟨⟩, s')) : s'.heldTy = s.heldTy ∧ s'.heldMem = s.heldMem := by
+  unfold setContent at h
+  simp only at h
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, rfl⟩ := h
+    exact ⟨heldTy_setAt _ _ _, heldMem_setAt _ _ _⟩
+  · cases h
+
+theorem invalidateOne_held (s : SState) (q : Place) :
+    (invalidateOne K φ s q).heldTy = s.heldTy ∧ (invalidateOne K φ s q).heldMem = s.heldMem := by
+  unfold invalidateOne
+  split
+  · rename_i pos steps _
+    dsimp only
+    split
+    · rename_i hsc
+      obtain ⟨h1, h2⟩ := setContent_held hsc
+      exact ⟨by rw [h1, heldTy_access], by rw [h2, heldMem_access]⟩
+    · exact ⟨heldTy_access _ _ _, heldMem_access _ _ _⟩
+  · exact ⟨rfl, rfl⟩
+
+theorem invalidate_held (p : Place) (s : SState) :
+    (invalidate K φ p s).heldTy = s.heldTy ∧ (invalidate K φ p s).heldMem = s.heldMem := by
+  unfold invalidate
+  generalize K.D.invalidated (scopeOf s) p = qs
+  induction qs generalizing s with
+  | nil => exact ⟨rfl, rfl⟩
+  | cons q qs ih =>
+    simp only [List.foldl_cons]
+    obtain ⟨h1, h2⟩ := ih (invalidateOne K φ s q)
+    obtain ⟨h3, h4⟩ := invalidateOne_held (K := K) (φ := φ) s q
+    exact ⟨h1.trans h3, h2.trans h4⟩
+
+theorem labOk_invalidate {p : Place} {s : SState} {r : Res} (h : LabOk K.dm s r) :
+    LabOk K.dm (invalidate K φ p s) r := by
+  intro l hl
+  obtain ⟨h1, h2⟩ := invalidate_held (K := K) (φ := φ) p s
+  rw [h1, h2]; exact h l hl
+
+/-- **D112's invalidation of one place keeps the invariant**: [Access], then `⊥` at the place (at a
+root or through `*` a whole write of `⊥`; at a field path `setContent_field_moved_sgood`). -/
+theorem invalidateOne_sgood {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place) :
+    SGood K.dm K.Γ φ (invalidateOne K φ s q) := by
+  unfold invalidateOne
+  cases hres : resolve s q with
+  | none => exact hs
+  | some ps =>
+    obtain ⟨pos, steps⟩ := ps
+    dsimp only
+    have hs₁ := access_sgood hs pos (dataHit steps)
+    obtain ⟨f, i, rfl⟩ : ∃ f i, pos = .bind f i := by
+      have := resolve_bind hres
+      cases pos with
+      | bind f i => exact ⟨f, i, rfl⟩
+      | temp => exact absurd this (by simp [IsTemp])
+    have hp₁ : Pos.bind f i ∈ (s.access (.bind f i) (dataHit steps)).positions := by
+      rw [access_positions]; exact resolve_mem hres
+    generalize s.access (Pos.bind f i) (dataHit steps) = s₁ at hs₁ hp₁ ⊢
+    cases hsc : setContent K φ (.bind f i) steps .moved s₁ with
+    | none => exact hs₁
+    | some x =>
+      obtain ⟨⟨⟩, s₂⟩ := x
+      dsimp only
+      by_cases hst : steps = [] ∨ steps = [.deref]
+      · have e : setContent K φ (.bind f i) steps .moved s₁ = some (⟨⟩, s₁.setAt (.bind f i) fun _ => .moved) := by
+          rcases hst with rfl | rfl <;> rfl
+        rw [e] at hsc
+        simp only [Option.some.injEq, Prod.mk.injEq] at hsc
+        rw [← hsc.2]
+        exact sgood_setAt_pmem hs₁ hp₁ (fun _ _ _ => .moved _) (fun _ _ => .moved _)
+      · exact setContent_field_moved_sgood hs₁ ⟨fun e => hst (.inl e), fun e => hst (.inr e)⟩ hsc
+
+theorem invalidate_sgood (p : Place) {s : SState} (hs : SGood K.dm K.Γ φ s) :
+    SGood K.dm K.Γ φ (invalidate K φ p s) := by
+  unfold invalidate
+  generalize K.D.invalidated (scopeOf s) p = qs
+  induction qs generalizing s with
+  | nil => exact hs
+  | cons q qs ih => simp only [List.foldl_cons]; exact ih (invalidateOne_sgood hs q)
+
+theorem lou_invalidate' (p : Place) {s : SState} (hi : SState.RInv (fun _ => True) s) {lab : Option Nat}
+    (h : LoU s lab) : LoU (invalidate K φ p s) lab :=
+  fun l hl => lou_invalidate K φ (fun _ => True) p hi (h l hl)
+
+open Classical in
+/-- **A borrow `&p`, the whole clause** (the strict content test, D112's invalidation, the strict test
+below a root `lentOk`). -/
+theorem borrow_fund (p : Place) :
+    FundAt K.dm K.Γ φ (fun s => match SM.strictS K.dm.read (borrowPlace K φ p) s with
+      | some (r, s₁) =>
+        let s₂ := invalidate K φ p s₁
+        if lentOk K φ p s₂ then some (r, s₂) else none
+      | none => none) := by
+  intro s s' r hs h
+  simp only at h
+  split at h
+  · rename_i r₀ s₁ hb
+    obtain ⟨hok, h⟩ := open Classical in ite_none_some h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    obtain ⟨hm, hlab, hlou, hb', hroot⟩ := borrowPlace_res p hs hb
+    have hi₁ := (borrowPlace_rinv K φ (fun _ => True) hb' hs.acyc).1
+    refine ⟨.inl hm, labOk_invalidate hlab, lou_invalidate' p hi₁ hlou, ?_⟩
+    by_cases hp : p.steps.2 = [] ∨ p.steps.2 = [.deref]
+    · exact invalidate_sgood p (hroot hp)
+    · exact borrowPlace_field_sgood hs ⟨fun e => hp (.inl e), fun e => hp (.inr e)⟩ hb' hm hok
+  · cases h
 
 /-! ## Assignments -/
 
@@ -1183,7 +1282,7 @@ theorem sgood_hold {s : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} (hpos : 
       · rename_i hc; exact hag y (fun h => hc ⟨hy, h⟩)
     · show PMem _ _ (if y ∈ s.liveLabels ∧ y ∉ S.liveLabels then _ else if y ∉ s.liveLabels ∧ y ∈ S.liveLabels then φ y else ψ y) _
       split
-      · exact .inr ⟨_, mem_whole K.dm.read_wholeFields (hs.held y hy), .refl _, hs.held y hy⟩
+      · exact .mem (hs.held y hy)
       · rename_i hc
         rw [if_neg (fun h => h.1 hy)]
         have hyS : y ∈ S.liveLabels := Classical.byContradiction fun h => hc ⟨hy, h⟩
@@ -1220,22 +1319,21 @@ theorem sgood_hold {s : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} (hpos : 
           · exact h1 h3
           · exact hyl h3
   have hval' : ∀ q, (s.takeLabel l).valAt q = s.valAt q ∨ (s.takeLabel l).valAt q = fun _ => .moved := t1val
-  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh,
-    fun ψ hψ f' i' steps x U hf hx => ?_⟩
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh⟩
   · show GoodVal _ _ (S.valAt _ ψ) (S.tyAt _).m
     rw [hSval, hSty]
     rw [hSpos] at hpi
     rcases hval' (.bind f' i') with e | e
     · rw [e, ← hT2]; exact hs.bind _ (hT1 ψ hψ) f' i' hpi
-    · rw [e]; exact .inl (.inl rfl)
+    · rw [e]; exact .inl (.moved _)
   · rw [hSHT, hSval]
     rw [hSsh] at hl'
     split at hl'
     · rename_i hq; subst hq
       simp only [Option.some.injEq] at hl'; subst hl'
       rcases hval' (.bind f i) with e | e
-      · rw [e, hval, hTl]; exact .inr ⟨v, mem_whole K.dm.read_wholeFields hv, .refl v, hv⟩
-      · rw [e]; exact .inl rfl
+      · rw [e, hval, hTl]; exact .mem hv
+      · rw [e]; exact .moved _
     · obtain ⟨hsh, e⟩ := t1sh q l' hl'
       rw [e, ← hT2]; exact hs.holder _ (hT1 ψ hψ) q l' hsh
   · rw [hSHM, hSHT]
@@ -1247,54 +1345,22 @@ theorem sgood_hold {s : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} (hpos : 
     split at hl'
     · rename_i hq; rw [hq]; simp only [Option.some.injEq] at hl'; subst hl'; exact hTl.symm
     · exact hs.holderTy f' i' l' (t1sh _ l' hl').1
-  · rw [hSval, hSty] at hf
-    rcases hval' (.bind f' i') with e | e
-    · rw [e, ← hT2] at hf; exact hs.read _ (hT1 ψ hψ) f' i' steps x U hf hx
-    · rw [e] at hf; rw [follow_moved' K.dm K.Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
 
-/-- **GUESS (the dependent-values area): an assignment to a FIELD keeps the invariant.** `p.f := v`
-(a path other than `[]`/`[*]`) rebuilds a constructor value with that field `v`, a member of the type
-the read of `p.f` gives (the strict `.assign` test, `placeTy`). The value stays a (partly moved, maybe
-open) member of its type (`pmem` admits `OpenIn`); what may fail is the READ clause at a LATER field
-whose declared type reads the written one, which reads now type at the new value while their values
-were built for the old (an index rewritten: `Regress/OpenWriteDep`'s `OWK`, `w.0 := S(S(Z))`; the
-checker sets a dependent PROOF field to `⊥` there, but a dependent LEAF field keeps its value), and a
-holder's content if the place is reached through a borrow. Discharged if the checker forbids writing a
-field a later leaf field's type reads, or the read clause types such leaves by content. -/
-theorem setContent_field_sgood {s s' : SState} (hs : SGood K.dm K.Γ φ s) {p : Place} {f i : Nat}
+/-- **GUESS (the dependent-values area): an assignment to a FIELD, then D112's invalidation, keeps the
+invariant where the strict test below a root passes.** `p.f := v` (a path other than `[]`/`[*]`)
+rebuilds a constructor value with that field `v`, a member of the type the read of `p.f` gives (the
+strict `.assign` test, `placeTy`); the run then invalidates (`invalidate`) and tests that the written
+position holds an open member of its type at every typed future (`lentOk`, `Run.PosOk`), which is the
+bind and holder clauses AT THAT POSITION. Not proved, for the reasons `borrowPlace_field_sgood` gives
+(the state between the write and the test is not good; the invalidation's ends and its `⊥` writes at
+OTHER positions are not covered by the test: `Strict/FieldWriteCE`). -/
+theorem setContent_field_sgood {s s₁ : SState} (hs : SGood K.dm K.Γ φ s) {p : Place} {f i : Nat}
     {steps : List Step} (hres : resolve s p = some (.bind f i, steps)) (hst : steps ≠ [] ∧ steps ≠ [.deref])
     {v : Sem} (hv : v ∈ₛ[K.dm.read] (placeTy K φ p s).m)
-    (h : setContent K φ (.bind f i) steps v (s.access (.bind f i) (dataHit steps)) = some (⟨⟩, s')) :
-    SGood K.dm K.Γ φ s' := by
+    (h : setContent K φ (.bind f i) steps v (s.access (.bind f i) (dataHit steps)) = some (⟨⟩, s₁))
+    (hok : lentOk K φ p (invalidate K φ p s₁)) :
+    SGood K.dm K.Γ φ (invalidate K φ p s₁) := by
   sorry
-
-theorem heldTy_endLabel (s : SState) (l : Nat) : (s.endLabel l).heldTy = s.heldTy := by
-  unfold SState.endLabel; split <;> rfl
-
-theorem heldMem_endLabel (s : SState) (l : Nat) : (s.endLabel l).heldMem = s.heldMem := by
-  unfold SState.endLabel; split <;> rfl
-
-theorem heldTy_foldl_endLabel : ∀ (ls : List Nat) (s : SState), (ls.foldl SState.endLabel s).heldTy = s.heldTy
-  | [], _ => rfl
-  | l :: ls, s => by rw [List.foldl_cons, heldTy_foldl_endLabel ls, heldTy_endLabel]
-
-theorem heldMem_foldl_endLabel : ∀ (ls : List Nat) (s : SState), (ls.foldl SState.endLabel s).heldMem = s.heldMem
-  | [], _ => rfl
-  | l :: ls, s => by rw [List.foldl_cons, heldMem_foldl_endLabel ls, heldMem_endLabel]
-
-theorem heldTy_access (s : SState) (p : Pos) (hit : List Step → Bool) : (s.access p hit).heldTy = s.heldTy := by
-  unfold SState.access
-  generalize List.range s.liveLabels.length = ns
-  induction ns generalizing s with
-  | nil => rfl
-  | cons n ns ih => rw [List.foldl_cons, ih, heldTy_foldl_endLabel]
-
-theorem heldMem_access (s : SState) (p : Pos) (hit : List Step → Bool) : (s.access p hit).heldMem = s.heldMem := by
-  unfold SState.access
-  generalize List.range s.liveLabels.length = ns
-  induction ns generalizing s with
-  | nil => rfl
-  | cons n ns ih => rw [List.foldl_cons, ih, heldMem_foldl_endLabel]
 
 /-- The type of a place at a root or through `*`: its binding's stored type. -/
 theorem placeTy_root {s : SState} {p : Place} {f i : Nat} {steps : List Step}
@@ -1308,15 +1374,17 @@ theorem placeTy_root {s : SState} {p : Place} {f i : Nat} {steps : List Step}
   · rfl
 
 /-- **An assignment's write** (`assignAt`), the value checked at the place's type at the write and its
-label at that type (the strict `.assign` clause's test).
+label at that type (the strict `.assign` clause's test), then D112's invalidation (`invalidate`), where
+the strict test below a root (`lentOk`) passes.
 
 ADDED HYPOTHESIS `hlou` (`RunPresInd`'s `LoU` for the label written, as in `sgood_pushBindShaped`): a
 borrow written at a root makes the root its holder, so the label is live after; `runT_rinv` concludes it
 of every result. -/
-theorem assignAt_sgood (hMR : MemReads K.dm K.Γ) {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
+theorem assignAt_sgood {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
     (hs : SGood K.dm K.Γ φ s) (hv : v ∈ₛ[K.dm.read] (placeTy K φ p s).m) (hl : labTyOk s R.label (placeTy K φ p s).m)
-    (hlab : LabOk K.dm s (v, R)) (hlou : LoU s R.label) (h : assignAt K φ p v R.label s = some (r, s')) :
-    GoodRes K.dm.read r ∧ LabOk K.dm s' r ∧ SGood K.dm K.Γ φ s' := by
+    (hlab : LabOk K.dm s (v, R)) (hlou : LoU s R.label) (h : assignAt K φ p v R.label s = some (r, s'))
+    (hok : lentOk K φ p (invalidate K φ p s')) :
+    GoodRes K.dm.read r ∧ LabOk K.dm s' r ∧ SGood K.dm K.Γ φ (invalidate K φ p s') := by
   unfold assignAt at h
   cases hres : resolve s p with
   | none => rw [hres] at h; cases h
@@ -1350,7 +1418,8 @@ theorem assignAt_sgood (hMR : MemReads K.dm K.Γ) {p : Place} {v : Sem} {R : TyS
   obtain ⟨rfl, rfl⟩ := h
   refine ⟨.inl ⟨(), rfl⟩, (fun l hl => by cases hl), ?_⟩
   by_cases hst : steps = [] ∨ steps = [.deref]
-  · have hvT : v ∈ₛ[K.dm.read] (s.tyAt (.bind f i)).m := by rw [← placeTy_root hres hst]; exact hv
+  · apply invalidate_sgood
+    have hvT : v ∈ₛ[K.dm.read] (s.tyAt (.bind f i)).m := by rw [← placeTy_root hres hst]; exact hv
     rcases hst with rfl | rfl
     · -- a root: the old borrow ends, the value is written, a written borrow is held there
       obtain ⟨-, -, -, hpos₃, hlou₃, hroot⟩ := assign_mid K φ (fun _ => True) hs₁.acyc hpos₁ hpb hlou₁ hsc
@@ -1370,7 +1439,7 @@ theorem assignAt_sgood (hMR : MemReads K.dm K.Γ) {p : Place} {v : Sem} {R : TyS
         rw [this] at hsc₂; simp only [Option.some.injEq, Prod.mk.injEq] at hsc₂; exact hsc₂.2.symm
       subst e3
       have hs₃ : SGood K.dm K.Γ φ (s₂.setAt (.bind f i) fun _ => v) :=
-        sgood_setAt_const hMR hs₂ (by rw [hty₂]; exact hvT)
+        sgood_setAt_const hs₂ (by rw [hty₂]; exact hvT)
       cases hR : R.label with
       | none => exact hs₃
       | some l =>
@@ -1387,7 +1456,7 @@ theorem assignAt_sgood (hMR : MemReads K.dm K.Γ) {p : Place} {v : Sem} {R : TyS
         simp only [List.isEmpty_cons, Bool.false_eq_true, if_false] at hsc
         rw [this] at hsc; simp only [Option.some.injEq, Prod.mk.injEq] at hsc; exact hsc.2.symm
       subst e3
-      have hs₃ := sgood_setAt_const hMR hs₁ (by rw [hty₁]; exact hvT)
+      have hs₃ := sgood_setAt_const hs₁ (by rw [hty₁]; exact hvT)
       cases R.label <;> exact hs₃
   · -- a field: the dependent-values area
     have hne : steps.isEmpty = false := by
@@ -1397,12 +1466,37 @@ theorem assignAt_sgood (hMR : MemReads K.dm K.Γ) {p : Place} {v : Sem} {R : TyS
     have hs₁a : s₁ = s.access (Pos.bind f i) (dataHit steps) := by rw [← hs₁e, hne]; rfl
     simp only [hne, Bool.false_eq_true, if_false] at hsc
     rw [hs₁a] at hsc
-    have hs₃ := setContent_field_sgood hs hres ⟨fun e => hst (.inl e), fun e => hst (.inr e)⟩ hv hsc
-    cases R.label with
-    | none => exact hs₃
+    cases hR : R.label with
+    | none =>
+      rw [hR] at hok
+      exact setContent_field_sgood hs hres ⟨fun e => hst (.inl e), fun e => hst (.inr e)⟩ hv hsc hok
     | some l =>
       cases steps with
       | nil => exact absurd (.inl rfl) hst
-      | cons _ _ => exact hs₃
+      | cons _ _ =>
+        rw [hR] at hok
+        exact setContent_field_sgood hs hres ⟨fun e => hst (.inl e), fun e => hst (.inr e)⟩ hv hsc hok
+
+open Classical in
+/-- **An assignment's tail, the whole clause after the strict test** (the write, D112's invalidation,
+the strict test below a root). -/
+theorem assign_tail_fund {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
+    (hs : SGood K.dm K.Γ φ s) (hv : v ∈ₛ[K.dm.read] (placeTy K φ p s).m) (hl : labTyOk s R.label (placeTy K φ p s).m)
+    (hlab : LabOk K.dm s (v, R)) (hlou : LoU s R.label)
+    (h : (match assignAt K φ p v R.label s with
+      | some (r, s₁) =>
+        let s₂ := invalidate K φ p s₁
+        if lentOk K φ p s₂ then some (r, s₂) else none
+      | none => none) = some (r, s')) :
+    GoodRes K.dm.read r ∧ LabOk K.dm s' r ∧ LoU s' r.2.label ∧ SGood K.dm K.Γ φ s' := by
+  split at h
+  · rename_i r₀ s₁ ha
+    obtain ⟨hok, h⟩ := open Classical in ite_none_some h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    obtain ⟨hg, -, hs'⟩ := assignAt_sgood hs hv hl hlab hlou ha hok
+    obtain ⟨-, hr, -, -⟩ := assignAt_rinv K φ (fun _ => True) ha hs.acyc hlou
+    exact ⟨hg, (fun l h' => by rw [hr] at h'; cases h'), (fun l h' => by rw [hr] at h'; cases h'), hs'⟩
+  · cases h
 
 end Ochr.Meaning.Strict

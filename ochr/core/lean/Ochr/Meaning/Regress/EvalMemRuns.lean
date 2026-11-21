@@ -239,7 +239,7 @@ theorem mean_nV (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Ass
 
 /-- **A number returned at `Nat` is a member of it**, at every data model, assignment and future. -/
 theorem nV_member (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (ψ : Future) (k : Nat) :
-    DataModel.pmem dm.read Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ .tNat) (nV k))
+    DataModel.pmem dm Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ .tNat) (nV k))
       (Value.tyM dm C Γ ρ (fun _ => .err) .tNat) := by
   rw [mean_nV]
   exact DataModel.pmem_of_mem dm.read Γ (by simp [Sem.whole]) ⟨k, rfl⟩
@@ -267,7 +267,7 @@ open Ochr.Meaning.Regress.DataCodes (semL psN rN semL_memTy) in
 (`dmP`), any assignment, future and hints: it means the tree `[3, 4]`, a member of `List(Nat)`'s code
 (the data layer's `semL_memTy`). -/
 theorem vL_member (C : CodeMeaning) (ρ : Assignment) (ψ : Future) (h₁ h₂ h₃ : Hint) :
-    DataModel.pmem dmP.read [listD]
+    DataModel.pmem dmP [listD]
       (Value.mean dmP C [listD] ρ ψ (Value.tyS dmP C [listD] ρ (.tInd "List" [.tNat])) (vL h₁ h₂ h₃))
       (Value.tyM dmP C [listD] ρ (fun _ => .err) (.tInd "List" [.tNat])) := by
   have e : Value.mean dmP C [listD] ρ ψ (Value.tyS dmP C [listD] ρ (.tInd "List" [.tNat])) (vL h₁ h₂ h₃) = semL [3, 4] := by

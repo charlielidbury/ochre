@@ -88,11 +88,107 @@ theorem movedPlaces_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi :
     · rfl
   · rfl
 
+theorem invalidateOne_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (q : Place) :
+    invalidateOne K φ s q = invalidateOne K φ' s q := by
+  unfold invalidateOne
+  split
+  · rename_i pos steps _
+    dsimp only
+    rw [setContent_congr K hφ (access_rinv hi pos _) pos steps .moved]
+  · rfl
+
+theorem invalidate_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) :
+    invalidate K φ p s = invalidate K φ' p s := by
+  unfold invalidate
+  generalize K.D.invalidated (scopeOf s) p = qs
+  induction qs generalizing s with
+  | nil => rfl
+  | cons q qs ih =>
+    simp only [List.foldl_cons]
+    rw [invalidateOne_congr K hφ hi q]
+    exact ih (invalidateOne_props K φ' L q hi).1
+
+theorem entryCap_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (qk : Place × Nat) :
+    entryCap K φ s qk = entryCap K φ' s qk := by
+  have hi₁ : RInv L (match resolve s qk.1 with | some (pos, steps) => s.access pos (dataHit steps) | none => s) := by
+    split
+    · exact access_rinv hi _ _
+    · exact hi
+  unfold entryCap
+  dsimp only
+  split
+  · exact invalidate_congr K hφ hi₁ qk.1
+  · rfl
+
+theorem entryAccess_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s)
+    (bc : List Place × List (Place × Nat)) : entryAccess K φ bc s = entryAccess K φ' bc s := by
+  unfold entryAccess
+  have hi₁ := (entryAccess_props K φ' L (bc.1, []) hi).1
+  simp only [entryAccess, List.foldl_nil] at hi₁
+  generalize bc.1.foldl entryReroot s = s₁ at hi₁ ⊢
+  generalize bc.2 = qs
+  induction qs generalizing s₁ with
+  | nil => rfl
+  | cons q qs ih =>
+    simp only [List.foldl_cons]
+    rw [entryCap_congr K hφ hi₁ q]
+    exact ih _ (entryCap_props K φ' L _ q hi₁).1
+
+/-- A position's open membership at every typed future reads the run's future only on `L`. -/
+theorem posOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (pos : Pos) :
+    PosOk K φ s pos ↔ PosOk K φ' s pos := by
+  have key : ∀ {φ₁ φ₂ : Future}, (∀ l, L l → φ₁ l = φ₂ l) → PosOk K φ₁ s pos → PosOk K φ₂ s pos := by
+    intro φ₁ φ₂ h12 hp ψ hψ
+    let ψ' : Future := fun l => if l ∈ s.liveLabels then ψ l else φ₁ l
+    have hψ' : TypedFut K φ₁ s ψ' :=
+      ⟨fun l hl => by simp [ψ', hl], fun l hl => by simpa [ψ', hl] using hψ.2 l hl⟩
+    have e : s.valAt pos ψ' = s.valAt pos ψ := hi.1 pos ψ' ψ (fun l hl => by
+      by_cases hm : l ∈ s.liveLabels
+      · simp [ψ', hm]
+      · rcases hl with hL | hlive
+        · simp only [ψ', hm, if_false]; rw [h12 l hL, hψ.1 l hm]
+        · exact absurd hlive hm)
+    rw [← e]; exact hp ψ' hψ'
+  exact ⟨key hφ, key (fun l hl => (hφ l hl).symm)⟩
+
+theorem lentOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) :
+    lentOk K φ p s ↔ lentOk K φ' p s := by
+  unfold lentOk
+  split
+  · rename_i pos steps _
+    exact or_congr Iff.rfl (posOk_congr K hφ hi pos)
+  · exact Iff.rfl
+
+theorem assignAt_congr (hφ : ∀ l, L l → φ l = φ' l) {s₁ : SState} (hi₁ : RInv L s₁) (p : Place) (v : Sem)
+    (lab : Option Nat) : assignAt K φ p v lab s₁ = assignAt K φ' p v lab s₁ := by
+  unfold assignAt
+  cases hr : resolve s₁ p with
+  | none => rfl
+  | some ps =>
+  obtain ⟨pos, steps⟩ := ps
+  dsimp only
+  have hi₂ : RInv L (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
+      else s₁.access pos (dataHit steps)) := by
+    split
+    · exact hi₁
+    · exact access_rinv hi₁ pos _
+  generalize (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
+      else s₁.access pos (dataHit steps)) = s₂ at hi₂ ⊢
+  rw [setContent_congr K hφ ?_ pos steps v]
+  split
+  · split
+    · exact endLabel_rinv hi₂ _
+    · exact hi₂
+  · exact hi₂
+
 /-- [Entry] reads the future only through the places then moved. -/
 theorem matchEntry_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (ent : Bool) (mt : Term) :
     matchEntry K φ ent mt s = matchEntry K φ' ent mt s := by
   unfold matchEntry
   rw [movedPlaces_congr hφ hi]
+  split
+  · simp only [entryAccess_congr K hφ hi]
+  · rfl
 
 theorem foldl_inv {α : Type} (P : SState → Prop) (F : SState → α → SState) (h : ∀ s a, P s → P (F s a)) :
     ∀ (qs : List α) (s : SState), P s → P (qs.foldl F s)
@@ -766,7 +862,21 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     rw [runT, runT]
     exact SM.erasedIf_congr (readPlace_congr K hφ hi p _)
   | tl, .borrow p, hint, s, L, hφ, ht, hi => by
-    rw [runT, runT]; exact SM.erasedIf_congr (SM.strictS_congr (borrowPlace_congr K hφ hi p))
+    rw [runT, runT]
+    refine SM.erasedIf_congr ?_
+    show (match SM.strictS K.dm.read (borrowPlace K φ p) s with
+      | some (r, s₁) => if lentOk K φ p (invalidate K φ p s₁) then some (r, invalidate K φ p s₁) else none
+      | none => none) = (match SM.strictS K.dm.read (borrowPlace K φ' p) s with
+      | some (r, s₁) => if lentOk K φ' p (invalidate K φ' p s₁) then some (r, invalidate K φ' p s₁) else none
+      | none => none)
+    rw [SM.strictS_congr (borrowPlace_congr K hφ hi p)]
+    cases hb : SM.strictS K.dm.read (borrowPlace K φ' p) s with
+    | none => rfl
+    | some y =>
+      obtain ⟨r, s₁⟩ := y
+      have hi₁ : RInv L s₁ := (borrowPlace_rinv K φ' L (SM.strictS_some hb).1 hi).1
+      dsimp only
+      rw [invalidate_congr K hφ hi₁ p, lentOk_congr K hφ (invalidate_props K φ' L p hi₁).1 p]
   | tl, .seq u w, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
@@ -957,26 +1067,15 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     by_cases hcnd : v ∈ₛ[K.dm.read] (placeTy K φ' p s₁).m ∧ labTyOk s₁ R.label (placeTy K φ' p s₁).m
     rotate_left
     · rw [if_neg hcnd, if_neg hcnd]
-    rw [if_pos hcnd, if_pos hcnd]
-    unfold assignAt
-    cases hr : resolve s₁ p with
+    rw [if_pos hcnd, if_pos hcnd, assignAt_congr K hφ hi₁ p v R.label]
+    cases ha : assignAt K φ' p v R.label s₁ with
     | none => rfl
-    | some ps =>
-    obtain ⟨pos, steps⟩ := ps
-    dsimp only
-    have hi₂ : RInv L (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
-        else s₁.access pos (dataHit steps)) := by
-      split
-      · exact hi₁
-      · exact access_rinv hi₁ pos _
-    generalize (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
-        else s₁.access pos (dataHit steps)) = s₂ at hi₂ ⊢
-    rw [setContent_congr K hφ ?_ pos steps v]
-    split
-    · split
-      · exact endLabel_rinv hi₂ _
-      · exact hi₂
-    · exact hi₂
+    | some y =>
+      obtain ⟨r₀, s₃⟩ := y
+      have hy₁ := (runT_rinv K ρ φ L hK false u _ s s₁ _ hi h2).2.1
+      obtain ⟨hi₃, -, -, -⟩ := assignAt_rinv K φ' L ha hi₁ hy₁
+      dsimp only
+      rw [invalidate_congr K hφ hi₃ p, lentOk_congr K hφ (invalidate_props K φ' L p hi₃).1 p]
   | tl, .pi hs ds c, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     have hbs := runBinds_congrE hK s L hφ hi (K.D.paramDecls (scopeOf s) ds) ds []

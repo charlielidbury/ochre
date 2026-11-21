@@ -50,7 +50,8 @@ end HandModel
 
 /-! ## What neither read gives: a partly moved value with its index moved out
 
-`MemReads` also asks the read lemma of every value BELOW a member (`MovedOf`). A field whose type
+The read clause's old data-layer hypothesis (`MemReads`, deleted with the clause: reads are strict,
+`Run.ReadGood`) also asked the read lemma of every value BELOW a member (`MovedOf`). A field whose type
 reads an earlier INDEX field is read at the key of that field's current content; once the index is
 moved out the key is another's, so the whole field reads at the wrong type. Below: `C(n : Nat, v :
 X(n))` at a record where `v` is a `Nat` leaf at every number `n` and nothing at `⊥`. `C(3, 7)` is a
@@ -103,9 +104,12 @@ theorem moved_index_read (dm : DataModel) (Γ : List IndDecl) :
   simp only [Sem.follow, Sem.step, Sem.stepField, gV, hdc, Option.bind]
   simp [show dE.name = "E" from rfl, hrt]
 
-/-- **`MemReads` (its partly moved form) is false even for a declared declaration at a coherent
-record**, in every data model, under the typed read. -/
-theorem not_memReads_dep (dm : DataModel) : ¬ MemReads dm [dE] := by
+/-- **The partly moved read form (the deleted `MemReads`, stated here on its formula) is false even for
+a declared declaration at a coherent record**, in every data model, under the typed read: a whole value
+a read path reaches in a value below a member need not be a member of the type the read gives it. -/
+theorem not_memReads_dep (dm : DataModel) : ¬ ∀ (T : TyS) (w v : Sem), w ∈ₛ[dm.read] T.m →
+    DataModel.MovedOf [dE] v w → ∀ steps x U, Sem.follow dm [dE] T v steps = some (x, U) → x.whole →
+      x ∈ₛ[dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x) := by
   intro h
   rcases h (.plain (dm.tyR dE rE)) _ _ (cE_mem dm) cE_below [.field gV] _ _ (moved_index_read dm [dE])
       (by simp [Sem.whole]) with ⟨a, _⟩ | ⟨-, ⟨T, hT⟩ | hT⟩
