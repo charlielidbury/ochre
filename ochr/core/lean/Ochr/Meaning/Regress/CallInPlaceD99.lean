@@ -62,6 +62,12 @@ theorem access_SPr (c : Sem) (hit : List Step → Bool) : (SPr selfB d c r).acce
     | succ n ih => rw [List.range_succ, List.foldl_append, ih]; simp [liveLabels_SPr, reached_SPr]
   exact h _
 
+theorem contentOk_SPr (c : Sem) : ContentOk (Kc dm) φ (.deref (.var 0)) (SPr selfB d c r) := by
+  unfold ContentOk
+  rw [show resolve (SPr selfB d c r) (.deref (.var 0)) = some (.bind 1 1, [.deref]) by
+    simp [resolve, SState.varPos, SState.topIdx, Place.steps, SPr]]
+  exact Attack.accessOk_unreached _ φ fun l => reached_SPr selfB d c _ l
+
 theorem typedFuture_SPr (c : Sem) (ψ : Future) : (SPr selfB d c r).typedFuture ψ = ψ.upd 0 r := by
   funext l; unfold SState.typedFuture; rw [liveLabels_SPr]
   by_cases hl : l = 0 <;> simp [hl, SPr, Future.upd]
@@ -79,7 +85,8 @@ theorem contentOf_SPr (c : Sem) :
 theorem run_id1_r (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint id1Body (SPr selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, { T₀ with label := some 2 }), SPr2 selfB d T₀.m (.el0 Nat a) r) := by
-  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS,
+    SM.guarded_of (contentOk_SPr dm φ selfB d (.el0 Nat a))]
   unfold borrowPlace
   simp only [contentOf_SPr, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
@@ -90,7 +97,7 @@ theorem run_id1_r (a : Nat) (hint : TyS) (tl : Bool) :
   dsimp only
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  all_goals first | rfl | exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Place.steps, SPr, yFrame, Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)])
+  all_goals first | rfl | exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Place.steps, SPr, yFrame, Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)])⟩
 
 end
 
