@@ -785,7 +785,14 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
           · exact ⟨hi₂, hy₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
         refine hj _ ?_
         cases tg <;> first | exact .inr rfl | (dsimp only; split; exact .inr rfl; exact .inl rfl)
-    · cases h
+    · -- an erased match on a proof with other than one arm: the state as it was, no label
+      split at h
+      · obtain ⟨c, R, s₂, -, -, hr, hs'⟩ := SM.anyArm_some h
+        subst hr hs'
+        refine ⟨hi₁, ?_, e₁, o₁⟩
+        intro y hl
+        cases hl
+      · cases h
   | tl, .call f args hd, hint, s, s', r, hi, h => by
     rw [runT] at h
     dsimp only at h

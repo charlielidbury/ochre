@@ -128,6 +128,46 @@ theorem SM.erasedIf_erased {fl : Bool × Bool} {x : SM (Sem × TyS)} {s s' : SSt
   · cases h
   · cases h
 
+/-- A run that returned a proof. -/
+def SM.ranProof : Option ((Sem × TyS) × SState) → Bool
+  | some ((.proof, _), _) => true
+  | _ => false
+
+/-- An erased match on a proof with other than one arm (`Or` eliminated into a proposition, the
+lead's ruling 3 of 2026-11-21): the scrutinee, a proof, chooses no arm, so the arms run, each on a
+copy of the state, and the match runs where one of them runs to a proof, at that arm's type, the
+state as it was, no label. No arm runs (none exists, or every one fails, as on an empty
+proposition, of which there is no member): the match fails. The test is computable. -/
+noncomputable def SM.anyArm (n : Nat) (f : Nat → SM (Sem × TyS)) : SM (Sem × TyS) := fun s =>
+  match (List.range n).find? (fun c => SM.ranProof (f c s)) with
+  | some c => (f c s).map fun x => ((x.1.1, { x.1.2 with label := none }), s)
+  | none => none
+
+/-- The arm `SM.anyArm` takes: one that ran to a proof; the state as it was, the label dropped. -/
+theorem SM.anyArm_some {n : Nat} {f : Nat → SM (Sem × TyS)} {s s' : SState} {r : Sem × TyS}
+    (h : SM.anyArm n f s = some (r, s')) :
+    ∃ c R s₁, c < n ∧ f c s = some ((.proof, R), s₁) ∧ r = (.proof, { R with label := none }) ∧ s' = s := by
+  unfold SM.anyArm at h
+  split at h
+  · rename_i c hc
+    have hmem := List.mem_of_find?_eq_some hc
+    have hp := List.find?_some hc
+    cases hf : f c s with
+    | none => rw [hf] at h; cases h
+    | some x =>
+      obtain ⟨⟨v, R⟩, s₁⟩ := x
+      rw [hf] at h hp
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      cases v <;> simp [SM.ranProof] at hp
+      exact ⟨c, R, s₁, List.mem_range.mp hmem, hf, rfl, rfl⟩
+  · cases h
+
+/-- `SM.anyArm` of pointwise equal runs. -/
+theorem SM.anyArm_congr {n : Nat} {f g : Nat → SM (Sem × TyS)} {s : SState} (h : ∀ c, f c s = g c s) :
+    SM.anyArm n f s = SM.anyArm n g s := by
+  simp only [SM.anyArm, h]
+
 /-- A term read as a call reads its head, and as `clone`, `peek` and `inplace` read their
 operand: a place in place (`rd`: not consumed, D53 (e)), anything else by its run (`rn`). -/
 def SM.headOf (f : Term) (rd : Place → SM (Sem × TyS)) (rn : SM (Sem × TyS)) : SM (Sem × TyS) :=
@@ -873,7 +913,10 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       some ((r, R), match tg with
         | .proof => s
         | _ => if one then s else lend R.label (joinDrop K φ entry (.matchInd p n arms) s))
-    | none => none) s
+    -- an erased match on a proof with other than one arm: the arms on copies (`SM.anyArm`)
+    | none => match tg with
+      | .proof => SM.anyArm arms.length (fun c => runArm tl hint c arms) s
+      | _ => none) s
   | .tind n args => do
     match K.Γ.find? (·.name == n) with
     | some d =>

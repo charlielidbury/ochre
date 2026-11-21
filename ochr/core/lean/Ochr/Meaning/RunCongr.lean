@@ -923,7 +923,11 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
       apply Option.bind_congr' (runArm_congrE hK tl arms hint c s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
       rintro ⟨⟨r, R⟩, s₂⟩ h2
       rw [joinDrop_congr K hφ _ _ (runArm_rinv K ρ φ L hK tl arms hint c s₁ s₂ _ hi₁ h2).1]
-    · rfl
+    · -- an erased match on a proof with other than one arm: each arm's run on the copy agrees
+      split
+      · exact SM.anyArm_congr fun c =>
+          runArm_congrE hK tl arms hint c s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁
+      · rfl
   | tl, .letIn x u w, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_

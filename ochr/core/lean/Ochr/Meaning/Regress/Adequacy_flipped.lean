@@ -63,18 +63,38 @@ theorem erased_on_copy (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (s
     s' = s ∧ r = (.proof, .plain (TyM.prop True)) := by
   cases t <;> simp at ht <;> (rw [run, runT] at h; exact SM.erasedIf_erased hfl h)
 
-/-- Under the strict run an erased match on a proof with other than one arm fails: its clause, run
-on the copy, finds the tag `•` and no arm to take (a proof scrutinee is matched by its type, D45,
-only where its proposition has one constructor). The checker accepts such matches whose result
-is a proof: `Subsingletons.OrComm`, `OrElim`, `OrLet` (two arms on `Or`) and `Propositions.absurdP`
-(no arms on `False`) in `Examples/Propositions.lean`. On `Or` the run then fails where the checker
-succeeds, at members (on `False` there is no member to run at). -/
-theorem erased_match_proof_fails (p : Place) (n : String) (arms : List (Hint × Term)) (hint : TyS)
+/-- **What was wrong, and what is left of it** (the lead's ruling 3, 2026-11-21). At a24fc76f the
+strict run failed EVERY erased match on a proof with other than one arm: its clause found the tag
+`•` and no arm to take (a proof scrutinee was matched by its type, D45, only where its proposition
+has one constructor). The checker accepts such matches whose result is a proof:
+`Subsingletons.OrComm`, `OrElim`, `OrLet` (two arms on `Or`) and `Propositions.absurdP` (no arms on
+`False`) in `Examples/Propositions.lean`, so on `Or` the run failed where the checker succeeds, at
+members. Now the arms run, each on a copy (`SM.anyArm`), and the match fails only where no arm
+runs to a proof: as with no arms (an empty proposition: no member to run at), or every arm failing. -/
+theorem erased_match_proof_fails (p : Place) (n : String) (arms : List (Hint × Term)) (hint : TyS) (tl : Bool)
     (s s₁ : SState) (hfl : (K.D.flags (scopeOf s) (.matchInd p n arms)).2 = true)
-    (htag : tagOf K φ p indTag s = some (.proof, s₁)) (harms : arms.length ≠ 1) :
-    run K ρ φ hint (.matchInd p n arms) s = none := by
-  rw [run, runT]
-  simp [SM.erasedIf, hfl, htag, harms, bind, Option.bind]
+    (htag : tagOf K φ p indTag s = some (.proof, s₁)) (harms : arms.length ≠ 1)
+    (hno : ∀ c, SM.ranProof (runArm K ρ φ tl hint c arms s₁) = false) :
+    runT K ρ φ tl hint (.matchInd p n arms) s = none := by
+  rw [runT]
+  simp only [SM.erasedIf, hfl, if_true, bind, Option.bind, htag, matchEntry, Sem.isProof, Bool.not_true,
+    Bool.and_false, Bool.false_and, if_false, harms]
+  have hf : List.find? (fun _ => false) (List.range arms.length) = none := by
+    rw [List.find?_eq_none]; intro _ _; exact Bool.false_ne_true
+  simp [SM.anyArm, hno, hf]
+
+/-- **`OrComm`'s shape runs** (ruling 3): an erased match on a proof with two arms, the first failing
+(its constructor's field proposition false, say) and the second running to a proof, runs: `•` at
+`True`, the state as it was. -/
+theorem erased_match_proof_runs (p : Place) (n : String) (h₁ h₂ : Hint) (t₁ t₂ : Term) (hint : TyS) (tl : Bool)
+    (s s₁ s₂ : SState) (R : TyS) (hfl : (K.D.flags (scopeOf s) (.matchInd p n [(h₁, t₁), (h₂, t₂)])).2 = true)
+    (htag : tagOf K φ p indTag s = some (.proof, s₁))
+    (h1 : runT K ρ φ tl hint t₁ s₁ = none) (h2 : runT K ρ φ tl hint t₂ s₁ = some ((.proof, R), s₂)) :
+    runT K ρ φ tl hint (.matchInd p n [(h₁, t₁), (h₂, t₂)]) s = some ((.proof, .plain (TyM.prop True)), s) := by
+  rw [runT]
+  simp only [SM.erasedIf, hfl, if_true, bind, Option.bind, htag, matchEntry, Sem.isProof, Bool.not_true,
+    Bool.and_false, Bool.false_and, if_false]
+  simp [SM.anyArm, runArm, h1, h2, SM.ranProof, List.range, List.range.loop]
 
 /-- The audit's A9: a field of type `A` (the one parameter) given a `Nat` solves `A := Nat`
 (`Pair(a, b)`, `Cons(x, xs)`'s head). -/

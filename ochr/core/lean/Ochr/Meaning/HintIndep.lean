@@ -104,6 +104,35 @@ theorem erasedIf_resVS_congr (fl : Bool × Bool) {x x' : SM Res} {s : SState} (h
     cases v <;> rfl
   · exact stmtIf_resVS_congr _ h
 
+/-- An erased match on a proof keeps the equality of its arms' runs up to their types. -/
+theorem anyArm_resVS {n : Nat} {f g : Nat → SM Res} {s : SState}
+    (h : ∀ c, (f c s).map resVS = (g c s).map resVS) :
+    (SM.anyArm n f s).map resVS = (SM.anyArm n g s).map resVS := by
+  have key : ∀ c, SM.ranProof (f c s) = SM.ranProof (g c s) ∧
+      ((f c s).map fun x => ((x.1.1, { x.1.2 with label := none }), s)).map resVS =
+      ((g c s).map fun x => ((x.1.1, { x.1.2 with label := none }), s)).map resVS := by
+    intro c
+    have hc := h c
+    cases hf : f c s with
+    | none => cases hg : g c s with
+      | none => simp
+      | some y => rw [hf, hg] at hc; cases hc
+    | some x => cases hg : g c s with
+      | none => rw [hf, hg] at hc; cases hc
+      | some y =>
+        rw [hf, hg] at hc
+        obtain ⟨⟨v, R⟩, s₁⟩ := x
+        obtain ⟨⟨v', R'⟩, s₂⟩ := y
+        simp only [Option.map_some, Option.some.injEq, resVS, Prod.mk.injEq] at hc
+        obtain ⟨rfl, -, -⟩ := hc
+        cases v <;> simp [resVS, SM.ranProof]
+  unfold SM.anyArm
+  have hp : (fun c => SM.ranProof (f c s)) = (fun c => SM.ranProof (g c s)) := funext fun c => (key c).1
+  rw [hp]
+  split
+  · rename_i c _; exact (key c).2
+  · rfl
+
 mutual
 /-- **A run with a hint-free tail reads no hint**: same value, same state at every hint. -/
 theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = true → ∀ (h h' : TyS) (s : SState),
@@ -154,6 +183,7 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
       all_goals first
         | rfl
         | exact bind_resVS_congr (runArm_hintIndep tl arms ht _ h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
+        | (split <;> first | rfl | exact anyArm_resVS fun c => runArm_hintIndep tl arms ht c h h' _)
   | tl, .ctor ty c hd ps args, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [runT, runT]

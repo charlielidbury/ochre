@@ -204,7 +204,9 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     · rename_i c _
       apply Option.bind_congr' (runArm_congrA tl arms hint c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
       intro _ _; rfl
-    · rfl
+    · split
+      · exact SM.anyArm_congr fun c => runArm_congrA tl arms hint c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h])
+      · rfl
   | tl, .letIn x u w, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_

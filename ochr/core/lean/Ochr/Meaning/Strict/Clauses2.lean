@@ -254,7 +254,16 @@ theorem fund_matchInd (hc : FundCtx K) {p : Place} {n : String} {arms : List (Hi
       · split
         · exact ⟨hg, hlab, hlou, hs₄⟩
         · exact fund_join hc lend hlend _ _ hg hlab hlou hs₄
-  · cases h₀
+  · -- an erased match on a proof with other than one arm: an arm ran, on a copy, to a proof at a
+    -- type the lemma at the arm makes good; the state as it was, no label
+    split at h₀
+    · obtain ⟨c, R, s₄, -, h2, hr, hs'⟩ := SM.anyArm_some h₀
+      subst hr hs'
+      obtain ⟨hg, -, -, -⟩ := fund_runArmS arms ha tl hint c _ _ _ hs₁' h2
+      refine ⟨hg, ?_, ?_, hs₁'⟩
+      · intro l hl; simp at hl
+      · intro l hl; simp at hl
+    · cases h₀
 
 end
 
