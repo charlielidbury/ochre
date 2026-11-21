@@ -162,8 +162,8 @@ theorem rel_afterEnd {π : Nat → Nat} {st : MState} {s t : SState} {l : Nat} {
       Value.mean dm C Γ ρ φ hint xv = cx)
     (ht_skel : t.env.map (fun fr => fr.binds.map bindSkel) = s.env.map (fun fr => fr.binds.map bindSkel))
     (ht_shape : ∀ p, t.shape p = none) (ht_nl : t.nextLoan = s.nextLoan)
-    (ht_y : ∀ ψ, t.valAt (.bind 0 1) ψ = .moved) (ht_x : ∀ ψ, t.valAt (.bind 0 0) ψ = cx)
-    (ht_o : ∀ f i, Pos.bind f i ≠ .bind 0 0 → Pos.bind f i ≠ .bind 0 1 → ∀ ψ, t.valAt (.bind f i) ψ = .err) :
+    (ht_y : t.valAt (.bind 0 1) φ = .moved) (ht_x : t.valAt (.bind 0 0) φ = cx)
+    (ht_o : ∀ f i, Pos.bind f i ≠ .bind 0 0 → Pos.bind f i ≠ .bind 0 1 → t.valAt (.bind f i) φ = .err) :
     Rel K ρ φ π { st with env := Env.setAtE (Env.setAtE st.env (.bind 0 1) .bot) (.bind 0 0) xv } t := by
   have hpos' : allPos (Env.setAtE (Env.setAtE st.env (.bind 0 1) .bot) (.bind 0 0) xv) = [.bind 0 0, .bind 0 1] := by
     rw [allPos_setAtE, allPos_setAtE, hpre.pos]
@@ -223,13 +223,17 @@ theorem rel_afterEnd {π : Nat → Nat} {st : MState} {s t : SState} {l : Nat} {
       simp only [Value.anyAtom, Bool.or_false, show (Value.bot == Value.loan l') = false from rfl,
         Bool.false_or] at ha
       cases ha
-  · intro ψ _ p hp
+  · intro ψ hψ p hp
+    have hψφ : ψ = φ := funext fun z => hψ.1 z (fun h => by
+      obtain ⟨q, -, hq⟩ := (SState.live_iff t z).mp h; rw [ht_shape] at hq; cases hq)
+    subst hψφ
     cases p with
     | temp => exact absurd trivial hp
     | bind f i =>
       show Env.mean K.dm K.M K.Γ ρ _ (Env.setAtE (Env.setAtE st.env (.bind 0 1) .bot) (.bind 0 0) xv) (.bind f i) = _
       by_cases hx0 : Pos.bind f i = .bind 0 0
-      · rw [hx0, mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ (by rw [hpos']; simp), hval', if_pos rfl, ht_x]; exact hcx _ _ _ _ _ _
+      · rw [hx0, mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ (by rw [hpos']; simp), hval', if_pos rfl, ht_x]
+        exact hcx _ _ _ _ _ _
       · by_cases hy0 : Pos.bind f i = .bind 0 1
         · rw [hy0, mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ (by rw [hpos']; simp), hval', if_neg (by simp), if_pos rfl, ht_y]
           rfl
@@ -249,6 +253,223 @@ theorem rel_afterEnd {π : Nat → Nat} {st : MState} {s t : SState} {l : Nat} {
     obtain ⟨p, -, hp⟩ := (SState.live_iff t l').mp hl'
     rw [ht_shape] at hp; cases hp
   · intro p q l' hp; rw [ht_shape] at hp; cases hp
+
+end
+
+/-! ## The step -/
+
+section
+variable {K : RunCtx} {ρ : Assignment} {φ : Future}
+
+theorem asg_afterEnd {st : MState} {xv : Value} (ha : Asg K ρ st.norm) (hxv : ∀ σ, xv.hasAbs σ = false) :
+    Asg K ρ ({ st with env := Env.setAtE (Env.setAtE st.env (.bind 0 1) .bot) (.bind 0 0) xv } : MState).norm := by
+  refine ha.of_refd rfl rfl rfl rfl rfl (refd_sub rfl rfl rfl rfl ?_ ?_ ?_)
+  · intro w hw σ hσ
+    rcases mem_values_setAtE hw with rfl | hw'
+    · rw [hxv] at hσ; cases hσ
+    · rcases mem_values_setAtE hw' with rfl | hw₂
+      · cases hσ
+      · exact ⟨w, hw₂, hσ⟩
+  · intro f' i' b' T σ hb' hT hσ
+    obtain ⟨b₂, hb₂, hty₂, -⟩ := lookup_setAtE hb'
+    obtain ⟨b₃, hb₃, hty₃, -⟩ := lookup_setAtE hb₂
+    exact .ty f' i' b₃ T (by rw [show st.norm.env = st.env.erase from rfl, lookup_erase]; exact hb₃)
+      (by rw [hty₃, hty₂]; exact hT) hσ
+  · intro f' i' b' P ws j' σ hb' hl hσ
+    obtain ⟨b₂, hb₂, -, hlz₂⟩ := lookup_setAtE hb'
+    obtain ⟨b₃, hb₃, -, hlz₃⟩ := lookup_setAtE hb₂
+    exact .lazyTy f' i' b₃ P ws j' (by rw [show st.norm.env = st.env.erase from rfl, lookup_erase]; exact hb₃)
+      (by rw [hlz₃, hlz₂]; exact hl) hσ
+
+/-- **The read of `x` that ends `y`'s borrow, at `evalCore`** (`B`'s read: `ReadPre`). The strict
+run's end passes (`EndOk`: `y`'s content is a whole member of `Nat` at every typed future, through
+the relation); the value read is `w`, read through the future at `y`'s content. -/
+theorem readEnd_core (hVE : VarEndInv) (hIC : InvCore) {n : Nat} {P : MState → Prop}
+    (hP : ∀ st, P st → ∃ l w, ReadPre st l w) :
+    CoreSim K ρ φ (n + 1) (.place (.var 1)) P (· = true) := by
+  intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl hok hD bh h
+  subst hty
+  obtain ⟨l, w, hpre⟩ := hP st hPst
+  have hAR : AtRead K ρ st l w := hpre.atRead
+  obtain ⟨rfl, hT, -, st₁, hq, hcopy, hmove⟩ :=
+    hVE n true hint st st' bh v T? l w K.D hm hpre.pos hpre.x hpre.y hpre.num hpre.tyx hD h
+  obtain ⟨mw, hmw⟩ := hpre.num.vmean
+  obtain ⟨bx, hlkx, -⟩ := hpre.lookup 0 (by omega)
+  obtain ⟨byy, hlky, -⟩ := hpre.lookup 1 (by omega)
+  obtain ⟨hxs, htyX⟩ := rel_bind_ty hr hlkx
+  obtain ⟨hys, htyY⟩ := rel_bind_ty hr hlky
+  have htyXn : (s.tyAt (.bind 0 0)).m = TyM.nat := by rw [htyX]; exact hAR.tx
+  have htyYn : (s.tyAt (.bind 0 1)).m = TyM.nat := by rw [htyY]; exact hAR.ty
+  obtain ⟨hy, honly⟩ := atRead_shape hr hAR
+  have hlive := atRead_live hr hAR
+  have hhold := atRead_holder hr hAR
+  have hnone := atRead_none hr hAR
+  have hacc := atRead_access hr hAR
+  have hres : resolve s (.var 1) = some (.bind 0 0, []) := rel_resolve_ck K ρ φ st s π (.var 1) _ hr hpre.ckx
+  -- `y` means `w`, `x` the label's final content, wherever the relation compares
+  have hyv : ∀ ψ, RelF φ s ψ ∧ TypedLive K s ψ → s.valAt (.bind 0 1) ψ = .el0 Nat mw := fun ψ hψ => by
+    rw [← hr.sim.1 ψ hψ (.bind 0 1) (by simp [IsTemp])]
+    show Env.mean K.dm K.M K.Γ ρ _ st.env (.bind 0 1) = _
+    rw [mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ (by rw [hpre.pos]; simp), hpre.y]; exact hmw _ _ _ _ _ _
+  have hxv : ∀ ψ, RelF φ s ψ ∧ TypedLive K s ψ → s.valAt (.bind 0 0) ψ = ψ (π l) := fun ψ hψ => by
+    rw [← hr.sim.1 ψ hψ (.bind 0 0) (by simp [IsTemp])]
+    show Env.mean K.dm K.M K.Γ ρ _ st.env (.bind 0 0) = _
+    rw [mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ (by rw [hpre.pos]; simp), hpre.x]; rfl
+  have hhty : holderTy s (π l) = TyM.nat := by
+    unfold holderTy; rw [hhold]; exact htyYn
+  have hheld : s.heldTy (π l) = TyM.nat := by rw [heldTy_eq_holderTy hS ((hlive _).mpr rfl), hhty]
+  -- the strict end passes
+  have hend : EndOk K φ s (π l) := by
+    intro r hr' ψ hψ
+    rw [hhold] at hr'; cases hr'
+    rw [hyv ψ (typedFut_rel hS hψ), hheld]; exact ⟨mw, rfl⟩
+  have hcok : ContentOk K φ (.var 1) s := by
+    unfold ContentOk; rw [hres]; exact accessOk_single hlive hnone hend
+  -- the lender read through the future at the holder's content
+  have hrel : ∀ X : Sem, X.whole → X ∈ₛ[K.dm.read] TyM.nat →
+      RelF φ s (φ.upd (π l) X) ∧ TypedLive K s (φ.upd (π l) X) := fun X hw hm' =>
+    ⟨fun z hz => by
+        have : z ≠ π l := fun e => hz ((hlive z).mpr e)
+        simp [Future.upd, this],
+     fun z hz => by
+        obtain rfl := (hlive z).mp hz
+        simp only [Future.upd, if_true]; rw [hhty]; exact ⟨hw, hm'⟩⟩
+  have hyφ : s.valAt (.bind 0 1) φ = .el0 Nat mw := by
+    rw [← hS.holderIndep hy φ (s.heldMem (π l))]
+    apply hyv
+    have hrec := hr.records (π l) ((hlive _).mpr rfl)
+    rw [hhty] at hrec
+    exact hrel _ hrec.1 hrec.2
+  have hxφ : s.valAt (.bind 0 0) (φ.upd (π l) (.el0 Nat mw)) = .el0 Nat mw := by
+    rw [hxv (φ.upd (π l) (.el0 Nat mw)) (hrel (.el0 Nat mw) (by simp [Sem.whole]) ⟨mw, rfl⟩)]; simp [Future.upd]
+  have hnone' : ∀ z, ¬ (s.endAt (π l) (.bind 0 1)).Live z := by rw [← SState.endLabel_eq hhold]; exact hnone
+  have htf : (s.endAt (π l) (.bind 0 1)).typedFuture φ = φ := funext fun z => by
+    have : z ∉ (s.endAt (π l) (.bind 0 1)).liveLabels := hnone' z
+    simp [SState.typedFuture, this]
+  have hx' : (s.endAt (π l) (.bind 0 1)).valAt (.bind 0 0) φ = .el0 Nat mw := by
+    rw [SState.endAt_valAt _ _ _ _ hxs]; simp only [if_neg (show Pos.bind 0 0 ≠ .bind 0 1 by simp)]; rw [hyφ, hxφ]
+  have hy' : (s.endAt (π l) (.bind 0 1)).valAt (.bind 0 1) φ = .moved := by
+    rw [SState.endAt_valAt _ _ _ _ hys]; simp
+  have htyE : ∀ q, (s.endAt (π l) (.bind 0 1)).tyAt q = s.tyAt q := fun q => by
+    unfold SState.endAt; rw [Strict.tyAt_mapVals]; rfl
+  have hshE : ∀ q, (s.endAt (π l) (.bind 0 1)).shape q = none := fun q => by
+    rw [SState.endAt_shape]
+    show (if q = .bind 0 1 then none else s.shape q) = none
+    split
+    · rfl
+    · next h =>
+      rcases e : s.shape q with _ | z
+      · rfl
+      · exact absurd (honly q z e).1 h
+  have hpos_s : ∀ f i, Pos.bind f i ∈ s.positions → Pos.bind f i = .bind 0 0 ∨ Pos.bind f i = .bind 0 1 := by
+    intro f i h
+    obtain ⟨-, hfrm⟩ := rel_frames K ρ φ hr
+    rw [SState.mem_positions] at h
+    simp only [SState.lookup] at h
+    rcases e : s.env[f]? with _ | fr
+    · rw [e] at h; cases h
+    · rw [e] at h
+      have hi : i < fr.binds.length := by
+        rcases e2 : fr.binds[i]? with _ | b
+        · simp [e2] at h
+        · exact (List.getElem?_eq_some_iff.mp e2).1
+      have h2 := hfrm f
+      rw [e] at h2
+      rcases e' : st.env[f]? with _ | fr'
+      · rw [e'] at h2; cases h2
+      · rw [e'] at h2
+        simp only [Option.map_some, Option.some.injEq] at h2
+        have hi' : i < fr'.binds.size := by rw [← h2]; exact hi
+        have hm := bind_mem_allPos st.env f i fr' _ e' (Array.getElem?_eq_getElem hi')
+        rw [hpre.pos] at hm
+        simpa using hm
+  have ho_s : ∀ f i, Pos.bind f i ≠ .bind 0 0 → Pos.bind f i ≠ .bind 0 1 →
+      (s.endAt (π l) (.bind 0 1)).valAt (.bind f i) φ = .err := fun f i h0 h1 => by
+    have hn : Pos.bind f i ∉ s.positions := fun hm => by
+      rcases hpos_s f i hm with e | e
+      · exact h0 e
+      · exact h1 e
+    rw [SState.endAt_valAt_not_mem _ _ _ _ hn, SState.valAt_of_not_mem _ _ hn]
+  have hco : contentOf K φ (.var 1) s =
+      some ((.el0 Nat mw, (s.endAt (π l) (.bind 0 1)).tyAt (.bind 0 0), .bind 0 0, []), s.endAt (π l) (.bind 0 1)) := by
+    unfold contentOf; rw [hres]; simp only; rw [hacc, htf]; simp [Sem.follow, hx']
+  have hrg : ReadGood K.dm.read ((s.endAt (π l) (.bind 0 1)).tyAt (.bind 0 0)).m (.el0 Nat mw) :=
+    .inl (by rw [htyE, htyXn]; exact ⟨mw, rfl⟩)
+  have hwhole : (Sem.el0 Nat mw).whole := by simp [Sem.whole]
+  have hsc : scopeOf s = DecideScope.topReadings st := scopeOf_rel hr
+  have hrun : runT K ρ φ st.curTail (hintM K ρ hint) (.place (.var 1)) s =
+      readPlace K φ (.var 1) (K.D.copy (K.D.placeDecl (DecideScope.topReadings st) (.var 1))) s := by
+    rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _; rw [hfl, hsc]
+    show SM.guarded _ _ s = _; unfold SM.guarded; rw [if_pos hcok]
+  -- the checker's side after the quiet step
+  have hpre₁ : ReadPre st₁ l v := hpre.of_erase hq.env
+  have hr₁ : Rel K ρ φ π st₁ s := hr.of_quiet hq hp.labels
+  have ha₁ : Asg K ρ st₁.norm := Asg.of_quiet hq hp.asg hp.inv.wf6
+  have hinv := hIC (n + 1) true (.place (.var 1)) hint st st' bh v T? K.D K.Γ (.var 1) hp.inv hD h
+  have hmeanV : ∀ ψ hint', meanV K ρ ψ hint' v = .el0 Nat mw := fun ψ hint' => by
+    rw [← meanV_eq_mean]; exact hmw _ _ _ _ _ _
+  have hagree : ∀ T, T? = some T →
+      StrAgree K ρ T { (s.endAt (π l) (.bind 0 1)).tyAt (.bind 0 0) with label := none } := by
+    intro T e
+    have := hT rfl; rw [this] at e; cases e
+    show _ = ((s.endAt (π l) (.bind 0 1)).tyAt (.bind 0 0)).m; rw [htyE, htyXn]; rfl
+  have hskel := skel_endAt s (π l) (.bind 0 1)
+  have hnl : (s.endAt (π l) (.bind 0 1)).nextLoan = s.nextLoan := rfl
+  cases hc : K.D.copy (K.D.placeDecl (DecideScope.topReadings st) (.var 1))
+  · -- a move: `⊥` at `x`
+    have hk := hmove hc
+    have hset : setContent K φ (.bind 0 0) [] .moved (s.endAt (π l) (.bind 0 1)) =
+        some (⟨⟩, (s.endAt (π l) (.bind 0 1)).setAt (.bind 0 0) fun φ' =>
+        (Sem.updAt K.dm K.Γ ((s.endAt (π l) (.bind 0 1)).tyAt (.bind 0 0)) (fun _ => .moved) []
+          ((s.endAt (π l) (.bind 0 1)).valAt (.bind 0 0) φ')).getD .err) := by
+      unfold setContent; rw [if_pos (by intro ψ _; rfl)]
+    have hst : readPlace K φ (.var 1) false s = some ((.el0 Nat mw,
+        { (s.endAt (π l) (.bind 0 1)).tyAt (.bind 0 0) with label := none }),
+        (s.endAt (π l) (.bind 0 1)).setAt (.bind 0 0) fun φ' =>
+          (Sem.updAt K.dm K.Γ ((s.endAt (π l) (.bind 0 1)).tyAt (.bind 0 0)) (fun _ => .moved) []
+            ((s.endAt (π l) (.bind 0 1)).valAt (.bind 0 0) φ')).getD .err) := by
+      unfold readPlace
+      rw [hco]
+      simp only [Option.bind_some, hwhole, hrg, not_true_eq_false, if_false, Bool.false_eq_true, List.isEmpty_nil,
+        hshE, hset, bind, Option.bind]
+      rfl
+    have hxE : Pos.bind 0 0 ∈ (s.endAt (π l) (.bind 0 1)).positions := by rw [SState.endAt_positions]; exact hxs
+    have hR := rel_afterEnd (cx := .moved) hr₁ hpre₁ (.inr rfl) (fun _ _ _ _ _ _ => rfl)
+      (t := (s.endAt (π l) (.bind 0 1)).setAt (.bind 0 0) fun φ' =>
+          (Sem.updAt K.dm K.Γ ((s.endAt (π l) (.bind 0 1)).tyAt (.bind 0 0)) (fun _ => .moved) []
+            ((s.endAt (π l) (.bind 0 1)).valAt (.bind 0 0) φ')).getD .err)
+      ((skel_setAt _ _ _).trans hskel) (fun q => by rw [SState.shape_setAt]; exact hshE q)
+      (by rw [SState.nextLoan_setAt']; rfl)
+      (by rw [SState.valAt_setAt_ne _ _ _ _ (by simp)]; exact hy')
+      (by rw [valAt_setAt_self _ _ _ hxE]; rfl)
+      (fun f i h0 h1 => by rw [SState.valAt_setAt_ne _ _ _ _ (Ne.symm h0)]; exact ho_s f i h0 h1)
+    refine ⟨ρ, K.Δ, π, _, _, ⟨by rw [← hk.absTy]; exact hq.absSize, by rw [← hk.nextLoan]; exact hq.nextLoan,
+      fun _ _ => ⟨rfl, rfl⟩, fun _ _ => rfl⟩, by rw [hrun, hc]; exact hst, hmeanV _ _, hagree,
+      by simp [num_heldLabel hpre.num], ?_, ?_⟩
+    · refine ⟨hp.ctx.of_eq ?_ ?_, hinv, ?_⟩
+      · show st'.inds = st.inds; rw [← hk.inds, ← hq.inds]
+      · show st'.globals = st.globals; rw [← hk.globals, ← hq.globals]
+      · have : Asg K ρ st'.norm := by rw [← hk.norm]; exact asg_afterEnd ha₁ (fun _ => rfl)
+        exact asg_withTempT_num this hpre.num T?
+    · exact rel_withTempT_num (hR.of_kern hk) hpre.num T?
+  · -- a copy: `w` back at `x`
+    have hk := hcopy hc
+    have hst : readPlace K φ (.var 1) true s = some ((.el0 Nat mw,
+        { (s.endAt (π l) (.bind 0 1)).tyAt (.bind 0 0) with label := none }), s.endAt (π l) (.bind 0 1)) := by
+      unfold readPlace
+      rw [hco]
+      simp only [hwhole, hrg, not_true_eq_false, if_false, if_true, bind, Option.bind]
+    have hR := rel_afterEnd (cx := .el0 Nat mw) hr₁ hpre₁ (.inl rfl) hmw (t := s.endAt (π l) (.bind 0 1))
+      hskel hshE hnl hy' hx' ho_s
+    refine ⟨ρ, K.Δ, π, _, _, ⟨by rw [← hk.absTy]; exact hq.absSize, by rw [← hk.nextLoan]; exact hq.nextLoan,
+      fun _ _ => ⟨rfl, rfl⟩, fun _ _ => rfl⟩, by rw [hrun, hc]; exact hst, hmeanV _ _, hagree,
+      by simp [num_heldLabel hpre.num], ?_, ?_⟩
+    · refine ⟨hp.ctx.of_eq ?_ ?_, hinv, ?_⟩
+      · show st'.inds = st.inds; rw [← hk.inds, ← hq.inds]
+      · show st'.globals = st.globals; rw [← hk.globals, ← hq.globals]
+      · have : Asg K ρ st'.norm := by rw [← hk.norm]; exact asg_afterEnd ha₁ hpre.num.hasAbs
+        exact asg_withTempT_num this hpre.num T?
+    · exact rel_withTempT_num (hR.of_kern hk) hpre.num T?
 
 end
 
