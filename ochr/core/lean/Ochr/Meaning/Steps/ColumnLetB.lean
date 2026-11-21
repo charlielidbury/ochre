@@ -1,0 +1,345 @@
+import Ochr.Meaning.Steps.ColumnBorrow
+import Ochr.Meaning.Steps.ColumnLet
+
+/-!
+# The borrow column: `let y = &x; w` (lead8)
+
+The `let` of a borrow-valued right-hand side. On the checker's side the borrow leaves the monad and
+is bound (`LetInv`); on the reference's, `pushBindShaped` moves the label from the temporary that
+parks it to the new binding (`takeLabel`, by `holderOf`), which needs the reference to hold the label
+at one position (`Rel.uniq`, docs/31 D114).
+
+* `PBS.eq`: the reference's push of a binding holding a label, unfolded at a temporary holder.
+* `rel_pushBind_borrow`: the relation after the push, where the borrow is the only live one.
+* `letB_core`: the step.
+-/
+
+namespace Ochr.Meaning.Steps.Form
+
+open Ochr Ochr.Meaning Ochr.Meaning.Steps
+open Classical
+
+namespace PBS
+
+theorem getLast_setAt_temp (s : SState) (f k : Nat) (g : SVal) {fr : SFrame} (hfr : s.env.getLast? = some fr) :
+    ∃ fr', (s.setAt (.temp f k) g).env.getLast? = some fr' ∧ fr'.binds = fr.binds := by
+  simp only [SState.setAt]
+  rw [List.getLast?_eq_getElem?, List.length_modify, List.getElem?_modify]
+  rw [List.getLast?_eq_getElem?] at hfr
+  rw [hfr]
+  split <;> exact ⟨_, rfl, rfl⟩
+
+/-- **The reference's push of a binding holding the label `l`**, where `l`'s holder is the
+temporary `r`: the holder is taken (`moved`, its shape cleared), the binding pushed, and the binding
+made the holder. -/
+theorem eq {s : SState} {b : SBinding} {l : Nat} {f k : Nat} {frs : SFrame} (hl : b.ty.label = some l)
+    (hr : s.holderOf l = some (.temp f k)) (hlast : s.env.getLast? = some frs) :
+    pushBindShaped s b = { ((({ s.setAt (.temp f k) (fun _ => .moved) with
+        shape := fun p => if p = .temp f k then none else s.shape p } : SState)).pushBind b) with
+      shape := fun q => if q = .bind s.topIdx frs.binds.length then some l else
+        if q = .temp f k then none else s.shape q } := by
+  unfold pushBindShaped; rw [hl]; dsimp only
+  unfold SState.takeLabel; rw [hr]; dsimp only
+  rw [SState.pushBind_getLast]
+  obtain ⟨fr', h1, h2⟩ := getLast_setAt_temp s f k (fun _ => .moved) hlast
+  have h1' : ({ s.setAt (.temp f k) (fun _ => .moved) with
+      shape := fun p => if p = .temp f k then none else s.shape p } : SState).env.getLast? = some fr' := h1
+  rw [h1']
+  simp only [Option.map_some, SState.pushBind_topIdx, List.length_append, List.length_singleton,
+    Nat.add_sub_cancel, h2]
+  have ht : ({ s.setAt (.temp f k) (fun _ => .moved) with
+      shape := fun p => if p = .temp f k then none else s.shape p } : SState).topIdx = s.topIdx := by
+    show (s.setAt (.temp f k) (fun _ => .moved)).topIdx = s.topIdx
+    exact SStateB.topIdx_setAt _ _ _
+  rw [ht]
+  rfl
+
+end PBS
+
+theorem sitesOf_pushTempE' (env : Env) (v : Value) (fr : Frame) (hfr : env[env.size - 1]? = some fr)
+    (hne : 0 < env.size) (l : Nat) (hv : ∀ pos path, v.sitesOf l pos path = []) :
+    Env.sitesOf (Env.pushTempE env v) l = Env.sitesOf env l := by
+  simp only [Env.sitesOf]
+  rw [allPos_pushTempE env v fr hfr hne, List.flatMap_append, List.flatMap_singleton,
+    valAt_pushTempE_new env v fr hfr, hv, List.append_nil]
+  apply flatMap_congr_mem
+  intro q hq
+  cases q with
+  | bind f i => rw [valAt_pushTempE_bind]
+  | temp f i =>
+    rw [valAt_pushTempE_old env v fr hfr f i]
+    intro e; cases e
+    obtain ⟨fr', hf', hi⟩ := mem_allPos_temp env _ _ hq
+    rw [hfr] at hf'; cases hf'
+    exact absurd hi (Nat.lt_irrefl _)
+
+section
+variable {K : RunCtx} {ρ : Assignment} {φ : Future}
+
+/-- **The relation after the `let` of a borrow** (the borrow in flight the only live one): the
+checker binds it; the reference moves its label from the temporary that parked it to the binding. -/
+theorem rel_pushBind_borrow {π : Nat → Nat} {st : MState} {s : SState} {T? : Option Value} {l : Nat} {w : Value}
+    (hr : Rel K ρ φ π (st.withTempT (.borrow l w) T?) s) (hne : 0 < st.env.size)
+    (hnb : ∀ q l', q ∈ allPos st.env → (valAt st.env q).holdsBorrow l' = false) (hw : w.Num)
+    (h : Hint) (T : Value) (p : Bool) (d : DeclInfo) (R : TyS) (hR : (Value.tyS K.dm K.M K.Γ ρ T).m = R.m)
+    (hRl : R.label = some (π l)) (hheld : s.heldTy (π l) = R.m) (c : Sem)
+    (hc : ∀ (φ' : Future) (hint : TyS), Value.mean K.dm K.M K.Γ ρ φ' hint w = c) :
+    Rel K ρ φ π { st with env := Env.pushBindE st.env h (some T) (.borrow l w) p d }
+      (pushBindShaped s { ty := R, val := fun _ => c, decl := d }) := by
+  have hr' : Rel K ρ φ π (st.withTemp (.borrow l w)) s := Rel.of_kern (kern_withTemp st _ T?).symm hr
+  obtain ⟨fr, hfr⟩ : ∃ fr, st.env[st.env.size - 1]? = some fr :=
+    ⟨_, Array.getElem?_eq_getElem (by omega : st.env.size - 1 < st.env.size)⟩
+  have hsk : (SM' K ρ st).env.map (fun fr => fr.binds.map bindSkel) = s.env.map (fun fr => fr.binds.map bindSkel) :=
+    (skel_pushTempE K ρ st (.borrow l w)).symm.trans hr'.skel
+  obtain ⟨frs, hfrs, htop, hlen⟩ := skel_align K ρ st s hsk fr hfr
+  have hlast : s.env.getLast? = some frs := by
+    rw [List.getLast?_eq_getElem?]; simpa [SState.topIdx] using hfrs
+  -- the checker's side before: no borrow but the one in flight
+  have hEc : (st.withTemp (.borrow l w)).env = Env.pushTempE st.env (.borrow l w) := rfl
+  have hntC : Env.shape (Env.pushTempE st.env (.borrow l w)) (.temp (st.env.size - 1) fr.temps.size) = some l := by
+    simp only [Env.shape, valAt_pushTempE_new st.env _ fr hfr]
+  have hshE : ∀ q, Env.shape st.env q = none := fun q => by
+    rcases e : Env.shape st.env q with _ | l'
+    · rfl
+    · have hq : q ∈ allPos st.env := mem_allPos_of_shape e
+      have : (valAt st.env q).holdsBorrow l' = true := by
+        rw [shape_eq_shapeOf] at e
+        generalize valAt st.env q = v at e
+        cases v <;> simp [shapeOf] at e
+        subst e; simp [Value.holdsBorrow]
+      rw [hnb q l' hq] at this; cases this
+  have hliveC : ∀ l', liveLoan (Env.pushTempE st.env (.borrow l w)) l' = true → l' = l := fun l' hl' => by
+    unfold liveLoan findBorrow at hl'
+    obtain ⟨q, hq, hb⟩ := List.find?_isSome.mp hl'
+    rw [allPos_pushTempE _ _ fr hfr hne, List.mem_append, List.mem_singleton] at hq
+    rcases hq with hq | rfl
+    · have hq' : q ≠ .temp (st.env.size - 1) fr.temps.size := fun e => by
+        subst e; obtain ⟨fr', hf', hi⟩ := mem_allPos_temp st.env _ _ hq; rw [hfr] at hf'; cases hf'
+        exact absurd hi (Nat.lt_irrefl _)
+      have : valAt (Env.pushTempE st.env (.borrow l w)) q = valAt st.env q := by
+        cases q with
+        | bind f i => exact valAt_pushTempE_bind _ _ f i
+        | temp f i => exact valAt_pushTempE_old _ _ fr hfr f i hq'
+      rw [this, hnb q l' hq] at hb; cases hb
+    · rw [valAt_pushTempE_new _ _ fr hfr] at hb
+      simp only [Value.holdsBorrow, Bool.or_eq_true, beq_iff_eq, hw.holdsBorrow] at hb
+      rcases hb with hb | hb
+      · exact hb.symm
+      · cases hb
+  -- the reference's holder of `π l`: a temporary, the only position holding a label
+  obtain ⟨j₀, hj₀, -⟩ := hr'.sim.2.2.2.1 (st.env.size - 1) fr.temps.size l hntC
+  have hshS : ∀ q l', s.shape q = some l' → q = .temp (st.env.size - 1) j₀ ∧ l' = π l := fun q l' hq => by
+    have hlv : s.Live l' := (SState.live_iff s l').mpr ⟨q, hr'.holders q l' hq, hq⟩
+    obtain ⟨l₀, h₀, he⟩ := rel_live_ref K ρ φ _ s π hr' hlv
+    obtain rfl := hliveC l₀ h₀
+    subst he
+    exact ⟨hr'.uniq q _ _ hq hj₀, rfl⟩
+  have hhold : s.holderOf (π l) = some (.temp (st.env.size - 1) j₀) := by
+    obtain ⟨r, hr₀⟩ := SState.holderOf_of_live ((SState.live_iff s _).mpr ⟨_, hr'.holders _ _ hj₀, hj₀⟩)
+    rw [hr₀, (hshS r _ (SState.holderOf_spec hr₀).2).1]
+  -- the reference's push, unfolded
+  have hbl : ({ ty := R, val := fun _ => c, decl := d } : SBinding).ty.label = some (π l) := hRl
+  rw [PBS.eq hbl hhold hlast]
+  generalize hb : ({ ty := R, val := fun _ => c, decl := d } : SBinding) = b
+  obtain ⟨t₃, ht₃⟩ : ∃ t : SState, t = { s.setAt (.temp (st.env.size - 1) j₀) (fun _ => .moved) with
+      shape := fun p => if p = .temp (st.env.size - 1) j₀ then none else s.shape p } := ⟨_, rfl⟩
+  rw [← ht₃]
+  have ht3top : t₃.topIdx = s.topIdx := by rw [ht₃]; exact SStateB.topIdx_setAt _ _ _
+  obtain ⟨frs₃, hfrs₃, hb₃⟩ : ∃ fr', t₃.env[t₃.topIdx]? = some fr' ∧ fr'.binds = frs.binds := by
+    obtain ⟨fr', h1, h2⟩ := PBS.getLast_setAt_temp s (st.env.size - 1) j₀ (fun _ => .moved) hlast
+    refine ⟨fr', ?_, h2⟩
+    rw [ht₃]; rw [List.getLast?_eq_getElem?] at h1; simpa [SState.topIdx] using h1
+  have hy : Pos.bind t₃.topIdx frs₃.binds.length = .bind (st.env.size - 1) fr.binds.size := by
+    rw [ht3top, hb₃, htop, hlen]
+  have hy' : Pos.bind s.topIdx frs.binds.length = .bind (st.env.size - 1) fr.binds.size := by rw [htop, hlen]
+  have ht3pos : t₃.positions = s.positions := by rw [ht₃]; exact SState.positions_setAt _ _ _
+  have ht3val : ∀ f i, t₃.valAt (.bind f i) = s.valAt (.bind f i) := fun f i => by
+    rw [ht₃]
+    exact SState.valAt_setAt_ne s (.temp (st.env.size - 1) j₀) (fun _ => .moved) (.bind f i) (fun e => by cases e)
+  have ht3ty : ∀ q, t₃.tyAt q = s.tyAt q := fun q => by rw [ht₃]; exact tyAt_setAt _ _ _ q
+  have ht3lent : t₃.lent = s.lent := by rw [ht₃]; rfl
+  have ht3held : t₃.heldTy = s.heldTy := by rw [ht₃]; rfl
+  have ht3mem : t₃.heldMem = s.heldMem := by rw [ht₃]; rfl
+  have ht3nl : t₃.nextLoan = s.nextLoan := by rw [ht₃]; exact SState.nextLoan_setAt' _ _ _
+  have hyC := hy'
+  -- the reference's state after: its shape, positions, values, types
+  have hX5 : ∀ q, (if q = .bind s.topIdx frs.binds.length then some (π l) else
+      if q = .temp (st.env.size - 1) j₀ then none else s.shape q) =
+      if q = .bind (st.env.size - 1) fr.binds.size then some (π l) else none := fun q => by
+    rw [hy']
+    split
+    · rfl
+    · split
+      · rfl
+      · rcases e : s.shape q with _ | l'
+        · rfl
+        · next h2 => exact absurd (hshS q l' e).1 h2
+  have hXpos : ∀ q, q ∈ (t₃.pushBind b).positions ↔ q = .bind (st.env.size - 1) fr.binds.size ∨ q ∈ s.positions :=
+    fun q => by
+      obtain ⟨A, B, h1, h2⟩ := positions_pushBind' t₃ b frs₃ hfrs₃
+      rw [h2, ← ht3pos, h1, hy]
+      simp only [List.mem_append, List.mem_cons]
+      constructor
+      · rintro (h | h | h)
+        · exact .inr (.inl h)
+        · exact .inl h
+        · exact .inr (.inr h)
+      · rintro (h | h | h)
+        · exact .inr (.inl h)
+        · exact .inl h
+        · exact .inr (.inr h)
+  have hXval : ∀ f i, (t₃.pushBind b).valAt (.bind f i) =
+      if Pos.bind f i = .bind (st.env.size - 1) fr.binds.size then (fun _ => c) else s.valAt (.bind f i) := fun f i => by
+    split
+    · next he => rw [he, ← hy, valAt_pushBind_new t₃ b frs₃ hfrs₃, ← hb]
+    · next he => rw [valAt_pushBind_ne t₃ b frs₃ hfrs₃ _ (by rw [hy]; exact he), ht3val]
+  have hXty : (t₃.pushBind b).tyAt (.bind (st.env.size - 1) fr.binds.size) = R := by
+    rw [← hy]; simp only [SState.tyAt, sbind_pushBind_new t₃ b frs₃ hfrs₃]; rw [← hb]
+  -- the checker's state after
+  have hshB : ∀ q, Env.shape (Env.pushBindE st.env h (some T) (.borrow l w) p d) q =
+      if q = .bind (st.env.size - 1) fr.binds.size then some l else none := fun q => by
+    split
+    · next he => rw [he, shape_eq_shapeOf, valAt_pushBindE_new st.env h _ _ p d fr hfr]; rfl
+    · next he => rw [shape_pushBindE_ne st.env h _ _ p d fr hfr q he, hshE]
+  have hBnew : Pos.bind (st.env.size - 1) fr.binds.size ∈ allPos (Env.pushBindE st.env h (some T) (.borrow l w) p d) := by
+    obtain ⟨A, B, h1, h2⟩ := allPos_pushBindE st.env h (some T) (.borrow l w) p d fr hfr hne
+    rw [h2]; simp
+  have hliveB : ∀ l', liveLoan (Env.pushBindE st.env h (some T) (.borrow l w) p d) l' = true → l' = l := fun l' hl' => by
+    unfold liveLoan findBorrow at hl'
+    obtain ⟨q, hq, hb'⟩ := List.find?_isSome.mp hl'
+    by_cases he : q = .bind (st.env.size - 1) fr.binds.size
+    · subst he
+      rw [valAt_pushBindE_new st.env h _ _ p d fr hfr] at hb'
+      simp only [Value.holdsBorrow, Bool.or_eq_true, beq_iff_eq, hw.holdsBorrow] at hb'
+      rcases hb' with hb' | hb'
+      · exact hb'.symm
+      · cases hb'
+    · have hq' : q ∈ allPos st.env := by
+        obtain ⟨A, B, h1, h2⟩ := allPos_pushBindE st.env h (some T) (.borrow l w) p d fr hfr hne
+        rw [h2, List.mem_append, List.mem_cons] at hq
+        rw [h1, List.mem_append]
+        rcases hq with hq | hq | hq
+        · exact .inl hq
+        · exact absurd hq he
+        · exact .inr hq
+      rw [valAt_pushBindE_ne st.env h _ _ p d fr hfr q he, hnb q l' hq'] at hb'; cases hb'
+  have hliveCl : liveLoan (Env.pushTempE st.env (.borrow l w)) l = true := by
+    unfold liveLoan findBorrow
+    refine List.find?_isSome.mpr ⟨.temp (st.env.size - 1) fr.temps.size, ?_, ?_⟩
+    · rw [allPos_pushTempE _ _ fr hfr hne]; simp
+    · rw [valAt_pushTempE_new _ _ fr hfr]; simp [Value.holdsBorrow]
+  have hsv : ∀ pos path, (Value.borrow l w).sitesOf l pos path = [] := fun pos path => hw.sitesOf l pos _
+  -- liveness and the holders' types, on both sides
+  have hliveS : ∀ l', s.Live l' ↔ l' = π l := fun l' => by
+    rw [SState.live_iff]
+    constructor
+    · rintro ⟨q, -, hq⟩; exact (hshS q l' hq).2
+    · rintro rfl; exact ⟨_, hr'.holders _ _ hj₀, hj₀⟩
+  obtain ⟨S5, hS5⟩ : ∃ S5 : Pos → Option Nat, S5 = fun q => if q = .bind s.topIdx frs.binds.length then some (π l) else if q = .temp (st.env.size - 1) j₀ then none else s.shape q := ⟨_, rfl⟩
+  rw [← hS5]
+  have hshX : ∀ q, ({ t₃.pushBind b with shape := S5 } : SState).shape q =
+      if q = .bind (st.env.size - 1) fr.binds.size then some (π l) else none := fun q => by
+    show S5 q = _; rw [hS5]; exact hX5 q
+  have hliveX : ∀ l', ({ t₃.pushBind b with shape := S5 } : SState).Live l' ↔ l' = π l := fun l' => by
+    rw [SState.live_iff]
+    constructor
+    · rintro ⟨q, -, hq⟩; rw [hshX] at hq; split at hq <;> cases hq; rfl
+    · rintro rfl; exact ⟨_, (hXpos _).mpr (.inl rfl), by rw [hshX]; simp⟩
+  have hhtX : holderTy ({ t₃.pushBind b with shape := S5 } : SState) (π l) = R.m := by
+    obtain ⟨r, hr₀⟩ := SState.holderOf_of_live ((hliveX (π l)).mpr rfl)
+    have hrs := (SState.holderOf_spec hr₀).2
+    rw [hshX] at hrs
+    have hry : r = .bind (st.env.size - 1) fr.binds.size := by split at hrs; assumption; cases hrs
+    unfold holderTy; rw [hr₀, hry]
+    show (({ t₃.pushBind b with shape := S5 } : SState).tyAt (Pos.bind (st.env.size - 1) fr.binds.size)).m = R.m
+    exact congrArg TyS.m hXty
+  have hhtS : holderTy s (π l) = R.m := by unfold holderTy; rw [hhold]; exact hheld
+  have hF : ∀ ψ, (RelF φ ({ t₃.pushBind b with shape := S5 } : SState) ψ ∧ TypedLive K ({ t₃.pushBind b with shape := S5 } : SState) ψ) → RelF φ s ψ ∧ TypedLive K s ψ :=
+    fun ψ hψ => ⟨fun l' hl' => hψ.1 l' (fun h' => hl' ((hliveS l').mpr ((hliveX l').mp h'))),
+      fun l' hl' => by
+        have := hψ.2 l' ((hliveX l').mpr ((hliveS l').mp hl'))
+        obtain rfl := (hliveS l').mp hl'
+        rw [hhtX] at this; rw [hhtS]; exact this⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_⟩
+  · -- skel
+    have ht3sk : t₃.env.map (fun fr => fr.binds.map bindSkel) = s.env.map (fun fr => fr.binds.map bindSkel) := by
+      rw [ht₃]; exact skel_setAt _ _ _
+    have hbs : bindSkel b = (R.m, d) := by rw [← hb]; rfl
+    show _ = (t₃.pushBind b).env.map (fun fr => fr.binds.map bindSkel)
+    rw [skel_pushBindE K ρ st h T _ p d fr hfr, sskel_pushBind, ht3sk, ← hsk, ht3top, htop, hbs, hR]
+  · -- fresh
+    intro l' hl' ho
+    show π l' < t₃.nextLoan
+    rw [ht3nl]
+    obtain ⟨v', hv', ha⟩ := ho
+    have hmem : v' ∈ Env.values (st.withTemp (.borrow l w)).env := by
+      rw [hEc, values_pushTempE st.env _ fr hfr hne]
+      rcases mem_values_pushBindE st.env h (some T) _ p d fr hfr hne hv' with rfl | hv''
+      · exact List.mem_append_right _ (List.mem_singleton_self _)
+      · exact List.mem_append_left _ hv''
+    exact hr'.fresh l' hl' ⟨v', hmem, ha⟩
+  · -- the bindings mean the same
+    intro ψ hψ q hq
+    cases q with
+    | temp => exact absurd trivial hq
+    | bind f i =>
+      show Env.mean K.dm K.M K.Γ ρ _ (Env.pushBindE st.env h (some T) (.borrow l w) p d) (.bind f i) =
+        (t₃.pushBind b).valAt (.bind f i) ψ
+      rw [hXval]
+      split
+      · next he => rw [he, mean_pushBindE_new K.dm K.M K.Γ ρ st.env h _ p d fr hfr _ T]; exact hc _ _
+      · next he =>
+        rw [mean_pushBindE_ne K.dm K.M K.Γ ρ st.env h (some T) _ p d fr hfr _ _ he]
+        have := hr'.sim.1 ψ (hF ψ hψ) (.bind f i) hq
+        rw [← this]
+        exact (mean_pushTempE_other K.dm K.M K.Γ ρ st.env _ fr hfr _ _ (by intro e; cases e)).symm
+  · intro q l' hq hsh
+    have hsh' : Env.shape (Env.pushBindE st.env h (some T) (.borrow l w) p d) q = some l' := hsh
+    rw [hshB] at hsh'
+    split at hsh'
+    · next he => cases hsh'; rw [hshX, if_pos he]
+    · cases hsh'
+  · intro q l' hq hsh
+    rw [hshX] at hsh
+    split at hsh
+    · next he =>
+      cases hsh
+      refine ⟨l, ?_, rfl⟩
+      show Env.shape (Env.pushBindE st.env h (some T) (.borrow l w) p d) q = some l
+      rw [hshB, if_pos he]
+    · cases hsh
+  · intro f i l' hsh
+    have hsh' : Env.shape (Env.pushBindE st.env h (some T) (.borrow l w) p d) (.temp f i) = some l' := hsh
+    rw [hshB, if_neg (fun e => by cases e)] at hsh'; cases hsh'
+  · intro f j l' hsh
+    rw [hshX, if_neg (fun e => by cases e)] at hsh; cases hsh
+  · intro l₁ l₂ h₁ h₂ _
+    rw [hliveB l₁ h₁, hliveB l₂ h₂]
+  · intro l' hl' x
+    rw [hliveB l' hl']
+    show x ∈ t₃.lent (π l) ↔ _
+    rw [ht3lent, hr'.sites l hliveCl x, hEc, sitesOf_pushTempE' st.env _ fr hfr hne l hsv,
+      sitesOf_pushBindE st.env h (some T) _ p d fr hfr hne l hsv]
+  · intro q l' hsh
+    rw [hshX] at hsh
+    split at hsh
+    · next he => exact (hXpos q).mpr (.inl he)
+    · cases hsh
+  · intro l' hl'
+    obtain rfl := (hliveX l').mp hl'
+    rw [hhtX]
+    have := hr'.records (π l) ((hliveS _).mpr rfl)
+    rw [hhtS] at this
+    show (t₃.heldMem (π l)).whole ∧ t₃.heldMem (π l) ∈ₛ[K.dm.read] R.m
+    rw [ht3mem]; exact this
+  · intro q₁ q₂ l' h₁ h₂
+    rw [hshX] at h₁ h₂
+    split at h₁
+    · split at h₂
+      · next e₁ e₂ => rw [e₁, e₂]
+      · cases h₂
+    · cases h₁
+
+end
+
+end Ochr.Meaning.Steps.Form
