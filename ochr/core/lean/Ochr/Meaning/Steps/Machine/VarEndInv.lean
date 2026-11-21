@@ -405,4 +405,183 @@ theorem runs_readPlace_after {n i f j : Nat} {bd : Binding} {st₀ st st' : MSta
            obtain ⟨rfl, rfl⟩ := runs_pure_inv h₉
            exact ⟨e.symm, k, d, false, b₆, b₇, hpd, hdc, (fun h => by cases h), fun _ => ⟨X, rfl⟩⟩)
 
+
+/-! ## The assembly -/
+
+section Assembly
+open Ochr.Meaning.Steps.Form
+
+/-- A path access to `.var i` succeeds only where the variable has a position. -/
+theorem runs_accessPath_var_pos {k i : Nat} {s s' : MState} {b : Nat}
+    (h : Runs (Ochr.accessPath k (.var i)) s b () s') : ∃ p, ckVarPos s.env i = some p := by
+  cases k with
+  | zero => unfold Ochr.accessPath at h; simp only [runs_exhausted_iff] at h
+  | succ k =>
+    unfold Ochr.accessPath at h
+    simp only [Place.steps] at h
+    rw [runs_get_bind] at h
+    obtain ⟨pos, s₁, b₁, hv, -⟩ := Runs.bind_inv h
+    obtain ⟨-, hp⟩ := runs_varPos_inv hv
+    exact ⟨pos, hp⟩
+
+theorem runs_readPlace_var_pos {n i : Nat} {s s' : MState} {b : Nat} {v : Value}
+    (h : Runs (Ochr.readPlace n (.var i)) s b v s') : ∃ p, ckVarPos s.env i = some p := by
+  cases n with
+  | zero => unfold Ochr.readPlace at h; simp only [runs_exhausted_iff] at h
+  | succ m =>
+    unfold Ochr.readPlace at h
+    obtain ⟨_, s₁, b₁, ha, -⟩ := Runs.bind_inv h
+    exact runs_accessPath_var_pos ha
+
+theorem runs_placeTypeQ_var_pos {n i : Nat} {st st' : MState} {b : Nat} {r : Option Value}
+    (h : Runs (placeType? n (.var i)) st b r st') : ∃ p, ckVarPos st.env i = some p := by
+  cases n with
+  | zero => unfold placeType? at h; simp only [runs_exhausted_iff] at h
+  | succ k =>
+    unfold placeType? at h
+    peel h
+    obtain ⟨pos, s₁, b₁, hv, -⟩ := Runs.bind_inv h
+    obtain ⟨-, hp⟩ := runs_varPos_inv hv
+    exact ⟨pos, hp⟩
+
+theorem runs_placeType_var_pos {n i : Nat} {st st' : MState} {b : Nat} {r : Value}
+    (h : Runs (placeType n (.var i)) st b r st') : ∃ p, ckVarPos st.env i = some p := by
+  cases n with
+  | zero => unfold placeType at h; simp only [runs_exhausted_iff] at h
+  | succ k =>
+    unfold placeType at h
+    peel h
+    obtain ⟨o, s₁, b₁, hq, -⟩ := Runs.bind_inv h
+    exact runs_placeTypeQ_var_pos hq
+
+/-- At the two-binding state, the variable `1` that has a position is the binding `(0, 0)`: the
+other position, `(0, 1)`, would need a third binding in frame `0`. (`allPos` alone does not give it:
+an empty frame above would leave the variable no position.) -/
+theorem ckVarPos_one_two {E : Env} {p : Pos} (hpos : allPos E = [.bind 0 0, .bind 0 1])
+    (h : ckVarPos E 1 = some p) : ckVarPos E 1 = some (.bind 0 0) := by
+  have hm := ckVarPos_mem _ h
+  rw [hpos] at hm
+  unfold ckVarPos at h ⊢
+  split at h
+  · rename_i hi
+    cases h
+    simp only [List.mem_cons, List.mem_nil_iff, or_false, Pos.bind.injEq] at hm
+    have hne : 0 < E.size := by
+      rcases Nat.eq_zero_or_pos E.size with e | e
+      · rw [e, getElem!_neg E (0 - 1) (by omega)] at hi; exact absurd hi (Nat.not_lt_zero _)
+      · exact e
+    rw [if_pos hi]
+    rcases hm with ⟨e1, e2⟩ | ⟨e1, e2⟩
+    · rw [e2, e1]
+    · exfalso
+      rw [getElem!_pos E (E.size - 1) (by omega)] at hi e2
+      have h2 : 2 < E[E.size - 1].binds.size := by omega
+      have := bind_mem_allPos E (E.size - 1) 2 _ _ (Array.getElem?_eq_getElem (by omega)) (Array.getElem?_eq_getElem h2)
+      rw [hpos, e1] at this
+      simp at this
+  · cases h
+
+/-- The read after the access (`readPlace` at the two-binding state): the access ends `l`, then the
+read of `x ↦ w` copies or moves as the aligned decision says, read at the ENDED state, whose top
+readings are the entry's (`back_setAtE`). -/
+theorem varEnd_read {n : Nat} {typed : Bool} {D : Decisions} {s st' : MState} {b' : Nat} {l : Nat} {w : Value}
+    {T' T? : Option Value} {v : Value} {fr : Frame} {bx : Binding}
+    (hpos : allPos s.env = [.bind 0 0, .bind 0 1]) (hx : valAt s.env (.bind 0 0) = .loan l)
+    (hy : valAt s.env (.bind 0 1) = .borrow l w) (hw : w.Num)
+    (hf : s.env[0]? = some fr) (hbx : fr.binds[0]? = some bx)
+    (hm : Mode s) (hD : DecTab D st') (hg : TablesGrow s st')
+    (hTs : typed = true → T' = some .tNat)
+    (hr : Runs (do let __do_lift ← Ochr.readPlace n (Place.var 1); pure (__do_lift, T')) s b' (v, T?) st') :
+    v = w ∧ (typed = true → T? = some .tNat) ∧ Mode st' ∧ ∃ st₁, Quiet s st₁ ∧ KeepsInv s st₁ ∧
+      (D.copy (D.placeDecl (DecideScope.topReadings s) (.var 1)) = true →
+        Kern { st₁ with env := Env.setAtE (Env.setAtE st₁.env (.bind 0 1) .bot) (.bind 0 0) w } st') ∧
+      (D.copy (D.placeDecl (DecideScope.topReadings s) (.var 1)) = false →
+        Kern { st₁ with env := Env.setAtE (Env.setAtE st₁.env (.bind 0 1) .bot) (.bind 0 0) .bot } st') := by
+  obtain ⟨v', s₄, b₄, hrp, h₄⟩ := Runs.bind_inv hr
+  obtain ⟨hvt, rfl⟩ := runs_pure_inv h₄
+  simp only [Prod.mk.injEq] at hvt
+  obtain ⟨e1, e2⟩ := hvt
+  subst e2
+  obtain ⟨p, hp0⟩ := runs_readPlace_var_pos hrp
+  have hcv := ckVarPos_one_two hpos hp0
+  have hbe : (Env.setAtE (Env.setAtE s.env (.bind 0 1) .bot) (.bind 0 0) w)[0]?.bind
+      (fun fr : Frame => fr.binds[0]?) = some { bx with val := w } := by
+    simp only [frame_setAtE, hf, Option.map_some, if_true, Option.bind_some, Array.getElem?_modify, hbx]
+    simp
+  have hn : NumAt { s with env := Env.setAtE (Env.setAtE s.env (.bind 0 1) .bot) (.bind 0 0) w } 1 0 0
+      { bx with val := w } := ⟨by simp only [ckVarPos_setAtE, hcv], hbe, hw⟩
+  obtain ⟨hv, k, d, c, b₆, b₇, hpd, hdc, hct, hcf⟩ :=
+    runs_readPlace_after (fun m b₀ s₁ _ ha => runs_accessPath_lent hpos hx hy hw hcv ha) hn hm.inPlace hm.copying hrp
+  have hvw : v = w := by first | exact e1.trans hv | exact e1.symm.trans hv
+  have hDe : DecTab D { s with env := Env.setAtE (Env.setAtE s.env (.bind 0 1) .bot) (.bind 0 0) w } :=
+    DecTab.back hD ⟨hg.globals, hg.inds, hg.size, hg.old, hg.nextAbs, hg.nextLoan⟩
+  have htr : topReadings { s with env := Env.setAtE (Env.setAtE s.env (.bind 0 1) .bot) (.bind 0 0) w } =
+      topReadings s := by
+    unfold topReadings
+    show (((Env.setAtE (Env.setAtE s.env (.bind 0 1) .bot) (.bind 0 0) w).back?.map
+      (fun fr : Frame => fr.binds.toList.map (·.decl))).getD []).reverse = _
+    rw [back_setAtE, back_setAtE]
+  have hd := decTab_placeDecl_at hDe hpd
+  have hc := hDe.copy k d c b₇ _ hdc
+  rw [htr] at hd
+  rw [hd, hc]
+  cases c with
+  | true =>
+    obtain rfl := hct rfl
+    exact ⟨hvw, hTs, ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, s, Quiet.refl _, fun _ _ h => h,
+      fun _ => Kern.rfl' _, (fun e => by cases e)⟩
+  | false =>
+    obtain ⟨X, rfl⟩ := hcf rfl
+    refine ⟨hvw, hTs, ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, s, Quiet.refl _, fun _ _ h => h,
+      (fun e => by cases e), fun _ => ?_⟩
+    have e := setAtE_same (Env.setAtE s.env (.bind 0 1) .bot) 0 0 w .bot
+    exact ⟨by simp only [e], rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+set_option maxHeartbeats 4000000 in
+/-- **`VarEndInv`, proved**: the read of `x` lent to `y`'s borrow at the two-binding state. -/
+theorem varEndInv : VarEndInv := by
+  intro n typed hint st st' bh v T? l w D hm hpos hx hy hw hty hD h
+  have hg : TablesGrow st st' := Runs.grows (grows_evalCore _ _ _ _) h
+  obtain ⟨fr, bx, hf, hbx⟩ := mem_allPos_bind st.env 0 0 (by rw [hpos]; simp)
+  have hb : st.env[0]?.bind (fun fr : Frame => fr.binds[0]?) = some bx := by rw [hf]; exact hbx
+  have hT : bx.ty = some .tNat := hty bx hb
+  unfold Ochr.evalCore at h
+  obtain ⟨b₁, h⟩ := Runs.tick_bind h
+  obtain ⟨want, s₁, b₂, hw', h⟩ := Runs.bind_inv (runs_get_bind.mp h)
+  obtain ⟨hw1, hw2⟩ := runs_wanted_inv hw'
+  subst hw1 hw2
+  simp only [Term.placeOperand?] at h
+  obtain ⟨o, s₂, b₃, hp, h₁⟩ := Runs.bind_inv h
+  clear h
+  obtain ⟨rfl, rfl⟩ := runs_projIn_var hp
+  simp only at h₁
+  cases typed with
+  | true =>
+    simp only [if_true] at h₁
+    obtain ⟨T', s₃, b₄, hpt, h₂⟩ := Runs.bind_inv h₁
+    clear h₁
+    obtain ⟨T'', hpt', rfl⟩ := Runs.map_inv hpt
+    obtain ⟨p, hp0⟩ := runs_placeType_var_pos hpt'
+    have hcv := ckVarPos_one_two hpos hp0
+    obtain ⟨rfl, rfl⟩ := runs_placeType_var hcv hb hT hpt'
+    try simp only [if_true] at h₂
+    obtain ⟨_, s₄, b₅, hra, h₃⟩ := Runs.bind_inv h₂
+    have := runs_repackAt_lent hcv hx hra
+    subst this
+    exact varEnd_read hpos hx hy hw hf hbx hm hD hg (fun _ => rfl) h₃
+  | false =>
+    simp only [Bool.false_eq_true, if_false] at h₁
+    split at h₁
+    · obtain ⟨T', s₃, b₄, hpt, h₂⟩ := Runs.bind_inv h₁
+      clear h₁
+      obtain ⟨p, hp0⟩ := runs_placeTypeQ_var_pos hpt
+      have hcv := ckVarPos_one_two hpos hp0
+      obtain ⟨rfl, rfl⟩ := runs_placeTypeQ_var hcv hb hT hpt
+      try simp only [Bool.false_eq_true, if_false, pure_bind] at h₂
+      exact varEnd_read hpos hx hy hw hf hbx hm hD hg (fun e => by cases e) h₂
+    · try simp only [pure_bind, Bool.false_eq_true, if_false] at h₁
+      exact varEnd_read hpos hx hy hw hf hbx hm hD hg (fun e => by cases e) h₁
+
+end Assembly
+
 end Ochr.Meaning.Steps.Machine

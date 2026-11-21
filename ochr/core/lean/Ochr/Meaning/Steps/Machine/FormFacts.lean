@@ -141,5 +141,6 @@ theorem seqInv : SeqInv := seqInvR
 #print axioms invSteps
 #print axioms placeLocal_ff
 #print axioms seqInvR
+#print axioms varEndInv
 
 end Ochr.Meaning.Steps.Machine
