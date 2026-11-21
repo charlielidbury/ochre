@@ -132,9 +132,10 @@ theorem copy_Kc (r : DeclInfo) : (Kc dm).D.copy r = true := rfl
 theorem readPlace_SB (a : Nat) :
     ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SB dm ρ φ (.el0 Nat a) r)
       = some ((.el0 Nat a, T), SB dm ρ φ (.el0 Nat a) r) := by
-  obtain ⟨T, hT⟩ := contentOf_SB (r := r) dm ρ φ (.el0 Nat a)
+  obtain ⟨T, hTm, hT⟩ := contentOf_SB_nat (r := r) dm ρ φ (.el0 Nat a)
+  have hg : ReadGood (Kc dm).dm.read T.m (.el0 Nat a) := Or.inl (by rw [hTm]; exact ⟨a, rfl⟩)
   refine ⟨{ T with label := none }, ?_⟩
-  simp [readPlace, hT, bind, Option.bind, Sem.whole]
+  simp [readPlace, hT, hg, bind, Option.bind, Sem.whole]
 
 theorem setContent_SB (a b : Nat) :
     setContent (Kc dm) φ (.bind 0 1) [.deref] (.el0 Nat b) (SB dm ρ φ (.el0 Nat a) r) = some (⟨⟩, SB dm ρ φ (.el0 Nat b) r) := by
@@ -318,6 +319,9 @@ theorem runArgs_borrowY (fT : TyM) :
     rw [Attack.borrowPlace_var0_one _ _ _ _ (by simp [yB, Sem.whole])]
     dsimp only
     rw [if_pos (by exact ⟨(2 : Nat), rfl⟩)]
+    dsimp only
+    erw [if_pos (Attack.lentOk_root (Kc dm) φ (pos := .bind 0 0) rfl)]
+    erw [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
     rfl
   simp only [bind, Option.bind, SM.stmtIf, Bool.false_eq_true, if_false, hb, pure]
 
@@ -343,9 +347,15 @@ theorem readY_SI : ∃ T, readPlace (Kc dm) φ (.var 0) true SI = some ((.el0 Na
     simp [resolve, SState.varPos, SState.topIdx, Place.steps, SI, SState.mapVals, Attack.takeLabel_S₂]
   have hv : SI.valAt (.bind 0 0) φ = .el0 Nat 3 := by
     simp [SI, SState.mapVals, Attack.takeLabel_S₂, SState.valAt, Future.updList, Future.upd]
-  refine ⟨{ SI.tyAt (.bind 0 0) with label := none }, ?_⟩
-  simp only [readPlace, contentOf, hr, Attack.access_noShape SI SI_shape, hcf, Sem.follow, hv, bind, Option.bind]
-  simp [Sem.whole]
+  have hg : ReadGood (Kc dm).dm.read (SI.tyAt (.bind 0 0)).m (Sem.el0 Nat 3) := Or.inl (by
+    have ht : (SI.tyAt (.bind 0 0)).m = TyM.nat := by
+      simp [SI, SState.mapVals, SState.tyAt, Attack.S₂, yB, TyS.plain, List.zipIdx]
+    rw [ht]; exact ⟨(3 : Nat), rfl⟩)
+  obtain ⟨T, hT⟩ : ∃ T, SI.tyAt (.bind 0 0) = T := ⟨_, rfl⟩
+  rw [hT] at hg
+  refine ⟨{ T with label := none }, ?_⟩
+  simp only [readPlace, contentOf, hr, Attack.access_noShape SI SI_shape, hcf, Sem.follow, hv, hT, bind, Option.bind]
+  simp [Sem.whole, hg]
 
 /-- **`UseInc` by `callOf`: `let y = 2; Inc(&y); y` runs to `3`**, the checker's answer
 (`Regress/ShapeProbes.lean`: `UseIncIs3` accepted, `UseIncIs2` rejected). -/
@@ -462,9 +472,10 @@ theorem contentOf_SP_nat (c : Sem) :
 theorem readPlace_SP (a : Nat) :
     ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SP dm ρ φ cd d (.el0 Nat a) r)
       = some ((.el0 Nat a, T), SP dm ρ φ cd d (.el0 Nat a) r) := by
-  obtain ⟨T, hT⟩ := contentOf_SP (r := r) dm ρ φ cd d (.el0 Nat a)
+  obtain ⟨T, hTm, hT⟩ := contentOf_SP_nat (r := r) dm ρ φ cd d (.el0 Nat a)
+  have hg : ReadGood (Kc dm).dm.read T.m (.el0 Nat a) := Or.inl (by rw [hTm]; exact ⟨a, rfl⟩)
   refine ⟨{ T with label := none }, ?_⟩
-  simp [readPlace, hT, bind, Option.bind, Sem.whole]
+  simp [readPlace, hT, hg, bind, Option.bind, Sem.whole]
 
 theorem setContent_SP (a b : Nat) :
     setContent (Kc dm) φ (.bind 1 1) [.deref] (.el0 Nat b) (SP dm ρ φ cd d (.el0 Nat a) r) = some (⟨⟩, SP dm ρ φ cd d (.el0 Nat b) r) := by
