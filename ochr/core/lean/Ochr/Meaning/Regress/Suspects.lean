@@ -239,7 +239,7 @@ theorem proof_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
     ¬ proof_step_stmt K ρ φ 60 := by
   intro hs
   have hrel : Rel K ρ φ id (Regress.EvalMemGap.S0.withTemp .zero) (SM' K ρ (Regress.EvalMemGap.S0.withTemp .zero)) :=
-    Rel.start K ρ φ _ (fun l hl => by
+    Rel.start_noLive K ρ φ _ (fun l hl => by
       exfalso
       simp [SState.Live, SState.liveLabels, SM', MState.sstate, Env.shape, Regress.EvalMemGap.S0,
         MState.withTemp, valAt, SState.positions] at hl)

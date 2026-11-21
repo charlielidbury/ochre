@@ -82,7 +82,8 @@ theorem rel_setNum {π : Nat → Nat} {st : MState} {s : SState} {f i : Nat} {v'
         have := hψ.2 l ((SState.live_setAt _ _ _ l).mpr hl)
         rwa [holderTy_setAt] at this⟩
   have hp' : Pos.bind f i ∈ allPos (Env.setAtE st.env (Pos.bind f i) v') := by rw [allPos_setAtE]; exact hp
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, fun p q l hp hq => by
+    rw [SState.shape_setAt'] at hp hq; exact hs.uniq p q l hp hq⟩
   · rw [skel_setAtE K ρ st f i v', hs.skel]
     exact (skel_setAt s _ _).symm
   · intro l hl ho

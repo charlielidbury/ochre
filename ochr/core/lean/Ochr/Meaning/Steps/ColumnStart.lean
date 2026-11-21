@@ -187,7 +187,7 @@ theorem valAt_SM (p : Pos) : (SM' (KC dm D) ρ stC).valAt p = fun _ => .err :=
 end Aux
 
 theorem rel_stC : Rel (KC dm D) ρ φ id stC (SM' (KC dm D) ρ stC) :=
-  Rel.start _ _ _ _ fun l h => by
+  Rel.start_noLive _ _ _ _ fun l h => by
     simp [SState.Live, liveLabels_SM] at h
 
 theorem sgood_stC : Strict.SGood dm [] φ (SM' (KC dm D) ρ stC) where

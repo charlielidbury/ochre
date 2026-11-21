@@ -118,6 +118,7 @@ import Ochr.Meaning.Steps.ColumnStart
 import Ochr.Meaning.Steps.ColumnC
 import Ochr.Meaning.Steps.ColumnWrite
 import Ochr.Meaning.Steps.ColumnB
+import Ochr.Meaning.Steps.ColumnBorrow
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects

@@ -255,7 +255,7 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
         have := hψ.2 l ((SState.live_setAt _ _ _ l).mpr hl)
         rwa [holderTy_setAt] at this⟩
   have hp' : Pos.bind f i ∈ allPos (Env.setAtE st.env (Pos.bind f i) v') := by rw [allPos_setAtE]; exact hp
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_⟩
   · -- skel
     rw [skel_setAtE K ρ st f i v', hs.skel]
     exact (skel_setAt s _ _).symm
@@ -321,6 +321,9 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
     rw [holderTy_setAt]
     have hrec := hs.records l ((SState.live_setAt _ _ _ l).mp hl)
     rcases f with _ | f <;> exact hrec
+  · intro p q l hp hq
+    rw [SState.shape_setAt'] at hp hq
+    exact hs.uniq p q l hp hq
 
 end
 

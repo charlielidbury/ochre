@@ -1931,6 +1931,14 @@ One file per checker area, one lemma per rule, each of the form "if `runMachine 
 
 **Statement-level findings not yet restated.** `FrameRel.held` asks the parameters' records (`heldMem`) to agree, false at the call whenever a borrow argument was written through before it (in place the record is the content when the borrow was made, in the closure the argument; nothing reads a parameter's record), and does not ask `heldTy` at the parameters, which the strict ends read. At a call the two frames differ at `self` (in place the callee, in the closure the stage below): the knot owes "the body runs the same with either `self` below the bound". The intended frame lemmas of (I) (the call's frame, the strict pop, `endInto`, a closure body's frame) are listed in `Strict/HANDOFF.md`, "Next".
 
+### D114. The relation asks that the reference hold each label at ONE position (`Rel.uniq`) (eighth lead, 2026-11-21; the borrow column; `spine-lead8`)
+
+**Found** (by reading, while stating the `let` of a borrow for `def B : Nat := (let x = S(Z); let y = &x; *y := Z; x)`; not kernel-checked). `SimEq` matches the temporaries holding a borrow by label, each checker temporary to SOME reference temporary and each reference one to SOME checker one, not one to one; and nothing else in `Rel` or `Strict.SGood` says a label has one holder. So a reference state with TWO temporaries holding the label `π l` of the borrow the checker has in flight is related. The strict `let`'s `pushBindShaped` moves only the first holder into the binding (`takeLabel`, by `holderOf`), and the second stays a holder that no checker position matches: `Rel`'s clause (5) fails after the push, and the end of the borrow at the read leaves the label live there. So the step for a `let` whose right-hand side is a borrow is false as the form stood.
+
+**Changed.** `Rel` (`Steps/Statements.lean`) gains `uniq : ∀ p q l, s.shape p = some l → s.shape q = some l → p = q`, a fact about the reference state alone, as `holders` is. `Rel.start` takes it of the checker's state read as a reference state (whose shape is the checker's: WF1), and `Rel.start_noLive` derives it, with the records, where the checker's state holds no borrow, the form every caller had (`ColumnStart`, `CallAsm`, four `Regress` files). Every construction of `Rel` carries it: unchanged shapes (`of_kern`, `of_env`, `private_copy`, `rel_erase`, `rel_withTemp_inert`, `rel_pushBind_num`, `rel_setNum`, `botWrite_rel`, the slice's and the drop's records), a dropped binding (`rel_popBind_noSites`), the borrow's new temporary (`ColumnBorrow.rel_lend`). No proof changed otherwise.
+
+**Considered.** The uniform home is `Strict.SGood` (it is a property of the strict run, kept by every operation, so (I) would prove it once); `Strict/` is the model lane's. Until it moves there, `Rel` carries it as it carries `holders`.
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass

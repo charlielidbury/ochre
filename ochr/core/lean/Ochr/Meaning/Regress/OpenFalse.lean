@@ -82,7 +82,7 @@ theorem eval_hole_false (K : RunCtx) (ρ : Assignment) (φ : Future) (hctx : Ctx
     (hD : DecTab K.D (outSt hl (S0.withTemp .zero) 10)) : ¬ eval_step_stmt K ρ φ 10 := by
   intro hs
   have hrel : Rel K ρ φ id (S0.withTemp .zero) (SM' K ρ (S0.withTemp .zero)) :=
-    Rel.start K ρ φ _ (fun l hl => by
+    Rel.start_noLive K ρ φ _ (fun l hl => by
       exfalso
       simp [SState.Live, SState.liveLabels, SM', MState.sstate, Env.shape, S0, MState.withTemp, valAt,
         SState.positions] at hl)
