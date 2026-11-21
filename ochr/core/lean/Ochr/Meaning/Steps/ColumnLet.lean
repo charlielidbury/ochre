@@ -199,8 +199,8 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.
     CoreSim K ρ φ (n + 1) (.letIn x u w) Plet (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
-  obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hne₁, hdu, hkB,
-    hmB, htnB, hrw, hrd, hk₃, hD₁, hD₂, hinvB⟩ := hL n x u w hint st st' bh v T? K.D K.Γ hm htn htd hD h
+  obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hne₁, hdu, hrd₁,
+    hkB, hmB, htnB, hrw, hrd, hk₃, hD₁, hD₂, hinvB⟩ := hL n x u w hint st st' bh v T? K.D K.Γ hcu hm htn htd hD h
   obtain ⟨hv₀, rfl⟩ := hnumu st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ hD₁ hru
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv.1
   have hvw : w.valsOk (Strict.ValsP K ρ φ) := hv.2
@@ -228,7 +228,7 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.
   let bB : SBinding := { ty := ru.2, val := fun _ => ru.1, decl := du }
   have hpb : pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := K.D.declOf (scopeOf s₁) u } =
       s₁.pushBind bB := by
-    rw [hsc₁, hdu]; unfold pushBindShaped; rw [hrul]
+    rw [hsc₁, hrd₁, hdu]; unfold pushBindShaped; rw [hrul]
   have hpb' : pushBindShaped s₁ bB = s₁.pushBind bB := by unfold pushBindShaped; rw [hrul]
   have hrB : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stB (s₁.pushBind bB) :=
     (rel_pushBind_num hr₁' hne₁ x .tNat hv₀ p du ru.2 hru2 ru.1
@@ -245,7 +245,7 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.
   -- the step for `w`, at the extended context
   have hPB : Pw stB := by
     have := hPw st st₀ st₁ bh₁ v₀ p hPst hk₀ hm₀ htd₀ hD₁ hru
-    rw [hdu] at this; exact hPwk _ _ hkB this
+    rw [hrd₁, hdu] at this; exact hPwk _ _ hkB this
   have htdB' : stB.tailDecl = none ∨ stB.tailDecl = some (K.D.declOf (DecideScope.topReadings stB) w) := by
     rcases htdB with e | e
     · exact .inl e

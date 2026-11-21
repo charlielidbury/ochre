@@ -208,7 +208,7 @@ theorem rel_withTemp_inert {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Na
     intro f i e; cases e
     simp only [henv, Env.shape, valAt_pushTempE_new st.env v fr hfr]
     exact hv.shape
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, hr.holders, hr.records⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, hr.holders, hr.records, hr.uniq⟩
   · show (SM' K ρ { st with env := Env.pushTempE st.env v }).env.map _ = _
     rw [skel_pushTempE]; exact hr.skel
   · intro l hl ho
@@ -407,7 +407,7 @@ theorem rel_of_withTemp_inert {K : RunCtx} {ρ : Assignment} {φ : Future} {π :
     exact absurd hi (Nat.lt_irrefl _)
   have hsk := hr.skel
   have hsim := hr.sim
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, hr.holders, hr.records⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, hr.holders, hr.records, hr.uniq⟩
   · have : (SM' K ρ { st with env := Env.pushTempE st.env v }).env.map (fun fr => fr.binds.map bindSkel) = _ := hsk
     rw [skel_pushTempE] at this; exact this
   · intro l hl ho

@@ -39,11 +39,18 @@ classification agrees with the pre-pass and restores nothing). "Does not erase" 
 aligned table: where it classifies the term as neither a statement nor a proof at the top frame's
 readings, so does the checker's pre-pass, at the term's own reading or at the one its context hands
 it (`tailDecl`). The table is the one aligned at the end of the run (`DecTab.back` carries it to
-the start). -/
+the start). The pre-pass is pinned by the term's READING, handed down or computed (machine2's
+correction, 2026-11-21): where the reading is handed down (`tailDecl`) `evalAt` runs no `declOf` on
+the term, so the table's `flags` and `declOf` are tied by no run and `D.flags … = (false, false)`
+pins nothing. So: the reading is decided (not `.any`: else the after-the-fact classification decides,
+and an erasure restores Ω), it is not a proof, and the term is not a call (for a call `preFlags`
+also erases at a sort reading). Every column term reads `.other` or `.unit`. This is the machine
+lane's `Machine.EvalInvR`, PROVED (`Machine.evalInvR`). -/
 def EvalInv : Prop :=
   ∀ (n : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
     (T? : Option Value) (D : Decisions),
-    Mode st → DecTab D st' → D.flags (DecideScope.topReadings st) t = (false, false) → (∀ w, t ≠ .val w) →
+    Mode st → DecTab D st' → (∀ w, t ≠ .val w) → (∀ f as h, t ≠ .call f as h) →
+    D.declOf (DecideScope.topReadings st) t ≠ .any → (D.declOf (DecideScope.topReadings st) t).isProof = false →
     (st.tailDecl = none ∨ st.tailDecl = some (D.declOf (DecideScope.topReadings st) t)) →
     Runs (Ochr.eval (n + 2) typed t hint) st bh (v, T?) st' →
     ∃ (st₀ st₁ : MState) (bh' : Nat), Kern st st₀ ∧ Mode st₀ ∧ st₀.curTail = st.tailNext ∧ st₀.tailNext = false ∧
@@ -56,15 +63,21 @@ def ZeroInv : Prop :=
     Runs (Ochr.evalCore (n + 1) typed .zero hint) st bh (v, T?) st' →
     v = .zero ∧ T? = some .tNat ∧ Kern st st' ∧ (Mode st → Mode st')
 
-/-- **The column's terms**: `Z`, `S(u)`, a variable, `let`, a write at the field `0` of a variable,
-closed under their sub-terms; no borrow is made (the machine lane: `InvCore` over EVERY term is the
-whole checker's well-formedness preservation, with a clause suspected false, `borrow_wf`). -/
+/-- **The columns' terms**: `Z`, `S(u)`, a variable, `let`, a write at the field `0` of a variable
+(the first column); a borrow of a variable, a write through a variable, a sequence (the borrow
+column, lead8); closed under their sub-terms. A fact stated over this class, never over every term
+(the machine lane: `InvCore` over EVERY term is the whole checker's well-formedness preservation,
+with a clause suspected false, `borrow_wf`; "a typed `eval` returns a type" is an induction on this
+class, over every term one over the whole machine). -/
 inductive ColTerm : Term → Prop
   | zero : ColTerm .zero
   | succ {u : Term} : ColTerm u → ColTerm (.succ u)
   | var (i : Nat) : ColTerm (.place (.var i))
   | letIn (x : Hint) {u w : Term} : ColTerm u → ColTerm w → ColTerm (.letIn x u w)
   | assign (i : Nat) {u : Term} : ColTerm u → ColTerm (.assign (.proj 0 (.var i)) u)
+  | borrow (i : Nat) : ColTerm (.borrow (.var i))
+  | assignDeref (i : Nat) {u : Term} : ColTerm u → ColTerm (.assign (.deref (.var i)) u)
+  | seq {u w : Term} : ColTerm u → ColTerm w → ColTerm (.seq u w)
 
 /-- **The invariant is kept by `evalCore` at the column's terms, its result counted** (part (c), for the forms of the column):
 from a state meeting `Inv` at decisions aligned with the checker at the end, a successful run of
@@ -93,11 +106,13 @@ structure Quiet (st st' : MState) : Prop where
 
 /-- **`evalCore` of `S(u)`**: `u` evaluated with no hint from a state with the kernel and mode it was
 entered with and the one-shot flag clear; the value `S v₀` at `Nat`; in a typed run, `u`'s type
-checked against `Nat` (`expectTy`), which is quiet; in an untyped one, nothing after. -/
+checked against `Nat` (`expectTy`), which is quiet; in an untyped one, nothing after. For `u` of
+the column's terms (`ColTerm`): "a typed `eval` returns a type" is proved by induction on that class,
+and for every term it would be an induction over the whole machine (the machine lane's review). -/
 def SuccInv : Prop :=
   ∀ (n : Nat) (typed : Bool) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
     (T? : Option Value),
-    Mode st → st.tailNext = false → st.tailDecl = none →
+    ColTerm u → Mode st → st.tailNext = false → st.tailDecl = none →
     Runs (Ochr.evalCore (n + 1) typed (.succ u) hint) st bh (v, T?) st' →
     ∃ (st₀ st₁ : MState) (v₀ : Value) (T₀ : Option Value) (bh₁ : Nat), Kern st st₀ ∧ Mode st₀ ∧
       st₀.tailNext = false ∧ st₀.tailDecl = none ∧ Runs (Ochr.eval n typed u none) st₀ bh₁ (v₀, T₀) st₁ ∧ v = .succ v₀ ∧
@@ -126,17 +141,21 @@ mode, the one-shot flag clear, to a value at a type; the binding's reading the a
 the state after `u`; the binding pushed; `w` evaluated (no hint: a typed run's tail has none) from
 there, in mode, in the `let`'s tail position; its result pushed as a temporary at its type; the
 binding dropped (`dropTopBind`); the temporary popped, which is the `let`'s value. The table aligned
-at the end is aligned at the states between, and the invariant holds where `w` starts. -/
+at the end is aligned at the states between, and the invariant holds where `w` starts. The binding's
+reading is taken at the ENTRY state (`Machine.lean`'s `.letIn` reads `du` before it evaluates `u`;
+the machine lane's review), and `u`'s run leaves the top frame's readings as they were (where the
+reference reads its binding's reading, after `u`; lead8). For `u` of the column's terms (`ColTerm`),
+as `SuccInv`. -/
 def LetInv : Prop :=
   ∀ (n : Nat) (h : Hint) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
     (T? : Option Value) (D : Decisions) (Γ : List IndDecl),
-    Mode st → st.tailNext = false → st.tailDecl = none → DecTab D st' →
+    ColTerm u → Mode st → st.tailNext = false → st.tailDecl = none → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) true (.letIn h u w) hint) st bh (v, T?) st' →
     ∃ (du : DeclInfo) (st₀ st₁ stB st₂ st₃ : MState) (v₀ r T₀ : Value) (p : Bool) (bh₁ bh₂ bh₃ : Nat),
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧
       (stB.tailDecl = none ∨ stB.tailDecl = st.curDecl) ∧
       Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, some T₀) st₁ ∧ 0 < st₁.env.size ∧
-      D.declOf (DecideScope.topReadings st₁) u = du ∧
+      D.declOf (DecideScope.topReadings st) u = du ∧ DecideScope.topReadings st₁ = DecideScope.topReadings st ∧
       Kern { st₁ with env := Env.pushBindE st₁.env h (some T₀) v₀ p du } stB ∧ Mode stB ∧
       stB.tailNext = st.curTail ∧
       Runs (Ochr.eval n true w none) stB bh₂ (r, T?) st₂ ∧
@@ -159,13 +178,16 @@ quiet steps (the place's type, read privately; `u`'s type checked against the fi
 accesses, which end nothing where nothing is lent; the temporary `assignPlace` parks `u`'s value in
 and takes back); the variable then holds `S(w)` (the path exists) and the write leaves it holding
 `S(v₀)` (`setPlace`); D112's invalidation writes nothing at a field of `Nat` (`openWrite`: `Nat` is no
-declaration); the value `()` at `Unit`. The table aligned at the end is aligned after `u`. -/
+declaration); the value `()` at `Unit`. The table aligned at the end is aligned after `u`. The
+variable is stored at `Nat`: a field step under a parent that is not a number runs as a match
+(`placeOperand?`, `projIn`, `projMatch`), and with `Box := box(Nat)`, `x ↦ box(Z) : Box` the write
+`x.0 := S(Z)` leaves `box(S(Z))` (the machine lane's review: false with `b.ty.isSome`). -/
 def AssignNumInv : Prop :=
   ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
     Mode st → st.tailNext = false → st.tailDecl = none →
     (∀ f j b, ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
-      b.ty.isSome) → DecTab D st' →
+      b.ty = some .tNat) → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) true (.assign (.proj 0 (.var i)) u) hint) st bh (v, T?) st' →
     ∃ (st₀ st₁ st₂ : MState) (hu : Option Value) (v₀ : Value) (T₀ : Option Value) (bh₁ f j : Nat) (b : Binding)
       (w : Value),
@@ -178,37 +200,48 @@ def AssignNumInv : Prop :=
 
 /-! ## The borrow column (`def B : Nat := let x = S(Z); let y = &x; *y := Z; x`) -/
 
-/-- **`evalCore` of a typed borrow of a variable holding a number** (`&x`; `Machine.evalCore`'s
-`.borrow`, `borrowPlace`): the place's type read and [Repack]ed privately (quiet), the access ends
-nothing (nothing is lent at a number), a fresh label `l` (the counter), `x` holds `loan_l`, the value
-`borrow_l v` at `&` of the binding's type; D112's invalidation writes nothing at a root. -/
+/-- **`evalCore` of a typed borrow of a variable holding a number stored at `Nat`** (`&x`;
+`Machine.evalCore`'s `.borrow`, `borrowPlace`): the place's type read and [Repack]ed privately
+(quiet), the access ends nothing (nothing is lent at a number), a fresh label `l` (the counter), `x`
+holds `loan_l`, the value `borrow_l v` at `&Nat`; D112's invalidation writes nothing at a root. As
+first stated (lead7) the binding's stored type was free and the conclusion `T? = b.ty.map .tRef`: at a
+binding typed lazily (`ty := none`, a deferred codomain in `lazyTy`) the checker's typed run returns
+`&Nat` where it said `none` (`ColumnB`'s sanity runs, `stLazy`; lead8). -/
 def BorrowNumInv : Prop :=
   ∀ (n i : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value) (f j : Nat)
     (b : Binding) (D : Decisions),
     Mode st → ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
-    b.val.Num → DecTab D st' →
+    b.val.Num → b.ty = some .tNat → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) true (.borrow (.var i)) hint) st bh (v, T?) st' →
-    Mode st' ∧ ∃ st₁, Quiet st st₁ ∧ v = .borrow st₁.nextLoan b.val ∧ T? = b.ty.map .tRef ∧
+    Mode st' ∧ ∃ st₁, Quiet st st₁ ∧ v = .borrow st₁.nextLoan b.val ∧ T? = some (.tRef .tNat) ∧
       Kern { st₁ with env := Env.setAtE st₁.env (.bind f j) (.loan st₁.nextLoan), nextLoan := st₁.nextLoan + 1 } st'
 
 /-- **`evalCore` of a typed write through a borrow variable** (`*y := u`, `y` holding `borrow_l w`):
-as `AssignNumInv`, the path `[*]`: after the write `y` holds `borrow_l v₀`. -/
+as `AssignNumInv`, the path `[*]`: after the write `y` holds `borrow_l v₀`, where nothing is lent
+inside `y`'s content. As first stated (lead7) that condition was missing, and where `y`'s content is
+reborrowed (`y ↦ borrow_0 loan_1`, `r ↦ borrow_1 S(Z)`) the write's access ends `r` (`r ↦ ⊥`), which
+the conclusion excluded (`ColumnB`'s sanity runs, `stReb`; lead8). `y` is stored at `&Nat` (the
+step's entry condition: a whole write through `*`, no strong update, no lent proof). -/
 def AssignDerefInv : Prop :=
   ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
-    Mode st → st.tailNext = false → st.tailDecl = none → DecTab D st' →
+    Mode st → st.tailNext = false → st.tailDecl = none →
+    (∀ f j b, ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+      b.ty = some (.tRef .tNat)) → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) true (.assign (.deref (.var i)) u) hint) st bh (v, T?) st' →
     ∃ (st₀ st₁ st₂ : MState) (hu : Option Value) (v₀ : Value) (T₀ : Option Value) (bh₁ f j : Nat) (b : Binding)
       (l : Nat) (w : Value),
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧ Runs (Ochr.eval n true u hu) st₀ bh₁ (v₀, T₀) st₁ ∧
       DecTab D st₁ ∧ Quiet st₁ st₂ ∧ ckVarPos st₂.env i = some (.bind f j) ∧
       st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.val = .borrow l w ∧
-      Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st' ∧ v = .unit ∧ T? = some .tUnit
+      ((∀ l', (valAt st₂.env (.bind f j)).sitesOf l' (.bind f j) [] = []) →
+        Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st') ∧ v = .unit ∧ T? = some .tUnit
 
 /-- **`evalCore` of a typed `u; w`** (`Machine.evalCore`'s `.seq`), for a first part whose value
-holds no borrow: `u` evaluated with no hint from the entry's kernel, in mode, the one-shot flag
-clear; its value dropped (`dropValue`: nothing ends); `w` evaluated with no hint (a typed run's
-tail), in mode, in the sequence's tail position. -/
+holds no borrow and no loan: `u` evaluated with no hint from the entry's kernel, in mode, the
+one-shot flag clear; its value dropped (`dropValue`: nothing ends; a value holding a loan has its
+borrowers ended, `endLoansOfTopTemp`, so the loans' condition is needed; lead8); `w` evaluated with
+no hint (a typed run's tail), in mode, in the sequence's tail position. -/
 def SeqInv : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -217,19 +250,23 @@ def SeqInv : Prop :=
     ∃ (st₀ st₁ stW : MState) (v₀ : Value) (T₀ : Option Value) (bh₁ bh₂ : Nat),
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧
       (stW.tailDecl = none ∨ stW.tailDecl = st.curDecl) ∧ Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, T₀) st₁ ∧
-      DecTab D st₁ ∧ ((∀ l, v₀.holdsBorrow l = false) → Kern st₁ stW) ∧ Mode stW ∧ stW.tailNext = st.curTail ∧
+      DecTab D st₁ ∧ ((∀ l, v₀.holdsBorrow l = false) → v₀.loans = [] → Kern st₁ stW) ∧ Mode stW ∧
+      stW.tailNext = st.curTail ∧
       Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st'
 
 /-- **`evalCore` of a read of `x` lent to `y`'s borrow** (`.place (.var 1)` at the state of `B`'s
 read: one frame, `x ↦ loan_l : Nat`, `y ↦ borrow_l w : &Nat`, `w` a number): the access ends `l`
 (`endBorrow`: `y`'s content `w` goes back to `x`, `y` holds `⊥`; [Repack] of a number passes, D98's
 test passes: the content is whole: (M-c)); then the read copies or moves as the aligned decision
-says. Quiet besides. -/
+says. Quiet besides. `x` is stored at `Nat`: as first stated (lead7) nothing said so, and with `x`
+stored at `Unit` the typed read returns `0` at `Unit` where the conclusion said `Nat` (`ColumnB`'s
+sanity runs, `stUnitX`; lead8). -/
 def VarEndInv : Prop :=
   ∀ (n : Nat) (typed : Bool) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (l : Nat) (w : Value) (D : Decisions),
     Mode st → allPos st.env = [.bind 0 0, .bind 0 1] → valAt st.env (.bind 0 0) = .loan l →
-    valAt st.env (.bind 0 1) = .borrow l w → w.Num → DecTab D st' →
+    valAt st.env (.bind 0 1) = .borrow l w → w.Num →
+    (∀ bx, st.env[0]?.bind (fun fr : Frame => fr.binds[0]?) = some bx → bx.ty = some .tNat) → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) typed (.place (.var 1)) hint) st bh (v, T?) st' →
     v = w ∧ (typed = true → T? = some .tNat) ∧ Mode st' ∧ ∃ st₁, Quiet st st₁ ∧
       (D.copy (D.placeDecl (DecideScope.topReadings st) (.var 1)) = true →

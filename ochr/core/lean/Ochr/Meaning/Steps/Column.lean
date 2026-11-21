@@ -130,13 +130,16 @@ theorem Out.of_kern {π : Nat → Nat} {st₀ st₁ st st' : MState} {s : SState
   · intro l hl; rw [h₀.nextLoan] at hl; exact he.ren l hl
 
 /-- **`eval` around `evalCore`**: the step at `evalCore` gives the step at `eval`, for a term that is
-not an embedded value, through the checker's `eval` (`EvalInv`). -/
+not an embedded value and whose reading is decided (not `.any`), through the checker's `eval`
+(`EvalInv`). -/
 theorem eval_of_core (hE : EvalInv) {n : Nat} {t : Term} {P : MState → Prop} {TY : Bool → Prop}
-    (hP : ∀ a b, Kern a b → P a → P b) (ht : ∀ w, t ≠ .val w) (hc : CoreSim K ρ φ n t P TY) :
+    (hP : ∀ a b, Kern a b → P a → P b) (ht : ∀ w, t ≠ .val w) (hcall : ∀ f as h, t ≠ .call f as h)
+    (hany : ∀ st, P st → K.D.declOf (DecideScope.topReadings st) t ≠ .any ∧
+      (K.D.declOf (DecideScope.topReadings st) t).isProof = false) (hc : CoreSim K ρ φ n t P TY) :
     EvalSim K ρ φ (n + 2) t P TY := by
   intro st st' typed hint v T? s π hPs hty hm htd hp hr hS hv hab hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, h₀, hk₁, -⟩ :=
-    hE n typed t hint st st' bh v T? K.D hm hD (by rw [← scopeOf_rel hr]; exact hfl) ht htd h
+    hE n typed t hint st st' bh v T? K.D hm hD ht hcall (hany st hPs).1 (hany st hPs).2 htd h
   have hc' := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty hm₀ htn htd₀ hcd₀ (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS hv
     (by rw [← hk₀.absTy]; exact hab) hnh hfl (by rw [hct]; exact hok) (DecTab.of_kern hk₁.symm hD) bh' h₀
@@ -153,7 +156,7 @@ theorem _root_.Ochr.Meaning.Steps.Rel.of_env_le {K : RunCtx} {ρ : Assignment} {
   have e1 : SM' K ρ st' = { SM' K ρ st with nextLoan := st'.nextLoan } := by simp only [SM', MState.sstate, he]
   have e2 : MState.mean K.dm K.M K.Γ ρ st' = MState.mean K.dm K.M K.Γ ρ st := by simp only [MState.mean, he]
   have e3 : ∀ l, st'.Occurs l ↔ st.Occurs l := fun l => by unfold MState.Occurs; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records, hr.uniq⟩
   · rw [e1]; exact hr.skel
   · intro l _ ho
     have ho' := (e3 l).mp ho
@@ -316,7 +319,7 @@ theorem succ_core (hS : SuccInv) (hIC : InvCore) {n : Nat} {u : Term} {P Pu : MS
     CoreSim K ρ φ (n + 1) (.succ u) P := by
   intro st st' typed hint v T? s π hPst _ hm htn htd _ hp hr hSg hv hab hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, hDb, -⟩ :=
-    hS n typed u hint st st' bh v T? hm htn htd h
+    hS n typed u hint st st' bh v T? hcu hm htn htd h
   have hv₀ : v₀.Num := hnum typed st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ (hDb K.D hD) hu₀
   have hO := hu st₀ st₁ typed none v₀ T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hSg hv

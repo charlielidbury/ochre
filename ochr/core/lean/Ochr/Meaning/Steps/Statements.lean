@@ -714,6 +714,13 @@ structure Rel (π : Nat → Nat) (st : MState) (s : SState) : Prop where
   at (`SState.typedFuture`) is typed. (It replaces D66's inhabitation clause, which asked only that
   some member exist.) -/
   records : ∀ l, s.Live l → (s.heldMem l).whole ∧ s.heldMem l ∈ₛ[K.dm.read] holderTy s l
+  /-- the reference holds each label at ONE position (a reference-state fact every reference step
+  keeps: a label is made with one holder, `takeLabel` moves it, an end removes it). Added for the
+  `let` of a borrow (lead8, the borrow column, docs/31 D115): without it a reference state with two
+  temporaries holding the label the checker holds in flight is related (`SimEq` matches temporaries
+  by label, each to some checker temporary, not one to one), and the `let`'s `pushBindShaped` moves
+  only the first (`holderOf`), leaving a second holder no checker position matches. -/
+  uniq : ∀ p q l, s.shape p = some l → s.shape q = some l → p = q
 
 /-- The future a place is read at agrees with the run's off the live labels. -/
 theorem relF_typedFuture (φ : Future) (s : SState) : RelF φ s (s.typedFuture φ) := fun l hl => by

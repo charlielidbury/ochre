@@ -70,8 +70,10 @@ it, with no renaming. (Until D29 this needed the loan witness at the state as a 
 failed at open dependent values; with static lending the sites of the state read as a reference
 state are the checker's by definition, `MState.sstate`'s `lent`.) -/
 theorem Rel.start (st : MState)
-    (hrec : ∀ l, (SM' K ρ st).Live l → ((SM' K ρ st).heldMem l).whole ∧ (SM' K ρ st).heldMem l ∈ₛ[K.dm.read] holderTy (SM' K ρ st) l) :
+    (hrec : ∀ l, (SM' K ρ st).Live l → ((SM' K ρ st).heldMem l).whole ∧ (SM' K ρ st).heldMem l ∈ₛ[K.dm.read] holderTy (SM' K ρ st) l)
+    (hu : ∀ p q l, (SM' K ρ st).shape p = some l → (SM' K ρ st).shape q = some l → p = q) :
     Rel K ρ φ id st (SM' K ρ st) where
+  uniq := hu
   records := hrec
   skel := rfl
   fresh := fun _ h _ => h
@@ -90,6 +92,15 @@ theorem Rel.start (st : MState)
     show p ∈ (MState.sstate K.dm K.M K.Γ ρ st).positions
     rw [sstate_positions]
     exact mem_allPos_of_shape (l := l) h
+
+/-- **The relation at the start, where the checker's state holds no borrow** (the form every caller
+of `Rel.start` had: no record is asked, and the reference holds nothing, so at one position each). -/
+theorem Rel.start_noLive (st : MState) (h : ∀ l, (SM' K ρ st).Live l → False) : Rel K ρ φ id st (SM' K ρ st) :=
+  Rel.start K ρ φ st (fun l hl => absurd hl (h l)) fun p _ l hp _ => by
+    refine absurd ((SState.live_iff _ l).mpr ⟨p, ?_, hp⟩) (h l)
+    show p ∈ (MState.sstate K.dm K.M K.Γ ρ st).positions
+    rw [sstate_positions]
+    exact mem_allPos_of_shape (l := l) hp
 
 /-! ### A private copy (docs/31 D23; prerequisite (b) of the migration)
 
@@ -145,6 +156,7 @@ theorem Rel.private_copy {π : Nat → Nat} {saved st' : MState} {s : SState} (h
   sites := by rw [henv]; exact hr.sites
   holders := hr.holders
   records := hr.records
+  uniq := hr.uniq
 
 /-- Steps stated in the simulation form compose: if the first runs from any reference state
 related to `st` into one related to `st₁`, and the second from any related to `st₁` into one

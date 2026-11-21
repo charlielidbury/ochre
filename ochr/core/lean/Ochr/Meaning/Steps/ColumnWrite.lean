@@ -82,7 +82,8 @@ theorem rel_setNum {π : Nat → Nat} {st : MState} {s : SState} {f i : Nat} {v'
         have := hψ.2 l ((SState.live_setAt _ _ _ l).mpr hl)
         rwa [holderTy_setAt] at this⟩
   have hp' : Pos.bind f i ∈ allPos (Env.setAtE st.env (Pos.bind f i) v') := by rw [allPos_setAtE]; exact hp
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, fun p q l hp hq => by
+    rw [SState.shape_setAt'] at hp hq; exact hs.uniq p q l hp hq⟩
   · rw [skel_setAtE K ρ st f i v', hs.skel]
     exact (skel_setAt s _ _).symm
   · intro l hl ho
@@ -216,13 +217,13 @@ theorem assign_core (hA : AssignNumInv) (hIC : InvCore) (hc : Strict.FundCtx K) 
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
   have htyped : ∀ f j b, ckVarPos st.env i = some (.bind f j) →
-      st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.ty.isSome := by
+      st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.ty = some .tNat := by
     obtain ⟨f0, j0, b0, hpos0, hb0, -, ht0⟩ := hP st hPst
     intro f j b hpos hb
     rw [hpos0, Option.some.injEq, Pos.bind.injEq] at hpos
     obtain ⟨rfl, rfl⟩ := hpos
     rw [hb0, Option.some.injEq] at hb
-    subst hb; rw [ht0]; rfl
+    subst hb; exact ht0
   obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hpos₂, hlk₂, hbw, hk'i,
     rfl, rfl⟩ := hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
   have hPu₀ := hPu st st₀ hk₀ hPst

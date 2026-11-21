@@ -254,7 +254,7 @@ theorem nestedRun_sim_asm (fuel : Nat) (ih : StepsIHBelow fuel) (st st₁ : MSta
   apply nested_uniform K ρ st st₁ t v T? hint hg hfree htf
   intro ψ
   have hrel : Rel K ρ ψ id (nestedStart st) (SM' K ρ (nestedStart st)) :=
-    Rel.start K ρ ψ (nestedStart st) (fun l hl => by
+    Rel.start_noLive K ρ ψ (nestedStart st) (fun l hl => by
       rw [hsm] at hl
       exfalso
       simp [SState.Live, SState.liveLabels, emptyState, SState.positions] at hl)
