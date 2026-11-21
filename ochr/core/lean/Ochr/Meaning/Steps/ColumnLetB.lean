@@ -342,4 +342,191 @@ theorem rel_pushBind_borrow {π : Nat → Nat} {st : MState} {s : SState} {T? : 
 
 end
 
+theorem topReadings_withTempT (st : MState) (v : Value) (T? : Option Value) :
+    DecideScope.topReadings (st.withTempT v T?) = DecideScope.topReadings st := by
+  simp only [DecideScope.topReadings, MState.withTempT, Array.back?_eq_getElem?, Array.size_modify,
+    Array.getElem?_modify]
+  split <;> rcases st.env[st.env.size - 1]? <;> rfl
+
+theorem asg_pushBind_borrow {K : RunCtx} {ρ : Assignment} {st : MState} {l : Nat} {w : Value} (hw : w.Num)
+    (ha : Asg K ρ (st.withTempT (.borrow l w) (some (.tRef .tNat))).norm) (hne : 0 < st.env.size) (x : Hint) (p : Bool)
+    (d : DeclInfo) : Asg K ρ ({ st with env := Env.pushBindE st.env x (some (.tRef .tNat)) (.borrow l w) p d } : MState).norm := by
+  rcases hfr : st.env[st.env.size - 1]? with _ | fr
+  · rw [Array.getElem?_eq_none_iff] at hfr; omega
+  refine ha.of_refd rfl rfl rfl rfl rfl fun σ hσ => refd_mono_withTempT (.borrow l w) (some (.tRef .tNat)) σ ?_
+  refine refd_sub (st := st) (st' := { st with env := Env.pushBindE st.env x (some (.tRef .tNat)) (.borrow l w) p d })
+    rfl rfl rfl rfl ?_ ?_ ?_ σ hσ
+  · intro w' hw' σ' hσ'
+    rcases mem_values_pushBindE st.env x (some (.tRef .tNat)) (.borrow l w) p d fr hfr hne hw' with rfl | hw''
+    · have hb : (Value.borrow l w).hasAbs σ' = w.hasAbs σ' := rfl
+      rw [hb, hw.hasAbs] at hσ'; cases hσ'
+    · exact ⟨w', hw'', hσ'⟩
+  · intro f i b T σ' hb hT hσ'
+    by_cases e : Pos.bind f i = .bind (st.env.size - 1) fr.binds.size
+    · cases e
+      rw [bind_pushBindE_new st.env x (some (.tRef .tNat)) (.borrow l w) p d fr hfr] at hb
+      cases hb; cases hT; cases hσ'
+    · rw [bind_pushBindE_ne st.env x (some (.tRef .tNat)) (.borrow l w) p d fr hfr f i e] at hb
+      exact .ty f i b T (by show st.env.erase[f]?.bind _ = _; rw [lookup_erase]; exact hb) hT hσ'
+  · intro f i b P ws j σ' hb hl hσ'
+    by_cases e : Pos.bind f i = .bind (st.env.size - 1) fr.binds.size
+    · cases e
+      rw [bind_pushBindE_new st.env x (some (.tRef .tNat)) (.borrow l w) p d fr hfr] at hb
+      cases hb; cases hl
+    · rw [bind_pushBindE_ne st.env x (some (.tRef .tNat)) (.borrow l w) p d fr hfr f i e] at hb
+      exact .lazyTy f i b P ws j (by show st.env.erase[f]?.bind _ = _; rw [lookup_erase]; exact hb) hl hσ'
+
+
+section
+variable {K : RunCtx} {ρ : Assignment} {φ : Future}
+
+/-- **A typed `let h = u; w` at `evalCore`, for a right-hand side whose value is a borrow** of a
+number at `&Nat`, the only borrow live after `u` (`hbor`), and a binding that holds no borrow and
+has no site when it is dropped (the borrow ended in `w`). As `let_core`, with the push of a borrow
+(`rel_pushBind_borrow`): the reference moves the label from the temporary that parks it to the
+binding. -/
+theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.FundCtx K)
+    {n : Nat} {x : Hint} {u w : Term} {Plet Pu Pw : MState → Prop} (hcu : ColTerm u) (hcw : ColTerm w)
+    (htail : ∀ st stB, Plet st → Pw stB →
+      K.D.declOf (DecideScope.topReadings st) (.letIn x u w) = K.D.declOf (DecideScope.topReadings stB) w)
+    (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → Plet a → Pu b)
+    (hw : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), EvalSim { K with Δ := Δ' } ρ' φ n w Pw (· = true))
+    (hflu : ∀ st, Plet st → K.D.flags (DecideScope.topReadings st) u = (false, false))
+    (hflw : ∀ st, Pw st → K.D.flags (DecideScope.topReadings st) w = (false, false))
+    (hbor : ∀ st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
+      Runs (Ochr.eval n true u none) st₀ bh (v₀, some T₀) st₁ →
+      ∃ l w₀, v₀ = .borrow l w₀ ∧ w₀.Num ∧ T₀ = .tRef .tNat ∧
+        ∀ q l', q ∈ allPos st₁.env → (valAt st₁.env q).holdsBorrow l' = false)
+    (hPw : ∀ (st st₀ st₁ : MState) (bh : Nat) (v₀ : Value) (p : Bool), Plet st → Kern st st₀ → Mode st₀ →
+      st₀.tailDecl = none → DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, some (.tRef .tNat)) st₁ →
+      Pw { st₁ with env := Env.pushBindE st₁.env x (some (.tRef .tNat)) v₀ p (K.D.declOf (DecideScope.topReadings st₁) u) })
+    (hPwk : ∀ a b, Kern a b → Pw a → Pw b)
+    (hwv : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), w.valsOk (Strict.ValsP { K with Δ := Δ' } ρ' φ))
+    (hwa : ∀ m, w.absBelow m) (hwn : w.hasHolePrim = false)
+    (hwcong : ∀ (Δ' : Nat → TyS) (ρ' : Assignment) tl hint s,
+      runT { K with Δ := Δ' } ρ' φ tl hint w s = runT K ρ φ tl hint w s)
+    (hwhint : ∀ tl hint s, runT K ρ φ tl hint w s = runT K ρ φ tl (.plain TyM.err) w s)
+    (hdrop : ∀ stB st₂ bh r T?, Pw stB → Mode stB →
+      (stB.tailDecl = none ∨ stB.tailDecl = some (K.D.declOf (DecideScope.topReadings stB) w)) → DecTab K.D st₂ →
+      Runs (Ochr.eval n true w none) stB bh (r, T?) st₂ →
+      ∃ fr b, st₂.env[st₂.env.size - 1]? = some fr ∧ fr.binds.back? = some b ∧ (b.val = .bot ∨ b.val.Num)) :
+    CoreSim K ρ φ (n + 1) (.letIn x u w) Plet (· = true) := by
+  intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
+  subst hty
+  obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hne₁, hdu, hrd₁,
+    hkB, hmB, htnB, hrw, hrd, hk₃, hD₁, hD₂, hinvB⟩ := hL n x u w hint st st' bh v T? K.D K.Γ hcu hm htn htd hD h
+  obtain ⟨lb, wb, rfl, hwb, rfl, hnb₁⟩ := hbor st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ hD₁ hru
+  have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv.1
+  have hvw : w.valsOk (Strict.ValsP K ρ φ) := hv.2
+  -- the step for `u`
+  have hOu := hu st₀ st₁ true none (.borrow lb wb) (some (.tRef .tNat)) s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
+    (hr.of_kern hk₀) hS hvu
+    (fun σ hσ => by rw [← hk₀.absTy]; exact hab σ (by simp [Term.anyAtom, hσ])) (by simp [Term.hasHolePrim] at hnh; exact hnh.1)
+    (by rw [scopeOf_rel hr]; exact hflu st hPst) (fun e => by cases e) hD₁ bh₁ hru
+  rw [htn₀] at hOu
+  obtain ⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩ := hOu
+  have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
+  -- (I) at `u`: the reference state after it is good
+  obtain ⟨hgu, hlabu, hlouu, hS₁⟩ := Strict.fund_all hc u hvu false (.plain TyM.err) s s₁ ru hS hxu'
+  -- the right-hand side's value: a borrow of a number, at `&Nat`, with the checker's label renamed
+  obtain ⟨m, hmv⟩ := hwb.vmean
+  have hru1 : ru.1 = .el0 Nat m := by rw [← hmu, ← meanV_eq_mean]; exact hmv _ _ _ _ _ _
+  have hru2 : (Value.tyS ({ K with Δ := Δ₁ } : RunCtx).dm ({ K with Δ := Δ₁ } : RunCtx).M ({ K with Δ := Δ₁ } : RunCtx).Γ
+      ρ₁ (.tRef .tNat)).m = ru.2.m := hau _ rfl
+  have hrul : ru.2.label = some (π₁ lb) := by rw [hlu]; rfl
+  obtain ⟨fr₁, hfr₁⟩ : ∃ fr₁, st₁.env[st₁.env.size - 1]? = some fr₁ :=
+    ⟨_, Array.getElem?_eq_getElem (by omega)⟩
+  -- the push, on both sides
+  have hsc₁ : scopeOf s₁ = DecideScope.topReadings st₁ := by rw [scopeOf_rel hr₁, topReadings_withTempT]
+  let bB : SBinding := { ty := ru.2, val := fun _ => ru.1, decl := du }
+  have hpb : pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := K.D.declOf (scopeOf s₁) u } =
+      pushBindShaped s₁ bB := by
+    rw [hsc₁, hrd₁, hdu]
+  have hrB : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stB (pushBindShaped s₁ bB) :=
+    (rel_pushBind_borrow hr₁ hne₁ hnb₁ hwb x (.tRef .tNat) p du ru.2 hru2 hrul (hlabu (π₁ lb) hrul).1 ru.1
+      (fun φ' hint' => by rw [hru1]; exact hmv _ _ _ _ _ _)).of_kern hkB
+  have hpB : Pre { K with Δ := Δ₁ } ρ₁ stB :=
+    ⟨hp₁.ctx.of_eq (by show stB.inds = st₁.inds; rw [← hkB.inds])
+      (by show stB.globals = st₁.globals; rw [← hkB.globals]), hinvB hcu hp.inv,
+     by rw [← hkB.norm]; exact asg_pushBind_borrow hwb hp₁.asg hne₁ x p du⟩
+  have hs₁ne : s₁.env ≠ [] := by
+    have hfr₁' : (st₁.withTempT (.borrow lb wb) (some (.tRef .tNat))).env[
+        (st₁.withTempT (.borrow lb wb) (some (.tRef .tNat))).env.size - 1]? = some { fr₁ with
+          temps := fr₁.temps.push (.borrow lb wb), tempTys := fr₁.tempTys.push (some (.tRef .tNat)) } := by
+      simp only [MState.withTempT, Array.size_modify, Array.getElem?_modify, if_true, hfr₁]; rfl
+    obtain ⟨frs, hfrs, -, -⟩ := skel_align { K with Δ := Δ₁ } ρ₁ _ s₁ hr₁.skel _ hfr₁'
+    intro e; rw [e] at hfrs; simp at hfrs
+  have hSB : Strict.SGood K.dm K.Γ φ (pushBindShaped s₁ bB) :=
+    Strict.sgood_pushBindShaped hS₁ bB rfl hgu hlabu hlouu hs₁ne
+  -- the step for `w`, at the extended context
+  have hPB : Pw stB := by
+    have := hPw st st₀ st₁ bh₁ (.borrow lb wb) p hPst hk₀ hm₀ htd₀ hD₁ hru
+    rw [hrd₁, hdu] at this; exact hPwk _ _ hkB this
+  have htdB' : stB.tailDecl = none ∨ stB.tailDecl = some (K.D.declOf (DecideScope.topReadings stB) w) := by
+    rcases htdB with e | e
+    · exact .inl e
+    · exact .inr (by rw [e, hcd, htail st stB hPst hPB])
+  have hOw := hw Δ₁ ρ₁ stB st₂ true none r T? (pushBindShaped s₁ bB) π₁ hPB rfl hmB htdB' hpB hrB hSB (hwv Δ₁ ρ₁)
+    (fun σ hσ => hwa _ σ hσ) hwn (by rw [scopeOf_rel hrB]; exact hflw stB hPB) (fun e => by cases e) hD₂ bh₂ hrw
+  rw [htnB] at hOw
+  obtain ⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩ := hOw
+  -- the drop: the binding `let` pushed is now `⊥` or a number, with no loan, borrow or site
+  obtain ⟨fr₂, bx, hfr₂, hbx, hbxv⟩ := hdrop stB st₂ bh₂ r T? hPB hmB htdB' hD₂ hrw
+  have hnl : bx.val.loans = [] := by
+    rcases hbxv with e | e
+    · rw [e]; simp [Value.loans]
+    · exact e.loans
+  have hnb : ∀ l, bx.val.holdsBorrow l = false := fun l => by
+    rcases hbxv with e | e
+    · rw [e]; rfl
+    · exact e.holdsBorrow l
+  have hnbor : ∀ l w, bx.val ≠ .borrow l w := fun l w => by
+    rcases hbxv with e | e
+    · rw [e]; intro e'; cases e'
+    · exact e.not_borrow l w
+  have hns : ∀ l pos, bx.val.sitesOf l pos [] = [] := fun l pos => by
+    rcases hbxv with e | e
+    · rw [e]; simp [Value.sitesOf]
+    · exact e.sitesOf l pos []
+  let frW : Frame := { fr₂ with temps := fr₂.temps.push r, tempTys := fr₂.tempTys.push T? }
+  have hfrW : (st₂.withTempT r T?).env[(st₂.withTempT r T?).env.size - 1]? = some frW := by
+    simp only [MState.withTempT, Array.size_modify, Array.getElem?_modify, if_true, hfr₂]; rfl
+  have hbW : frW.binds.back? = some bx := hbx
+  have hn₂ : 0 < frW.binds.size := by
+    have := hbW; rw [Array.back?_eq_getElem?] at this
+    rcases Nat.eq_zero_or_pos frW.binds.size with h0 | h0
+    · rw [Array.getElem?_eq_none (by omega)] at this; cases this
+    · exact h0
+  have hne₂ : 0 < st₂.env.size := by
+    rcases Nat.eq_zero_or_pos st₂.env.size with h0 | h0
+    · rw [Array.getElem?_eq_none (by omega)] at hfr₂; cases hfr₂
+    · exact h0
+  have h₃ := hDN n (st₂.withTempT r T?) st₃ bh₃ frW bx hfrW hbW hnl hnbor hnb hrd
+  obtain rfl : v = r := popped_eq hne₂ h₃ hk₃
+  have hk' := h₃.trans hk₃
+  -- the reference's drop ends nothing: it holds nothing there and nothing is lent there
+  obtain ⟨frs, hlast, hsh, hpos, hbv⟩ := rel_top_shape_none hr₂ frW bx hfrW hbW hnb
+  have hll : letLenders s₂ = s₂ := letLenders_noop frs hlast (by
+    rw [hpos]; exact rel_noSites_at hr₂ (fun l => by rw [hbv]; exact hns l _))
+  -- the reference's `let`
+  have hxw' : runT K ρ φ st.curTail (hintM K ρ hint) w (pushBindShaped s₁ bB) = some (rw', s₂) := by
+    rw [hwhint, ← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
+  have hxl : runT K ρ φ st.curTail (hintM K ρ hint) (.letIn x u w) s = some (rw', s₂.dropLast) := by
+    rw [runT_letIn _ _ x u w s hfl, hxu']
+    have hllok : LetLendersOk K φ s₂ := by
+      unfold LetLendersOk; rw [hlast]
+      exact accessOk_noSites (by rw [hpos]; exact rel_noSites_at hr₂ (fun l => by rw [hbv]; exact hns l _))
+    simp only [bind, Option.bind]
+    rw [hpb, hxw']
+    simp only [hlast, hsh, hll, if_pos hllok]
+  -- the conclusion
+  have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
+    (he₁.congr hk₀.absTy hk₀.nextLoan hkB.absTy hkB.nextLoan).trans (he₂.congr rfl rfl hk'.absTy hk'.nextLoan)
+  refine ⟨ρ₂, Δ₂, π₂, rw', s₂.dropLast, hext, hxl, hmw, haw, hlw, ?_, ?_⟩
+  · refine Pre.of_kern hk' ⟨hp₂.ctx.of_eq rfl rfl, ?_, asg_popBind hp₂.asg frW hfrW hn₂⟩
+    rw [hk'.norm]; exact hIC (n + 1) true (.letIn x u w) hint st st' bh v T? K.D K.Γ (.letIn x hcu hcw) hp.inv hD h
+  · exact (rel_popBind_noSites hr₂ frW bx hfrW hbW (fun l => hns l _) hnb).of_kern hk'
+
+end
+
 end Ochr.Meaning.Steps.Form
