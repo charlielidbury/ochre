@@ -1,7 +1,7 @@
 # Machine lane: working note (keep current; a successor continues from this alone)
 
-Worktree `/home/charlielidbury/repos/ochre-machine4`, branch `spine-machine4` (machine4, from 2026-11-21 night;
-before it machine3 in `ochre-machine3`/`spine-machine3`, machine2 in `ochre-machine2`/`spine-machine2`; push to your own branch; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
+Worktree `/home/charlielidbury/repos/ochre-machine5`, branch `spine-machine5` (machine5, 2026-11-21; before it
+machine4 in `ochre-machine4`/`spine-machine4`, machine3 in `ochre-machine3`/`spine-machine3`, machine2 in `ochre-machine2`/`spine-machine2`; push to your own branch; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
 the background), and `taskset -c 0-14 lake build OchrMeaning` before each push. Report to the lead
 (`team-lead`) by SendMessage, then end the turn. Owned: `Steps/MachineMono.lean`, everything under
 `Steps/Machine/`. Never edit the checker or other files (to check a consumer, copy it into a scratch
@@ -219,6 +219,72 @@ whole block, the same shape as (a) but relational; see the queue).
 - NEXT: step 5 of the brief (merge `origin/main`: D115/D116; regenerate `gen/`; repair; list sorries),
   only after telling the orchestrator.
 
+### machine5 (2026-11-21): the fragment's facts (`FragOpen`, 18 statements in `Steps/FragMachine.lean`)
+
+Target: `frag_run_free` = `FragTop.frag_run_ff` with all 18 `FragOpen` fields proved, in
+`Steps/Machine/FragFree.lean` (root-imported; header: the checker's run existing is not proved; a
+fragment; the meaning from the model half). Reports to `team-lead` by appending to
+`…/scratchpad/reports/machine<N>.md`; SendMessage only for a non-minimal false statement or the stop.
+
+PROVED (standard axioms, root-imported):
+- `DropLentFail` (machine4, `FragFacts.lean`, restated: the temporary the only holder).
+- `FragInv.lean`: `invPopBot`, `invSetBotNum`, `invPopUnit`, `invBindUnit`, `invEnd`, `invLendG`. Tool:
+  `inv_of_fval` (Inv across a change to an all-`FVal` environment; the position-reading clauses from
+  loan/borrow uniqueness, read at the old state off WF2's count (`inv_loan1`) and WF1's shapes
+  (`inv_bor1`)); `setAtE` lemmas for any position (`*_setAtE_any`, temporaries too); `FEnd.erase'`.
+  `InvSteps` generalised in place for a unit binding (`BindsFrom` admits `Unit`; `noInd`,
+  `inv_pushBind` take `.unit`). `PlaceLocal.unit` added (FormMachine) and `placeLocal_ff` extended.
+- `FragRuns.lean`: `evalLow` (goal-directed `NoRun` walk of `evalAt 1`; walking the hypothesis timed out),
+  `varBotInv`, `borrowBotInv` (⊥ versions of the read machinery: `runs_content_at`, `runs_repackAt_bot`,
+  `runs_accessPath_bot`, `runs_accessInside_bot`, `noRun_readPlace_bot`, `noRun_borrowPlace_bot`).
+- `FragEndRuns.lean` (the shared core, IN PROGRESS): `setAtE_valAt_self` (writing a position's own value is
+  the identity), `foldl_setAtE_id`, `foldl_setAtE_one`, `runs_forIn_fold`, `runs_mapState_fold`
+  (`mapState f false` = the fold of `setAtE p (φ (valAt p))` when `f` acts as a pure `φ`).
+
+RESTATED (minimal, in the lead's files): `SeqBorInv` gains `(∀ q ∈ allPos st₁.env, valAt st₁.env q = .loan l → q
+= px)` (the end's `substEnv` gives `c` to EVERY holder of `loan_l`); `FragSeqB.seqB_core` supplies it
+from `hF₁.loan1`.
+
+REVIEWED TRUE, NOT YET PROVED, in the order to do them:
+1. `runs_endBorrow_fend` / `runs_endTopLoan_fend` (FragEndRuns, next): `FEnd s.env px ph l c` → a run of
+   `endBorrow k l` ends at `{s with env := endE s.env px ph c}`. Copy `VarEndInv.runs_endBorrow_two`
+   (its `hK` continuation, the obsFrame split) with `ph` general: `findBorrow s.env l = some ph` from
+   `FragFacts.findBorrow_unique` + `FEnd.bor1` (an FVal value holds borrow `l` only as `borrow_l _`);
+   `cases ph` before the obsFrame `match p`; the tail = `runs_endTail_fend`: `setAt ph ⊥`, then
+   `substEnv` by `runs_mapState_fold` with `φ v = if v = loan l then c else v`, `P = FVal` (substV hit
+   at `loan l`: `runs_substV_hit`; miss elsewhere: `runs_substV_miss`, an FVal value other than `loan_l`
+   has no `exact (loan l)` atom), the fold computed by `foldl_setAtE_one` at `px` (FEnd.loan1); then
+   `lendEnv (.ended l [])` by `runs_mapState_fold` with `φ = id`, `P v = FVal v ∧ no label l`
+   (`runs_lendV_miss`), fold = identity (`foldl_setAtE_id`). Then `endE` is `setAtE (setAtE E ph ⊥) px c`
+   (exactly the order of the run). `endTopLoan`: holder `ph = .bind f' j'` (the F4 check errs or passes;
+   no D106 error at a binding).
+2. `DropBorrowInv`: `dropTopBind` → `topIdx`, `b.val = borrow l c` → `endBorrow` (1) → pop. Quiet = refl.
+3. `VarLentInv`: `varNumInv`'s skeleton (`ReadInv.lean`) with `runs_repackAt_lent` (VarEndInv), the
+   access through `runs_endTopLoan_fend` (accessPath loops once: after the end `x ↦ c`, a number), then
+   `runs_readPlace_after` (VarEndInv) at the ended state; the copy decision at the ended state (top
+   readings unchanged: `back_setAtE_any`).
+4. `BorrowLentInv`: `borrowNumInv` (BorrowInv.lean) with the access ending `m` as in 3.
+5. `SeqBorInv` (restated): `seqInvR` (SeqInv.lean) + `dropValue` of `borrow_l c`: `pushTemp`, `endBorrow`
+   at the temporary (FEnd at the pushed env: holder the new temp), `popTemp` (now ⊥).
+6. `AssignVarInv`, `AssignDerefInvF`: `assignDerefInv` (AssignDerefInv.lean) is the template; for
+   `AssignDerefInvF` re-prove inside the same inversion adding the conjunct (y ↦ ⊥ at u's end: the
+   assignment's `accessInside` runs `content (*y)`, which errs through ⊥); `AssignVarInv`: `x` a number/⊥
+   overwritten, or lent (the access ends `m` by (1)).
+7. `FragDec` (at the fuel-free table): for every fragment term, `declOfD t` succeeds at some fuel at
+   `scopeState st₀ sc` with `A.rd` when `sc` reads Γ's variables `A.rd` (induction on `FTy`, the scope
+   generalised; `.var i` reads `sc[i]`, `letIn` extends the scope); then `readDecisionFF_of_runs` with
+   `decide_fuel_agree'`; `preFlags` of `.other`/`.unit`/`.ref .other` at a non-call is `(false,false)`.
+8. `FragRun`: the checker-only induction over `FTy` mirroring `frag_sim`'s cases (EvalInv, then each
+   form's inversion fact, IH on sub-terms, the FSt/FStT transfer lemmas of `Frag*.lean`). The largest.
+
+Traps met (machine5): `by_contra`, `convert`, `split_ifs` do not exist (no Mathlib): `Classical.byContradiction`;
+a `match` written in a lemma statement elaborates to its own matcher, so `rw` with `occ_loan` /
+`occ_numBorrow` fails against `MState.Occurs`'s lambda: use `(occ_loan _ _).symm.trans h` (defeq);
+`subst` after `runs_getAt_inv` keeps the OLD state name (`s`), the new one (`s₂`) is gone; an
+`induction` hypothesis's argument order is the reverted order: state a loop lemma separately with
+explicit arguments (`runs_forIn_fold`); `(… : c.Bland)` type ascriptions do not give dot-notation on
+`Value.Bland`: call `Ochr.Value.Bland.anyAtom (v := c) …`.
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed
@@ -383,6 +449,9 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21, `spine-machine5` (machine5; `spine` aa410844 merged): `OchrMeaning` green; `column_C_free`,
+`column_B_free`, `frag_run_ff` and the nine fragment facts proved so far: standard axioms.
 
 2026-11-21 night, `spine-machine4` (machine4; `spine` 847f05ab and `spine-machine3` 761d0ce9 merged):
 `OchrMeaning` green; `varEndInv`, `assignDerefInv`, `dropNoopInvM`, `column_B_free`, `column_C_free`
