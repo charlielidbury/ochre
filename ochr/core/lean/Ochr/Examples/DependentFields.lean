@@ -1040,6 +1040,17 @@ ochr LeafFields uses Nats {
   def EntryKnownBefore (c0 : PosN) : Unit := (let c = c0; match c { MkPosN(n, h) => (let h2 = h; match S(Z) { Z => (n := n; ()), S(m) => (), }; ()), }; ())
   reject def EntryStuck (k : Nat) (c0 : PosN) : Unit := (let c = c0; match c { MkPosN(n, h) => (match k { Z => (n := n; ()), S(m) => (), }; let h2 = h; ()), }; ())
   def EntryStuckBefore (k : Nat) (c0 : PosN) : Unit := (let c = c0; match c { MkPosN(n, h) => (let h2 = h; match k { Z => (n := n; ()), S(m) => (), }; ()), }; ())
+  -- a borrow, a proof, a type or a function is never stored unchecked, in a tree field or a leaf
+  -- field: each is a checked write and fails (D110, D112; D111 relies on it: a borrow never sits
+  -- below the root of a value)
+  reject def BorrowIntoTree (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; let w = 0; x := &w; x := old), }
+  reject def BorrowIntoLeaf (p : &Tagged) : Unit := match *p { MkT(b, x) => (let w = 0; x := &w; ()), }
+  reject def ProofIntoTree (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := refl; x := old), }
+  reject def ProofIntoLeaf (p : &Tagged) : Unit := match *p { MkT(b, x) => (x := refl; ()), }
+  reject def TypeIntoTree (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := Nat; x := old), }
+  reject def TypeIntoLeaf (p : &Tagged) : Unit := match *p { MkT(b, x) => (x := Nat; ()), }
+  reject def FunctionIntoTree (v : &V) : Unit := match *v { MkV(n, x) => (let old = x; x := (λ(u : Unit) : Nat => 0); x := old), }
+  reject def FunctionIntoLeaf (p : &Tagged) : Unit := match *p { MkT(b, x) => (x := (λ(u : Unit) : Nat => 0); ()), }
 }
 
 #guard (run "LeafFields" LeafFields).rejectedWith [
@@ -1051,7 +1062,15 @@ ochr LeafFields uses Nats {
   ("CallAfter", "[Read] c.f was moved out or its borrow ended (reading ⊥)"),
   ("ParkNumber", "the assigned value has type Nat, expected ⌈Fin1(σ1)⌉"),
   ("EntryKnown", "[Open] c.h is a proof field invalidated by a write to a field its type mentions"),
-  ("EntryStuck", "[Open] c.h is a proof field invalidated by a write to a field its type mentions")]
+  ("EntryStuck", "[Open] c.h is a proof field invalidated by a write to a field its type mentions"),
+  ("BorrowIntoTree", "the assigned value has type &Nat, expected ⌈Fin1(σ1)⌉"),
+  ("BorrowIntoLeaf", "the assigned value has type &Nat, expected ⌈Payload(σ1)⌉"),
+  ("ProofIntoTree", "the assigned value has type ⊤, expected ⌈Fin1(σ1)⌉"),
+  ("ProofIntoLeaf", "the assigned value has type ⊤, expected ⌈Payload(σ1)⌉"),
+  ("TypeIntoTree", "the assigned value has type Type, expected ⌈Fin1(σ1)⌉"),
+  ("TypeIntoLeaf", "the assigned value has type Type, expected ⌈Payload(σ1)⌉"),
+  ("FunctionIntoTree", "the assigned value has type Π(u : Unit). Nat, expected ⌈Fin1(σ1)⌉"),
+  ("FunctionIntoLeaf", "the assigned value has type Π(u : Unit). Nat, expected ⌈Payload(σ1)⌉")]
 
 /-! ## Opened dependent values, attacked (D110, D112)
 
