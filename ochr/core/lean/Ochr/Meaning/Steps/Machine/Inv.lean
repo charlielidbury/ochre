@@ -53,6 +53,24 @@ theorem runs_pure_iff {a a' : α} {st st' : MState} {b : Nat} :
     Runs (pure a : M α) st b a' st' ↔ a' = a ∧ st' = st :=
   ⟨runs_pure_inv, fun ⟨h1, h2⟩ => ⟨#[], b, #[], by rw [h1, h2]; rfl⟩⟩
 
+theorem runs_modify_inv {g : MState → MState} {st st' : MState} {b : Nat} {u : Unit}
+    (h : Runs (modify g : M Unit) st b u st') : st' = g st := by
+  obtain ⟨L, left, log, h⟩ := h
+  simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at h
+  exact h.1.2.symm
+
+theorem runs_err_bind_false {α β : Type} {m : String} {k : α → M β} {st st' : MState} {b : Nat} {y : β}
+    (h : Runs (err m >>= k) st b y st') : False := by
+  obtain ⟨_, s₁, b₁, h₁, -⟩ := Runs.bind_inv h
+  exact runs_err_false h₁
+
+theorem runs_topIdx_inv {st st' : MState} {b f : Nat} (h : Runs (topIdx : M Nat) st b f st') :
+    f = st.env.size - 1 ∧ st' = st := by
+  unfold topIdx at h
+  obtain ⟨_, s₁, b₁, h₁, h⟩ := Runs.bind_inv h
+  obtain ⟨rfl, rfl⟩ := runs_get_inv h₁
+  exact runs_pure_inv h
+
 /-- A write of the log only (the editor's notes, the dev tooling's records). -/
 theorem Runs.log_bind {g : Array LogEntry → Array LogEntry} {k : PUnit → M β} {st st' : MState} {b : Nat} {y : β}
     (h : Runs (modifyThe (Array LogEntry) g >>= k) st b y st') : Runs (k ()) st b y st' := by

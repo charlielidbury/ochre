@@ -1,6 +1,7 @@
 import Ochr.Meaning.Steps.FormMachine
 import Ochr.Meaning.Steps.DropOne
 import Ochr.Meaning.Steps.ColumnC
+import Ochr.Meaning.Steps.Machine.EvalInv
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
@@ -40,24 +41,61 @@ theorem zeroInv : ZeroInv := by
 `DecBack.lean`). -/
 theorem decBack : ColumnC.DecBack := fun _ _ _ hd hg => DecTab.back hd hg
 
-theorem runs_modify_inv {g : MState → MState} {st st' : MState} {b : Nat} {u : Unit}
-    (h : Runs (modify g : M Unit) st b u st') : st' = g st := by
-  obtain ⟨L, left, log, h⟩ := h
-  simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at h
-  exact h.1.2.symm
+open Ochr.Meaning.DecideScope Ochr.Meaning.Steps.Slice in
+theorem liveLoansIn_nil {env : Env} {v : Value} (h : v.loans = []) : liveLoansIn env v = [] := by
+  simp [liveLoansIn, h]
 
-theorem runs_err_bind_false {α β : Type} {m : String} {k : α → M β} {st st' : MState} {b : Nat} {y : β}
-    (h : Runs (err m >>= k) st b y st') : False := by
-  obtain ⟨_, s₁, b₁, h₁, -⟩ := Runs.bind_inv h
-  exact runs_err_false h₁
+open Ochr.Meaning.DecideScope Ochr.Meaning.Steps.Slice in
+theorem runs_endLoansOfTopBind_noop {k f : Nat} {st st' : MState} {bh : Nat} {b : Binding}
+    (hb : (st.env[f]!).binds.back? = some b) (hl : b.val.loans = [])
+    (h : Runs (Ochr.endLoansOfTopBind k f) st bh () st') : st' = st := by
+  cases k with
+  | zero => unfold Ochr.endLoansOfTopBind at h; simp only [runs_exhausted_iff] at h
+  | succ j =>
+    rw [Ochr.endLoansOfTopBind.eq_1] at h
+    peel h
+    rw [hb] at h
+    peel h
+    rw [liveLoansIn_nil hl] at h
+    peel h
+    exact (runs_pure_inv h).2
 
-theorem runs_topIdx_inv {st st' : MState} {b f : Nat} (h : Runs (topIdx : M Nat) st b f st') :
-    f = st.env.size - 1 ∧ st' = st := by
-  unfold topIdx at h
-  obtain ⟨_, s₁, b₁, h₁, h⟩ := Runs.bind_inv h
-  obtain ⟨rfl, rfl⟩ := runs_get_inv h₁
-  exact runs_pure_inv h
-
+open Ochr.Meaning.DecideScope Ochr.Meaning.Steps.Slice in
+/-- **`DropNoopInv`**: [Drop] of a binding that holds no loan and no borrow ends nothing and pops it
+(`endLoansOfTopBind` finds no live loan in a value with no loan). -/
+theorem dropNoopInv : DropNoopInv := by
+  intro n st st' bh fr b hfr hb hl hnb hhb h
+  cases n with
+  | zero => unfold Ochr.dropTopBind at h; simp only [runs_exhausted_iff] at h
+  | succ k =>
+    rw [Ochr.dropTopBind.eq_1] at h
+    obtain ⟨f, s₁, b₁, hf, h₁⟩ := Runs.bind_inv h
+    clear h
+    obtain ⟨hf1, hs⟩ := runs_topIdx_inv hf
+    clear hf
+    subst hf1
+    rw [hs] at h₁
+    clear hs
+    have hb' : (st.env[st.env.size - 1]!).binds.back? = some b := by
+      rw [getElem!_def, hfr]; exact hb
+    peel h₁
+    rw [hb'] at h₁
+    peel h₁
+    split at h₁
+    · simp only [runs_err_bind] at h₁
+    · first
+        | (split at h₁
+           · exact absurd ‹_› (hnb _ _)
+           · skip)
+        | skip
+      obtain ⟨u, s₂, b₂, he, h₂⟩ := Runs.bind_inv h₁
+      have := runs_endLoansOfTopBind_noop hb' hl he
+      subst this
+      unfold modifyFrame at h₂
+      have := runs_modify_inv h₂
+      subst this
+      exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 #print axioms decBack
+#print axioms dropNoopInv
 
 end Ochr.Meaning.Steps.Machine
