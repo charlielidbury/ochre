@@ -90,7 +90,7 @@ theorem sgood_dropAt_write {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place) 
       match Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) (s'.typedFuture φ)) with
       | none => s
       | some _ => s'.setAt (.bind f i) fun φ' =>
-          (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) φ')).getD .moved) := by
+          (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) φ')).getD .err) := by
   dsimp only
   split
   · exact hs
@@ -103,12 +103,12 @@ theorem sgood_dropAt_write {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place) 
     · rename_i hu
       by_cases hst : steps = [] ∨ steps = [Step.deref]
       · have e : (fun φ' => (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps
-            (s'.valAt (.bind f i) φ')).getD .moved) = fun _ => .moved := by
+            (s'.valAt (.bind f i) φ')).getD .err) = fun _ => .moved := by
           funext φ'; rcases hst with rfl | rfl <;> rfl
         rw [e]
         exact sgood_setAt_pmem hs' hpos' (fun _ _ _ => .moved _) (fun _ _ => .moved _)
       · have hsc : setContent K φ (.bind f i) steps .moved s' = some (⟨⟩, s'.setAt (.bind f i) fun φ' =>
-            (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) φ')).getD .moved) := by
+            (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) φ')).getD .err) := by
           unfold setContent; dsimp only; rw [hu]
         exact setContent_field_moved_sgood hs' ⟨fun e => hst (.inl e), fun e => hst (.inr e)⟩ hsc
 

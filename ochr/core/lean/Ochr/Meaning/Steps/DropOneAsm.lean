@@ -56,7 +56,7 @@ theorem dropAt_data (s : SState) (q : Place) (pos : Pos) (steps : List Step)
     (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false) :
     dropAt K φ q pos steps s = (s.access pos (dataHit steps)).setAt pos fun φ' =>
       (Sem.updAt K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos) (fun _ => .moved) steps
-        ((s.access pos (dataHit steps)).valAt pos φ')).getD .moved := by
+        ((s.access pos (dataHit steps)).valAt pos φ')).getD .err := by
   obtain ⟨y, hy⟩ := hupd
   unfold dropAt
   split

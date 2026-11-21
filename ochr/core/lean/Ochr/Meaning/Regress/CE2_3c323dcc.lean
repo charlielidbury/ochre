@@ -80,7 +80,7 @@ theorem content_a1 : contentOf K φ (.var 0) (a1 K) = some ((.el0 Nat 0, .plain 
   rfl
 
 noncomputable def a2 : SState :=
-  (a1 K).freshLoan.2.setAt (.bind 0 0) (fun φ' => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ' 1) [] (Sem.el0 Nat 0)).getD .moved)
+  (a1 K).freshLoan.2.setAt (.bind 0 0) (fun φ' => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ' 1) [] (Sem.el0 Nat 0)).getD .err)
 
 theorem borrow_a1 : borrowPlace K φ (.var 0) (a1 K) = some ((.el0 Nat 0, { TyS.plain (.ty0 Nat) with label := some 1 }), a2 K) := by
   show (match contentOf K φ (.var 0) (a1 K) with
@@ -89,7 +89,7 @@ theorem borrow_a1 : borrowPlace K φ (.var 0) (a1 K) = some ((.el0 Nat 0, { TyS.
         let (l, s) := s.freshLoan
         let T0 := (s.tyAt pos).m
         let old := s.valAt pos
-        let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .moved
+        let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
         some ((v, { T with label := some l }), s)
       | none => none) = _
   rw [content_a1]
@@ -201,7 +201,7 @@ theorem run_tDec_head (ψ : Future) (hint : TyS) (v : Value) (hv : v = .proof �
 
 noncomputable def c2 (ψ : Future) (v : Value) : SState :=
   (c1 K ρ ψ v).setAt (.bind 0 0) fun φ'' =>
-    (Sem.updAt K.dm K.Γ TyM.err (fun _ => Sem.moved) [] ((c1 K ρ ψ v).valAt (.bind 0 0) φ'')).getD .moved
+    (Sem.updAt K.dm K.Γ TyM.err (fun _ => Sem.moved) [] ((c1 K ρ ψ v).valAt (.bind 0 0) φ'')).getD .err
 
 theorem setContent_c1 (ψ : Future) (v : Value) :
     setContent K ψ (.bind 0 0) [] .moved (c1 K ρ ψ v) = some (⟨⟩, c2 K ρ ψ v) := rfl

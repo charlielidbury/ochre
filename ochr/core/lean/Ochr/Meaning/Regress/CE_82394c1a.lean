@@ -248,7 +248,7 @@ theorem content_b1 : contentOf K (.var 0) (b1 K) = some ((.el0 Nat 0, .ty0 Nat, 
   rfl
 
 noncomputable def b2 : SState :=
-  (b1 K).freshLoan.2.setAt (.bind 0 0) (fun φ => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ 0) [] (Sem.el0 Nat 0)).getD .moved)
+  (b1 K).freshLoan.2.setAt (.bind 0 0) (fun φ => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ 0) [] (Sem.el0 Nat 0)).getD .err)
 
 theorem borrow_b1 : borrowPlace K (.var 0) (b1 K) = some ((fun _ => .el0 Nat 0, ⟨.ty0 Nat, none, some 0⟩), b2 K) := by
   have : borrowPlace K (.var 0) (b1 K) = (match contentOf K (.var 0) (b1 K) with
@@ -257,7 +257,7 @@ theorem borrow_b1 : borrowPlace K (.var 0) (b1 K) = some ((fun _ => .el0 Nat 0, 
         let (l, s) := s.freshLoan
         let T0 := s.tyAt pos
         let old := s.valAt pos
-        let s := s.setAt pos fun φ => (Sem.updAt K.dm K.Γ T0 (fun _ => φ l) steps (old φ)).getD .moved
+        let s := s.setAt pos fun φ => (Sem.updAt K.dm K.Γ T0 (fun _ => φ l) steps (old φ)).getD .err
         some (((fun _ => v), ⟨T, none, some l⟩), s)
       | none => none) := rfl
   rw [this, content_b1]

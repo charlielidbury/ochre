@@ -418,16 +418,24 @@ noncomputable def tagOf (p : Place) (tag : Sem → TyS → Sem) : SM Sem := fun 
     some (o (s.valAt pos (s.typedFuture φ)), s)
   | none => none
 
+/-- A typed future of a state: the run's own off the live labels; each live label an open member
+of its recorded content type. -/
+def TypedFut (s : SState) (ψ : Future) : Prop :=
+  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, K.dm.pmem K.Γ (ψ l) (s.heldTy l)
+
 /-- Set the content of a place to a constant meaning, pointwise in the future (no access: the
-caller has done it). At a future where the path is absent the place reads `moved` (it read `err`,
-which no open member is: `Strict/FieldWriteCE`, a move out of a field of a place reading a live label
-left the state bad at the futures where that label holds no such field). -/
+caller has done it). STRICT (the orchestrator's rule, 2026-11-21: every write at a field path ends
+with a test over every typed future): the path update is defined at EVERY typed future, not only at
+the run's (`Strict/FieldWriteCE`: a move out of a field of a place reading a live label left `err`
+at the futures where that label holds no such field). On a state related to a checker state the
+definedness does not depend on the future (the access before the write has ended every label read
+along the path: the simulation's obligation, `OPEN.md`). -/
 noncomputable def setContent (pos : Pos) (steps : List Step) (v : Sem) : SM PUnit := fun s =>
   let T := s.tyAt pos
   let old := s.valAt pos
-  match Sem.updAt K.dm K.Γ T (fun _ => v) steps (old (s.typedFuture φ)) with
-  | some _ => some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .moved)
-  | none => none
+  if ∀ ψ, TypedFut K φ s ψ → (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old ψ)).isSome then
+    some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .err)
+  else none
 
 /-- [Assign]'s write, after the right-hand side ran (the `.assign` clause's tail; the step
 statement `assignPlace_step_stmt` is stated against it): [Access] of the part the place OWNS
@@ -475,11 +483,6 @@ noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := fun s => do
       | some l => (s.takeLabel l).pushTempShaped (fun _ => v) l
       | none => s
     some ((v, { T with label := lab }), s)
-
-/-- A typed future of a state: the run's own off the live labels; each live label an open member
-of its recorded content type. -/
-def TypedFut (s : SState) (ψ : Future) : Prop :=
-  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, K.dm.pmem K.Γ (ψ l) (s.heldTy l)
 
 /-- A position holds an open member of its type at every typed future. -/
 def PosOk (s : SState) (pos : Pos) : Prop :=
@@ -537,7 +540,7 @@ noncomputable def borrowPlace (p : Place) : SM Res := fun s => do
   let (l, s) := s.freshLoan
   let T0 := s.tyAt pos
   let old := s.valAt pos
-  let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .moved
+  let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
   -- the borrow is parked in a temporary, its holder until it is bound (D14)
   let s := s.pushTempShaped (fun _ => v) l
   -- the place is lent to `l`, a plain borrow: one site, its loan (docs/31 D29)
@@ -664,10 +667,11 @@ noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState
   | _, _ =>
     let s' := s.access pos (dataHit steps)
     if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
-    match Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos (s'.typedFuture φ)) with
-    | none => s
-    | some _ =>
-      s'.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos φ')).getD .moved
+    -- the orchestrator's rule (2026-11-21): the write is made only where it is defined at EVERY typed
+    -- future (on a state related to a checker state, exactly where it is defined at the run's)
+    if ∀ ψ, TypedFut K φ s' ψ → (Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos ψ)).isSome then
+      s'.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos φ')).getD .err
+    else s
 
 /-- D84, the drop at the join, as the checker does it (`Machine.joinDrop`: `movedPlace`, then
 `dropAtJoin`), for every place some arm of the match moves (`Decisions.joinMoves`, static, given

@@ -491,9 +491,9 @@ theorem resolve_steps {s : SState} {q : Place} {pos : Pos} {steps : List Step}
 theorem setAt_derefs_below (K : RunCtx) (s : SState) (pos : Pos) (steps : List Step)
     (hd : ∀ st ∈ steps, st = .deref) :
     Below (s.setAt pos fun φ' =>
-      (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos φ')).getD .moved).toMean
+      (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos φ')).getD .err).toMean
       s.toMean := by
-  have e : (fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos φ')).getD .moved) =
+  have e : (fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos φ')).getD .err) =
       fun _ => .moved := by
     funext φ'
     rw [Sem.updAt_derefs _ _ _ _ steps _ hd]
@@ -1354,8 +1354,8 @@ theorem SVal.dependsOn_comp {v : SVal} {G : Sem → Sem} {l : Nat}
 
 theorem SVal.dependsOn_updAt {dm : DataModel} {Γ : List IndDecl} {T : TyS} {f : Sem → Sem}
     {steps : List Step} {v : SVal} {l : Nat}
-    (h : SVal.DependsOn (fun φ => (Sem.updAt dm Γ T f steps (v φ)).getD .moved) l) : v.DependsOn l :=
-  SVal.dependsOn_comp (G := fun w => (Sem.updAt dm Γ T f steps w).getD .moved) h
+    (h : SVal.DependsOn (fun φ => (Sem.updAt dm Γ T f steps (v φ)).getD .err) l) : v.DependsOn l :=
+  SVal.dependsOn_comp (G := fun w => (Sem.updAt dm Γ T f steps w).getD .err) h
 
 namespace SState
 

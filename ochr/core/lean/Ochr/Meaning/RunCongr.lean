@@ -44,11 +44,34 @@ theorem tagOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv 
     have hi' := access_rinv hi pos (tagHit steps)
     rw [typedFuture_read hi'.1 hφ pos]
 
+/-- A test over every typed future of a position's meaning reads the run's future only on `L`. -/
+theorem typedFut_forall_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (pos : Pos)
+    (P : Sem → Prop) :
+    (∀ ψ, TypedFut K φ s ψ → P (s.valAt pos ψ)) ↔ (∀ ψ, TypedFut K φ' s ψ → P (s.valAt pos ψ)) := by
+  have key : ∀ {φ₁ φ₂ : Future}, (∀ l, L l → φ₁ l = φ₂ l) →
+      (∀ ψ, TypedFut K φ₁ s ψ → P (s.valAt pos ψ)) → (∀ ψ, TypedFut K φ₂ s ψ → P (s.valAt pos ψ)) := by
+    intro φ₁ φ₂ h12 hp ψ hψ
+    let ψ' : Future := fun l => if l ∈ s.liveLabels then ψ l else φ₁ l
+    have hψ' : TypedFut K φ₁ s ψ' :=
+      ⟨fun l hl => by simp [ψ', hl], fun l hl => by simpa [ψ', hl] using hψ.2 l hl⟩
+    have e : s.valAt pos ψ' = s.valAt pos ψ := hi.1 pos ψ' ψ (fun l hl => by
+      by_cases hm : l ∈ s.liveLabels
+      · simp [ψ', hm]
+      · rcases hl with hL | hlive
+        · simp only [ψ', hm, if_false]; rw [h12 l hL, hψ.1 l hm]
+        · exact absurd hlive hm)
+    rw [← e]; exact hp ψ' hψ'
+  exact ⟨key hφ, key (fun l hl => (hφ l hl).symm)⟩
+
 theorem setContent_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (pos : Pos)
     (steps : List Step) (v : Sem) : setContent K φ pos steps v s = setContent K φ' pos steps v s := by
   unfold setContent
   dsimp only
-  rw [typedFuture_read hi.1 hφ pos]
+  have hiff := typedFut_forall_congr K hφ hi pos
+    (fun x => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => v) steps x).isSome = true)
+  by_cases hc : ∀ ψ, TypedFut K φ s ψ → (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => v) steps (s.valAt pos ψ)).isSome = true
+  · rw [if_pos hc, if_pos (hiff.1 hc)]
+  · rw [if_neg hc, if_neg (fun h => hc (hiff.2 h))]
 
 theorem readPlace_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) (copy : Bool) :
     readPlace K φ p copy s = readPlace K φ' p copy s := by
@@ -228,7 +251,9 @@ theorem dropAt_congr (hφ : ∀ l, L l → φ l = φ' l) (q : Place) (pos : Pos)
   unfold dropAt
   have hi' := access_rinv hi pos (dataHit steps)
   dsimp only
-  rw [typedFuture_read hi'.1 hφ pos]
+  have hiff := typedFut_forall_congr K hφ hi' pos
+    (fun x => (Sem.updAt K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos) (fun _ => .moved) steps x).isSome = true)
+  rw [propext hiff]
 
 /-- The join's drop is the same at both futures. -/
 theorem joinDrop_congr (hφ : ∀ l, L l → φ l = φ' l) (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) :

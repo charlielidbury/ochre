@@ -65,7 +65,7 @@ theorem eq_el0_of_asNat {x : Sem} {n : Nat} (h : x.asNat = some n) : x = .el0 Na
 theorem succAt_not_whole (r : Rec) {x : Sem} (hx : ¬ x.whole) : Sem.succAt r x = .dat "Nat" r 1 [x] := by
   unfold Sem.succAt
   cases hn : x.asNat with
-  | some n => exact absurd (by rw [eq_el0_of_asNat hn]; trivial) hx
+  | some n => exact absurd (by rw [eq_el0_of_asNat hn]; simp [Sem.whole]) hx
   | none => simp only; rw [if_neg hx]
 
 end

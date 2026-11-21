@@ -437,8 +437,8 @@ theorem assign_mid {s₂ s₄ : SState} (hi₂ : RInv L s₂) {pos : Pos} (hpos�
       fun q hq => by rw [e]; exact valAt_setAt_ne _ _ _ _ (fun e' => hq e'.symm), fun hnil ψ => ?_⟩
     · rw [e]
       exact lou_setAt (hy₃ y hy) pos _ fun hu ψ c => by
-        show (Sem.updAt K.dm K.Γ (s₃.tyAt pos) (fun _ => v) steps (s₃.valAt pos (ψ.upd y c))).getD .moved
-          = (Sem.updAt K.dm K.Γ (s₃.tyAt pos) (fun _ => v) steps (s₃.valAt pos ψ)).getD .moved
+        show (Sem.updAt K.dm K.Γ (s₃.tyAt pos) (fun _ => v) steps (s₃.valAt pos (ψ.upd y c))).getD .err
+          = (Sem.updAt K.dm K.Γ (s₃.tyAt pos) (fun _ => v) steps (s₃.valAt pos ψ)).getD .err
         rw [hu pos ψ c]
     · subst hnil
       rw [e, valAt_setAt_self _ _ _ hpos₃]; rfl

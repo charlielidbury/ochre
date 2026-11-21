@@ -775,7 +775,7 @@ does not tie a position's reads of live labels to the sites [Access] ends (`SSta
 dependent-values part is expected to hold (a moved field is `OField.moved`; a later field keeps its
 completion, `⊥` being below anything in `MovedOfList`), modulo constructor values of a declaration
 named `Nat` (which `Sem.updAt` steps into as numbers, rebuilding at `natRec`). Repairs: the write
-`getD .moved` (`⊥` where the path is absent), a strict test that the update succeeds at every typed
+`getD .err` (`⊥` where the path is absent), a strict test that the update succeeds at every typed
 future, or an invariant in `SGood` tying reads of live labels to lent sites. -/
 theorem setContent_field_moved_sgood {s s' : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} {steps : List Step}
     (hst : steps ≠ [] ∧ steps ≠ [.deref]) (h : setContent K φ (.bind f i) steps .moved s = some (⟨⟩, s')) :
@@ -1013,7 +1013,7 @@ theorem borrowPlace_res (p : Place) {s s' : SState} {r : Res} (hs : SGood K.dm K
     obtain ⟨rfl, rfl⟩ := hb
     -- the result: a member, its label recording its type and the content
     have hlab : LabOk K.dm (((((s₁.freshLoan.2.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s₁.freshLoan.2.tyAt pos)
-        (fun _ => φ' s₁.freshLoan.1) steps (s₁.freshLoan.2.valAt pos φ')).getD .moved).pushTempShaped (fun _ => v)
+        (fun _ => φ' s₁.freshLoan.1) steps (s₁.freshLoan.2.valAt pos φ')).getD .err).pushTempShaped (fun _ => v)
         s₁.freshLoan.1).setLent s₁.freshLoan.1 [⟨pos, steps, false⟩]).setHeldTy s₁.freshLoan.1 T.m).setHeldMem
         s₁.freshLoan.1 v) (v, { T with label := some s₁.freshLoan.1 }) := by
       intro l hl
@@ -1037,7 +1037,7 @@ theorem borrowPlace_res (p : Place) {s s' : SState} {r : Res} (hs : SGood K.dm K
       obtain ⟨-, hT'⟩ := read_root_eq hst hf
       have hTm : T.m = (s₁.tyAt (.bind f i)).m := by rw [hT, hT']; split <;> rfl
       have hlend : (fun φ' => (Sem.updAt K.dm K.Γ (s₁.freshLoan.2.tyAt (.bind f i)) (fun _ => φ' s₁.freshLoan.1)
-          steps (s₁.freshLoan.2.valAt (.bind f i) φ')).getD .moved) = fun φ' => φ' s₁.nextLoan := by
+          steps (s₁.freshLoan.2.valAt (.bind f i) φ')).getD .err) = fun φ' => φ' s₁.nextLoan := by
         funext φ'; rcases hst with rfl | rfl <;> rfl
       rw [hlend, hTm]
       have hv : v ∈ₛ[K.dm.read] (s₁.tyAt (.bind f i)).m := by rw [← hTm]; exact hm
