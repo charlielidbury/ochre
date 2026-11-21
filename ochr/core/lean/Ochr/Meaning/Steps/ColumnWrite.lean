@@ -82,8 +82,7 @@ theorem rel_setNum {π : Nat → Nat} {st : MState} {s : SState} {f i : Nat} {v'
         have := hψ.2 l ((SState.live_setAt _ _ _ l).mpr hl)
         rwa [holderTy_setAt] at this⟩
   have hp' : Pos.bind f i ∈ allPos (Env.setAtE st.env (Pos.bind f i) v') := by rw [allPos_setAtE]; exact hp
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, fun p q l hp hq => by
-    rw [SState.shape_setAt'] at hp hq; exact hs.uniq p q l hp hq⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · rw [skel_setAtE K ρ st f i v', hs.skel]
     exact (skel_setAt s _ _).symm
   · intro l hl ho
@@ -212,7 +211,7 @@ theorem assign_core (hA : AssignNumInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (
     (hdx : ∀ st, P st → ∀ f j b, ckVarPos st.env i = some (.bind f j) →
       st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .other)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
-    (hhint : ∀ (T : TyS) (s : SState), runT K ρ φ false T u s = runT K ρ φ false (.plain TyM.err) u s)
+    (hah : u.assignHinted = false)
     (hnum : ∀ st₀ st₁ bh hint v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
       Runs (Ochr.eval n true u hint) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ Env.erase st₀.env = Env.erase st₁.env)
     (hinv : ∀ sc, K.D.invalidated sc (.proj 0 (.var i)) = []) :
@@ -228,7 +227,7 @@ theorem assign_core (hA : AssignNumInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (
     rw [hb0, Option.some.injEq] at hb
     subst hb; exact ht0
   obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hki, -, hpos₂, hlk₂, hbw, hk'i,
-    rfl, rfl⟩ := hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
+    rfl, rfl, hhu⟩ := hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
   have hPu₀ := hPu st st₀ hk₀ hPst
   obtain ⟨hv₀, he₀₁⟩ := hnum st₀ st₁ bh₁ hu' v₀ T₀ hPu₀ hm₀ htd₀ hD₁ hru
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv
@@ -239,7 +238,7 @@ theorem assign_core (hA : AssignNumInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (
     (by rw [scopeOf_rel hr]; exact hflu st hPst) (fun e => by cases e) hD₁ bh₁ hru
   rw [htn₀] at hOu
   obtain ⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, -, hlu, hp₁, hr₁⟩ := hOu
-  have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := by rw [← hhint]; exact hxu
+  have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := by rw [hhu hah] at hxu; exact hxu
   obtain ⟨-, -, -, hS₁⟩ := Strict.fund_all hc u hvu false (.plain TyM.err) s s₁ ru hS hxu'
   -- `u`'s value: a number, with no label
   obtain ⟨m, hmv⟩ := hv₀.vmean
@@ -329,7 +328,7 @@ theorem assign_core (hA : AssignNumInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (
   have hxa : runT K ρ φ st.curTail (hintM K ρ hint) (.assign (.proj 0 (.var i)) u) s =
       some ((.el0 Unit (), .plain TyM.unit), s₁.setAt (.bind f j) g) := by
     rw [runT_assign _ _ _ _ s hfl]
-    simp only [hhint, hxu', bind, Option.bind]
+    simp only [hah, Bool.false_eq_true, ↓reduceIte, hxu', bind, Option.bind]
     rw [hpt, if_pos ⟨by rw [hru1]; exact ⟨m, rfl⟩, fun l hl => by rw [hrul] at hl; cases hl⟩]
     unfold SM.guarded; rw [if_pos hAok, hasg]
     simp only [hinvs, if_pos (And.intro hinvok hlent)]

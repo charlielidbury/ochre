@@ -281,7 +281,6 @@ theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) 
           ((topReadings_kern hk₀).trans (topReadings_of_erase he)).symm, hm₁⟩)
       (fun st st₀ st₁ bh v₀ p hst hk hm₀ htd₀ hD₁ h => (atX_push hE hZ hS hd _ hst hk hm₀ htd₀ hD₁ h).2)
       (fun a b h ha => ha.kern h) (fun _ _ => trivial) (fun m σ hσ => by simp [Term.anyAtom] at hσ) rfl
-      (fun _ _ _ _ _ => rfl) (fun _ _ _ => rfl)
       (fun stB st₂ bh r T? hB hmB htdB hD₂ h => by
         obtain ⟨fr, b, hfr, hb, hn, ht⟩ := hB.2
         exact (run_x hE hV hmB hD₂ hfr hb hn ht (by rw [hB.1]; exact flags_x hd)

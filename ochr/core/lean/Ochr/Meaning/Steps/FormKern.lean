@@ -68,7 +68,7 @@ theorem _root_.Ochr.Meaning.Steps.Rel.of_env {K : RunCtx} {ρ : Assignment} {φ 
   have e1 : SM' K ρ st' = SM' K ρ st := by simp only [SM', MState.sstate, he, hl]
   have e2 : MState.mean K.dm K.M K.Γ ρ st' = MState.mean K.dm K.M K.Γ ρ st := by simp only [MState.mean, he]
   have e3 : ∀ l, st'.Occurs l ↔ st.Occurs l := fun l => by unfold MState.Occurs; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records, hr.uniq⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records⟩
   · rw [e1]; exact hr.skel
   · intro l hl' ho; rw [hl] at hl'; exact hr.fresh l hl' ((e3 l).mp ho)
   · rw [e2]; exact hr.sim

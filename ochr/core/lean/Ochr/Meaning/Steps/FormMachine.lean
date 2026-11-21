@@ -178,7 +178,8 @@ def DropNoopInv : Prop :=
 
 /-- **`evalCore` of a typed write at the field `0` of a variable** (`x.0 := u`; the column's write):
 `u` evaluated from the entry's kernel, in mode, the one-shot flag clear (with whatever hint the
-checker hands it: the place's type for a constructor or an embedded value, none otherwise); then
+checker hands it: the place's type for a constructor or an embedded value, none otherwise: the last conjunct, lead10, which the
+reference's `.assign` mirrors by `Term.assignHinted`, docs/31 D119); then
 quiet steps (the place's type, read privately; `u`'s type checked against the field's; the
 accesses, which end nothing where nothing is lent; the temporary `assignPlace` parks `u`'s value in
 and takes back); the variable then holds `S(w)` (the path exists) and the write leaves it holding
@@ -201,7 +202,8 @@ def AssignNumInv : Prop :=
       DecTab D st₁ ∧ Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ ModeEq st₁ st' ∧ ckVarPos st₂.env i = some (.bind f j) ∧
       st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.val = .succ w ∧
       ((∀ l, (valAt st₂.env (.bind f j)).sitesOf l (.bind f j) [] = []) →
-        Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.succ v₀) } st') ∧ v = .unit ∧ T? = some .tUnit
+        Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.succ v₀) } st') ∧ v = .unit ∧ T? = some .tUnit ∧
+      (u.assignHinted = false → hu = none)
 
 /-! ## The borrow column (`def B : Nat := let x = S(Z); let y = &x; *y := Z; x`) -/
 
@@ -245,7 +247,8 @@ def AssignDerefInv : Prop :=
       DecTab D st₁ ∧ Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ ModeEq st₁ st' ∧ ckVarPos st₂.env i = some (.bind f j) ∧
       st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.val = .borrow l w ∧
       ((∀ m z, w ≠ .borrow m z) → (∀ l', (valAt st₂.env (.bind f j)).sitesOf l' (.bind f j) [] = []) →
-        Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st') ∧ v = .unit ∧ T? = some .tUnit
+        Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st') ∧ v = .unit ∧ T? = some .tUnit ∧
+      (u.assignHinted = false → hu = none)
 
 /-- **`evalCore` of a typed `u; w`** (`Machine.evalCore`'s `.seq`), for a first part whose value
 holds no borrow and no loan: `u` evaluated with no hint from the entry's kernel, in mode, the

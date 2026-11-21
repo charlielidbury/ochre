@@ -185,7 +185,7 @@ theorem run_write (hE : EvalInv) (hZ : ZeroInv) (hA : AssignDerefInv) (hd : DecT
   obtain ⟨p, q, l, hp⟩ := hXY.kern hk₀
   obtain ⟨-, -, hl, hck, -⟩ := env_facts hp (erase_E2 _ _ _ _)
   obtain ⟨a₀, a₁, a₂, hu, v₀, T₀, bh₁, f, j, b, lb, w, hka, hma, -, htda, hru, hD₁, hq, -, hme, hck₂, hl₂, hbw, hkw,
-    rfl, rfl⟩ := hA (g + 3) 0 .zero hint st₀ st₁ bh' v T? D hm₀ htn₀ htd₀
+    rfl, rfl, -⟩ := hA (g + 3) 0 .zero hint st₀ st₁ bh' v T? D hm₀ htn₀ htd₀
       (fun f j b hc hb => by
         rw [hck, ck_E2_0] at hc; cases hc
         rw [hl] at hb; have hb' : some (byB q (.borrow l (.succ .zero))) = some b := hb; cases hb'; rfl)

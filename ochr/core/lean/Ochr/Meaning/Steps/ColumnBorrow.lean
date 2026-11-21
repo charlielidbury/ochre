@@ -442,7 +442,7 @@ theorem rel_lend (hK : ∀ n, (K.C.global n).2.label = none) {π : Nat → Nat} 
     intro χ
     rw [mean_eq_valAt K.dm K.M K.Γ ρ χ _ _ hntE2, hval2, if_pos rfl]; exact hmv _ _ _ _ _ _
   have htopf : ∀ f' : Nat, f' = st.env.size - 1 → f' = s.topIdx := fun f' h => by rw [htop]; exact h
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, fun p q l hp hq => ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · -- skel
     have h1 := skel_pushTempE K ρ ({ st with env := Env.setAtE st.env (.bind f j) (.loan st.nextLoan), nextLoan := st.nextLoan + 1 } : MState) (.borrow st.nextLoan b.val)
     have h2 := skel_setAtE K ρ ({ st with nextLoan := st.nextLoan + 1 } : MState) f j (.loan st.nextLoan)
@@ -548,13 +548,6 @@ theorem rel_lend (hK : ∀ n, (K.C.global n).2.label = none) {π : Nat → Nat} 
     unfold holderTy; rw [hr', hrn]
     show Sem.el0 Nat m ∈ₛ[K.dm.read] (lendState s (.bind f j) (.el0 Nat m)).heldTy s.nextLoan
     rw [lend_heldTy, hTy]; exact ⟨m, rfl⟩
-  · -- one holder: the new temporary
-    rw [hsh'] at hp hq
-    split at hp
-    · split at hq
-      · next h1 h2 => rw [h1, h2]
-      · cases hq
-    · cases hp
 
 end
 

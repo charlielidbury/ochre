@@ -51,7 +51,7 @@ theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
     fun l => liveLoan_pushBindE st.env h (some T) v p d fr hfr hne l (hv.holdsBorrow l)
   have hvshape : Env.shape (Env.pushBindE st.env h (some T) v p d) (.bind (st.env.size - 1) fr.binds.size) = none := by
     simp only [Env.shape, valAt_pushBindE_new st.env h (some T) v p d fr hfr]; cases hv <;> rfl
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, hr.uniq⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · -- skel
     rw [skel_pushBindE K ρ st h T v p d fr hfr, sskel_pushBind, hr.skel, htop, hbs, hR]
   · -- fresh
@@ -199,19 +199,6 @@ theorem rel_s0 (K : RunCtx) (ρ : Assignment) (φ : Future) : Rel K ρ φ id stv
     · exact absurd hrs (by show Env.shape stv.env (.bind 0 0) ≠ some l; simp [Env.shape, valAt, stv, frv, bv, wv])
     · rcases List.mem_singleton.mp hrp with rfl
       exact (⟨0, rfl⟩ : Sem.el0 Nat 0 ∈ₛ[K.dm.read] TyM.nat)
-  uniq := fun p q l hp hq => by
-    have hb : Env.shape stv.env (.bind 0 0) = none := rfl
-    have h1 : p ∈ allPos stv.env := mem_allPos_of_shape (l := l) hp
-    have h2 : q ∈ allPos stv.env := mem_allPos_of_shape (l := l) hq
-    rw [allPos_stv] at h1 h2
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at h1 h2
-    have hp' : Env.shape stv.env p = some l := hp
-    have hq' : Env.shape stv.env q = some l := hq
-    rcases h1 with rfl | rfl <;> rcases h2 with rfl | rfl
-    · rfl
-    · rw [hb] at hp'; cases hp'
-    · rw [hb] at hq'; cases hq'
-    · rfl
 
 /-- **P2's hypotheses hold and its conclusion fails**, at every run context, assignment and future. -/
 theorem rel_popBind_false (K : RunCtx) (ρ : Assignment) (φ : Future) :
@@ -280,7 +267,7 @@ theorem rel_popBind_noSites {K : RunCtx} {ρ : Assignment} {φ : Future} {π : N
     rw [he]; exact liveLoan_popTop st.env fr hfr hn hne l (by rw [hbv]; exact hnb l)
   have hst : ∀ l, Env.sitesOf (Env.popBindE st.env) l = Env.sitesOf st.env l := fun l => by
     rw [he]; exact sitesOf_popTop st.env fr hfr hn hne l (by rw [hbv]; exact hns l)
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · -- skel
     show (SM' K ρ { st with env := st.env.modify (st.env.size - 1) popTop }).env.map _ = _
     rw [skel_popTop K ρ st fr hfr, sskel_dropLast, hr.skel, htop]
@@ -359,9 +346,6 @@ theorem rel_popBind_noSites {K : RunCtx} {ρ : Assignment} {φ : Future} {π : N
     intro l hl
     rw [hhty]
     exact hr.records l ((hlive l).mp hl)
-  · intro p q l hp hq
-    rw [hshe] at hp hq
-    exact hr.uniq p q l hp hq
 
 /-- **(P2, with WF15's clause) The top binding popped, where it holds no borrow and no loan, keeps
 the relation**, when no closure in its value records a declared type holding a loan or a mark (the

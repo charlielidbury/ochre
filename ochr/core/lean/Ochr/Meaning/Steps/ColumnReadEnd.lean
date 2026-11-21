@@ -209,7 +209,7 @@ theorem rel_afterEnd {π : Nat → Nat} {st : MState} {s t : SState} {l : Nat} {
       rcases hq with rfl | rfl
       · rw [if_pos rfl, (hxvn l').1] at hb; cases hb
       · rw [if_neg (by simp), if_pos rfl] at hb; cases hb
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · have h1 := skel_setAtE K ρ ({ st with env := Env.setAtE st.env (.bind 0 1) .bot } : MState) 0 0 xv
     exact h1.trans ((skel_setAtE K ρ st 0 1 .bot).trans (hr.skel.trans ht_skel.symm))
   · intro l' _ ho
@@ -252,7 +252,6 @@ theorem rel_afterEnd {π : Nat → Nat} {st : MState} {s t : SState} {l : Nat} {
   · intro l' hl'
     obtain ⟨p, -, hp⟩ := (SState.live_iff t l').mp hl'
     rw [ht_shape] at hp; cases hp
-  · intro p q l' hp; rw [ht_shape] at hp; cases hp
 
 end
 

@@ -90,14 +90,14 @@ theorem rel_erase {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat
     congr 1; funext φ p; exact mean_erase K.dm K.M K.Γ ρ φ st.env p
   constructor
   · intro hr
-    refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records, hr.uniq⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records⟩
     · rw [← e1]; exact hr.skel
     · intro l hl ho; exact hr.fresh l hl ((occurs_erase st l).mpr ho)
     · rw [← e2]; exact hr.sim
     · have := hr.inj; simp only [liveLoan_erase] at this; exact this
     · have := hr.sites; simp only [liveLoan_erase, sitesOf_erase] at this; exact this
   · intro hr
-    refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records, hr.uniq⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records⟩
     · rw [e1]; exact hr.skel
     · intro l hl ho; exact hr.fresh l hl ((occurs_erase st l).mp ho)
     · rw [e2]; exact hr.sim

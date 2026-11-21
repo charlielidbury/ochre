@@ -61,7 +61,7 @@ theorem sim_write_read (hE : EvalInv) (hZ : ZeroInv) (hA : AssignDerefInv) (hVE 
       (fun st hst => by rw [hst.readings]; exact declOf_write_ok hd)
       (assignDeref_core (K := { K with Δ := Δ' }) (ρ := ρ') (φ := φ) hA hI hPL (fundCtx_ext hc Δ') (n := g + 3) (i := 0) (u := .zero)
         hz (fun a b h ha => ha.kern h) (fun _ h => h.derefVar (.succ .zero)) (fun _ h => h.declY)
-        (fun st h => by rw [h.readings]; exact flags_Zy hd) (fun T s => by rw [runT_zero, runT_zero])
+        (fun st h => by rw [h.readings]; exact flags_Zy hd) rfl
         (fun st₀ st₁ bh hint v₀ T₀ hP hm htd hD h => by
           obtain ⟨rfl, -, hk, -⟩ := run_zero hE hZ hm hD (by rw [hP.readings]; exact flags_Zy hd)
             (by rw [hP.readings, declOf_Zy hd]; exact duC_ok) htd h
@@ -85,8 +85,7 @@ theorem sim_seq (hE : EvalInv) (hZ : ZeroInv) (hA : AssignDerefInv) (hVE : VarEn
         exact ⟨rfl, hm₁⟩)
       (fun st st₀ st₁ bh v₀ T₀ hP hk hm htd hD h => (run_write hE hZ hA hd (hP.kern hk) hm htd hD h).2.2.2)
       (fun a b h ha => ha.kern h) (fun _ _ => by simp [seqB, writeB, Term.valsOk])
-      (fun m σ hσ => by simp [seqB, writeB, Term.anyAtom] at hσ) (by decide)
-      (fun _ _ _ _ _ => rfl) (fun _ _ _ => rfl))
+      (fun m σ hσ => by simp [seqB, writeB, Term.anyAtom] at hσ) (by decide))
 
 /-- `&x`, at any extension. -/
 theorem sim_bor (hE : EvalInv) (hB : BorrowNumInv) (hI : InvSteps) (hd : DecTab K.D stC)
@@ -124,7 +123,6 @@ theorem sim_inner (hE : EvalInv) (hZ : ZeroInv) (hB : BorrowNumInv) (hA : Assign
         rw [readings_E1 he₁, declOf_bor hd, erase_pushBindE, he₁, push_E1])
       (fun a b h ha => ha.kern h) (fun _ _ => by simp [seqB, writeB, Term.valsOk])
       (fun m σ hσ => by simp [seqB, writeB, Term.anyAtom] at hσ) (by decide)
-      (fun _ _ _ _ _ => rfl) (fun _ _ _ => rfl)
       (fun stB st₂ bh r T? hXB hm htd hD h => by
         obtain ⟨-, -, p, q, xv, -, he⟩ := run_seq hE hZ hA hVE hSq hd hXB hm htd hD h
         obtain ⟨fr, hfr, hbs⟩ := top_of_erase ((erase_E2 p q xv .bot).trans he.symm)
@@ -175,7 +173,6 @@ theorem sim_bodyB (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hB : BorrowNumIn
         rw [← topReadings_of_erase he, hP₀.readings, declOf_SZ hd, erase_pushBindE, ← he, hP₀, push_E0])
       (fun a b h ha => ha.kern h) (fun _ _ => by simp [innerB, seqB, writeB, Term.valsOk])
       (fun m σ hσ => by simp [innerB, seqB, writeB, Term.anyAtom] at hσ) (by decide)
-      (fun _ _ _ _ _ => rfl) (fun _ _ _ => rfl)
       (fun stB st₂ bh r T? hXB hm htd hD h => (run_inner hE hZ hB hA hVE hSq hL hDN hd hXB hm htd hD h).2.2)
   exact eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e) (fun _ _ _ e => by cases e)
     (fun st hst => by rw [hst.readings, declOf_bodyB hd]; exact duC_ok) hlet

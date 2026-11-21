@@ -483,7 +483,7 @@ hypothesis's fields `refine_step` and `generalizeNeutral_step`) -/
 
 /-- Recording a refinement changes nothing the relation reads (it reads Ω and the counter). -/
 theorem rel_refs (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
-    Rel K ρ φ π { st with refs := (σ, r) :: st.refs } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6, hs.7, hs.8⟩
+    Rel K ρ φ π { st with refs := (σ, r) :: st.refs } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6, hs.7⟩
 
 theorem mem_of_lookup {β : Type} : ∀ {l : List (Nat × β)} {a : Nat} {b : β}, l.lookup a = some b → (a, b) ∈ l
   | [], _, _, h => by simp [List.lookup] at h
@@ -595,7 +595,7 @@ theorem Good.absTy_size {C : CodeMeaning} {ρ : Assignment} {st : MState} (hg : 
 
 /-- Recording a generalisation changes nothing the relation reads. -/
 theorem rel_neutrals (st : MState) (x : List (Value × Nat)) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
-    Rel K ρ φ π { st with neutrals := x } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6, hs.7, hs.8⟩
+    Rel K ρ φ π { st with neutrals := x } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6, hs.7⟩
 
 end
 
