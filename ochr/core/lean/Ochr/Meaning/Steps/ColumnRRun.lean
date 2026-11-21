@@ -5,13 +5,14 @@ import Ochr.Meaning.Steps.ColumnJ
 /-!
 # The column `R`: the reference's run of the body, and of the checker's sealed value (lead17, 2026-11-21; docs/31 D134)
 
-The reference does not split: `runT`'s `.matchNat` reads the number `ρ 0` at `n`, runs the arm it selects, then
+The reference does not split: `runT`'s `.matchNat` reads the number at `n`, runs the arm it selects, then
 drops at the join. From every reference state that reads like one related to `R`'s start state (`ColumnP.RefP`: no
-live label, `n` at `(1, 1)` holding `ρ 0` at `Nat`, the function's own binding at `(1, 0)` holding `g`), at a table
-deciding as the checker does (`ParDecR`):
+live label, `n` at `(1, 1)` holding `ρ₀ 0` at `Nat`, the function's own binding at `(1, 0)` holding `g`), at a table
+deciding as the checker does (`ParDecR`), at any assignment `ρ` (the body reads none: `ρ₀` only names the number at
+`n`):
 
-- `ρ 0 = 0`: the result `0` at `Nat`, `n` moved (as `P`);
-- `ρ 0 = a + 1`: the arm is the CALL `R(n.0)`: the head reads `g` in place (a copy: the binding keeps it), the
+- `ρ₀ 0 = 0`: the result `0` at `Nat`, `n` moved (as `P`);
+- `ρ₀ 0 = a + 1`: the arm is the CALL `R(n.0)`: the head reads `g` in place (a copy: the binding keeps it), the
   argument's read gives `a` at `Nat` and writes `moved` at the predecessor (`ColumnP.setN0`), then `callOf` of `g`
   at `a` (`runCallR`); the join writes `moved` at `n`.
 
@@ -35,7 +36,7 @@ def ParDecR (D : Decisions) : Prop :=
     D.joinMoves RI [] bodyR = [.var 0] ∧ D.flags [] sealR = (false, false)
 
 section
-variable {K : RunCtx} {ρ : Assignment} {φ : Future} {g : Sem} {s : SState}
+variable {K : RunCtx} {ρ ρ₀ : Assignment} {φ : Future} {g : Sem} {s : SState}
 
 /-- **The join's drop of `R`'s match** (`ColumnP.joinP` with `R`'s match). -/
 theorem joinR (hd : ParDecR K.D) (h : RefJ s) :
@@ -60,7 +61,7 @@ theorem joinR (hd : ParDecR K.D) (h : RefJ s) :
 
 /-- The argument's read: `n.0` on `n ↦ a + 1` gives `a` at `Nat` and writes `moved` at the predecessor
 (`ColumnP.runArmS` at `R`'s table). -/
-theorem runArgR (hd : ParDecR K.D) (h : RefP ρ φ g s) {a : Nat} (h0 : ρ 0 = .el0 Nat (a + 1)) (tl : Bool) (hint : TyS) :
+theorem runArgR (hd : ParDecR K.D) (h : RefP ρ₀ φ g s) {a : Nat} (h0 : ρ₀ 0 = .el0 Nat (a + 1)) (tl : Bool) (hint : TyS) :
     runT K ρ φ tl hint (.place pn0) s = some ((.el0 Nat a, .plain TyM.nat), setN0 K s) := by
   have hfl : K.D.flags (scopeOf s) (.place pn0) = (false, false) := by rw [h.scope]; exact hd.2.2.1
   have hcp : K.D.copy (K.D.placeDecl (scopeOf s) pn0) = false := by rw [h.scope]; exact hd.2.2.2.1
@@ -89,14 +90,14 @@ theorem runArgR (hd : ParDecR K.D) (h : RefP ρ φ g s) {a : Nat} (h0 : ρ 0 = .
   simp only [bind, Option.bind, hwhole, hrg, not_true_eq_false, if_false, Bool.false_eq_true, List.isEmpty_cons, hset]
   rfl
 
-theorem refP_resolve1 (h : RefP ρ φ g s) : resolve s (.var 1) = some (.bind 1 0, []) := by
+theorem refP_resolve1 (h : RefP ρ₀ φ g s) : resolve s (.var 1) = some (.bind 1 0, []) := by
   unfold resolve; rw [show (Place.var 1).steps = (1, []) from rfl]; simp [h.varPos1]
 
 /-- **The recursive call `R(n.0)`, in the reference**: the head reads the function's own binding in place (a copy,
 at its stored type `T`; the read asks the value whole and a member of `T`), the argument's read gives `a`, the borrow
 test is vacuous, then `callOf`. At any tail flag and hint. -/
-theorem runCallR (hd : ParDecR K.D) (h : RefP ρ φ g s) {T : TyM} (hts : (s.tyAt (.bind 1 0)).m = T)
-    (hgw : g.whole) (hgm : ReadGood K.dm.read T g) {a : Nat} (h0 : ρ 0 = .el0 Nat (a + 1)) (tl : Bool) (hint : TyS) :
+theorem runCallR (hd : ParDecR K.D) (h : RefP ρ₀ φ g s) {T : TyM} (hts : (s.tyAt (.bind 1 0)).m = T)
+    (hgw : g.whole) (hgm : ReadGood K.dm.read T g) {a : Nat} (h0 : ρ₀ 0 = .el0 Nat (a + 1)) (tl : Bool) (hint : TyS) :
     runT K ρ φ tl hint callR s = callOf K.dm.read (g, .plain T) [(.el0 Nat a, .plain TyM.nat)] (setN0 K s) := by
   have hfl : K.D.flags (scopeOf s) callR = (false, false) := by rw [h.scope]; exact hd.2.1
   have hT : ({ s.tyAt (.bind 1 0) with label := none } : TyS) = .plain T := by
@@ -123,16 +124,16 @@ theorem runCallR (hd : ParDecR K.D) (h : RefP ρ φ g s) {T : TyM} (hts : (s.tyA
 
 /-- **The match, at both tags**: on `0` the arm `Z` and the join's drop; on `a + 1` the call (whose result and state
 are given) and the join's drop. In tail position, at any hint. -/
-theorem runR (hd : ParDecR K.D) (h : RefP ρ φ g s) (hg : ∀ q, Sem.movedIn g q = []) {T : TyM}
+theorem runR (hd : ParDecR K.D) (h : RefP ρ₀ φ g s) (hg : ∀ q, Sem.movedIn g q = []) {T : TyM}
     (hts : (s.tyAt (.bind 1 0)).m = T) (hgw : g.whole) (hgm : ReadGood K.dm.read T g) (hint : TyS) :
-    (ρ 0 = .el0 Nat 0 → runT K ρ φ true hint bodyR s = some ((.el0 Nat 0, .plain TyM.nat), dropN K s)) ∧
-    (∀ a r, ρ 0 = .el0 Nat (a + 1) →
+    (ρ₀ 0 = .el0 Nat 0 → runT K ρ φ true hint bodyR s = some ((.el0 Nat 0, .plain TyM.nat), dropN K s)) ∧
+    (∀ a r, ρ₀ 0 = .el0 Nat (a + 1) →
       callOf K.dm.read (g, .plain T) [(.el0 Nat a, .plain TyM.nat)] (setN0 K s) = some (r, setN0 K s) →
       runT K ρ φ true hint bodyR s = some (r, dropN K (setN0 K s))) := by
   have hfl : K.D.flags (scopeOf s) (.matchNat (.var 0) .zero callR) = (false, false) := by
     rw [h.scope]; exact hd.1
   have htag : TagOk K φ (.var 0) s := by unfold TagOk; rw [h.resolve0]; exact h.accessOk K φ _ _
-  have htg : ∀ k, ρ 0 = .el0 Nat k →
+  have htg : ∀ k, ρ₀ 0 = .el0 Nat k →
       SM.guarded (TagOk K φ (.var 0)) (tagOf K φ (.var 0) natTag) s = some (natTag (.el0 Nat k) (s.tyAt (.bind 1 1)), s) := by
     intro k hk
     rw [SM.guarded_of htag]; unfold tagOf; rw [h.resolve0]; dsimp only

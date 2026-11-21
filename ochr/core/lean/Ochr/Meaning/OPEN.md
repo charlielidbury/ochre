@@ -14,6 +14,14 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FIRST RECURSIVE FUNCTION, `R` (lead17, 2026-11-21, `spine-lead17`; docs/31 D133, D134)
+
+`def R (n : Nat) : Nat by n := match n { Z => Z, S m => R(m) }`; the checker pinned in `Steps/RecGuards.lean` (the self-call on `σ1` closes off to the sealed program `⌈R(σ1)⌉ : Nat`; `recCheck` keeps the candidate since `σ1` is a strict subterm of `S(σ1)`).
+- **Facts about the checker (machine lane), stated and `#guard`ed, unproved:** `ColumnR.SplitRInv` (`Steps/RecR.lean`: `SplitPInv` for `R`'s body; the leaves `leafZR` on `Z : Nat` and `leafSR` on `⌈R(σ1)⌉ : Nat`, with `KeepsAtZR`); `ColumnR.FixRunR` (`checkDef defR` inverted to the body's `checkTail`).
+- **Restated (D133):** `CallBody.BodyLazyInv` takes `CopyDec D st (.var 0)` (the read's copy decision at the body's start) instead of `DecTab D st'` at its end; `VarNumAInv` keeps the old pattern (same narrowing recommended).
+Proved (standard axioms): `ColumnRSplit.split_outR`/`split_simR` (`TailSim` for `R`'s body at stage `b + 1`, context `KR … (GR … b fn) b`, from every assignment with `ρ σ0 ≤ b`; hypothesis `GoodBelow` (the outer induction); checker: `SplitRInv`; model: none); `ColumnR.goodBelow_stg` (the knot: every reference stage good below its bound; no assumption); **`ColumnR.column_R_run` (the closure a member of `Π(n : Nat). Nat`; NO assumption)**; `column_R_ff` (+ `TailSim` at every stage with the hypothesis discharged; checker: `SplitRInv`; model: none); `column_R_def` (+ `FixRunR`). `CallJ2.copyDec_calleeJ2`, `parDecJ2`, `flags_bodyI_J2` (J2's table gives the callee's decisions; no assumption).
+Next for recursion: a recursive function whose result is used after the call (`S(R(m))`, a `let` around the call), where the relation at the leaf carries the sealed call into the continuation; a recursive function with a λ capturing its own name (D123's stage 2, `Regress/SelfCapture.R7`).
+
 ## THE FIRST SPLIT, AND J2'S CALLEE (lead16, 2026-11-21, `spine-lead16`; docs/31 D131, D132)
 
 Open statements added, none with `sorry` (all are named hypotheses):

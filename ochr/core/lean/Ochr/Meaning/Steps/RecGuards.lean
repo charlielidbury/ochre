@@ -144,5 +144,13 @@ rejects if none was declared or none survives. -/
   leavesOk { stRm with tailDecl := some .other }
 -- with no [Rec] context the run still succeeds with the same leaves (the check is skipped, not failed)
 #guard leavesOk { stRm with recStack := [] }
+-- `KeepsAtZR` is needed: a continuation that names an unknown in world `Z` moves world `S`'s fresh unknown, and with
+-- it the sealed call's argument, to `σ2`
+def kFresh (v T : Value) : M Unit := do
+  if v == .zero then discard (Ochr.freshAbsR 100 .tNat)
+  kRecT v T
+#guard match leavesOf kFresh stRm with
+  | [_, (ss, vs, _)] => vs == .sealed (.call (.val (.gfn "R")) [.val (.abs 2)] true) && ss.refs == [(0, .succ (.abs 2))]
+  | _ => false
 
 end Ochr.Meaning.Steps.Form.ColumnR.Guards
