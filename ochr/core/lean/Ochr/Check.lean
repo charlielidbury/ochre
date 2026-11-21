@@ -111,6 +111,74 @@ def seedHoles : M Unit := do
   for (i, d) in s.globals.flatMap (·.absDecls) do decls := decls.set! i d
   set { s with absTy := tys, absDecl := decls, nextAbs := n }
 
+/-- D118: an undeclared name a term mentions: the path from its node up to the root (innermost
+first, the node itself included), the name, and whether it is a constant (`true`) or an inductive
+type (`false`). -/
+abbrev UndeclaredName := List Term × String × Bool
+
+/-- D118: `r`, found in a child of `p`, with `p` added to its path. -/
+def UndeclaredName.up (p : Term) (r : Option UndeclaredName) : Option UndeclaredName :=
+  r.map fun (ps, m, c) => (ps ++ [p], m, c)
+
+mutual
+/-- D118: the first name `t` mentions, in pre-order, that is not declared: a constant `okC`
+rejects, or an inductive type `okT` rejects (named by a type, a constructor or a match's
+constructors). Read from syntax alone, so every subterm is looked at, whether or not a run would
+reach it. -/
+def Term.undeclared (okC okT : String → Bool) (t : Term) : Option UndeclaredName :=
+  match t with
+  | .const m => if okC m then none else some ([t], m, true)
+  | .tind m as => if okT m then UndeclaredName.up t (Term.undeclaredList okC okT as) else some ([t], m, false)
+  | .ctor ty _ _ ps as =>
+    if okT ty then UndeclaredName.up t ((Term.undeclaredList okC okT ps).orElse fun _ => Term.undeclaredList okC okT as)
+    else some ([t], ty, false)
+  -- a match with no arms names no type (`""`)
+  | .matchInd _ ty arms =>
+    if ty == "" || okT ty then UndeclaredName.up t (Term.undeclaredArms okC okT arms) else some ([t], ty, false)
+  | .assign _ u | .succ u | .ref u => UndeclaredName.up t (u.undeclared okC okT)
+  | .letIn _ u w | .seq u w | .cong u w | .ascribe u w | .matchNat _ u w =>
+    UndeclaredName.up t ((u.undeclared okC okT).orElse fun _ => w.undeclared okC okT)
+  | .pi _ ds c => UndeclaredName.up t ((Term.undeclaredList okC okT ds).orElse fun _ => c.undeclared okC okT)
+  | .fix _ _ ds c _ b =>
+    UndeclaredName.up t (((Term.undeclaredList okC okT ds).orElse fun _ => c.undeclared okC okT).orElse fun _ =>
+      b.undeclared okC okT)
+  | .call f as _ => UndeclaredName.up t ((f.undeclared okC okT).orElse fun _ => Term.undeclaredList okC okT as)
+  | .eq a b c | .id a b c =>
+    UndeclaredName.up t (((a.undeclared okC okT).orElse fun _ => b.undeclared okC okT).orElse fun _ =>
+      c.undeclared okC okT)
+  | .prim _ as => UndeclaredName.up t (Term.undeclaredList okC okT as)
+  | _ => none
+termination_by structural t
+
+def Term.undeclaredList (okC okT : String → Bool) : List Term → Option UndeclaredName
+  | [] => none
+  | t :: ts => (t.undeclared okC okT).orElse fun _ => Term.undeclaredList okC okT ts
+termination_by structural ts => ts
+
+def Term.undeclaredArms (okC okT : String → Bool) : List (Hint × Term) → Option UndeclaredName
+  | [] => none
+  | (_, t) :: ts => (t.undeclared okC okT).orElse fun _ => Term.undeclaredArms okC okT ts
+termination_by structural ts => ts
+end
+
+/-- D118: a declaration whose terms `ts` mention a constant or an inductive type not declared at
+this point (not in Σ; `self`, an inductive type's own name in its fields) is rejected before
+anything runs, located at the innermost written term around the name (a call's head is located
+by its call). Without it, a name in code that no run reaches (the other arm of a match on a known
+constructor, a statement's dead arm, a type function's unapplied arm) was never looked up, so
+`def H4 : Nat := (let z = 0; match z { Z => 0, S n => NoSuchName })` was accepted while the same
+name in a live arm was rejected. -/
+def undeclaredCheck (self : Option String) (ts : List Term) : M Unit := do
+  let s ← get
+  let okC := fun m => s.globals.any (·.name == m)
+  let okT := fun m => self == some m || s.inds.any (·.name == m)
+  match Term.undeclaredList okC okT ts with
+  | none => pure ()
+  | some (path, m, isConst) =>
+    let msg := if isConst then s!"unknown constant {m}" else s!"unknown inductive type {m}"
+    let at? := if s.locs.on then path.findSome? (s.locs.table.get? <| termAddr ·) else none
+    throw (.error msg at?)
+
 /-- Check one definition and add it to the globals. -/
 def checkDef (d : Def) : M Unit := do
   -- [Def], [Const]: f ∉ Σ
@@ -122,6 +190,9 @@ def checkDef (d : Def) : M Unit := do
     err s!"[D48] {d.name}: & appears only as the whole declared type of a parameter, result or annotated term, never inside a type or produced by computation"
   -- D55: every type position, in the types and in the body
   discard (declOf (← fuelLeft) true [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
+  -- D118: every name it mentions is declared, read from syntax and Σ, before anything runs (after
+  -- the declared readings, which run nothing either and keep their own messages)
+  undeclaredCheck none (d.doms ++ [d.cod, d.body])
   if d.doms.isEmpty then
     -- a constant
     modify fun s => { s with env := #[{}], goal := none, recStack := [], refs := [] }
@@ -362,6 +433,9 @@ def checkInd (d : IndDecl) : M Unit := do
     let sc' := sc ++ fields.reverse.map fun _ => DeclInfo.other
     let ns' := ns ++ fields.reverse.map (·.1)
     for (_, FT) in fields do discard (typePos (← fuelLeft) true sc' ns' FT)
+  -- D118: every name its parameter and field types mention is declared (its own name aside),
+  -- read from syntax and Σ, before anything runs (after the declared readings, as in `checkDef`)
+  undeclaredCheck (some n) (d.params.map (·.2) ++ d.ctors.flatMap (·.2.map (·.2)))
   let mut ps := #[]
   for (h, PT) in d.params do
     let A ← evalType (← fuelLeft) PT
