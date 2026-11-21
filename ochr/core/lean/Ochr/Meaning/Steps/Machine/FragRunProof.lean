@@ -2,7 +2,7 @@ import Ochr.Meaning.Steps.Machine.FragRunLemmas
 import Ochr.Meaning.Steps.FragTop
 
 /-!
-# `FragRun` with the counter (machine lane, machine6; IN PROGRESS)
+# `FragRun` with the counter (machine lane, machine6 and machine7; PROVED)
 
 `FragRun` is false as stated (machine6, 2026-11-21: `FSt` says nothing about the label counter, and
 `&x` lends at the counter; counterexample in `HANDOFF.md`). `FragRunF` is it with the counter above
@@ -464,5 +464,141 @@ theorem core_let {D : Decisions} (hdec : FragDec D) {Γ : List Form.FT} {x : Hin
       ← ColumnC.topReadings_kern hk₀]
   · rw [← size_withTempT st₁ v T?, size_of_kern hk₃, hsz₃, size_withTempT, hsz₂, size_of_kern hkB]
     exact hszp.trans (hsz₁.trans (size_of_kern hk₀))
+
+/-! ## `u; w` -/
+
+/-- What the sequence leaves, from the tail's run at `stW`. -/
+theorem core_seq_tail {D : Decisions} (hdec : FragDec D) {Γ : List Form.FT} {u w : Term} {A B : Form.FT}
+    (hu : FTy Γ u A) (hw : FTy Γ w B) (ihw : EvalCase D Γ w B) {m : Nat} {st₀ stW st₁ : MState} {bh : Nat}
+    {v : Value} {T? : Option Value} (hP : FSt Γ st₀) (hcd : st₀.curDecl = some (D.declOf (topReadings st₀) (.seq u w)))
+    (hPW : FSt Γ stW) (hfW : Fresh stW) (hmW : Mode stW) (htdW : stW.tailDecl = none ∨ stW.tailDecl = st₀.curDecl)
+    (htrW : topReadings stW = topReadings st₀) (hszW : stW.env.size = st₀.env.size) (hD : DecTab D st₁)
+    (hrw : Runs (Ochr.eval m true w none) stW bh (v, T?) st₁) : CoreOut Γ B st₀ st₁ v T? := by
+  have htdW' : stW.tailDecl = none ∨ stW.tailDecl = some (D.declOf (topReadings stW) w) := by
+    rcases htdW with e | e
+    · exact .inl e
+    · exact .inr (by rw [e, hcd, (hdec Γ _ B st₀ (.seq Γ u w A B hu hw) hP).2, (hdec Γ w B stW hw hPW).2])
+  obtain ⟨hT, hr, hme₂, htr₂, hsz₂, hF₂, hf₂⟩ := ihw m none stW st₁ bh v T? hPW hfW hmW htdW' hD hrw
+  exact ⟨hT, hr, hmW.of_modeEq hme₂, htr₂.trans htrW, hsz₂.trans hszW, hF₂, hf₂⟩
+
+theorem core_seq_inert {D : Decisions} (hdec : FragDec D) {Γ : List Form.FT} {u w : Term} {A B : Form.FT}
+    (hA : A ≠ .ref) (hu : FTy Γ u A) (hw : FTy Γ w B) (ihu : EvalCase D Γ u A) (ihw : EvalCase D Γ w B) :
+    CoreCase D Γ (.seq u w) B := by
+  intro m st₀ st₁ hint bh v T? hP hfr hm htn htd hcd hD h
+  obtain ⟨sa, sb, sW, v₀, T₀, bh₁, bh₂, hk₀, hma, -, htda, htdW, hru, hD₁, hdrop, -, hrw⟩ :=
+    seqInv m u w hint st₀ st₁ bh v T? D hm htn htd hD h
+  obtain ⟨-, hv₀, hme₁, htr₁, hsz₁, hF₁, hf₁⟩ :=
+    ihu m none sa sb bh₁ v₀ T₀ (hP.kern hk₀) (hfr.kern hk₀) hma (.inl htda) hD₁ hru
+  have hin : v₀.Num ∨ v₀ = .unit := by
+    cases A with
+    | nat => exact .inl hv₀
+    | unit => exact .inr hv₀
+    | ref => exact absurd rfl hA
+  have hinert : v₀.Inert := by
+    rcases hin with h | h
+    · exact h.inert
+    · rw [h]; exact Value.inert_unit
+  have hloans : v₀.loans = [] := by
+    rcases hin with h | h
+    · exact h.loans
+    · rw [h]; simp [Value.loans]
+  obtain ⟨hkW, hmeW⟩ := hdrop hinert.holdsBorrow hloans
+  have hne : 0 < sb.env.size := by rw [hsz₁, size_of_kern hk₀]; exact hP.frame
+  exact core_seq_tail hdec hu hw ihw hP hcd ((hF₁.untemp hin).kern hkW) ((hf₁.untemp hne).kern hkW)
+    ((hma.of_modeEq hme₁).of_modeEq hmeW) htdW
+    (by rw [← ColumnC.topReadings_kern hkW, htr₁, ← ColumnC.topReadings_kern hk₀])
+    (by rw [size_of_kern hkW, hsz₁, size_of_kern hk₀]) hD hrw
+
+theorem core_seq_bor {D : Decisions} (hdec : FragDec D) {Γ : List Form.FT} {u w : Term} {B : Form.FT}
+    (hu : FTy Γ u .ref) (hw : FTy Γ w B) (ihu : EvalCase D Γ u .ref) (ihw : EvalCase D Γ w B) :
+    CoreCase D Γ (.seq u w) B := by
+  intro m st₀ st₁ hint bh v T? hP hfr hm htn htd hcd hD h
+  obtain ⟨sa, sb, sW, v₀, T₀, bh₁, bh₂, hk₀, hma, -, htda, htdW, hru, hD₁, hdrop, -, hrw⟩ :=
+    seqBorInv m u w hint st₀ st₁ bh v T? D hm htn htd hD h
+  obtain ⟨rfl, ⟨l, c, rfl, hcN⟩, hme₁, htr₁, hsz₁, hF₁, hf₁⟩ :=
+    ihu m none sa sb bh₁ v₀ T₀ (hP.kern hk₀) (hfr.kern hk₀) hma (.inl htda) hD₁ hru
+  have hne : 0 < sb.env.size := by rw [hsz₁, size_of_kern hk₀]; exact hP.frame
+  obtain ⟨fr, hfr⟩ : ∃ fr, sb.env[sb.env.size - 1]? = some fr :=
+    ⟨_, Array.getElem?_eq_getElem (by omega : sb.env.size - 1 < sb.env.size)⟩
+  obtain ⟨hWpos, hWnew, hWold, hntq, -⟩ := push_view hfr (.borrow l c) (some FT.ref.ty)
+  have hWmem : ∀ q, q ∈ allPos sb.env → q ∈ allPos (sb.withTempT (.borrow l c) (some FT.ref.ty)).env :=
+    fun q hq => by rw [hWpos]; exact List.mem_append_left _ hq
+  have hNmem : Pos.temp (sb.env.size - 1) fr.temps.size ∈ allPos (sb.withTempT (.borrow l c) (some FT.ref.ty)).env := by
+    rw [hWpos]; exact List.mem_append_right _ (List.mem_singleton_self _)
+  have hWcases : ∀ q, q ∈ allPos (sb.withTempT (.borrow l c) (some FT.ref.ty)).env →
+      q = .temp (sb.env.size - 1) fr.temps.size ∨ q ∈ allPos sb.env := by
+    intro q hq; rw [hWpos, List.mem_append, List.mem_singleton] at hq; exact hq.symm
+  obtain ⟨px, hpxW, hxW⟩ := hF₁.lender _ l c hNmem hWnew
+  have hpx : px ∈ allPos sb.env := (hWcases px hpxW).resolve_left (fun e => by rw [e, hWnew] at hxW; cases hxW)
+  have hx : valAt sb.env px = .loan l := by rw [← hWold _ hpx]; exact hxW
+  obtain ⟨fx, jx, rfl⟩ : ∃ fx jx, px = .bind fx jx := by
+    cases px with
+    | bind fx jx => exact ⟨fx, jx, rfl⟩
+    | temp f' i' =>
+      rcases hF₁.temps f' i' hpxW with h' | h' | ⟨m', w', h'⟩ <;> rw [hxW] at h' <;> cases h'
+  have hnoB : ∀ q ∈ allPos sb.env, ∀ w', valAt sb.env q ≠ .borrow l w' := fun q hq w' e => hntq (by
+    have e' := hF₁.bor1 q _ l w' c (hWmem _ hq) hNmem (by rw [hWold _ hq]; exact e) hWnew
+    rw [← e']; exact hq)
+  obtain ⟨sc, hq, -, hkW, hmeW⟩ := hdrop l c (.bind fx jx) rfl hcN
+    (fun q hq => by rw [← hWold q hq]; exact hF₁.vals q (hWmem q hq)) hx hpx
+    (fun q hq e => hF₁.loan1 q _ l (hWmem _ hq) hpxW (by rw [hWold _ hq]; exact e) hxW) hnoB
+  have hPX : FSt Γ { sb with env := Env.setAtE sb.env (.bind fx jx) c } := hF₁.endTemp hcN hpx hx
+  have hpxq : Pos.bind fx jx ∈ allPos sc.env := by rw [← allPos_erase, ← hq.env, allPos_erase]; exact hpx
+  have hfX : Fresh { sc with env := Env.setAtE sc.env (.bind fx jx) c } :=
+    ((hf₁.untemp hne).of_erase hq.env hq.nextLoan).setAt hpxq (fun l' e => by
+      rcases e with e | ⟨c', e⟩ <;> rw [e] at hcN <;> cases hcN)
+  exact core_seq_tail hdec hu hw ihw hP hcd
+    ((hPX.of_erase (by
+      show (Env.setAtE sb.env (.bind fx jx) c).erase = (Env.setAtE sc.env (.bind fx jx) c).erase
+      rw [Machine.erase_setAtE, Machine.erase_setAtE, hq.env])).kern hkW)
+    (hfX.kern hkW) ((hma.of_modeEq hme₁).of_modeEq hmeW) htdW
+    (by rw [← ColumnC.topReadings_kern hkW, topReadings_setAt, ← ColumnC.topReadings_of_erase hq.env, htr₁,
+      ← ColumnC.topReadings_kern hk₀])
+    (by rw [size_of_kern hkW]; show (Env.setAtE sc.env (.bind fx jx) c).size = _
+        rw [size_setAtE, quiet_size hq, hsz₁, size_of_kern hk₀]) hD hrw
+
+/-! ## The induction, and `FragRun` -/
+
+/-- **`FragRun` with the counter carried**, by induction on the fragment's typing. -/
+theorem fragRunF {D : Decisions} (hdec : FragDec D) : FragRunF D := by
+  intro Γ u A n hint st st' bh v T? hty
+  revert n hint st st' bh v T?
+  induction hty with
+  | zero Γ => exact frag_lift_run hdec (.zero Γ) (core_zero D Γ)
+  | succ Γ u hu ih => exact frag_lift_run hdec (.succ Γ u hu) (core_succ ih)
+  | var Γ i hi => exact frag_lift_run hdec (.var Γ i hi) (core_var D Γ i hi)
+  | bor Γ i hi => exact frag_lift_run hdec (.bor Γ i hi) (core_bor D Γ i hi)
+  | asg Γ i u hi hu ih => exact frag_lift_run hdec (.asg Γ i u hi hu) (core_asg hi ih)
+  | asgD Γ i u hi hu ih => exact frag_lift_run hdec (.asgD Γ i u hi hu) (core_asgD hi ih)
+  | letIn Γ x u w A B hu hw ihu ihw =>
+    exact frag_lift_run hdec (.letIn Γ x u w A B hu hw) (core_let hdec hu hw ihu ihw)
+  | seq Γ u w A B hu hw ihu ihw =>
+    cases A with
+    | ref => exact frag_lift_run hdec (.seq Γ u w _ B hu hw) (core_seq_bor hdec hu hw ihu ihw)
+    | nat => exact frag_lift_run hdec (.seq Γ u w _ B hu hw) (core_seq_inert hdec (fun e => by cases e) hu hw ihu ihw)
+    | unit => exact frag_lift_run hdec (.seq Γ u w _ B hu hw) (core_seq_inert hdec (fun e => by cases e) hu hw ihu ihw)
+
+/-- The checker invariant's last conjunct (the counter above every label that occurs) gives `Fresh` at
+a fragment state. -/
+theorem fresh_of_counter {Γ : List Form.FT} {st : MState} (hP : FSt Γ st)
+    (hc : ∀ l, st.norm.Occurs l → l < st.norm.nextLoan) : Fresh st := by
+  intro q hq l e
+  apply hc l
+  rw [occurs_norm]
+  rcases e with e | ⟨w, e⟩
+  · exact occurs_of_pos hq (by rw [e]; simp [Value.anyAtom, show (Value.loan l == Value.loan l) = (l == l) from rfl])
+  · have hw : w.Num := by
+      have := hP.vals q hq; rw [e] at this
+      cases this with
+      | num hn => cases hn
+      | bor _ hw => exact hw
+    exact occurs_of_pos hq (by rw [e]; simp [Value.anyAtom])
+
+/-- **`FragRun`, restated with the counter (the lead's ruling, 2026-11-21), PROVED.** -/
+theorem fragRun {D : Decisions} (hdec : FragDec D) : FragRun D := by
+  intro Γ u A n hint st st' bh v T? hty hP hc hm htd hD h
+  obtain ⟨hT, hv, hme, htr, hsz, hF, -⟩ :=
+    fragRunF hdec Γ u A n hint st st' bh v T? hty hP (fresh_of_counter hP hc) hm htd hD h
+  exact ⟨hT, hv, hme, htr, hsz, hF⟩
 
 end Ochr.Meaning.Steps.Machine

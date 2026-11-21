@@ -358,6 +358,24 @@ notation; `{ s with a := …, b := … }` split over two lines needs newline-sep
 `subst` after `obtain ⟨…, h⟩` can re-expose a shadowed `h` (name the new hypothesis freshly); `show` of
 a goal on `{ s with env := E }.env` with metavariables fails (use `change` with explicit terms).
 
+### machine7 (2026-11-21): all 18 `FragOpen` facts proved; `frag_run_free` has no assumed fact
+
+PROVED (standard axioms, root-imported, branch `spine-machine7`):
+- `FragRun` RESTATED per the lead's ruling (fix A): one more antecedent, the label counter above every
+  label that occurs (`∀ l, st.norm.Occurs l → l < st.norm.nextLoan`, Inv's last conjunct); `FragNatRun`
+  likewise; `FSt`/`FStT` unchanged. Consumers pass the conjunct from the `Pre` they hold; `Column.succ_core`'s
+  `hnum` takes it too (ColumnC/ColumnBSim: one ignored binder). Commit a4d0ef081 (edits by machine6).
+- `FragRunProof.lean`: `fragRunF` (by induction on `FTy`, each case at `evalCore` lifted by
+  `frag_lift_run`): `core_zero`, `core_var`, `core_bor`, `core_succ`, `core_asg`, `core_asgD`, `core_let`,
+  `core_seq_inert` (first part `Nat`/`Unit`, `seqInv`), `core_seq_bor` (first part `&Nat`, `seqBorInv`);
+  `fresh_of_counter` (Inv's conjunct gives `Fresh` at a fragment state); `fragRun : FragDec D → FragRun D`.
+  Helpers there: `core_out_of`/`core_out_num` (a case's end from the state of its last write),
+  `Fresh.pushBind`, `FSt.setKeep`, `FSt.holds_nat`, `FSt.ty_at`, `topReadings_lent`, `quiet_size`.
+- `FragFree.lean`: `fragOpen_ff st' : FragOpen (checkerDecisionsFF st')` and `frag_run_free` = `frag_run_ff`
+  with it: the fragment's run theorem with NO assumed fact.
+Not touched: `FragTop.lean`'s docstrings still call `FragOpen` "the facts not yet proved" (outside this
+lane's files).
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed
@@ -522,6 +540,9 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21, `spine-machine7` (machine7; from `spine-machine6` 117a755e6): `OchrMeaning` green; `frag_run_free`,
+`fragOpen_ff`, `fragRun`, `fragRunF`: standard axioms (no fact assumed).
 
 2026-11-21, `spine-machine5` (machine5; `spine` aa410844 merged): `OchrMeaning` green; `column_C_free`,
 `column_B_free`, `frag_run_ff` and the nine fragment facts proved so far: standard axioms.

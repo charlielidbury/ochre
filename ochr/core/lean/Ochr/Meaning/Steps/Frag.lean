@@ -208,7 +208,12 @@ the fragment from the inversion facts; for the machine lane; it replaces `FragNa
 fragment state, at any hint (the hint the checker hands a write's right-hand side is left free by
 `AssignNumInv`/`AssignDerefInv`), entered as `eval` is entered in a typed run, the run returns a
 value of the term's type at its type, in the same mode, with the top frame's readings and the
-number of frames kept, and leaves a fragment state with that value in flight. -/
+number of frames kept, and leaves a fragment state with that value in flight.
+RESTATED (machine6's finding, the lead's ruling, 2026-11-21): the entry also has the label counter above
+every label that occurs (the checker invariant's last conjunct). Without it the statement was false:
+`&x` lends at the counter, so with `z ↦ loan 0`, `w ↦ borrow 0 Z`, `x ↦ Z` and the counter at 0, `&x`
+reuses label 0 and the end state has two loans and two borrows of it. PROVED
+(`Machine.fragRun`, `Steps/Machine/FragRunProof.lean`). -/
 def FragRun (D : Decisions) : Prop :=
   ∀ Γ u A n hint st st' bh v T?, FTy Γ u A → FSt Γ st → (∀ l, st.norm.Occurs l → l < st.norm.nextLoan) → Mode st →
     (st.tailDecl = none ∨ st.tailDecl = some (D.declOf (DecideScope.topReadings st) u)) → DecTab D st' →
