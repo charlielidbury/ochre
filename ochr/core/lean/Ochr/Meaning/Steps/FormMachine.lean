@@ -325,6 +325,10 @@ structure PlaceLocal (D : Decisions) : Prop where
     sc.getD p.steps.1 .other = sc'.getD p'.steps.1 .other → D.placeDecl sc p = D.placeDecl sc' p'
   other : ∀ p n args, D.placeDecl [.other] p ≠ .ind n args
   ref : ∀ p n args, D.placeDecl [.ref .other] p ≠ .ind n args
+  /-- Under a root read `.unit` no place reads an inductive (machine5, 2026-11-21, ruled by the
+  orchestrator: `InvBindUnit` was false without it, `fits` reading the table at a binding pushed at
+  `Unit` read `.unit`). -/
+  unit : ∀ p n args, D.placeDecl [.unit] p ≠ .ind n args
 
 /-- A number or `()` pushed as a temporary (`Z`, `S`, a read's value, a write's `()`). -/
 def InvPushInert : Prop :=

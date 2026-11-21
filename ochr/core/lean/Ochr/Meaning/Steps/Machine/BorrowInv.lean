@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.Machine.ReadInv
+import Ochr.Meaning.Steps.Machine.SeqInv
 
 /-!
 # The borrow column's `&x` of a variable holding a number (`BorrowNumInv`), proved
@@ -107,13 +108,21 @@ theorem borrowNumInv : BorrowNumInv := by
     subst this
     obtain ⟨bv, s₆, b₇, hbp, h₅⟩ := Runs.bind_inv h₄
     obtain ⟨rfl, X, rfl⟩ := runs_borrowPlace_num hn hbp
-    obtain ⟨_, s₇, b₈, how, h₆⟩ := Runs.bind_inv h₅
+    -- D115: the new borrow held as a temporary at its type across `openWrite`, then popped
+    obtain ⟨_, s₇, b₈, hpu, h₆⟩ := Runs.bind_inv h₅
+    have := runs_pushTemp_inv hpu
+    subst this
+    obtain ⟨_, s₈, b₉, how, h₇⟩ := Runs.bind_inv h₆
     have := runs_openWrite_var how
     subst this
-    obtain ⟨hvt, rfl⟩ := runs_pure_inv h₆
+    obtain ⟨pv, s₉, b₁₀, hpp, h₈⟩ := Runs.bind_inv h₇
+    obtain ⟨htop, rfl⟩ := runs_popTemp_inv hpp
+    have hpv := topTemp_withTempT htop
+    subst hpv
+    obtain ⟨hvt, rfl⟩ := runs_pure_inv h₈
     simp only [Prod.mk.injEq] at hvt
     obtain ⟨rfl, rfl⟩ := hvt
     exact ⟨⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, s₅, Quiet.refl _, fun _ _ h => h, rfl, rfl,
-      ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+      ⟨congrArg Env.erase (popTempE_pushTempTyE _ _ _).symm, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 end Ochr.Meaning.Steps.Machine

@@ -105,29 +105,55 @@ theorem runs_accessInside_deref (hn : DerefAt st i f j bd l w) {n : Nat} {o : Bo
     have h2 : liveLoansIn s₁.env w = [] := liveLoansIn_nil (Value.Num.loans_nil hn.num)
     cases o <;> (peel h₁; simp only [h1, h2, Bool.false_eq_true, if_false, if_true, List.isEmpty_nil] at h₁; peel h₁; exact (runs_pure_inv h₁).2)
 
-theorem runs_assignPlace_deref (hn : DerefAt st i f j bd l w) {k : Nat} {v₀ : Value} {T : Option Value}
-    {st' : MState} {b : Nat} (h : Runs (assignPlace k (.deref (.var i)) v₀ T) st b () st') :
-    ∃ X, st' = { st with env := Env.setAtE st.env (.bind f j) (.borrow l v₀), placeLog := X } := by
+theorem binds_popTempE (E : Env) (f i : Nat) :
+    (Env.popTempE E)[f]?.bind (fun fr : Frame => fr.binds[i]?) = E[f]?.bind (fun fr : Frame => fr.binds[i]?) := by
+  simp only [Env.popTempE, Array.getElem?_modify]
+  split <;> cases E[f]? <;> rfl
+
+theorem ckVarPos_popTempE (E : Env) (i : Nat) : ckVarPos (Env.popTempE E) i = ckVarPos E i := by
+  have hs : (Env.popTempE E).size = E.size := by simp [Env.popTempE]
+  have hb : (Env.popTempE E)[E.size - 1]!.binds = E[E.size - 1]!.binds := by
+    simp only [Env.popTempE, getElem!_def, Array.getElem?_modify, if_true]
+    cases E[E.size - 1]? <;> rfl
+  unfold ckVarPos; rw [hs, hb]
+
+theorem DerefAt.popTempE (h : DerefAt st i f j bd l w) :
+    DerefAt { st with env := Env.popTempE st.env } i f j bd l w :=
+  ⟨by show ckVarPos (Env.popTempE st.env) i = _; rw [ckVarPos_popTempE]; exact h.pos,
+   by show (Env.popTempE st.env)[f]?.bind _ = _; rw [binds_popTempE]; exact h.bind, h.val, h.num⟩
+
+/-- The temporaries' types forgotten, a pop is a pop of the forgotten environment. -/
+theorem erase_popTempE (e : Env) :
+    (Env.popTempE e).erase = e.erase.modify (e.erase.size - 1) fun fr => { fr with temps := fr.temps.pop } := by
+  apply Array.ext_getElem?
+  intro f
+  simp only [Env.erase_get?, Env.popTempE, Array.getElem?_modify, Env.erase_size]
+  split <;> cases e[f]? <;> rfl
+
+theorem erase_popTempE_congr {e e' : Env} (h : e.erase = e'.erase) : (Env.popTempE e).erase = (Env.popTempE e').erase := by
+  rw [erase_popTempE, erase_popTempE, h]
+
+/-- [Assign] at `*y` (D115: the value is the top temporary, pushed by the caller): the accesses end
+nothing, the old content `w` (a number) is dropped, the temporary popped and written at `[*]`. -/
+theorem runs_assignPlace_deref (hn : DerefAt st i f j bd l w) {k : Nat} {v₀ : Value}
+    (htop : (st.env[st.env.size - 1]!).temps.back? = some v₀)
+    {st' : MState} {b : Nat} (h : Runs (assignPlace k (.deref (.var i))) st b () st') :
+    ∃ X, st' = { st with env := Env.setAtE (Env.popTempE st.env) (.bind f j) (.borrow l v₀), placeLog := X } := by
   cases k with
   | zero => unfold assignPlace at h; simp only [runs_exhausted_iff] at h
   | succ m =>
     unfold assignPlace at h
-    obtain ⟨_, s₁, b₁, hpt, h₁⟩ := Runs.bind_inv h
+    obtain ⟨_, s₂, b₂, ha, h₂⟩ := Runs.bind_inv h
     clear h
-    have := runs_pushTemp_inv hpt
-    subst this
-    have hn₁ := hn.withTempT v₀ T
-    obtain ⟨_, s₂, b₂, ha, h₂⟩ := Runs.bind_inv h₁
-    clear h₁
-    have := runs_accessPath_deref hn₁ ha
+    have := runs_accessPath_deref hn ha
     subst this
     obtain ⟨_, s₃, b₃, hai, h₃⟩ := Runs.bind_inv h₂
     clear h₂
-    have := runs_accessInside_deref hn₁ hai
+    have := runs_accessInside_deref hn hai
     subst this
     obtain ⟨old, s₄, b₄, hc, h₄⟩ := Runs.bind_inv h₃
     clear h₃
-    obtain ⟨e, rfl⟩ := runs_content_deref hn₁ hc
+    obtain ⟨e, rfl⟩ := runs_content_deref hn hc
     rw [e] at h₄
     obtain ⟨_, s₅, b₅, hu, h₅⟩ := Runs.bind_inv h₄
     clear h₄
@@ -138,20 +164,20 @@ theorem runs_assignPlace_deref (hn : DerefAt st i f j bd l w) {k : Nat} {v₀ : 
       cases hx with
       | zero => exact .inl rfl
       | succ _ => exact .inr ⟨_, rfl⟩
-    have hll : liveLoansIn (st.withTempT v₀ T).env w = [] := liveLoansIn_nil (Value.Num.loans_nil hn.num)
+    have hll : ∀ E : Env, liveLoansIn E w = [] := fun _ => liveLoansIn_nil (Value.Num.loans_nil hn.num)
     simp only [Bool.false_eq_true, if_false] at h₅
+    have hn' := hn.popTempE
     rcases hx _ hn.num with e | ⟨w', e⟩ <;> rw [e] at h₅ hll <;>
       simp only [runs_get_bind, hll, List.isEmpty_nil, Bool.not_true, Bool.false_eq_true, if_false] at h₅ <;>
     (obtain ⟨v', s₆, b₆, hp, h₆⟩ := Runs.bind_inv h₅
-     obtain ⟨htop, rfl⟩ := runs_popTemp_inv hp
-     have hv' := topTemp_withTempT htop
+     obtain ⟨htop', rfl⟩ := runs_popTemp_inv hp
+     have hv' : v' = v₀ := by rw [htop] at htop'; exact (Option.some.inj htop').symm
      obtain ⟨_, s₇, b₇, hle, h₇⟩ := Runs.bind_inv h₆
      obtain ⟨X, rfl⟩ := runs_logEffect_inv hle
      obtain ⟨pos, v'', hp', hu', rfl⟩ := runs_setPlace_inv h₇
-     have henv : Env.popTempE (st.withTempT v₀ T).env = st.env := popTempE_pushTempTyE _ _ _
-     simp only [Place.steps, List.nil_append, henv] at hp' hu' ⊢
-     rw [hn.pos] at hp'; cases hp'
-     rw [hn.valAt] at hu'
+     simp only [Place.steps, List.nil_append] at hp' hu'
+     rw [hn'.pos] at hp'; cases hp'
+     rw [hn'.valAt] at hu'
      simp only [Value.updAt, Option.map_some, Option.some.injEq] at hu'
      subst hu' hv'
      exact ⟨X, rfl⟩)
@@ -276,7 +302,12 @@ theorem assignDerefInv : AssignDerefInv := by
   obtain ⟨rfl, hs8⟩ := runs_pure_inv hp2
   subst s₈
   obtain ⟨⟨v₀, T₀⟩, st₁, bh₁, hru, h₇⟩ := Runs.bind_inv h₆
-  simp only [Bool.not_false, Bool.and_self, if_true] at h₇
+  -- D115: `u`'s value held as a temporary at its type
+  obtain ⟨_, sT, bT, hpu, h₇⟩ := Runs.bind_inv h₇
+  have hsT := runs_pushTemp_inv hpu
+  subst hsT
+  simp only [Bool.false_and, Bool.and_false, Bool.not_false, Bool.and_self, Bool.false_eq_true, if_false,
+    if_true] at h₇
   obtain ⟨lf, s₉, b₁₀, hlf, h₈⟩ := Runs.bind_inv h₇
   obtain ⟨rfl, hs9⟩ := runs_lentLeafCheck_deref hlf
   subst s₉
@@ -284,7 +315,7 @@ theorem assignDerefInv : AssignDerefInv := by
   obtain ⟨A, s₁₀, b₁₁, hpA, h₉⟩ := Runs.bind_inv h₈
   obtain ⟨rfl, hs10⟩ := runs_pure_inv hpA
   subst s₁₀
-  obtain ⟨_, st₂, b₁₂, hex, h₁₀⟩ := Runs.bind_inv h₉
+  obtain ⟨_, sE, b₁₂, hex, h₁₀⟩ := Runs.bind_inv h₉
   obtain ⟨_, s₁₁, b₁₃, hap, h₁₁⟩ := Runs.bind_inv h₁₀
   obtain ⟨_, s₁₂, b₁₄, how, h₁₂⟩ := Runs.bind_inv h₁₁
   obtain ⟨hvt, hs12⟩ := runs_pure_inv h₁₂
@@ -292,22 +323,47 @@ theorem assignDerefInv : AssignDerefInv := by
   simp only [Prod.mk.injEq] at hvt
   obtain ⟨rfl, rfl⟩ := hvt
   have hg : TablesGrow st₁ st' :=
-    (Runs.grows (grows_expectTy _ _ _ _) hex).trans
-      ((Runs.grows (growsM_of_growsIn fun _ => (machineGrows n).assignPlace _ _ _) hap).trans
-        (Runs.grows (growsM_of_growsIn fun _ => (machineGrows n).openWrite _) how))
+    (TablesGrow.withTempT _ _ _).trans ((Runs.grows (grows_expectTy _ _ _ _) hex).trans
+      ((Runs.grows (growsM_of_growsIn fun _ => (machineGrows n).assignPlace _) hap).trans
+        (Runs.grows (growsM_of_growsIn fun _ => (machineGrows n).openWrite _) how)))
   refine ⟨st, st₁, hu, v₀, T₀, b₉, Kern.rfl' _, hm, htn, htd, hru, DecTab.back hD hg, rfl, rfl, ?_⟩
   intro f j bd l w hpos hb hbv hwn
   obtain ⟨hq, hme⟩ := expectTy_inv hex
-  have hn₂ : DerefAt st₂ i f j bd l w :=
-    ⟨by rw [← ckVarPos_erase, ← hq.env, ckVarPos_erase]; exact hpos,
-     by rw [← lookup_erase, ← hq.env, lookup_erase]; exact hb, hbv, hwn⟩
-  obtain ⟨X, rfl⟩ := runs_assignPlace_deref hn₂ hap
+  have hnT : DerefAt (st₁.withTempT v₀ T₀) i f j bd l w := DerefAt.withTempT ⟨hpos, hb, hbv, hwn⟩ v₀ T₀
+  have hnE : DerefAt sE i f j bd l w :=
+    ⟨by rw [← ckVarPos_erase, ← hq.env, ckVarPos_erase]; exact hnT.pos,
+     by rw [← lookup_erase, ← hq.env, lookup_erase]; exact hnT.bind, hbv, hwn⟩
+  have hne : 0 < st₁.env.size := by
+    obtain ⟨fr, b', hf, -⟩ := mem_allPos_bind st₁.env f j (ckVarPos_mem _ hpos)
+    exact Nat.lt_of_le_of_lt (Nat.zero_le f) (Array.getElem?_eq_some_iff.mp hf).1
+  have htopT : ((st₁.withTempT v₀ T₀).env[(st₁.withTempT v₀ T₀).env.size - 1]!).temps.back? = some v₀ := by
+    rw [withTempT_env]
+    have hs : (Env.pushTempTyE st₁.env v₀ T₀).size = st₁.env.size := by simp [Env.pushTempTyE]
+    rw [hs]
+    simp only [Env.pushTempTyE, getElem!_def, Array.getElem?_modify, if_true,
+      Array.getElem?_eq_getElem (show st₁.env.size - 1 < st₁.env.size by omega), Option.map_some,
+      Array.back?_push]
+  have htopE : (sE.env[sE.env.size - 1]!).temps.back? = some v₀ := by
+    have hs : sE.env.size = (st₁.withTempT v₀ T₀).env.size := by rw [← Env.erase_size, ← hq.env, Env.erase_size]
+    rw [hs, ← temps_erase, ← hq.env, temps_erase]; exact htopT
+  obtain ⟨X, rfl⟩ := runs_assignPlace_deref hnE htopE hap
   have := runs_openWrite_deref how
   subst this
-  refine ⟨st₂, hq, fun hT => ?_, ⟨hme.headEval, hme.copying, hme.inPlace, hme.erased⟩, hn₂.pos, hn₂.bind,
+  have hn₂ := hnE.popTempE
+  have henv : st₁.env.erase = (Env.popTempE sE.env).erase := by
+    rw [erase_popTempE_congr hq.env.symm, withTempT_env, popTempE_pushTempTyE]
+  refine ⟨{ sE with env := Env.popTempE sE.env },
+    ⟨henv, hq.globals, hq.inds, hq.refs, hq.etaRefs, hq.goal, hq.neutrals, hq.liveScope, hq.nextLoan, hq.absSize,
+      hq.absTy⟩,
+    fun hT => ?_, ⟨hme.headEval, hme.copying, hme.inPlace, hme.erased⟩, hn₂.pos, hn₂.bind,
     ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
-  cases T₀ with
-  | none => rw [runs_expectTy_none' hex]; exact fun _ _ h => h
-  | some T₀ => rw [runs_expectTy_of_beq (hT T₀ rfl) hex]; exact fun _ _ h => h
+  have hsE : sE = st₁.withTempT v₀ T₀ := by
+    cases T₀ with
+    | none => exact runs_expectTy_none' hex
+    | some T₀ => exact runs_expectTy_of_beq (hT T₀ rfl) hex
+  subst hsE
+  have e : ({ st₁.withTempT v₀ T₀ with env := Env.popTempE (st₁.withTempT v₀ T₀).env } : MState) = st₁ := by
+    rw [withTempT_env, popTempE_pushTempTyE]; rfl
+  rw [e]; exact fun _ _ h => h
 
 end Ochr.Meaning.Steps.Machine

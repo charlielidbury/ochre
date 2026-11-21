@@ -85,7 +85,9 @@ the parked holder `⊥`) and pops it, after a quiet stretch (the end's [Repack])
 `SeqInv`. The mode is kept only under the antecedent (lead11, as `SeqInv`: unconditional it would ask
 the ending machinery of any value to keep the mode, a whole-machine fact). The invariant is kept across the quiet stretch WITH the value parked (lead12;
 first stated as `KeepsInv st₁ st₂`, on the states without it, where `px` holds a loan whose borrow is
-nowhere, which `Inv` need not admit: unusable). -/
+nowhere, which `Inv` need not admit: unusable). `px` is the ONLY position holding `loan_l` (machine5's
+review, 2026-11-21: the end's `substEnv` gives `c` to EVERY position holding `loan_l`; with `x, z ↦
+loan_l` and `u` the read of a `y ↦ borrow_l c`, both get `c` where the conclusion gives it to `px`). -/
 def SeqBorInv : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -97,6 +99,7 @@ def SeqBorInv : Prop :=
       DecTab D st₁ ∧
       (∀ l c px, v₀ = .borrow l c → c.Num → (∀ q ∈ allPos st₁.env, FVal (valAt st₁.env q)) →
         valAt st₁.env px = .loan l → px ∈ allPos st₁.env →
+        (∀ q ∈ allPos st₁.env, valAt st₁.env q = .loan l → q = px) →
         (∀ q ∈ allPos st₁.env, ∀ w', valAt st₁.env q ≠ .borrow l w') →
         ∃ st₂, Quiet st₁ st₂ ∧ KeepsInv (st₁.withTempT v₀ T₀) (st₂.withTempT v₀ T₀) ∧
           Kern { st₂ with env := Env.setAtE st₂.env px c } stW ∧ ModeEq st₁ stW) ∧
@@ -108,11 +111,15 @@ def SeqBorInv : Prop :=
 /-- **[Drop] of a `let`'s binding LENT to the value in flight fails** (`dropTopBind`: ending the
 binding's loans would end a borrow a value in flight holds, D106). In the fragment a binding lends
 only to younger bindings or to the value in flight (`FSt.order`), so this is the only way the
-binding a `let` drops can be lent (`let x = Z; &x` is rejected). -/
+binding a `let` drops can be lent (`let x = Z; &x` is rejected). The temporary is the ONLY position
+holding `m`'s borrow (machine4's review, 2026-11-21: `endLoansOfTopBind` asks `findBorrow`, the FIRST
+position holding it; with `z ↦ borrow_m w` a binding before the temporary, the drop ends `z`'s borrow
+through `endTopLoan`, whose D106 test sees a binding, and succeeds). -/
 def DropLentFail : Prop :=
   ∀ (n : Nat) (st st' : MState) (bh : Nat) (fr : Frame) (b : Binding) (m f i : Nat) (w : Value),
     st.env[st.env.size - 1]? = some fr → fr.binds.back? = some b → b.val = .loan m →
     Pos.temp f i ∈ allPos st.env → valAt st.env (.temp f i) = .borrow m w →
+    (∀ q ∈ allPos st.env, (valAt st.env q).holdsBorrow m = true → q = .temp f i) →
     ¬ Runs (Ochr.dropTopBind n) st bh () st'
 
 /-- `InvBindNum` for `()` (state-level): the value in flight, `()`, moved into a binding pushed at

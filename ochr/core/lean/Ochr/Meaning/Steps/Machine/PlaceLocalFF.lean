@@ -223,8 +223,8 @@ theorem placeDecl_ff_root (st : MState) (bc : List DeclInfo → List Place → T
 
 /-! ## Under a root read `.other` or `.ref .other` no place reads an inductive -/
 
-/-- The readings a place under a root read `.other` or `.ref .other` can have. -/
-def InS (d : DeclInfo) : Prop := d = .other ∨ d = .prop ∨ d = .ref .other
+/-- The readings a place under a root read `.other`, `.ref .other` or `.unit` can have. -/
+def InS (d : DeclInfo) : Prop := d = .other ∨ d = .prop ∨ d = .ref .other ∨ d = .unit
 
 /-- `x` keeps the state, and from a state meeting `Q` every success answers `P`. -/
 def ResIn {α : Type} (P : α → Prop) (Q : MState → Prop) (x : M α) : Prop :=
@@ -264,7 +264,7 @@ theorem fieldAt_inS {Q : MState → Prop} (n : Nat) {r : DeclInfo} (hr : InS r) 
   cases n with
   | zero => unfold fieldAt; exact resIn_exhausted _
   | succ m =>
-    rcases hr with rfl | rfl | rfl <;>
+    rcases hr with rfl | rfl | rfl | rfl <;>
     · unfold fieldAt
       simp only [List.filterMap_cons, List.filterMap_nil, List.isEmpty_nil, if_true]
       exact resIn_pure (.inl rfl)
@@ -289,7 +289,8 @@ theorem placeDecl_inS (i : Nat) : ∀ (p : Place) (n : Nat),
     unfold placeDecl
     (try dsimp only)
     refine resIn_bind (placeDecl_inS i q n) (fun r hr => ?_) (fun r => (by split <;> exact keep_pure _))
-    rcases hr with rfl | rfl | rfl
+    rcases hr with rfl | rfl | rfl | rfl
+    · exact resIn_pure (.inl rfl)
     · exact resIn_pure (.inl rfl)
     · exact resIn_pure (.inl rfl)
     · exact resIn_pure (.inl rfl)
@@ -310,7 +311,7 @@ theorem placeDecl_inS (i : Nat) : ∀ (p : Place) (n : Nat),
     unfold placeDecl
     (try dsimp only)
     refine resIn_bind (placeDecl_inS i q n) (fun r hr => ?_) (fun r => ?_)
-    · rcases hr with rfl | rfl | rfl <;> (simp [DeclInfo.isProof]; exact resIn_pure (by simp [InS]))
+    · rcases hr with rfl | rfl | rfl | rfl <;> (simp [DeclInfo.isProof]; exact resIn_pure (by simp [InS]))
     · refine Fwd.keep (R := TabLe) ?_
       fwd_go
       all_goals exact (fwd_fieldAt_tab _ _ _ _ _)
@@ -356,14 +357,18 @@ theorem placeDecl_ff_inS (st : MState) (bc : List DeclInfo → List Place → Te
   · exact .inl rfl
 
 theorem InS.not_ind {d : DeclInfo} (h : InS d) (n : String) (args : List DeclInfo) : d ≠ .ind n args := by
-  rcases h with rfl | rfl | rfl <;> exact fun e => by cases e
+  rcases h with rfl | rfl | rfl | rfl <;> exact fun e => by cases e
 
-/-- **The fuel-free table is local to the root** (`PlaceLocal`). -/
+/-- **The fuel-free table is local to the root** (`PlaceLocal`; its `unit` field: a root read `.unit`
+reads `.unit` itself, `.other` under a dereference or a field (`fieldAt` finds no inductive), `.other`
+under a projection). -/
 theorem placeLocal_ff (st : MState) (bc : List DeclInfo → List Place → Term → List Place × List (Place × Nat)) :
     PlaceLocal (checkerDecisionsFF st bc) where
   root := placeDecl_ff_root st bc
   other p n args := (placeDecl_ff_inS st bc .other (fun i => by cases i <;> exact .inl rfl) p).not_ind n args
   ref p n args := (placeDecl_ff_inS st bc (.ref .other)
-    (fun i => by cases i with | zero => exact .inr (.inr rfl) | succ k => exact .inl rfl) p).not_ind n args
+    (fun i => by cases i with | zero => exact .inr (.inr (.inl rfl)) | succ k => exact .inl rfl) p).not_ind n args
+  unit p n args := (placeDecl_ff_inS st bc .unit
+    (fun i => by cases i with | zero => exact .inr (.inr (.inr rfl)) | succ k => exact .inl rfl) p).not_ind n args
 
 end Ochr.Meaning.Steps.Machine

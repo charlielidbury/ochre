@@ -315,7 +315,10 @@ theorem drop_frag (hDN : DropNoopInv) (hDB : DropBorrowInv) (hDL : DropLentFail)
       rcases hF.order _ _ f' j' m c hph hq' (by rw [hxv, hv]) hy with h1 | ⟨h1, h2⟩
       · omega
       · subst h1; rw [hfr] at hf'; cases hf'; have := lt_of_getElem? hj'; omega
-    | temp f' i' => exact hDL n W st₃ bh fr b m f' i' c hfr hb hv hq' hy hrd
+    | temp f' i' =>
+      exact hDL n W st₃ bh fr b m f' i' c hfr hb hv hq' hy (fun q hq hh => by
+        obtain ⟨w', hw⟩ := (FVal.holdsBorrow (hF.vals q hq) m).mp hh
+        exact hF.bor1 q _ m w' c hq hq' hw hy) hrd
   · obtain ⟨frs, hlast, hsh, hend, htt, hgr, hP, hR⟩ := drop_bor hDB hI hIE hPL hF hp hr hS hfr hb hv hrd
     exact ⟨_, ⟨frs, hlast, .inr ⟨_, hsh, hend, rfl⟩⟩, htt, hgr, hP, hR⟩
 

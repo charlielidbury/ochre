@@ -68,8 +68,8 @@ theorem step_bindTyQ (ih : MachineGrows tb nf) :
   unfold Ochr.bindTy?; grows_go ih
 
 theorem step_endBorrowArgs (ih : MachineGrows tb nf) :
-    ∀ (ws : Array Value) (tys : Array (Option Value)), GrowsIn tb (Ochr.endBorrowArgs ((nf + 1)) ws tys) := by
-  intro ws tys
+    ∀ (n : Nat), GrowsIn tb (Ochr.endBorrowArgs ((nf + 1)) n) := by
+  intro n
   unfold Ochr.endBorrowArgs; grows_go ih
 
 theorem step_runBody (ih : MachineGrows tb nf) :
@@ -82,15 +82,15 @@ theorem step_runBodyCore (ih : MachineGrows tb nf) :
   intro fv cs t rd ws B self hs ds c body
   unfold Ochr.runBodyCore; grows_go ih
 
-set_option maxHeartbeats 2000000 in
+set_option maxHeartbeats 4000000 in
 theorem step_callFn (ih : MachineGrows tb nf) :
-    ∀ (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool), GrowsIn tb (Ochr.callFn ((nf + 1)) typed fv fT ws tys head cls? recUid? res fills want defer) := by
-  intro typed fv fT ws tys head cls? recUid? res fills want defer
+    ∀ (typed : Bool) (fT : Option Value) (n : Nat) (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool) (resTy : Option Value), GrowsIn tb (Ochr.callFn ((nf + 1)) typed fT n tys head cls? recUid? res fills want defer resTy) := by
+  intro typed fT n tys head cls? recUid? res fills want defer resTy
   unfold Ochr.callFn; grows_go ih
 
 theorem step_closeCall (ih : MachineGrows tb nf) :
-    ∀ (fv : Value) (ws : Array Value) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeCall ((nf + 1)) fv ws kind res fills tys) := by
-  intro fv ws kind res fills tys
+    ∀ (n : Nat) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeCall ((nf + 1)) n kind res fills tys) := by
+  intro n kind res fills tys
   unfold Ochr.closeCall; grows_go ih
 
 end Ochr.Meaning.Steps.Machine

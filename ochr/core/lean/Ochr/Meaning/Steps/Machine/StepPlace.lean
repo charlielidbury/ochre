@@ -33,8 +33,8 @@ theorem step_borrowPlace (ih : MachineGrows tb nf) :
   unfold Ochr.borrowPlace; grows_go ih
 
 theorem step_assignPlace (ih : MachineGrows tb nf) :
-    ∀ (p : Place) (v : Value) (T : Option Value), GrowsIn tb (Ochr.assignPlace ((nf + 1)) p v T) := by
-  intro p v T
+    ∀ (p : Place), GrowsIn tb (Ochr.assignPlace ((nf + 1)) p) := by
+  intro p
   unfold Ochr.assignPlace; grows_go ih
 
 theorem step_dropTopBind (ih : MachineGrows tb nf) :

@@ -387,3 +387,166 @@ ochr ProofCopies uses Nats {
   ("DupThrough", "[D45] a match on a proof of Ex returns a non-proof"),
   ("BadBlk", "[Rec] at BadBlk(S(σ1))"),
   ("BadClo", "[Rec] at BadClo(σ0)")]
+
+/-! ## `clone` of a proof is that proof (D116)
+
+A proposition is a copy (D100), so `clone(p)` of a place holding a proof is that proof, `⋆`, and
+the run flags it as a proof, as the erasure pre-pass reads it from `p`'s declared type
+(`Decide.declOf` reads `clone(p)` as `p`). Before D116 the run's classification of a `clone`
+term was the default (data), so every `clone` of a proof place, in any position, was an internal
+error ("INTERNAL [pre-pass] clone(#0): erased/proof = (true, true) by its declared type, (false,
+false) after running"). Now the legitimate uses are accepted and the ill-typed ones are rejected by
+the ordinary type rule, as the same programs without `clone` are. `CloneProof` has one program
+per position a proof can be cloned in, with closed runs; `CloneK2` and `CloneK3` are the red
+team's two batches (2026-11-21), verbatim: a proof, a proposition or a type where data is expected
+and the reverse, with and without `clone`, a proof field, an ascription, both sides of an `Id`,
+the arguments of `symm`, `trans` and `rewrite`, and an arm of a match. -/
+
+ochr CloneProof uses Nats {
+  -- accepted: the red team's
+  def K7 (h : ⊤) : ⊤ := clone(h)
+  def K10 (n : Nat) (h : Eq(Nat, n, n)) : Eq(Nat, n, n) := clone(h)
+  def KLet (n : Nat) (h : Eq(Nat, n, n)) : Eq(Nat, n, n) := (let k = clone(h); k)
+  -- rejected (a type error, as K9)
+  reject def K3 (h : ⊤) : Nat := clone(h)
+  reject def K9 (h : ⊤) : Nat := h
+  -- accepted: other places a proof sits
+  def KLocal (n : Nat) : Eq(Nat, n, n) := (let h : Eq(Nat, n, n) = refl; clone(h))
+  def KTwice (h : ⊤) : ⊤ := (let a = clone(h); let b = clone(h); h)
+  def KField (p : And(⊤, Eq(Nat, 1, 1))) : Eq(Nat, 1, 1) := clone(p.1)
+  def KFieldMatch (p : And(⊤, Eq(Nat, 1, 1))) : Eq(Nat, 1, 1) := match p { Intro(a, b) => clone(b) }
+  def KFn (f : Π(x : Nat). Eq(Nat, x, x)) : Eq(Nat, 3, 3) := (let g = clone(f); g(3))
+  def KArg (n : Nat) (h : Eq(Nat, n, n)) : Eq(Nat, n, n) := K10(clone(n), clone(h))
+  def KClo (h : ⊤) : ⊤ := (let c = (λ(u : Unit) : ⊤ => clone(h)); c(()))
+  def KArm (k : Nat) (h : ⊤) : ⊤ := (let r : ⊤ = match k { Z => clone(h), S _ => h }; r)
+  def KArmData (k : Nat) (h : ⊤) (n : Nat) : Nat := (let r = match k { Z => (let q = clone(h); 0), S _ => 1 }; Add(r, n))
+  def KStmt (n : Nat) (h : Eq(Nat, n, n)) : Eq(⊤, clone(h), h) := refl
+  def KRuns : Eq(Nat, KArmData(0, refl, 2), 2) := refl
+  -- a proof cloned in a data function's body, which the machine runs untyped at an instance
+  def KBody (h : ⊤) (n : Nat) : Nat := (let q = clone(h); n)
+  def KBodyRun : Eq(Nat, KBody(refl, 5), 5) := refl
+  -- data, as before
+  def KData (n : Nat) : Nat := clone(n)
+  def KDataRun : Eq(Nat, KData(4), 4) := refl
+}
+
+#guard (run "CloneProof" CloneProof).rejectedWith [
+  ("K3", "the body of K3 has type ⊤, but the goal is Nat"),
+  ("K9", "the body of K9 has type ⊤, but the goal is Nat")]
+
+ochr CloneK2 uses Nats {
+  reject def Ctl : False := ()
+  inductive B := MkB(n : Nat)
+  inductive PB (P : Prop) : Prop := MkPB(h : P)
+  def Id1 (x : Nat) : Nat := x
+  def Pf (h : ⊤) : ⊤ := h
+  -- a proof / proposition / type where data is expected
+  def P1 (h : ⊤) : ⊤ := clone(h)
+  reject def P2 (h : ⊤) : Nat := h
+  reject def P3 (h : ⊤) : Nat := Id1(h)
+  def P4 (h : ⊤) : Nat := (let x = clone(h); 0)
+  def P5 (h : ⊤) : Nat := match h { I => 0 }
+  reject def P6 : Nat := ⊤
+  reject def P7 : Nat := Nat
+  reject def P8 : Nat := clone(⊤)
+  reject def P9 (P : Prop) : Nat := clone(P)
+  reject def P10 (A : Type) : Nat := clone(A)
+  reject def P11 (h : ⊤) : B := MkB(Id1(clone(h)))
+  reject def P12 (h : ⊤) : Nat := S(clone(h))
+  reject def P13 (h : ⊤) : Nat × Nat := (clone(h), 0)
+  reject def P14 (h : ⊤) (x : &Nat) : Unit := *x := clone(h)
+  reject def P15 (h : ⊤) : Nat := (let r = &h; 0)
+  reject def P16 (h : ⊤) : Nat := (let f = (λ(u : Unit) : Nat => clone(h)); 0)
+  reject def P17 (h : ⊤) : Eq(Nat, clone(h), 0) := refl
+  reject def P18 (h : ⊤) : Nat := match clone(h) { Z => 0, S _ => 1 }
+  -- data where a proof is expected
+  reject def D1 (n : Nat) : ⊤ := clone(n)
+  reject def D2 (n : Nat) : ⊤ := n
+  reject def D3 (n : Nat) : ⊤ := Pf(clone(n))
+  reject def D4 (n : Nat) : PB(⊤) := MkPB(clone(n))
+  reject def D5 (n : Nat) : ⊤ := (let h : ⊤ = clone(n); h)
+  reject def D6 (n : Nat) : ⊤ := S(n)
+  reject def D7 (n : Nat) : Prop := clone(n)
+  reject def D8 (n : Nat) : Type := clone(n)
+}
+
+#guard (run "CloneK2" CloneK2).rejectedWith [
+  ("Ctl", "the body of Ctl has type Unit"),
+  ("P2", "the body of P2 has type ⊤, but the goal is Nat"),
+  ("P3", "argument 1 (x) has type ⊤, expected Nat"),
+  ("P6", "the body of P6 has type Prop"),
+  ("P7", "the body of P7 has type Type"),
+  ("P8", "(surface) clone takes a place"),
+  ("P9", "the body of P9 has type Prop"),
+  ("P10", "the body of P10 has type Type"),
+  ("P11", "argument 1 (x) has type ⊤, expected Nat"),
+  ("P12", "argument 1 (n) has type ⊤, expected Nat"),
+  ("P13", "field fst of Mk has type ⊤, expected Nat"),
+  ("P14", "the assigned value has type ⊤, expected Nat"),
+  ("P15", "[D66] &h"),
+  ("P16", "the body of _ has type ⊤, but the goal is Nat"),
+  ("P17", "the left side of Eq has type ⊤, expected Nat"),
+  ("P18", "[Match] on ⋄clone(…) with `Z`/`S`, but its type ⊤ is not Nat"),
+  ("D1", "the body of D1 has type Nat, but the goal is ⊤"),
+  ("D2", "the body of D2 has type Nat, but the goal is ⊤"),
+  ("D3", "argument 1 (h) has type Nat, expected ⊤"),
+  ("D4", "field h of MkPB has type Nat, expected ⊤"),
+  ("D5", "the ascribed term has type Nat, expected ⊤"),
+  ("D6", "the body of D6 has type Nat, but the goal is ⊤"),
+  ("D7", "the body of D7 has type Nat, but the goal is Prop"),
+  ("D8", "the body of D8 has type Nat, but the goal is Type")]
+
+ochr CloneK3 uses Nats {
+  reject def Ctl : False := ()
+  inductive B := MkB(n : Nat)
+  def Pf (n : Nat) : Eq(Nat, n, n) := refl
+  def Id1 (x : Nat) : Nat := x
+  -- proof-valued call where data is expected
+  reject def Q1 (n : Nat) : Nat := Pf(clone(n))
+  reject def Q2 (n : Nat) : Nat := Id1(Pf(clone(n)))
+  reject def Q3 (n : Nat) : B := MkB(Pf(clone(n)))
+  reject def Q4 (n : Nat) : Nat := S(Pf(clone(n)))
+  reject def Q5 (n : Nat) : Nat := (Pf(clone(n)) : Nat)
+  reject def Q6 (n : Nat) : Nat := match Pf(clone(n)) { Z => 0, S _ => 1 }
+  -- projections and ascriptions of proofs
+  reject def Q7 (h : ⊤ ∧ ⊤) : Nat := h.0
+  reject def Q8 (h : ⊤ ∧ ⊤) : Nat := clone(h.0)
+  reject def Q9 (h : ⊤) : Nat := (h : Nat)
+  reject def Q10 (h : ⊤) : Nat := (clone(h) : ⊤)
+  -- proof places under *, &, in Id sides
+  def Q11 (h : ⊤) : Unit := (let e : Id(Unit, (let k = clone(h); ()), ()) = refl; ())
+  def Q12 (h : ⊤) : Unit := (let e : Id(⊤, h, h) = refl; ())
+  def Q13 (h : ⊤) : Unit := (let e : Id(⊤, clone(h), h) = refl; ())
+  -- data / props / types as proof arguments
+  reject def Q14 (n : Nat) : Eq(Nat, 0, 0) := symm(n)
+  reject def Q15 (n : Nat) : Eq(Nat, 0, 0) := trans(n, n)
+  reject def Q16 (n : Nat) : Eq(Nat, 0, 0) := cong(Id1, n)
+  reject def Q17 (n : Nat) : Eq(Nat, 0, 0) := rewrite n in refl
+  def Q18 (h : Eq(Nat, 0, 0)) : Eq(Nat, 0, 0) := symm(clone(h))
+  def Q19 (h : Eq(Nat, 0, 0)) : Eq(Nat, 0, 0) := trans(clone(h), h)
+  def Q20 (h : Eq(Nat, 0, 0)) : Eq(Nat, 0, 0) := rewrite clone(h) in refl
+  reject def Q21 : Eq(Nat, 0, 0) := symm(⊤)
+  reject def Q22 : Eq(Nat, 0, 0) := symm(Nat)
+  -- a proof-valued block where data is expected
+  def Q23 (n : Nat) (h : ⊤) : Nat := (let k = match n { Z => h, S _ => h }; 0)
+  def Q24 (n : Nat) (h : ⊤) : Nat := (let k = match n { Z => clone(h), S _ => h }; 0)
+}
+
+#guard (run "CloneK3" CloneK3).rejectedWith [
+  ("Ctl", "the body of Ctl has type Unit"),
+  ("Q1", "the body of Q1 has type ⊤, but the goal is Nat"),
+  ("Q2", "argument 1 (x) has type ⊤, expected Nat"),
+  ("Q3", "field n of MkB has type ⊤, expected Nat"),
+  ("Q4", "argument 1 (n) has type ⊤, expected Nat"),
+  ("Q5", "the ascribed term has type ⊤, expected Nat"),
+  ("Q6", "[Match] on ⋄Pf(…) with `Z`/`S`, but its type ⊤ is not Nat"),
+  ("Q7", "the body of Q7 has type ⊤, but the goal is Nat"),
+  ("Q8", "the body of Q8 has type ⊤, but the goal is Nat"),
+  ("Q9", "the ascribed term has type ⊤, expected Nat"),
+  ("Q10", "the body of Q10 has type ⊤, but the goal is Nat"),
+  ("Q14", "symm: not an equation"),
+  ("Q15", "[Read] n was moved out"),
+  ("Q16", "cong: the proof has type Nat, which is not an equation"),
+  ("Q17", "rewrite: the proof has type Nat, which is not an equation"),
+  ("Q21", "symm: not an equation"),
+  ("Q22", "symm: not an equation")]

@@ -120,6 +120,10 @@ import Ochr.Meaning.Steps.ColumnC
 import Ochr.Meaning.Steps.ColumnCFF
 import Ochr.Meaning.Steps.Machine.ColumnCFree
 import Ochr.Meaning.Steps.Machine.ColumnBFree
+import Ochr.Meaning.Steps.Machine.FragFacts
+import Ochr.Meaning.Steps.Machine.FragInv
+import Ochr.Meaning.Steps.Machine.FragRuns
+import Ochr.Meaning.Steps.Machine.FragEndRuns
 import Ochr.Meaning.Steps.ColumnWrite
 import Ochr.Meaning.Steps.ColumnB
 import Ochr.Meaning.Steps.ColumnBStart
@@ -143,6 +147,7 @@ import Ochr.Meaning.Steps.ParFacts
 import Ochr.Meaning.Steps.ParRead
 import Ochr.Meaning.Steps.ParSucc
 import Ochr.Meaning.Steps.ParBody
+import Ochr.Meaning.Steps.ParGuards
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects

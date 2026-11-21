@@ -321,7 +321,8 @@ theorem callFn_front (fuel : Nat) (st st' : MState) (typed : Bool) (f : Term) (a
     (hns : K.D.flags (scopeOf s) (.call f args hd) = (false, false))
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
-    (bh : Nat) (h : Runs (Ochr.callFn (fuel + 1) typed fv fT ws tys hd none recUid? res fills want defer) st bh (v, T?) st') :
+    (bh : Nat) (h : Runs (Ochr.callFn (fuel + 1) typed fT ws.size tys hd none recUid? res fills want defer)
+      (st.withTemps (fv :: ws.toList)) bh (v, T?) st') :
     ∃ (isRef : Bool) (st₁ st₂ : MState) (π₁ : Nat → Nat) (w : Value) (b₁ : Nat) (B : Option Value),
       Good K.dm K.M K.Γ ρ (st₁.withTemps (fv :: ws.toList)) ∧ CtxOk K ρ st₁ ∧
       Rel K ρ φ π₁ (st₁.withTemps (fv :: ws.toList)) (reserveRef isRef as s) ∧
@@ -331,7 +332,7 @@ theorem callFn_front (fuel : Nat) (st st' : MState) (typed : Bool) (f : Term) (a
       run K ρ (fun l => φ (π₁ l)) (.plain .err) (.val fv) (reserveRef isRef as s) = some (fres, reserveRef isRef as s) ∧
       ArgsAgree K ρ φ π₁ ws as ∧
       ((∃ (kind : Kind) (res' : DeclInfo) (fills' : Array Bool) (tys' : Array (Option Value)),
-          Runs (Ochr.closeCall fuel fv ws kind res' fills' tys') st₁ b₁ w st₂ ∧ fres.2.m.isPi = true ∧
+          Runs (Ochr.closeCall fuel ws.size kind res' fills' tys') (st₁.withTemps (fv :: ws.toList)) b₁ w st₂ ∧ fres.2.m.isPi = true ∧
           (kind = .ref ↔ ∃ U, fres.2.m.codAt? K.dm.read (as.map (·.1)) = some (true, U)) ∧
           (res' = .unit → ∀ B, fres.2.m.codAt? K.dm.read (as.map (·.1)) = some (false, B) → B = TyM.unit) ∧
           (∀ i : Nat, fills'.getD i false = true → ∀ p,
@@ -498,7 +499,7 @@ theorem closeCall_split (fuel : Nat) (st st' : MState) (fv : Value) (ws : Array 
     (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s)
     (fres : Res) (as : List Res) (has : ArgsAgree K ρ φ π ws as) (bh : Nat)
-    (h : Runs (Ochr.closeCall (fuel + 1) fv ws kind res fills tys) st bh v st') :
+    (h : Runs (Ochr.closeCall (fuel + 1) ws.size kind res fills tys) (st.withTemps (fv :: ws.toList)) bh v st') :
     ∃ (st₁ st₂ : MState) (b₁ : Nat) (fx : List (Nat × Value)) (fins : List SVal),
       (st.withTemps (fv :: ws.toList)).absTy.size ≤ st₁.absTy.size ∧
       (st.withTemps (fv :: ws.toList)).nextLoan ≤ st₁.nextLoan ∧
@@ -516,7 +517,7 @@ borrow result the fresh label `k` held in a temporary, lent where the arguments 
 the result means `callOf`'s (`closeCall_means_data` and its twin). -/
 theorem closeCall_post (fuel : Nat) (st st₁ st₂ st' : MState) (fv : Value) (ws : Array Value) (kind : Kind)
     (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value) (s : SState) (π : Nat → Nat)
-    (fres : Res) (as : List Res) (bh : Nat) (h : Runs (Ochr.closeCall (fuel + 1) fv ws kind res fills tys) st bh v st')
+    (fres : Res) (as : List Res) (bh : Nat) (h : Runs (Ochr.closeCall (fuel + 1) ws.size kind res fills tys) (st.withTemps (fv :: ws.toList)) bh v st')
     (fx : List (Nat × Value)) (fins : List SVal) (b₁ : Nat) (hloop : Runs (closeLoopM fuel fx) st₁ b₁ () st₂)
     (habs : (st.withTemps (fv :: ws.toList)).absTy.size ≤ st₁.absTy.size)
     (hnl : (st.withTemps (fv :: ws.toList)).nextLoan ≤ st₁.nextLoan)
