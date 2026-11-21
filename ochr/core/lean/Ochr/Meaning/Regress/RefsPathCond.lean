@@ -133,7 +133,7 @@ theorem rest_S (K : RunCtx) : Membership K.dm K.M K.Γ ρ₇ S ∧ WF K.dm K.M K
   · intro φ _ p T hp
     obtain ⟨rfl, rfl⟩ := posTyM_S K.dm K.M K.Γ ρ₇ p T hp
     have e : Env.mean K.dm K.M K.Γ ρ₇ φ S.env (.bind 0 0) = .el0 Nat 7 := rfl
-    rw [e]; exact DataModel.pmem_of_mem K.dm.read K.Γ (by simp [Sem.whole]) (by simp [Sem.mem, TyM.nat, Code0.enc])
+    rw [e]; exact DataModel.pmem_of_mem K.dm K.Γ (by simp [Sem.whole]) (by simp [Sem.mem, TyM.nat, Code0.enc])
   · have hσ' : σ < 2 := hσ
     rw [absTyM_S _ _ _ _ σ hσ']; rfl
   · rw [hA]; intro p hp; simp at hp; subst hp; rw [h0]; decide
