@@ -43,7 +43,7 @@ No verdict changed: the full `lake build` (every verdict assertion, the asserted
 - `Run.exportsWith`/`libWith`: lexicographic `(libRank, sizeOf block, 0/1)`: the library block ranks lowest, and a used block is smaller (`Block.sizeOf_lt_of_mem_closure`, two mutual lemmas on `closureAdd`).
 
 **Fuel** (an explicit `Nat` that every recursive step decreases; running out is exhaustion, "the checker does not know", never an answer):
-- `Check.paramNestable` walks into other inductive declarations (`paramNestableF/Go/Args`); its bound is the machine fuel left (`getThe Fuel`), and running out throws `exhausted "out of fuel"`, the outcome `tick` throws, so the declaration is `undecided`.
+- (Until D107) `Check.paramNestable` walked into other inductive declarations (`paramNestableF/Go/Args`), bounded by the machine fuel left. D107 replaced it by `nestableSet`, which reads earlier declarations' stored sets (`IndDecl.nestable`) and so is structural, with no fuel.
 - `Surface.resolve`/`binders` re-resolve desugared terms (`*f(ā)` bound first, a match on a non-place, a destructuring `let`); `resolveF`/`bindersF`, seeded with `checkProgram`'s `fuel`. The resolver's monad `R` has an `Exhausted` layer below its error layer, as the machine's `M` does, so no `throw`/`onFail` in `R` sees exhaustion. `runResolve` returns it, and `checkProgram` reports such a declaration as `undecided`, and every later declaration that mentions it too (`checkDefs`'s `undecidedBefore`), so that exhaustion never becomes a rejection for a missing name. `resolveProgram` (the test harnesses and the fuzzer) turns it into an error saying `undecided`, as `runM` does.
 
 ## The sanctioned exception: `Loc.termAddr`
