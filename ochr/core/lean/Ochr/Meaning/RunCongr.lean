@@ -269,6 +269,162 @@ theorem joinDrop_congr (hφ : ∀ l, L l → φ l = φ' l) (entry : List Place) 
     · exact dropAt_rinv K φ L q _ _ (accessLentPrefix_rinv L hi)
     · exact hi
 
+/-! ### The strict ends' tests (ruling (A)) read the run's future only on `L` -/
+
+theorem endOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (l : Nat) :
+    EndOk K φ s l ↔ EndOk K φ' s l := by
+  unfold EndOk
+  exact forall_congr' fun r => imp_congr_right fun _ =>
+    typedFut_forall_congr K hφ hi r (· ∈ₛ[K.dm.read] s.heldTy l)
+
+/-- A fold's per-step test, compared at two futures along an invariant both folds keep. -/
+theorem foldOk_congr {α : Type} (P : SState → Prop) {f f' : SState → α → SState} {ok ok' : SState → α → Prop}
+    (hf : ∀ s a, P s → f s a = f' s a) (hP : ∀ s a, P s → P (f s a)) (hok : ∀ s a, P s → (ok s a ↔ ok' s a)) :
+    ∀ (xs : List α) {s : SState}, P s → (FoldOk f ok xs s ↔ FoldOk f' ok' xs s)
+  | [], _, _ => Iff.rfl
+  | a :: as, s, hs => by
+    unfold FoldOk
+    rw [← hf s a hs]
+    exact and_congr (hok s a hs) (foldOk_congr P hf hP hok as (hP s a hs))
+
+theorem endsOk_congr (hφ : ∀ l, L l → φ l = φ' l) (ls : List Nat) {s : SState} (hi : RInv L s) :
+    EndsOk K φ ls s ↔ EndsOk K φ' ls s :=
+  foldOk_congr (RInv L) (fun _ _ _ => rfl) (fun _ a h => endLabel_rinv h a) (fun _ a h => endOk_congr K hφ h a) ls hi
+
+theorem rinv_accRounds {s : SState} (hi : RInv L s) (p : Pos) (hit : List Step → Bool) (k : Nat) :
+    RInv L ((List.range k).foldl (fun t _ => accRound p hit t) s) :=
+  foldl_inv (RInv L) (fun t _ => accRound p hit t)
+    (fun t _ ht => foldl_inv (RInv L) SState.endLabel (fun t a ht => endLabel_rinv ht a) _ _ ht) _ _ hi
+
+theorem accessOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Pos) (hit : List Step → Bool) :
+    AccessOk K φ s p hit ↔ AccessOk K φ' s p hit := by
+  unfold AccessOk
+  exact forall_congr' fun k => imp_congr_right fun _ => endsOk_congr K hφ _ (rinv_accRounds hi p hit k)
+
+theorem contentOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) :
+    ContentOk K φ p s ↔ ContentOk K φ' p s := by
+  unfold ContentOk; split
+  · exact accessOk_congr K hφ hi _ _
+  · exact Iff.rfl
+
+theorem tagOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) :
+    TagOk K φ p s ↔ TagOk K φ' p s := by
+  unfold TagOk; split
+  · exact accessOk_congr K hφ hi _ _
+  · exact Iff.rfl
+
+theorem assignOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) :
+    AssignOk K φ p s ↔ AssignOk K φ' p s := by
+  unfold AssignOk
+  cases hr : resolve s p with
+  | none => exact Iff.rfl
+  | some ps =>
+    obtain ⟨pos, steps⟩ := ps
+    dsimp only
+    have hi' : RInv L (if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (dataHit steps)) := by
+      split
+      · exact hi
+      · exact access_rinv hi _ _
+    exact and_congr (imp_congr_right fun _ => accessOk_congr K hφ hi _ _)
+      (imp_congr_right fun _ => forall_congr' fun l => imp_congr_right fun _ => endOk_congr K hφ hi' l)
+
+theorem invalidateOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) :
+    InvalidateOk K φ p s ↔ InvalidateOk K φ' p s := by
+  unfold InvalidateOk
+  refine foldOk_congr (RInv L) (fun s q hs => invalidateOne_congr K hφ hs q)
+    (fun s q hs => (invalidateOne_props K φ L q hs).1) (fun s q hs => ?_) _ hi
+  unfold InvalOneOk; split
+  · exact accessOk_congr K hφ hs _ _
+  · exact Iff.rfl
+
+theorem letLendersOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) :
+    LetLendersOk K φ s ↔ LetLendersOk K φ' s := by
+  unfold LetLendersOk; split
+  · exact accessOk_congr K hφ hi _ _
+  · exact Iff.rfl
+
+theorem discardOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (R : TyS) :
+    DiscardOk K φ R s ↔ DiscardOk K φ' R s := by
+  unfold DiscardOk; split
+  · exact endOk_congr K hφ hi _
+  · exact Iff.rfl
+
+theorem lentPrefixOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (pos : Pos) (steps : List Step) :
+    LentPrefixOk K φ pos steps s ↔ LentPrefixOk K φ' pos steps s := by
+  unfold LentPrefixOk; split
+  · exact accessOk_congr K hφ hi _ _
+  · exact Iff.rfl
+
+theorem dropOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (q : Place) (pos : Pos)
+    (steps : List Step) : DropOk K φ q pos steps s ↔ DropOk K φ' q pos steps s := by
+  unfold DropOk
+  have hi' := access_rinv hi pos (dataHit steps)
+  have h2 := imp_congr_right (a := K.D.copy (K.D.placeDecl (scopeOf s) q) = false) fun _ => imp_congr
+      (typedFut_forall_congr K hφ hi' pos
+        (fun x => (Sem.updAt K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos) (fun _ => .moved) steps x).isSome = true))
+      (accessOk_congr K hφ hi pos (dataHit steps))
+  cases steps with
+  | nil =>
+    cases hsh : s.shape pos with
+    | none => simp only [hsh]; exact h2
+    | some l => simp only [hsh]; exact endOk_congr K hφ hi _
+  | cons st sts => exact h2
+
+theorem joinDropOk_congr (hφ : ∀ l, L l → φ l = φ' l) (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) :
+    JoinDropOk K φ entry t s ↔ JoinDropOk K φ' entry t s := by
+  unfold JoinDropOk
+  refine foldOk_congr (RInv L) (fun s q hs => ?_) (fun s q hs => ?_) (fun s q hs => ?_) _ hi
+  · split
+    · exact dropAt_congr K hφ q _ _ (accessLentPrefix_rinv L hs)
+    · rfl
+  · split
+    · exact dropAt_rinv K φ L q _ _ (accessLentPrefix_rinv L hs)
+    · exact hs
+  · unfold JoinStepOk; split
+    · exact and_congr (lentPrefixOk_congr K hφ hs _ _) (dropOk_congr K hφ (accessLentPrefix_rinv L hs) _ _ _)
+    · exact Iff.rfl
+
+theorem entryAccessOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s)
+    (bc : List Place × List (Place × Nat)) : EntryAccessOk K φ bc s ↔ EntryAccessOk K φ' bc s := by
+  unfold EntryAccessOk
+  have hR : ∀ (s : SState) (q : Place), RInv L s → RInv L (entryReroot s q) := fun s q hs => by
+    unfold entryReroot; split
+    · exact accessLentPrefix_rinv L hs
+    · exact hs
+  refine and_congr (foldOk_congr (RInv L) (fun _ _ _ => rfl) hR (fun s q hs => ?_) _ hi)
+    (foldOk_congr (RInv L) (fun s qk hs => entryCap_congr K hφ hs qk) (fun s qk hs => (entryCap_props K φ L s qk hs).1)
+      (fun s qk hs => ?_) _ (foldl_inv (RInv L) entryReroot hR _ _ hi))
+  · unfold EntryRerootOk; split
+    · exact lentPrefixOk_congr K hφ hs _ _
+    · exact Iff.rfl
+  · have hi₁ : RInv L (match resolve s qk.1 with | some (pos, steps) => s.access pos (dataHit steps) | none => s) := by
+      split
+      · exact access_rinv hs _ _
+      · exact hs
+    unfold EntryCapOk
+    refine and_congr ?_ (imp_congr_right fun _ => invalidateOk_congr K hφ hi₁ _)
+    split
+    · exact accessOk_congr K hφ hs _ _
+    · exact Iff.rfl
+
+theorem matchEntryOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (ent : Bool) (mt : Term) :
+    MatchEntryOk K φ ent mt s ↔ MatchEntryOk K φ' ent mt s := by
+  unfold MatchEntryOk
+  rw [movedPlaces_congr hφ hi]
+  exact imp_congr_right fun _ => entryAccessOk_congr K hφ hi _
+
+theorem capsOk_congr (hφ : ∀ l, L l → φ l = φ' l) (is : List Nat) {s : SState} (hi : RInv L s) :
+    FoldOk (capStep K) (CapOk K φ) is s ↔ FoldOk (capStep K) (CapOk K φ') is s := by
+  refine foldOk_congr (RInv L) (fun _ _ _ => rfl) (fun s i hs => ?_) (fun s i hs => ?_) _ hi
+  · unfold capStep; split
+    · dsimp only; split
+      · exact access_rinv hs _ _
+      · exact setAt_rinv (access_rinv hs _ _) _ _ (FT.const _ _) (fun _ _ => FT.const _ _)
+    · exact hs
+  · unfold CapOk; split
+    · exact accessOk_congr K hφ hs _ _
+    · exact Iff.rfl
+
 /-- An `Id`'s observation is the same at both futures: after every borrow ends, every position
 factors through `L` (R3). -/
 theorem observation_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (reps : List Place)
@@ -390,9 +546,11 @@ noncomputable def fixBodyAt (s : SState) (ps : List PiDom) (out : PiCod) (piT : 
   match runT K ρ φ true (fb.2.1 args) body s₂ with
   | some ((r, R), s₃) =>
     let keep : Option Nat := if out.isRef then R.label else none
-    let s₄ := (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ keep).foldl SState.endLabel s₃
-    let finals := cells.map fun c => s₄.valAt c
-    some ⟨r, finals, R.label⟩
+    if EndsOk K φ (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ keep) s₃ then
+      let s₄ := (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ keep).foldl SState.endLabel s₃
+      let finals := cells.map fun c => s₄.valAt c
+      some ⟨r, finals, R.label⟩
+    else none
   | none => none
 
 /-- The decreasing argument's rank (φ-free). -/
@@ -424,12 +582,17 @@ noncomputable def fixMoves (t : Term) (s : SState) : SState :=
 theorem run_fix_def (tl : Bool) (hint : TyS) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
     (body : Term) (s : SState) :
     runT K ρ φ tl hint (.fix self hs ds c dec body) s =
-      SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun _ => SM.strictS K.dm.read (fun s' => some ((closureAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
+      SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun _ =>
+        if FoldOk (capStep K) (CapOk K φ) (capOrder (.fix self hs ds c dec body)) s then
+        SM.strictS K.dm.read (fun s' => some ((closureAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
           (fixG K ρ φ (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c) (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
             (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)) s.nextLoan dec body),
         .plain (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c))),
-        s')) (fixMoves K (.fix self hs ds c dec body) s)) s := by
+        s')) (fixMoves K (.fix self hs ds c dec body) s)
+        else none) s := by
   rw [runT]
+  apply SM.erasedIf_congr
+  dsimp only
   rfl
 
 end FixDefs
@@ -699,7 +862,8 @@ theorem formInv_init {s : SState} (hi : RInv L s) (b : SBinding) (c : Sem) (hb :
     FormInv L s.nextLoan (s.pushBind b, [], []) :=
   ⟨pushBind_rinv hi b c hb, Nat.le_refl _, fun _ hc => by cases hc⟩
 
-theorem fixBodyAt_congr {body : Term} (hb : ∀ hint s₂, RInv L s₂ → runT K ρ φ true hint body s₂ = runT K ρ φ' true hint body s₂)
+theorem fixBodyAt_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
+    (hb : ∀ hint s₂, RInv L s₂ → runT K ρ φ true hint body s₂ = runT K ρ φ' true hint body s₂)
     {s : SState} (hi : RInv L s) (ps : List PiDom) (out : PiCod) (piT : TyM) (selfM : Sem) (args : List Sem) :
     fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args = fixBodyAt K ρ φ' fb s ps out piT s.nextLoan body selfM args := by
   unfold fixBodyAt
@@ -710,6 +874,13 @@ theorem fixBodyAt_congr {body : Term} (hb : ∀ hint s₂, RInv L s₂ → runT 
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
   rw [hb _ s₂ hF.1]
+  cases hr : runT K ρ φ' true (fb.2.1 args) body s₂ with
+  | none => rfl
+  | some y =>
+    obtain ⟨⟨r, R⟩, s₃⟩ := y
+    have hi₃ := (runT_rinv K ρ φ' L hK true body _ s₂ s₃ (r, R) hF.1 hr).1
+    dsimp only
+    rw [propext (endsOk_congr K hφ _ hi₃)]
 
 /-- After the pop, a cell reads `L` and the kept label (`ordered_after_pop`; a state with no frame
 has no positions). -/
@@ -741,6 +912,7 @@ theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState
   dsimp only at h hi₂ hst₂ hcells
   split at h
   · rename_i r R s₃ hrun
+    obtain ⟨-, h⟩ := ite_none_some h
     simp only [Option.some.injEq] at h
     subst h
     obtain ⟨hi₃, -, e₃, o₃⟩ := runT_rinv K ρ φ L hK true body _ s₂ s₃ (r, R) hi₂ hrun
@@ -798,7 +970,7 @@ theorem fixStage_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none)
             (stageFn l ps (fixRank dec) k (fixStage K ρ φ' fb l s ps out dec s.nextLoan body k)))
       rw [hcl]
       funext args
-      exact fixBodyAt_congr K ρ hb hi ps out _ _ args
+      exact fixBodyAt_congr K ρ hK hφ hb hi ps out _ _ args
     · exact fixBodyAt_finals K ρ hK hi ps out _ body _ args o h
 
 theorem fixG_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
@@ -808,7 +980,7 @@ theorem fixG_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (h�
       ∀ args o, fixG K ρ φ fb l s ps out piT s.nextLoan dec body args = some o → FinalsIn L out.isRef o := by
   cases dec with
   | none =>
-    refine ⟨funext fun args => fixBodyAt_congr K ρ hb hi ps out piT _ args, fun args o h => ?_⟩
+    refine ⟨funext fun args => fixBodyAt_congr K ρ hK hφ hb hi ps out piT _ args, fun args o h => ?_⟩
     exact fixBodyAt_finals K ρ hK hi ps out piT body _ args o h
   | some j =>
     refine ⟨funext fun args => ?_, fun args o h => ?_⟩
@@ -902,31 +1074,32 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     runT K ρ φ tl hint t s = runT K ρ φ' tl hint t s
   | tl, .place p, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
-    exact SM.erasedIf_congr (readPlace_congr K hφ hi p _)
+    exact SM.erasedIf_congr (SM.guarded_congr (contentOk_congr K hφ hi p) (readPlace_congr K hφ hi p _))
   | tl, .borrow p, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
-    show (match SM.strictS K.dm.read (borrowPlace K φ p) s with
-      | some (r, s₁) => if lentOk K φ p (invalidate K φ p s₁) then some (r, invalidate K φ p s₁) else none
-      | none => none) = (match SM.strictS K.dm.read (borrowPlace K φ' p) s with
-      | some (r, s₁) => if lentOk K φ' p (invalidate K φ' p s₁) then some (r, invalidate K φ' p s₁) else none
+    show (match SM.strictS K.dm.read (SM.guarded (ContentOk K φ p) (borrowPlace K φ p)) s with
+      | some (r, s₁) => if InvalidateOk K φ p s₁ ∧ lentOk K φ p (invalidate K φ p s₁) then some (r, invalidate K φ p s₁) else none
+      | none => none) = (match SM.strictS K.dm.read (SM.guarded (ContentOk K φ' p) (borrowPlace K φ' p)) s with
+      | some (r, s₁) => if InvalidateOk K φ' p s₁ ∧ lentOk K φ' p (invalidate K φ' p s₁) then some (r, invalidate K φ' p s₁) else none
       | none => none)
-    rw [SM.strictS_congr (borrowPlace_congr K hφ hi p)]
-    cases hb : SM.strictS K.dm.read (borrowPlace K φ' p) s with
+    rw [SM.strictS_congr (SM.guarded_congr (contentOk_congr K hφ hi p) (borrowPlace_congr K hφ hi p))]
+    cases hb : SM.strictS K.dm.read (SM.guarded (ContentOk K φ' p) (borrowPlace K φ' p)) s with
     | none => rfl
     | some y =>
       obtain ⟨r, s₁⟩ := y
-      have hi₁ : RInv L s₁ := (borrowPlace_rinv K φ' L (SM.strictS_some hb).1 hi).1
+      have hi₁ : RInv L s₁ := (borrowPlace_rinv K φ' L (SM.guarded_some (SM.strictS_some hb).1).2 hi).1
       dsimp only
-      rw [invalidate_congr K hφ hi₁ p, lentOk_congr K hφ (invalidate_props K φ' L p hi₁).1 p]
+      rw [invalidate_congr K hφ hi₁ p, propext (invalidateOk_congr K hφ hi₁ p),
+        lentOk_congr K hφ (invalidate_props K φ' L p hi₁).1 p]
   | tl, .seq u w, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
     apply SM.bind_congr (runT_congrE hK false u _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     intro a s₁ h1
-    apply SM.bind_congr rfl
+    apply SM.bind_congr (SM.guardMod_congr (discardOk_congr K hφ (runT_rinv K ρ φ L hK false u _ s s₁ a hi h1).1 a.2))
     intro _ s₂ h2
-    have es : s₂ = discardEnd a.2 s₁ := SM.modify_some h2
+    have es : s₂ = discardEnd a.2 s₁ := (SM.guardMod_some h2).2
     subst es
     exact runT_congrE hK tl w hint _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h]))
       (discardEnd_props L (runT_rinv K ρ φ L hK false u _ s s₁ a hi h1).1 a.2).1
@@ -1019,15 +1192,15 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     dsimp only
     refine SM.erasedIf_congr ?_
     -- the head: a place in place, anything else by its run
-    have hhead : SM.headOf f (fun p => readPlace K φ p true) (runT K ρ φ false (.plain .err) f) s
-        = SM.headOf f (fun p => readPlace K φ' p true) (runT K ρ φ' false (.plain .err) f) s :=
-      SM.headOf_congr (fun p => readPlace_congr K hφ hi p true)
+    have hhead : SM.headOf f (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT K ρ φ false (.plain .err) f) s
+        = SM.headOf f (fun p => SM.guarded (ContentOk K φ' p) (readPlace K φ' p true)) (runT K ρ φ' false (.plain .err) f) s :=
+      SM.headOf_congr (fun p => SM.guarded_congr (contentOk_congr K hφ hi p) (readPlace_congr K hφ hi p true))
         (runT_congrE hK false f _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     apply SM.bind_congr hhead
     intro fv s₁ h1
     have hi₁ : RInv L s₁ := by
       rcases SM.headOf_some h1 with ⟨p, h1⟩ | h1
-      · exact (readPlace_rinv K φ L h1 hi).1
+      · exact (readPlace_rinv K φ L (SM.guarded_some h1).2 hi).1
       · exact (runT_rinv K ρ φ L hK false f _ s s₁ fv hi h1).1
     apply SM.bind_congr (runArgs_congrE hK _ _ args [] s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
     intro _ _ _; rfl
@@ -1035,11 +1208,14 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
     dsimp only
-    rw [tagOf_congr K hφ hi p]
+    rw [SM.guarded_congr (tagOk_congr K hφ hi p) (tagOf_congr K hφ hi p natTag)]
     apply Option.bind_congr' rfl
     rintro ⟨tg, s₀⟩ h1
-    have hi₀ := (tagOf_rinv K φ' L h1 hi).1
+    have hi₀ := (tagOf_rinv K φ' L (SM.guarded_some h1).2 hi).1
     dsimp only
+    rw [optCheck_congr (matchEntryOk_congr K hφ hi₀ _ _)]
+    apply Option.bind_congr' rfl
+    intro _ _
     rw [matchEntry_congr K hφ hi₀]
     have hi₁' := (matchEntry_props K φ' L (!tl) (.matchNat p z u) hi₀).1
     generalize matchEntry K φ' (!tl) (.matchNat p z u) s₀ = me at hi₁' ⊢
@@ -1050,20 +1226,31 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     split
     · apply Option.bind_congr' (runT_congrE hK tl z hint s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
       rintro ⟨⟨r, R⟩, s₂⟩ h2
-      rw [joinDrop_congr K hφ _ _ (runT_rinv K ρ φ L hK tl z hint s₁ s₂ _ hi₁ h2).1]
+      have hi₂ := (runT_rinv K ρ φ L hK tl z hint s₁ s₂ _ hi₁ h2).1
+      rw [optCheck_congr (joinDropOk_congr K hφ _ _ hi₂)]
+      apply Option.bind_congr' rfl
+      intro _ _
+      rw [joinDrop_congr K hφ _ _ hi₂]
     · apply Option.bind_congr' (runT_congrE hK tl u hint s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
       rintro ⟨⟨r, R⟩, s₂⟩ h2
-      rw [joinDrop_congr K hφ _ _ (runT_rinv K ρ φ L hK tl u hint s₁ s₂ _ hi₁ h2).1]
+      have hi₂ := (runT_rinv K ρ φ L hK tl u hint s₁ s₂ _ hi₁ h2).1
+      rw [optCheck_congr (joinDropOk_congr K hφ _ _ hi₂)]
+      apply Option.bind_congr' rfl
+      intro _ _
+      rw [joinDrop_congr K hφ _ _ hi₂]
     · rfl
   | tl, .matchInd p n arms, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
     dsimp only
-    rw [tagOf_congr K hφ hi p]
+    rw [SM.guarded_congr (tagOk_congr K hφ hi p) (tagOf_congr K hφ hi p indTag)]
     apply Option.bind_congr' rfl
     rintro ⟨tg, s₀⟩ h1
-    have hi₀ := (tagOf_rinv K φ' L h1 hi).1
+    have hi₀ := (tagOf_rinv K φ' L (SM.guarded_some h1).2 hi).1
     dsimp only
+    rw [optCheck_congr (matchEntryOk_congr K hφ hi₀ _ _)]
+    apply Option.bind_congr' rfl
+    intro _ _
     rw [matchEntry_congr K hφ hi₀]
     have hi₁' := (matchEntry_props K φ' L (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) hi₀).1
     generalize matchEntry K φ' (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀ = me at hi₁' ⊢
@@ -1075,7 +1262,11 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     · rename_i c _
       apply Option.bind_congr' (runArm_congrE hK tl arms hint c s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
       rintro ⟨⟨r, R⟩, s₂⟩ h2
-      rw [joinDrop_congr K hφ _ _ (runArm_rinv K ρ φ L hK tl arms hint c s₁ s₂ _ hi₁ h2).1]
+      have hi₂ := (runArm_rinv K ρ φ L hK tl arms hint c s₁ s₂ _ hi₁ h2).1
+      rw [optCheck_congr (or_congr Iff.rfl (or_congr Iff.rfl (joinDropOk_congr K hφ _ _ hi₂)))]
+      apply Option.bind_congr' rfl
+      intro _ _
+      rw [joinDrop_congr K hφ _ _ hi₂]
     · -- an erased match on a proof with other than one arm: each arm's run on the copy agrees
       split
       · exact SM.anyArm_congr fun c =>
@@ -1094,7 +1285,13 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
         · exact ⟨.inr (.inr h'), hn⟩
     dsimp only
     apply Option.bind_congr' (runT_congrE hK tl w hint _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₂)
-    intro _ _; rfl
+    rintro ⟨⟨r, R⟩, s₃⟩ h3
+    have hi₃ := (runT_rinv K ρ φ L hK tl w hint _ s₃ _ hi₂ h3).1
+    dsimp only
+    refine ite_congr (propext ?_) (fun _ => rfl) (fun _ => rfl)
+    split
+    · exact endOk_congr K hφ hi₃ _
+    · exact letLendersOk_congr K hφ hi₃
   | tl, .assign p u, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
@@ -1109,15 +1306,16 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     by_cases hcnd : v ∈ₛ[K.dm.read] (placeTy K φ' p s₁).m ∧ labTyOk s₁ R.label (placeTy K φ' p s₁).m
     rotate_left
     · rw [if_neg hcnd, if_neg hcnd]
-    rw [if_pos hcnd, if_pos hcnd, assignAt_congr K hφ hi₁ p v R.label]
-    cases ha : assignAt K φ' p v R.label s₁ with
+    rw [if_pos hcnd, if_pos hcnd, SM.guarded_congr (assignOk_congr K hφ hi₁ p) (assignAt_congr K hφ hi₁ p v R.label)]
+    cases ha : SM.guarded (AssignOk K φ' p) (assignAt K φ' p v R.label) s₁ with
     | none => rfl
     | some y =>
       obtain ⟨r₀, s₃⟩ := y
       have hy₁ := (runT_rinv K ρ φ L hK false u _ s s₁ _ hi h2).2.1
-      obtain ⟨hi₃, -, -, -⟩ := assignAt_rinv K φ' L ha hi₁ hy₁
+      obtain ⟨hi₃, -, -, -⟩ := assignAt_rinv K φ' L (SM.guarded_some ha).2 hi₁ hy₁
       dsimp only
-      rw [invalidate_congr K hφ hi₃ p, lentOk_congr K hφ (invalidate_props K φ' L p hi₃).1 p]
+      rw [invalidate_congr K hφ hi₃ p, propext (invalidateOk_congr K hφ hi₃ p),
+        lentOk_congr K hφ (invalidate_props K φ' L p hi₃).1 p]
   | tl, .pi hs ds c, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     have hbs := runBinds_congrE hK s L hφ hi (K.D.paramDecls (scopeOf s) ds) ds []
@@ -1180,20 +1378,24 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
       apply SM.bind_congr (SM.onCopy_congr (hall h' (hm h' (by simp)) _ _ hi))
       intro _ s₅ e5; have e := SM.onCopy_state e5; subst e
       dsimp only
-      rw [matchEntry_congr K hφ hi]
+      rw [propext (matchEntryOk_congr K hφ hi true t), matchEntry_congr K hφ hi]
       have hi₁ := (matchEntry_props K φ' L true t hi).1
       rw [movedPlaces_congr hφ hi₁]
       rw [show runT K ρ φ false hint t _ = runT K ρ φ' false hint t _ from hall t (hm t (by simp)) _ _ hi₁]
       split
-      · rename_i r₁ R₁ s₆ h6
-        rw [joinDrop_congr K hφ _ _ (runAll_rinv K ρ φ' L hK args t (hm t (by simp)) _ _ _ _ hi₁ h6).1]
+      · split
+        · rename_i r₁ R₁ s₆ h6
+          have hi₆ := (runAll_rinv K ρ φ' L hK args t (hm t (by simp)) _ _ _ _ hi₁ h6).1
+          rw [propext (joinDropOk_congr K hφ _ _ hi₆), joinDrop_congr K hφ _ _ hi₆]
+        · rfl
       · rfl
     by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
     · obtain ⟨u, hn, hargs⟩ := hc
       have hu : u ∈ args := by rw [hargs]; simp
       rcases hn with rfl | rfl | rfl <;>
         (rw [hargs, runT, runT]
-         exact SM.erasedIf_congr (SM.headOf_congr (fun p => readPlace_congr K hφ hi p true) (hall u hu _ _ hi)))
+         exact SM.erasedIf_congr (SM.headOf_congr (fun p => SM.guarded_congr (contentOk_congr K hφ hi p)
+           (readPlace_congr K hφ hi p true)) (hall u hu _ _ hi)))
     have hJ' : ∀ (A a b P h t : Term), n = "J" → args = [A, a, b, P, h, t] → False :=
       fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
@@ -1222,7 +1424,7 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
         simp only [codOf, hU]
       | _ => simp only [codOf, hc]
     have hcod : ∀ bs, fixCod K ρ φ s bs c = fixCod K ρ φ' s bs c := fun bs => by unfold fixCod; rw [hout]
-    rw [run_fix_def, run_fix_def, hds, hbs, hout, hcod]
+    rw [run_fix_def, run_fix_def, hds, hbs, hout, hcod, propext (capsOk_congr K hφ _ hi)]
     obtain ⟨hg1, hg2⟩ := fixG_congr K ρ hK hφ hb hi (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds)
       (codOf K ρ φ' s (bindsOf K ρ φ' s ds) c)
       (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds) (codOf K ρ φ' s (bindsOf K ρ φ' s ds) c)) dec

@@ -102,7 +102,7 @@ theorem s₀_good (dm : DataModel) : SGood dm [] φ₀ s₀ := by
   · rw [positions_s₀] at hp
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false] at hp
     rcases hp with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-    · exact .inl (hψ.2 0 (by rw [live_s₀]; simp))
+    · exact .inl (.mem (hψ.2 0 (by rw [live_s₀]; simp)))
     · exact .inl (.mem (nat_mem dm 1))
   · obtain ⟨rfl, rfl⟩ := sh₀_some hl
     exact .mem (nat_mem dm 1)
@@ -137,7 +137,7 @@ theorem setContent_s₀ (dm : DataModel) :
   unfold setContent
   rw [if_neg]
   intro hall
-  have hTF : TypedFut (Kc dm) φ₀ s₀ φ₀ := ⟨fun _ _ => rfl, fun _ _ => .mem (nat_mem dm 0)⟩
+  have hTF : TypedFut (Kc dm) φ₀ s₀ φ₀ := ⟨fun _ _ => rfl, fun _ _ => nat_mem dm 0⟩
   have h := hall φ₀ hTF
   have hu : Sem.updAt dm [] (.plain TyM.nat) (fun _ => .moved) [.proj 0] (Sem.el0 Nat 0) = none := by
     rw [Sem.updAt.eq_def]
@@ -152,7 +152,7 @@ theorem s₁_bad (dm : DataModel) : ¬ SGood dm [] φ₀ (s₁ dm) := by
   intro hs
   have hTF : TypedF dm [] φ₀ (s₁ dm) φ₀ := by
     refine ⟨fun _ _ => rfl, fun l _ => ?_⟩
-    exact .mem (nat_mem dm 0)
+    exact nat_mem dm 0
   have hp : Pos.bind 0 0 ∈ (s₁ dm).positions := by
     unfold s₁; rw [SState.positions_setAt, positions_s₀]; simp
   have h := hs.bind φ₀ hTF 0 0 hp

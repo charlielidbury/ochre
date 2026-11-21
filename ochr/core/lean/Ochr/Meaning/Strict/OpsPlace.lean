@@ -341,7 +341,7 @@ theorem sgood_push_generic {s s₁ S : SState} (hs : SGood K.dm K.Γ φ s) {f₀
       · rename_i hc
         have hl : lab ≠ some y := fun e => hc ⟨hy, e⟩
         exact hag y (fun h => ((hlive y).1 h).elim hy hl)
-    · show PMem _ _ (if y ∉ s.liveLabels ∧ lab = some y then φ y else ψ y) _
+    · show WMem _ _ (if y ∉ s.liveLabels ∧ lab = some y then φ y else ψ y) _
       rw [if_neg (fun h => h.1 hy)]
       have := hψ y ((hlive y).2 (.inl hy)); rwa [hHT] at this
   have hT2 : ∀ ψ q, s.valAt q (ψ₀ ψ) = s.valAt q ψ := by
@@ -519,9 +519,9 @@ theorem sgood_dropLast {s : SState} (hs : SGood K.dm K.Γ φ s)
     refine ⟨fun y hy => ?_, fun y hy => ?_⟩
     · show (if y ∈ s.liveLabels ∧ y ∉ s.dropLast.liveLabels then _ else ψ y) = φ y
       rw [if_neg (fun h => hy h.1)]; exact hag y (fun h => hy (hlive_sub y h))
-    · show PMem _ _ (if y ∈ s.liveLabels ∧ y ∉ s.dropLast.liveLabels then _ else ψ y) _
+    · show WMem _ _ (if y ∈ s.liveLabels ∧ y ∉ s.dropLast.liveLabels then _ else ψ y) _
       split
-      · exact .mem (hs.held y hy)
+      · exact hs.held y hy
       · rename_i hc
         have hy' : y ∈ s.dropLast.liveLabels := Classical.byContradiction fun h => hc ⟨hy, h⟩
         exact hψ y hy'
@@ -653,9 +653,9 @@ theorem typedF_typedFuture {s : SState} (hs : SGood K.dm K.Γ φ s) : TypedF K.d
   refine ⟨fun l hl => ?_, fun l hl => ?_⟩
   · show (if l ∈ s.liveLabels then s.heldMem l else φ l) = φ l
     rw [if_neg hl]
-  · show PMem _ _ (if l ∈ s.liveLabels then s.heldMem l else φ l) _
+  · show WMem _ _ (if l ∈ s.liveLabels then s.heldMem l else φ l) _
     rw [if_pos hl]
-    exact .mem (hs.held l hl)
+    exact hs.held l hl
 
 /-- A whole good value at the error type is a type value. -/
 theorem GoodVal.ty_of_err {v : Sem} {T : TyM} (h : GoodVal K.dm K.Γ v T) (hw : v.whole) (he : T = TyM.err) :
@@ -952,7 +952,7 @@ theorem sgood_borrow_root {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {f i
   have hT2 : ∀ ψ q, s₁.valAt q (ψ.upd l (φ l)) = s₁.valAt q ψ := fun ψ q =>
     hs₁.indep_fresh q (by rw [hl]; exact Nat.le_refl l) ψ (φ l)
   have hψl : ∀ ψ, TypedF K.dm K.Γ φ S ψ → PMem K.dm K.Γ (ψ l) Tm := by
-    rintro ψ ⟨-, hψ⟩; have := hψ l ((hSlive l).2 (.inr rfl)); rwa [hSHT, if_pos rfl] at this
+    rintro ψ ⟨-, hψ⟩; have := hψ l ((hSlive l).2 (.inr rfl)); rw [hSHT, if_pos rfl] at this; exact .mem this
   have hbval : ∀ f' i', S.valAt (.bind f' i') =
       if Pos.bind f' i' = .bind f i then (fun φ' => φ' l) else s₁.valAt (.bind f' i') := by
     intro f' i'; rw [hSval, valAt_pushTempShaped_bind, h3val]
@@ -1393,9 +1393,9 @@ theorem sgood_hold {s : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} (hpos : 
       split
       · rfl
       · rename_i hc; exact hag y (fun h => hc ⟨hy, h⟩)
-    · show PMem _ _ (if y ∈ s.liveLabels ∧ y ∉ S.liveLabels then _ else if y ∉ s.liveLabels ∧ y ∈ S.liveLabels then φ y else ψ y) _
+    · show WMem _ _ (if y ∈ s.liveLabels ∧ y ∉ S.liveLabels then _ else if y ∉ s.liveLabels ∧ y ∈ S.liveLabels then φ y else ψ y) _
       split
-      · exact .mem (hs.held y hy)
+      · exact hs.held y hy
       · rename_i hc
         rw [if_neg (fun h => h.1 hy)]
         have hyS : y ∈ S.liveLabels := Classical.byContradiction fun h => hc ⟨hy, h⟩

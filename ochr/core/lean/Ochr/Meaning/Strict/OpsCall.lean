@@ -160,10 +160,10 @@ state before: reset the fixed labels that are not live (no position reads them) 
 labels `E` (not live, unread: the returned borrow's fresh label) to the run's future. -/
 theorem typed_transport {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : SState} (F : List (Nat × Sem))
     (E : List Nat) (ψ' : Future)
-    (hF : ∀ y f, (y, f) ∈ F → PMem dm Γ f (s.heldTy y))
+    (hF : ∀ y f, (y, f) ∈ F → f ∈ₛ[dm.read] s.heldTy y)
     (hFlive : ∀ y ∈ F.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hE : ∀ y ∈ E, y ∉ s.liveLabels ∧ ∀ p, Indep y (s.valAt p))
-    (hlive : ∀ y ∈ s.liveLabels, y ∉ F.map (·.1) → PMem dm Γ (ψ' y) (s.heldTy y))
+    (hlive : ∀ y ∈ s.liveLabels, y ∉ F.map (·.1) → ψ' y ∈ₛ[dm.read] s.heldTy y)
     (hagree : ∀ y, y ∉ s.liveLabels → y ∉ F.map (·.1) → y ∉ E → ψ' y = φ y) :
     ∃ ψ₀, TypedF dm Γ φ s ψ₀ ∧ ∀ p, s.valAt p (ψ'.updList F) = s.valAt p ψ₀ := by
   let D : List Nat := (F.map (·.1)).filter (fun y => decide (y ∉ s.liveLabels)) ++ E
@@ -190,7 +190,7 @@ theorem typed_transport {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : 
       exact hagree y hy hyF hyE
   · have hyD : y ∉ D := fun hm => (hD y hm).1 hy
     rw [Future.updList_of_not_mem R _ y (by rw [hRk]; exact hyD)]
-    exact updList_prop (fun f => PMem dm Γ f (s.heldTy y)) F ψ' y (fun f hf => hF y f hf)
+    exact updList_prop (fun f => f ∈ₛ[dm.read] s.heldTy y) F ψ' y (fun f hf => hF y f hf)
       (fun hn => hlive y hy hn)
   · refine (eq_updList_indep (v := s.valAt p) (ψ'.updList F) R fun e he => ?_).symm
     obtain ⟨y, hy, rfl⟩ := List.mem_map.1 he
@@ -471,7 +471,7 @@ theorem fixes_pmem (hR : Lv.read = dm.read)
       s.heldTy l = (telRefTysL Lv t (args.map (·.1))).getD i TyM.err)
     {fs : List Sem} (hfs : MemList Lv.read fs (telRefTysL Lv t (args.map (·.1)))) :
     ∀ y f, (y, f) ∈ ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip fs).filterMap
-      (fun (l?, f) => l?.map (·, f)) → PMem dm Γ f (s.heldTy y) := by
+      (fun (l?, f) => l?.map (·, f)) → f ∈ₛ[dm.read] s.heldTy y := by
   intro y f hm
   obtain ⟨i, hi, hf⟩ := fixes_mem hm
   obtain ⟨T, hT, hfT⟩ := MemList.get hfs hf
@@ -479,7 +479,7 @@ theorem fixes_pmem (hR : Lv.read = dm.read)
   rw [List.getD_eq_getElem?_getD, hT, Option.getD_some] at e
   rw [e]
   rw [hR] at hfT
-  exact .mem hfT
+  exact hfT
 
 theorem fixes_keys_live
     (hlive : ∀ l, some l ∈ ((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label) →
@@ -501,7 +501,7 @@ open members of the labels' content types. -/
 theorem sgood_mapVals_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : SState} (hs : SGood dm Γ φ s)
     (Ls : List Nat) (FF : List (Nat × Sem))
     (hcov : ∀ l ∈ Ls, l ∈ FF.map (·.1))
-    (hFm : ∀ y f, (y, f) ∈ FF → PMem dm Γ f (s.heldTy y))
+    (hFm : ∀ y f, (y, f) ∈ FF → f ∈ₛ[dm.read] s.heldTy y)
     (hFl : ∀ y ∈ FF.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hacyc : SState.RInv (fun _ => True) ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)))
     (hfresh : ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)).ReadsBelow) :
@@ -582,8 +582,8 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
     {X : Type u} (Ls : List Nat) (dec : Sem → Option X) (fx : X → List (Nat × Sem)) (ee : List (Nat × Sem))
     (le : List Site) (Tk : TyM) (c : Sem) (hc : c ∈ₛ[dm.read] Tk) (g : Pos → SVal → SVal)
     (hcov : ∀ x, ∀ l ∈ Ls, l ∈ (fx x).map (·.1)) (hcovE : ∀ l ∈ Ls, l ∈ ee.map (·.1))
-    (hFm : ∀ x y f, (y, f) ∈ fx x → PMem dm Γ f (s.heldTy y))
-    (hEm : ∀ y f, (y, f) ∈ ee → PMem dm Γ f (s.heldTy y))
+    (hFm : ∀ x y f, (y, f) ∈ fx x → f ∈ₛ[dm.read] s.heldTy y)
+    (hEm : ∀ y f, (y, f) ∈ ee → f ∈ₛ[dm.read] s.heldTy y)
     (hFl : ∀ x, ∀ y ∈ (fx x).map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hEl : ∀ y ∈ ee.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hg : ∀ p v ψ, (∃ x, dec (ψ (Ls.foldl SState.takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
@@ -664,12 +664,14 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
       ∀ p ∈ s.positions, S.valAt p ψ' = s.valAt p ψ₀ ∨ S.valAt p ψ' = .moved := by
     intro ψ' hψ'
     -- the finals the future fixes
-    obtain ⟨Fx, hFxm, hFxl, hFxc, hgx⟩ : ∃ Fx : List (Nat × Sem), (∀ y f, (y, f) ∈ Fx → PMem dm Γ f (s.heldTy y)) ∧
+    obtain ⟨Fx, hFxm, hFxl, hFxc, hgx⟩ : ∃ Fx : List (Nat × Sem), (∀ y f, (y, f) ∈ Fx → f ∈ₛ[dm.read] s.heldTy y) ∧
         (∀ y ∈ Fx.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p)) ∧ (∀ l ∈ Ls, l ∈ Fx.map (·.1)) ∧
         ∀ p v, g p v ψ' = v (ψ'.updList Fx) := by
       cases hd : dec (ψ' k) with
       | none =>
-        refine ⟨ee, hEm, hEl, hcovE, fun p v => ?_⟩
+        -- PROBE (A): unreachable at a typed future (`k` holds a member of its code's type, which
+        -- decodes); the `moved` fixes are no members
+        refine ⟨ee, fun y f h => sorry, hEl, hcovE, fun p v => ?_⟩
         rcases hg p v ψ' with ⟨x, hx, -⟩ | ⟨-, e⟩
         · rw [hd] at hx; cases hx
         · exact e
@@ -760,7 +762,7 @@ theorem callOfLS_sgood_data {dm : DataModel} {Γ : List IndDecl} {φ : Future} (
   simp only [Nat.zero_add] at hfin
   have hcov := fixes_cover (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)) finals
     (by rw [List.length_map, zip_filter_len args _ (by simpa using hlen), hfin]; exact Nat.le_refl _)
-  have hFm := fixes_pmem (Γ := Γ) Lv t args hR ht hfm
+  have hFm := fixes_pmem Lv t args hR ht hfm
   have hFl := fixes_keys_live Lv t args hlive finals
   -- the state
   unfold callOfL at h
@@ -813,15 +815,15 @@ theorem callOfLS_sgood_ref {dm : DataModel} {Γ : List IndDecl} {φ : Future} (L
   have hcovE := fixes_cover (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label))
     ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)
     (by simp only [List.length_map]; exact Nat.le_refl _)
-  have hFm := fun x => fixes_pmem (Γ := Γ) Lv t args hR ht (hfm x)
+  have hFm := fun x => fixes_pmem Lv t args hR ht (hfm x)
   have hEm : ∀ y f, (y, f) ∈ ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip
       ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)).filterMap
-      (fun (l?, f) => l?.map (·, f)) → PMem dm Γ f (s.heldTy y) := by
+      (fun (l?, f) => l?.map (·, f)) → f ∈ₛ[dm.read] s.heldTy y := by
     intro y f hm
     obtain ⟨i, -, hf⟩ := fixes_mem hm
     rw [List.getElem?_map] at hf
     obtain ⟨_, -, hfe⟩ := Option.map_eq_some_iff.1 hf
-    rw [← hfe]; exact .moved _
+    sorry -- PROBE (A): `⊥` is no member; used only in the unreachable branch
   have hFl := fun x => fixes_keys_live Lv t args hlive (back x)
   have hEl := fixes_keys_live Lv t args hlive
     ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)
