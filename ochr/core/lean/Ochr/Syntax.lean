@@ -88,6 +88,14 @@ def DeclInfo.isData : DeclInfo → Bool
   | .unit | .ind .. | .alt _ => true
   | _ => false
 
+/-- D112: a reading whose values are constructor values of a data inductive at every instance (a
+TREE: it records its declaration and parameters, so it says which type it is a value of). A number,
+the unit, a function, a type parameter's value or a reading not known (`other`) is not one. -/
+def DeclInfo.isTree : DeclInfo → Bool
+  | .ind .. => true
+  | .alt ds => !ds.isEmpty && ds.all fun | .ind .. => true | _ => false
+  | _ => false
+
 /-- D80: arms whose readings `ds` agree only on data (`d`, their agreement, is `other`) read as
 their alternatives: a type function's call, or a match, whose arms are different data types
 has one of their types. -/

@@ -64,16 +64,16 @@ def fieldTermIsProp (d : IndDecl) (FT : Term) : M Bool := do
     | none => pure false
   | _ => pure false
 
-/-- D110 [Open]: a strong update (an assignment to a dependent data field, `Machine.strongUpdate`)
-stores its value unchecked, and the field is then typed by what it holds. That is meaningful only
-for a value whose content determines its type: one whose declared type reads as first-order data,
-the class a field may be declared at (D36). A proof, a borrow, a type or a function is not: its
-content (`⋆`, a borrow, a type, a closure) does not say what the field's type is, and `Boom`
-stored `⋆` in a field whose type then read as `Void`. Any other value is an ordinary checked
-write. Decided from the right-hand side's declared type (`declOf`), never from its value or its
-computed type. -/
-def strongStorable (d : DeclInfo) : Bool :=
-  !d.isProof && !(d matches .ref _ | .sort _ | .pi _ | .conflict)
+/-- D110, D112 [Open]: a strong update (an assignment to a dependent TREE field,
+`Machine.strongUpdate`) stores its value unchecked, and the field is then typed by what it holds.
+That is meaningful only for a value whose content determines its type: a constructor value of a
+data inductive, which records its declaration and parameters (D112: a tree, `DeclInfo.isTree`).
+A proof, a borrow, a type or a function is not (D110: `Boom` stored `⋆` in a field whose type then
+read as `Void`), and neither is a number or the unit value (D112: the set model reads a leaf at its
+field's declared type, so a field never holds a leaf of another type). Any other value is an
+ordinary checked write. Decided from the right-hand side's declared type (`declOf`), never from
+its value or its computed type. -/
+def strongStorable (d : DeclInfo) : Bool := d.isTree
 
 /-- A field place is a proof iff its declared type is a proposition (syntactic, D42). -/
 def fieldIsProof (g : FieldRef) : M Bool := do
@@ -674,6 +674,25 @@ def telescope (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) 
     ns := h.name :: ns
   pure (sc, ns, l)
 termination_by structural fuel
+
+/-- D112 [Open]: field `i` of constructor `c` of `d` is a LEAF field: dependent (its declared type
+mentions an earlier field), not a proof field, and its declared type, read in the telescope of the
+parameters and the earlier fields (`typeDecl`, through type-function bodies), is not a TREE at
+every instance (`DeclInfo.isTree`): it may hold a number, the unit value, a function or a value of
+a type parameter. A leaf does not say which instance of the field's type it was written at, so
+it is never typed by its content: like a proof field, it is invalidated by a write or borrow
+through an index field its type mentions, and an assignment to it is checked at its type at the
+current contents ([Open]). Decided from the declaration alone. -/
+def fieldIsLeaf (fuel : Nat) (d : IndDecl) (c i : Nat) : M Bool := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if !d.fieldDependent c i then return false
+  let some (_, fields) := d.ctors[c]? | return false
+  let some (_, FT) := fields[i]? | return false
+  if ← fieldTermIsProp d FT then return false
+  let (sc, ns, _) ← telescope fuel' false [] [] (d.params.map (·.1)) (d.params.map (·.2))
+  let earlier := fields.take i
+  let (sc, ns, _) ← telescope fuel' false sc ns (earlier.map fun (f, _) => ⟨f⟩) (earlier.map (·.2))
+  pure !(← typeDecl fuel' false sc ns FT).isTree
 
 /-- What a runtime value's declared type says (an embedded value, a capture). -/
 def valueDecl (fuel : Nat) (v : Value) : M DeclInfo := withLive false do

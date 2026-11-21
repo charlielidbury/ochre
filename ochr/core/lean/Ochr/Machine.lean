@@ -210,24 +210,12 @@ def strictSubtermsList : List Value → List Value
 termination_by structural fs => fs
 end
 
-/-- D64 [Open]: a write or borrow through an index field of a dependent constructor value
-invalidates the proof fields whose types mention that field: they become `⊥` until assigned
-again (a proof is `⋆` and carries no type, so a stale one could not be told apart at the
-repack; an assigned proof is checked against the telescope at the current contents). -/
-def openWrite (p : Place) : M Unit := do
-  let rec prefixes : Place → List (Place × FieldRef)
-    | .field g q => (q, g) :: prefixes q
-    | .deref q | .proj _ q => prefixes q
-    | .var _ => []
-  for (q, g) in prefixes p do
-    let some d := (← get).inds.find? (·.name == g.ty) | continue
-    unless (d.indexFields g.ctor).contains g.idx do continue
-    for ((fname, FT), j) in ((d.ctors[g.ctor]!).2).zipIdx do
-      if j != g.idx && (d.fieldRefs g.ctor FT).contains g.idx && (← fieldTermIsProp d FT) then
-        let fp := Place.field ⟨g.ty, g.ctor, j, fname⟩ q
-        if (← content? fp).isSome then
-          fire .Open fun _ => s!"a write through {g.name} invalidates the proof field {fname}"
-          setPlace fp .bot
+/-- The field steps of a place, each with the place it is a field of (innermost first): what a
+write or borrow through the place passes through ([Open], `openWrite`). -/
+def Place.fieldPrefixes : Place → List (Place × FieldRef)
+  | .field g q => (q, g) :: Place.fieldPrefixes q
+  | .deref q | .proj _ q => Place.fieldPrefixes q
+  | .var _ => []
 
 /-- K2/K3: this point runs at runtime: not in an erased term, and not in model code (an
 `implemented by` body or a model function's, which never runs at runtime). -/
@@ -503,11 +491,13 @@ where
   termination_by structural fuel
 
 /-- D64 [Open]: `p` is a data field whose declared type mentions earlier fields (its
-assignment is a strong update). -/
+assignment is a strong update), and (D112) a tree field: its declared type is a data inductive
+at every instance. -/
 def strongUpdate (p : Place) : M Bool := do
   let .field g _ := p | return false
   let some d := (← get).inds.find? (·.name == g.ty) | return false
-  pure (d.fieldDependent g.ctor g.idx && !(← fieldIsProof g))
+  -- D112: a leaf field is never strongly updated (`Decide.fieldIsLeaf`)
+  pure (d.fieldDependent g.ctor g.idx && !(← fieldIsProof g) && !(← fieldIsLeaf (← fuelLeft) d g.ctor g.idx))
 
 /-- D64: does a value hold a value of a dependent constructor (outside sealed programs and
 closures, which carry their types)? -/
@@ -1128,6 +1118,31 @@ def accessInside (fuel : Nat) (p : Place) (owned : Bool := false) : M Unit := do
   | [] => pure ()
 termination_by structural fuel
 
+/-- D64 [Open], D112: a write or borrow through an index field of a dependent constructor value
+invalidates the fields whose types mention that field and that cannot be typed by what they
+hold: the proof fields (a proof is `⋆` and carries no type, so a stale one could not be told
+apart at the repack) and the LEAF fields (D112, `Decide.fieldIsLeaf`: a number, the unit value or
+a function does not say which instance of the field's type it was written at, and the set model
+reads a leaf at its field's declared type). They become `⊥` until assigned again; an assignment
+is checked against the telescope at the current contents. A leaf that is lent is accessed first
+([Access]: its borrows end), as a write to it would be. -/
+def openWrite (fuel : Nat) (p : Place) : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  for (q, g) in p.fieldPrefixes do
+    let some d := (← get).inds.find? (·.name == g.ty) | continue
+    unless (d.indexFields g.ctor).contains g.idx do continue
+    for ((fname, FT), j) in ((d.ctors[g.ctor]!).2).zipIdx do
+      if j != g.idx && (d.fieldRefs g.ctor FT).contains g.idx then
+        let proof ← fieldTermIsProp d FT
+        let leaf ← if proof then pure false else fieldIsLeaf fuel' d g.ctor j
+        if proof || leaf then
+          let fp := Place.field ⟨g.ty, g.ctor, j, fname⟩ q
+          if (← content? fp).isSome then
+            if leaf then accessInside fuel' fp
+            fire .Open fun _ => s!"a write through {g.name} invalidates the {if proof then "proof" else "leaf"} field {fname}"
+            setPlace fp .bot
+termination_by structural fuel
+
 /-- [Access] for matching (v1.5, D29): a loan anywhere inside a neutral at the head of
 `content(p)` counts as being at the head (its position inside the neutral is unknown),
 so its borrow ends. -/
@@ -1437,10 +1452,19 @@ def depFieldType (fuel : Nat) (d : IndDecl) (ps : List Value) (g : FieldRef) (q 
   -- update stores none), so it is not given a declared type it was never checked against
   if c == .proof then
     if ← fieldIsProof g then return T
+    -- D112: a leaf field whose type computes to a proposition holds `⋆` at it (checked when assigned)
+    if ← fieldIsLeaf fuel' d g.ctor g.idx then return T
     err s!"INTERNAL [Open] the data field {g.name} of {← ppPlace q} holds ⋆ (D110: a data field never holds a proof; please report)"
+  -- D112: a leaf field is never typed by its content: it holds `⊥` or a value of its declared type
+  -- at the current earlier fields (an index write invalidates it; an assignment is checked)
+  if ← fieldIsLeaf fuel' d g.ctor g.idx then
+    if (← packedErr fuel' c T).isNone then return T
+    err s!"INTERNAL [Open] the leaf field {g.name} of {← ppPlace q} holds {c}, not of its declared type {T} (D112: an index write invalidates a leaf; please report)"
   if (← packedErr fuel' c T).isNone then return T
-  -- a content with no readable type of its own (a proof, an inert loan) keeps the field's type
-  let S := (← valType? fuel' c).getD T
+  -- D112: a tree field that does not fit its declared type is typed by its content, which (a
+  -- strong update stores only a tree, D110/D112) always has a readable type
+  let some S ← valType? fuel' c
+    | err s!"[Open] {← ppPlace q}.{g.name} holds {c}, whose type cannot be read, and it is not of its declared type {T}"
   fire .Open fun _ => s!"{g.name} is open: typed by its content, {S}, not {T}"
   pure S
 termination_by structural fuel
@@ -2232,7 +2256,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         err s!"[D66] &{← ppPlace p}: its type {T} is not in Type₀ (only runtime types are borrowed: never a proposition, Prop, a universe, or a type not known to be in Type₀)"
       repackAt fuel' p T "borrowed whole"
     let b ← borrowPlace fuel' p
-    openWrite p
+    openWrite fuel' p
     pure (b, T.map .tRef)
   | .assign p u =>
     if typed then
@@ -2256,11 +2280,14 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     -- [Open]: a strong update
     if strong && storable then fire .Open fun _ => s!"a strong update of a dependent field, to a value of type {Tv.getD .bot}"
     if typed && !(strong && storable) then
-      expectTy fuel' "the assigned value" Tv (← match Td0, Tp0 with
-        | some T, _ | none, some T => pure T
-        | none, none => placeType fuel' p)
+      -- D112: a leaf field assigned while part of its value is lent is checked with what the
+      -- borrows hold unknown, as a proof field is (`lentLeafCheck`)
+      unless ← lentLeafCheck fuel' p Tv do
+        expectTy fuel' "the assigned value" Tv (← match Td0, Tp0 with
+          | some T, _ | none, some T => pure T
+          | none, none => placeType fuel' p)
     assignPlace fuel' p v Tv
-    openWrite p
+    openWrite fuel' p
     pure (.unit, ty .tUnit)
   | .letIn h u w =>
     let myD := (← get).curDecl
@@ -2535,6 +2562,28 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     pure (v, some A')
 termination_by structural fuel
 
+/-- D64 amended, D112 ([Open]): the borrows that lend part of the value at `q`, a constructor value
+of `g`'s constructor (a live loan in its fields). -/
+def lentInFields (q : Place) (g : FieldRef) : M (List Nat) := do
+  let cv := (← content? q).getD .bot
+  let some fs ← ctorFields cv g | return []
+  let env := (← get).env
+  pure (fs.flatMap fun w => liveLoansIn env w).eraseDups
+
+/-- D64 amended, D112 ([Open]): on the current (private) copy, each borrow in `ls` holds a fresh
+abstract value of the type of what it holds now: whatever it may still write. -/
+def unknownLent (fuel : Nat) (what : String) (ls : List Nat) : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  for l in ls do
+    let env := (← get).env
+    let some pos := findBorrow env l | continue
+    let some (c, _) := (valAt env pos).takeBorrow l | continue
+    let some T ← valType? fuel' c
+      | err s!"[Open] {what} is assigned while its value is lent, and the type of what the borrow holds ({c}) is not known"
+    let σ ← absOf fuel' T
+    setAt pos ((valAt env pos).setBorrowContent l σ)
+termination_by structural fuel
+
 /-- D64 amended ([Open]): `p := u` for a proof field of a dependent constructor value while part
 of the value is lent (a live loan in its fields). The proof is about the whole value, and a live
 borrow can still write its part, which nothing would then invalidate: the write goes through the
@@ -2547,29 +2596,39 @@ def lentProofAssign (fuel : Nat) (p : Place) (u : Term) : M (Option (Value × Op
   let .field g q := p | return none
   let some d := (← get).inds.find? (·.name == g.ty) | return none
   unless d.dependent g.ctor && (← fieldIsProof g) do return none
-  let cv := (← content? q).getD .bot
-  let some fs ← ctorFields cv g | return none
-  let env := (← get).env
-  let ls := (fs.flatMap fun w => liveLoansIn env w).eraseDups
+  let ls ← lentInFields q g
   if ls.isEmpty then return none
   fire .Open fun _ => s!"the proof field {g.name} is assigned while borrows {ls} lend part of its value: checked with what they hold unknown"
   privately do
-    for l in ls do
-      let env := (← get).env
-      let some pos := findBorrow env l | continue
-      let some (c, _) := (valAt env pos).takeBorrow l | continue
-      let some T ← valType? fuel' c
-        | err s!"[Open] the proof field {g.name} is assigned while its value is lent, and the type of what the borrow holds ({c}) is not known"
-      let σ ← absOf fuel' T
-      setAt pos ((valAt env pos).setBorrowContent l σ)
+    unknownLent fuel' s!"the proof field {g.name}" ls
     let T ← placeType fuel' p
     let (_, Tv) ← eval fuel' true u (some T)
     expectTy fuel' s!"the proof assigned to {g.name} (while part of its value is lent, what the borrow holds unknown: [Open])" Tv T
   -- D104: no type is in hand here: the proof was checked on the private copy above, at the
   -- field's type there, where the lent parts were unknowns
   assignPlace fuel' p .proof none
-  openWrite p
+  openWrite fuel' p
   pure (some (.unit, some .tUnit))
+termination_by structural fuel
+
+/-- D112 ([Open]): the assignment of a value of type `Tv` to the LEAF field `p` while part of its
+value is lent (a live loan in its fields) is checked as a proof field's is (`lentProofAssign`):
+against the field's declared type on a private copy in which each such borrow holds a fresh
+abstract value of its type, since the borrow may still write there and nothing would invalidate
+the leaf again. `false`: not this case (the ordinary [Assign] check applies). -/
+def lentLeafCheck (fuel : Nat) (p : Place) (Tv : Option Value) : M Bool := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let .field g q := p | return false
+  let some d := (← get).inds.find? (·.name == g.ty) | return false
+  unless ← fieldIsLeaf fuel' d g.ctor g.idx do return false
+  let ls ← lentInFields q g
+  if ls.isEmpty then return false
+  fire .Open fun _ => s!"the leaf field {g.name} is assigned while borrows {ls} lend part of its value: checked with what they hold unknown"
+  privately do
+    unknownLent fuel' s!"the field {g.name}" ls
+    let T ← fieldDeclType fuel' p
+    expectTy fuel' s!"the value assigned to {g.name} (while part of its value is lent, what the borrow holds unknown: [Open])" Tv T
+  pure true
 termination_by structural fuel
 
 /-- `D(ā)` (v2.0, D46): the arguments stand in type positions, so each is evaluated on a
@@ -3724,10 +3783,13 @@ read-only capture through a borrow before a later capture's access ended that bo
 block's arm read a copy the direct run's arm could not: `EK`, probes/static-ends/Snapshot.) -/
 def entryAccess (fuel : Nat) (capsS : Array (Place × Nat)) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  for (q, _) in capsS do
+  for (q, mode) in capsS do
     fire .Entry fun _ => s!"a place a stuck block would capture"
     accessPath fuel' q
     if (← content? q).isSome then accessInside fuel' q
+    -- D112: a capture by `&` invalidates as its borrow does ([Open]), on every path: the block's
+    -- borrow of the place does when the match closes off, so the entry does when it runs directly
+    if mode == 1 then openWrite fuel' q
 termination_by structural fuel
 
 /-- D84 [Join]: drop `q` as a stuck block's by-move argument takes it (`readPlace`): a borrow is
