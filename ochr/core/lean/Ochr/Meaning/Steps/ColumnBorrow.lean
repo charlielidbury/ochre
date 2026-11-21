@@ -551,4 +551,160 @@ theorem rel_lend (hK : ∀ n, (K.C.global n).2.label = none) {π : Nat → Nat} 
 
 end
 
+/-! ## The step: `&x` at `evalCore` -/
+
+theorem refd_withTempT_noAbs {st : MState} {v : Value} (hv : ∀ σ, v.hasAbs σ = false) (T? : Option Value) :
+    ∀ σ, (st.withTempT v T?).norm.Refd σ → st.norm.Refd σ := by
+  intro σ h
+  induction h with
+  | val w hw hab =>
+    rcases values_withTempT_norm st v T? w hw with hw | rfl
+    · exact .val w hw hab
+    · rw [hv] at hab; cases hab
+  | ty f i b T hb hT hab =>
+    rw [binds_withTempT_norm] at hb
+    exact .ty f i b T hb hT hab
+  | lazyTy f i b P ws j hb hT hab =>
+    rw [binds_withTempT_norm] at hb
+    exact .lazyTy f i b P ws j hb hT hab
+  | goal G hG hab => exact .goal G hG hab
+  | neutral n σ' hn hab => exact .neutral n σ' hn hab
+  | eta σ' w he hab => exact .eta σ' w he hab
+  | dep σ' T _ hT hab ih => exact .dep σ' T ih hT hab
+
+section
+variable {K : RunCtx} {ρ : Assignment} {φ : Future}
+
+/-- The borrow clause of the strict run, where the aligned table does not erase it. -/
+theorem runT_borrow (tl : Bool) (hint : TyS) (p : Place) (s : SState)
+    (hfl : K.D.flags (scopeOf s) (.borrow p) = (false, false)) :
+    runT K ρ φ tl hint (.borrow p) s =
+      match SM.strictS K.dm.read (SM.guarded (ContentOk K φ p) (borrowPlace K φ p)) s with
+      | some (r, s₁) =>
+        if InvalidateOk K φ p s₁ ∧ lentOk K φ p (invalidate K φ p s₁) then some (r, invalidate K φ p s₁) else none
+      | none => none := by
+  rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _; rw [hfl]; rfl
+
+theorem lentOk_var (i : Nat) (s : SState) : lentOk K φ (.var i) s := by
+  unfold lentOk resolve
+  simp only [Place.steps]
+  cases s.varPos i <;> simp
+
+/-- **The precondition of `&x`**: `x` a top-frame variable bound at `Nat` to a number; no live borrow
+anywhere; no site of a label at or above the counter. -/
+def BorrowPre (i : Nat) (st : MState) : Prop :=
+  NumVar i st ∧ (∀ l, liveLoan st.env l = false) ∧
+    ∀ q ∈ allPos st.env, ∀ l, st.nextLoan ≤ l → (valAt st.env q).sitesOf l q [] = []
+
+/-- **`&x` at `evalCore`**, for `x` a top-frame variable bound at `Nat` to a number, nothing live
+(`BorrowPre`). The strict run's tests pass: the access ends nothing; the content, the number, is a
+member of `Nat`; the invalidation is empty; the write is at a root. The renaming is extended at the
+new label, and the result's label is the checker's, renamed. -/
+theorem borrow_core (hB : BorrowNumInv) (hIC : InvCore) {n i : Nat} {P : MState → Prop}
+    (hP : ∀ st, P st → BorrowPre i st) (hinv : ∀ sc, K.D.invalidated sc (.var i) = []) :
+    CoreSim K ρ φ (n + 1) (.borrow (.var i)) P (· = true) := by
+  intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl _ hD bh h
+  subst hty
+  obtain ⟨⟨f, j, b, hpos, hlk, hnum, htyb⟩, hnl, hfs⟩ := hP st hPst
+  obtain ⟨-, st₁, hq, rfl, rfl, hk⟩ := hB n i hint st st' bh v T? f j b K.D hm hpos hlk hnum htyb hD h
+  -- the checker's state after the quiet step: the same Ω up to temporaries' types
+  have hlk₁ : st₁.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b := by
+    rw [← lookup_erase, ← hq.env, lookup_erase]; exact hlk
+  have hnl₁ : ∀ l, liveLoan st₁.env l = false := fun l => by
+    rw [← liveLoan_erase, ← hq.env, liveLoan_erase]; exact hnl l
+  have hfs₁ : ∀ q ∈ allPos st₁.env, (valAt st₁.env q).sitesOf st₁.nextLoan q [] = [] := fun q hq' => by
+    rw [← allPos_erase, ← hq.env, allPos_erase] at hq'
+    rw [← valAt_erase, ← hq.env, valAt_erase]
+    exact hfs q hq' _ hq.nextLoan
+  have hocc₁ : ∀ l, st₁.Occurs l ↔ st.Occurs l := fun l =>
+    (occurs_erase st₁ l).symm.trans ((occurs_of_env (st := { st with env := st.env.erase })
+      (st' := { st₁ with env := st₁.env.erase }) hq.env.symm l).trans (occurs_erase st l))
+  have hlab₁ : ∀ l, st₁.Occurs l → l < st₁.nextLoan := fun l h' =>
+    Nat.lt_of_lt_of_le (hp.labels l ((hocc₁ l).mp h')) hq.nextLoan
+  obtain ⟨fr, hfr⟩ : ∃ fr, st₁.env[st₁.env.size - 1]? = some fr := by
+    have : 0 < st₁.env.size := by
+      rcases e : st₁.env[f]? with _ | fr₀
+      · rw [e] at hlk₁; cases hlk₁
+      · exact Nat.lt_of_le_of_lt (Nat.zero_le _) (Array.getElem?_eq_some_iff.mp e).1
+    exact ⟨_, Array.getElem?_eq_getElem (by omega)⟩
+  have hr₁ : Rel K ρ φ π st₁ s := hr.of_quiet hq hp.labels
+  -- `x` on the reference's side: the same position, at `Nat`, meaning the number, nothing lent there
+  obtain ⟨m, hmv⟩ := hnum.vmean
+  have hTy : (s.tyAt (.bind f j)).m = TyM.nat := by
+    rw [(rel_bind_ty hr hlk).2]; simp only [Env.hintAt, hlk, htyb]; rfl
+  have hres : resolve s (.var i) = some (.bind f j, []) := rel_resolve_ck K ρ φ st s π (.var i) _ hr hpos
+  have hns : ∀ l, (valAt st.env (.bind f j)).sitesOf l (.bind f j) [] = [] := fun l => by
+    have : valAt st.env (.bind f j) = b.val := by
+      rw [valAt_bind_eq]; rcases e : st.env[f]? with _ | fr₀
+      · rw [e] at hlk; cases hlk
+      · rw [e] at hlk; simp only [Option.bind_some] at hlk; simp [e, hlk]
+    rw [this]; exact hnum.sitesOf l _ _
+  have hacc : s.access (.bind f j) (dataHit []) = s := access_noSites (rel_noSites_at hr hns)
+  have haok : AccessOk K φ s (.bind f j) (dataHit []) := accessOk_noSites (rel_noSites_at hr hns)
+  have hval : s.valAt (.bind f j) (s.typedFuture φ) = .el0 Nat m := by
+    rw [← hr.sim.1 _ ⟨relF_typedFuture φ s, hr.typedFuture_typed φ⟩ (.bind f j) (by simp [IsTemp])]
+    exact mean_numVar hlk hmv _
+  -- the reference's run
+  have hbp := borrowPlace_root (K := K) (φ := φ) hres hacc hval (by simp [Sem.whole])
+  have hxr : runT K ρ φ st.curTail (hintM K ρ hint) (.borrow (.var i)) s =
+      some ((.el0 Nat m, { s.tyAt (.bind f j) with label := some s.nextLoan }), lendState s (.bind f j) (.el0 Nat m)) := by
+    rw [runT_borrow _ _ _ s hfl]
+    have hg : SM.guarded (ContentOk K φ (.var i)) (borrowPlace K φ (.var i)) s =
+        some ((.el0 Nat m, { s.tyAt (.bind f j) with label := some s.nextLoan }), lendState s (.bind f j) (.el0 Nat m)) := by
+      rw [SM.guarded_of (by unfold ContentOk; rw [hres]; exact haok), hbp]
+    have hst : SM.strictS K.dm.read (SM.guarded (ContentOk K φ (.var i)) (borrowPlace K φ (.var i))) s =
+        some ((.el0 Nat m, { s.tyAt (.bind f j) with label := some s.nextLoan }), lendState s (.bind f j) (.el0 Nat m)) := by
+      unfold SM.strictS; rw [hg]; simp only; rw [if_pos (by show Sem.el0 Nat m ∈ₛ[K.dm.read] (s.tyAt (.bind f j)).m; rw [hTy]; exact ⟨m, rfl⟩)]
+    rw [hst]
+    simp only
+    have hi : invalidate K φ (.var i) (lendState s (.bind f j) (.el0 Nat m)) = lendState s (.bind f j) (.el0 Nat m) := by
+      unfold invalidate; rw [hinv]; rfl
+    rw [hi, if_pos ⟨by unfold InvalidateOk; rw [hinv]; trivial, lentOk_var i _⟩]
+  -- the relation after
+  have hR := rel_lend hp.ctx.noLabel hr₁ hS hlab₁ hnl₁ hfs₁ hfr hlk₁ hnum hmv hTy
+  have hbAbs : ∀ σ, (Value.borrow st₁.nextLoan b.val).hasAbs σ = false := fun σ => by
+    show ((Value.borrow st₁.nextLoan b.val == Value.abs σ) || b.val.anyAtom (· == .abs σ)) = false
+    rw [show (Value.borrow st₁.nextLoan b.val == Value.abs σ) = false from rfl]
+    exact hnum.hasAbs σ
+  refine ⟨ρ, K.Δ, renameAt π st₁.nextLoan s.nextLoan, _, _, ⟨?_, ?_, fun _ _ => ⟨rfl, rfl⟩, ?_⟩, hxr, ?_,
+    fun T hT => ?_, ?_, ?_, ?_⟩
+  · rw [← hk.absTy]; exact hq.absSize
+  · rw [← hk.nextLoan]; exact Nat.le_succ_of_le hq.nextLoan
+  · intro l hl
+    have : l ≠ st₁.nextLoan := Nat.ne_of_lt (Nat.lt_of_lt_of_le hl hq.nextLoan)
+    simp [renameAt, this]
+  · show meanV _ ρ _ _ (Value.borrow st₁.nextLoan b.val) = .el0 Nat m
+    rw [← meanV_eq_mean]; exact hmv _ _ _ _ _ _
+  · cases hT
+    show _ = (s.tyAt (.bind f j)).m
+    rw [hTy]; rfl
+  · simp [Value.heldLabel, renameAt]
+  · refine ⟨hp.ctx.of_eq ?_ ?_, ?_, ?_⟩
+    · show st'.inds = st.inds; rw [← hk.inds, ← hq.inds]
+    · show st'.globals = st.globals; rw [← hk.globals, ← hq.globals]
+    · exact hIC (n + 1) true _ hint st st' bh _ _ K.D K.Γ (.borrow i) hp.inv hD h
+    · have hA₁ : Asg K ρ st₁.norm := Asg.of_quiet hq hp.asg hp.inv.wf6
+      have hX : Asg K ρ (({ st₁ with env := Env.setAtE st₁.env (.bind f j) (.loan st₁.nextLoan), nextLoan := st₁.nextLoan + 1 } : MState).withTempT (.borrow st₁.nextLoan b.val) (some (.tRef .tNat))).norm := by
+        refine hA₁.of_refd rfl rfl rfl rfl rfl fun σ hσ => ?_
+        have h1 := refd_withTempT_noAbs (st := ({ st₁ with env := Env.setAtE st₁.env (.bind f j) (.loan st₁.nextLoan), nextLoan := st₁.nextLoan + 1 } : MState)) hbAbs _ σ hσ
+        refine refd_sub (st := st₁) (st' := ({ st₁ with env := Env.setAtE st₁.env (.bind f j) (.loan st₁.nextLoan), nextLoan := st₁.nextLoan + 1 } : MState)) rfl rfl rfl rfl ?_ ?_ ?_ σ h1
+        · intro w' hw' σ' hσ'
+          rcases mem_values_setAtE hw' with rfl | hw''
+          · exact absurd hσ' (by rw [show (Value.loan st₁.nextLoan).hasAbs σ' = false from rfl]; simp)
+          · exact ⟨w', hw'', hσ'⟩
+        · intro f' i' b' T σ' hb' hT hσ'
+          obtain ⟨b'', hb'', hty'', -⟩ := lookup_setAtE hb'
+          exact .ty f' i' b'' T (by rw [show st₁.norm.env = st₁.env.erase from rfl, lookup_erase]; exact hb'')
+            (by rw [hty'']; exact hT) hσ'
+        · intro f' i' b' P ws j' σ' hb' hl hσ'
+          obtain ⟨b'', hb'', -, hlz''⟩ := lookup_setAtE hb'
+          exact .lazyTy f' i' b'' P ws j' (by rw [show st₁.norm.env = st₁.env.erase from rfl, lookup_erase]; exact hb'')
+            (by rw [hlz'']; exact hl) hσ'
+      rw [(hk.withTempT _ _).norm] at hX
+      exact hX
+  · have h1 := Rel.of_kern (kern_withTemp ({ st₁ with env := Env.setAtE st₁.env (.bind f j) (.loan st₁.nextLoan), nextLoan := st₁.nextLoan + 1 } : MState) (.borrow st₁.nextLoan b.val) (some (.tRef .tNat))) hR
+    exact Rel.of_kern (hk.withTempT _ _) h1
+
+end
+
 end Ochr.Meaning.Steps.Form
