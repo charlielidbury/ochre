@@ -144,7 +144,7 @@ def BindsFrom (a b : MState) : Prop :=
   ∀ (f i : Nat) (bb : Binding), b.env[f]?.bind (fun fr : Frame => fr.binds[i]?) = some bb →
     (∃ (f' i' : Nat) (ba : Binding), a.env[f']?.bind (fun fr : Frame => fr.binds[i']?) = some ba ∧ ba.ty = bb.ty ∧
       ba.lazyTy = bb.lazyTy) ∨
-    (bb.lazyTy = none ∧ (bb.ty = some .tNat ∨ bb.ty = some (.tRef .tNat)))
+    (bb.lazyTy = none ∧ (bb.ty = some .tNat ∨ bb.ty = some (.tRef .tNat) ∨ bb.ty = some .tUnit))
 
 theorem mem_values_iff {env : Env} {v : Value} : v ∈ Env.values env ↔ ∃ p ∈ allPos env, valAt env p = v := by
   simp [Env.values, List.mem_map]
@@ -197,10 +197,11 @@ theorem refd_of_step {a b : MState} (ht : TabSame a b)
     · rw [Value.hasAbs, hs.anyAtom (P := (· == .abs τ)) rfl (fun _ => rfl) rfl rfl (fun _ _ => rfl) (fun _ => rfl)] at h
       cases h
   | ty f i bb T hbb hT h =>
-    rcases hb f i bb hbb with ⟨f', i', ba, hba, hty, -⟩ | ⟨-, e | e⟩
+    rcases hb f i bb hbb with ⟨f', i', ba, hba, hty, -⟩ | ⟨-, e | e | e⟩
     · exact .ty f' i' ba T hba (hty.trans hT) h
     · rw [e] at hT; cases hT; rw [tNat_hasAbs] at h; cases h
     · rw [e] at hT; cases hT; rw [tRefNat_hasAbs] at h; cases h
+    · rw [e] at hT; cases hT; cases h
   | lazyTy f i bb P ws j hbb hT h =>
     rcases hb f i bb hbb with ⟨f', i', ba, hba, -, hlz⟩ | ⟨e, -⟩
     · exact .lazyTy f' i' ba P ws j hba (hlz.trans hT) h
@@ -260,8 +261,9 @@ theorem inv_step {D : Decisions} {Γ : List IndDecl} {a b : MState} (hi : Inv D 
     · exact w8a v ha
     · exact hs.anyAtom rfl (fun _ => rfl) rfl rfl (fun _ _ => rfl) (fun _ => rfl)
   · intro f i bb hbb T hT
-    rcases hb f i bb hbb with ⟨f', i', ba, hba, hty, -⟩ | ⟨-, e | e⟩
+    rcases hb f i bb hbb with ⟨f', i', ba, hba, hty, -⟩ | ⟨-, e | e | e⟩
     · exact w8b f' i' ba hba T (hty.trans hT)
+    · rw [e] at hT; cases hT; rfl
     · rw [e] at hT; cases hT; rfl
     · rw [e] at hT; cases hT; rfl
   · rw [← ht.absTy]; exact w8c
@@ -271,8 +273,10 @@ theorem inv_step {D : Decisions} {Γ : List IndDecl} {a b : MState} (hi : Inv D 
     · exact w10 v ha
     · exact hs.anyAtom rfl (fun _ => rfl) rfl rfl (fun _ _ => rfl) (fun _ => rfl)
   · intro f i bb hbb
-    rcases hb f i bb hbb with ⟨f', i', ba, hba, hty, hlz⟩ | ⟨e, e' | e'⟩
+    rcases hb f i bb hbb with ⟨f', i', ba, hba, hty, hlz⟩ | ⟨e, e' | e' | e'⟩
     · rw [← hty, ← hlz]; exact w11a f' i' ba hba
+    · refine ⟨fun T hT l => ?_, fun P ws j h => by rw [e] at h; cases h⟩
+      rw [e'] at hT; cases hT; rfl
     · refine ⟨fun T hT l => ?_, fun P ws j h => by rw [e] at h; cases h⟩
       rw [e'] at hT; cases hT; rfl
     · refine ⟨fun T hT l => ?_, fun P ws j h => by rw [e] at h; cases h⟩

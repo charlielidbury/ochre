@@ -288,17 +288,18 @@ theorem inv_setAt {D : Decisions} {Γ : List IndDecl} {s : MState} {f j : Nat} {
     (fun k i bb h => let ⟨ba, h1, h2, h3⟩ := binds_setAtE_from s.env f j w h; .inl ⟨k, i, ba, h1, h2, h3⟩) hf hp
 
 /-- Under `PlaceLocal`, no place rooted at a binding read `r` reads an inductive, for `r` one of the
-two readings the columns bind. -/
+three readings the fragment binds. -/
 theorem _root_.Ochr.Meaning.Steps.Form.PlaceLocal.noInd {D : Decisions} (hL : PlaceLocal D) {st : MState} {f j : Nat} {r : DeclInfo}
-    (hr : r = .other ∨ r = .ref .other)
+    (hr : r = .other ∨ r = .ref .other ∨ r = .unit)
     (hd : ∀ b, st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = r)
     {p : Place} (h : ckVarPos st.env p.steps.1 = some (.bind f j)) (n : String) (args : List DeclInfo) :
     D.placeDecl (topReadings st) p ≠ .ind n args := by
   obtain ⟨b, hb⟩ := ckVarPos_binding h
   rw [hL.at_binding h hb, hd b hb]
-  rcases hr with rfl | rfl
+  rcases hr with rfl | rfl | rfl
   · exact hL.other _ n args
   · exact hL.ref _ n args
+  · exact hL.unit _ n args
 
 theorem invSetBot : InvSetBot := by
   intro D Γ st f j hn hi
@@ -329,7 +330,7 @@ theorem invWriteDeref' (D : Decisions) (Γ : List IndDecl) (st : MState) (f j l 
   rw [norm_withEnv, erase_setAtE]
   have hva : valAt st.norm.env (.bind f j) = valAt st.env (.bind f j) := valAt_erase _ _
   refine inv_setAt (s := st.norm) hi (.inr (.inr ⟨l, w, v₀, hva.trans hy, rfl, hw, hv₀⟩)) fun p x hp hx => ⟨fun e => ?_,
-      fun n args e => absurd e (hL.noInd (.inr rfl) (fun b h => hd b (by rw [← binds_norm]; exact h)) hp n args)⟩
+      fun n args e => absurd e (hL.noInd (.inr (.inl rfl)) (fun b h => hd b (by rw [← binds_norm]; exact h)) hp n args)⟩
   rcases numBorrow_follow hv₀ hx with h | h
   · rw [e] at h; cases h
   · rw [e] at h; cases h
@@ -425,8 +426,8 @@ theorem tabSame_envs (s : MState) (e₁ e₂ : Env) : TabSame { s with env := e�
 /-- **A binding pushed with the value in flight** (a number at `Nat` read `.other`, or a borrow of a
 number at `&Nat` read `.ref .other`) keeps `Inv`, the decisions local to the root. -/
 theorem inv_pushBind {D : Decisions} {Γ : List IndDecl} {s : MState} {h : Hint} {ty : Option Value} {v : Value}
-    {pf : Bool} {d : DeclInfo} (hL : PlaceLocal D) (hne : 0 < s.env.size) (hv : v.Num ∨ v.NumBorrow)
-    (hd : d = .other ∨ d = .ref .other) (hty : ty = some .tNat ∨ ty = some (.tRef .tNat))
+    {pf : Bool} {d : DeclInfo} (hL : PlaceLocal D) (hne : 0 < s.env.size) (hv : v.Num ∨ v.NumBorrow ∨ v = .unit)
+    (hd : d = .other ∨ d = .ref .other ∨ d = .unit) (hty : ty = some .tNat ∨ ty = some (.tRef .tNat) ∨ ty = some .tUnit)
     (hi : Inv D Γ { s with env := Env.pushTempE s.env v }) :
     Inv D Γ { s with env := Env.pushBindE s.env h ty v pf d } := by
   obtain ⟨fr, hfr⟩ : ∃ fr, s.env[s.env.size - 1]? = some fr := ⟨_, Array.getElem?_eq_getElem (by omega)⟩
@@ -458,13 +459,17 @@ theorem inv_pushBind {D : Decisions} {Γ : List IndDecl} {s : MState} {h : Hint}
         (fun b' hb' => ?_) hpos n args⟩
       · unfold ckContent at hc
         rw [hpos, Option.bind_some, valAt_pushBindE_new s.env h ty v pf d fr hfr, e] at hc
-        rcases hv with hv | ⟨l, w, rfl, hw⟩
+        rcases hv with hv | ⟨l, w, rfl, hw⟩ | rfl
         · have := hv.follow hc; cases this
         · rcases numBorrow_follow hw hc with h' | h' <;> cases h'
+        · revert hc; generalize p.steps.2 = ss; intro hc
+          cases ss with
+          | nil => simp [Value.follow] at hc
+          | cons s ss => cases s <;> simp [Value.follow, stepV] at hc
       · have := bind_pushBindE_new s.env h ty v pf d fr hfr
         rw [this] at hb'; cases hb'; rfl)
   refine inv_of_posRel hi (posRel_pushBind s.env h ty v pf d fr hfr hne
-    (hv.elim (fun h => .inl (.inl h)) .inr)) (tabSame_envs _ _ _) (fun k i bb hbb => ?_) hf hp
+    (hv.elim (fun h => .inl (.inl h)) (fun h => h.elim .inr (fun h => .inl (.inr (.inl h)))))) (tabSame_envs _ _ _) (fun k i bb hbb => ?_) hf hp
   by_cases e : Pos.bind k i = .bind (s.env.size - 1) fr.binds.size
   · cases e
     rw [bind_pushBindE_new s.env h ty v pf d fr hfr] at hbb
@@ -490,7 +495,7 @@ theorem invBindBorrow' (D : Decisions) (Γ : List IndDecl) (st : MState) (h : Hi
   rw [norm_withTempT] at hi
   rw [norm_withEnv, erase_pushBindE]
   exact inv_pushBind (s := st.norm) hL (by show 0 < (Env.erase st.env).size; rw [Env.erase_size]; exact hne)
-    (.inr ⟨l, w, rfl, hw⟩) (.inr rfl) (.inr rfl) hi
+    (.inr (.inl ⟨l, w, rfl, hw⟩)) (.inr (.inl rfl)) (.inr (.inl rfl)) hi
 
 /-! ## The top binding popped -/
 
