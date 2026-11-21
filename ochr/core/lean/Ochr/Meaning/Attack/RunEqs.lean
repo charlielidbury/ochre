@@ -30,6 +30,11 @@ theorem invalidate_noInv (K : RunCtx) (φ : Future) (hinv : ∀ sc p, K.D.invali
     (s : SState) : invalidate K φ p s = s := by
   simp [invalidate, hinv _ _]
 
+/-- Where no place is invalidated, D112's invalidation makes no end: its test holds. -/
+theorem invalidateOk_noInv (K : RunCtx) (φ : Future) (hinv : ∀ sc p, K.D.invalidated sc p = []) (p : Place)
+    (s : SState) : InvalidateOk K φ p s := by
+  unfold InvalidateOk; rw [hinv]; trivial
+
 /-- A place that resolves through `*` only satisfies `lentOk` (a write or borrow through `*`). -/
 theorem lentOk_deref (K : RunCtx) (φ : Future) {p : Place} {s : SState} {pos : Pos}
     (h : resolve s p = some (pos, [.deref])) : lentOk K φ p s := by
@@ -39,6 +44,29 @@ theorem lentOk_deref (K : RunCtx) (φ : Future) {p : Place} {s : SState} {pos : 
 theorem lentOk_root (K : RunCtx) (φ : Future) {p : Place} {s : SState} {pos : Pos}
     (h : resolve s p = some (pos, [])) : lentOk K φ p s := by
   simp [lentOk, h]
+
+/-- With no live label, nothing ends: every access passes its test. -/
+theorem accessOk_noLive (K : RunCtx) (φ : Future) {s : SState} (hl : s.liveLabels = []) (p : Pos)
+    (hit : List Step → Bool) : AccessOk K φ s p hit := fun k hk => by rw [hl] at hk; cases hk
+
+/-- An access that reaches no label makes no end: its test holds. -/
+theorem accessOk_unreached (K : RunCtx) (φ : Future) {s : SState} {p : Pos} {hit : List Step → Bool}
+    (h : ∀ l, s.reached p hit l = false) : AccessOk K φ s p hit := by
+  have hround : accRound p hit s = s := by
+    unfold accRound
+    rw [List.filter_eq_nil_iff.mpr (fun l _ => by simp [h l])]; rfl
+  have hk : ∀ k, (List.range k).foldl (fun t _ => accRound p hit t) s = s := by
+    intro k
+    induction k with
+    | zero => rfl
+    | succ k ih => rw [List.range_succ, List.foldl_append, ih]; exact hround
+  intro k _
+  rw [hk k, List.filter_eq_nil_iff.mpr (fun l _ => by simp [h l])]
+  trivial
+
+theorem contentOk_of_access (K : RunCtx) (φ : Future) {p : Place} {s : SState} {pos : Pos} {steps : List Step}
+    (hr : resolve s p = some (pos, steps)) (h : AccessOk K φ s pos (dataHit steps)) : ContentOk K φ p s := by
+  unfold ContentOk; rw [hr]; exact h
 
 open Classical in
 /-- The strict ascription: the value is tested against the annotation, and its label must hold
@@ -53,6 +81,7 @@ theorem run_ascribe (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (u
         fun s => if labTyOk s R.label T.m then some ((v, { T with label := R.label }), s) else none) s := by
   rw [runT]; exact stmtIf_noStmt K hfl _ _ s
 
+open Classical in
 theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
     (hfl : ∀ sc t, K.D.flags sc t = (false, false)) :
     runT K ρ φ false hint (.letIn x u w) s =
@@ -63,8 +92,10 @@ theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x :
         let held : Option Nat := match s.env.getLast? with
           | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
           | none => none
-        let s := match held with | some l => s.endLabel l | none => letLenders s
-        some ((r, R), s.dropLast)) := by
+        if (match held with | some l => EndOk K φ s l | none => LetLendersOk K φ s) then
+          let s := match held with | some l => s.endLabel l | none => letLenders s
+          some ((r, R), s.dropLast)
+        else none) := by
   rw [runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem meanV_abs (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (σ : Nat) :
