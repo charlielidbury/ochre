@@ -37,9 +37,17 @@ def eD : IndDecl := { name := "E0", sort := 0 }
 /-- **The witness type**: `eD`'s raw data code at the model's carrier, at any record. -/
 noncomputable def xTy (r : Rec) : TyM := .t0 (ucar eD r) (.data eD r (ucar eD r))
 
-/-- It is a member of `Type₀`. -/
-theorem xTy_mem_univ (R : DataRead) (r : Rec) : (Sem.ty (xTy r)) ∈ₛ[R] TyM.univ 1 :=
-  ⟨⟨ucar eD r, .data eD r (ucar eD r), rfl⟩, rfl⟩
+/-- Since the ruling (M-a) it is a member of no universe: a `Prop`-sorted declaration's data code
+has no level (`Code0.level`). Before it, `⟨⟨ucar eD r, .data eD r (ucar eD r), rfl⟩, rfl⟩` was a
+proof that `.ty (xTy r)` is a member of `Type₀`. -/
+theorem xTy_not_mem_univ (R : DataRead) (r : Rec) : ¬ (Sem.ty (xTy r)) ∈ₛ[R] TyM.univ 1 := by
+  rintro ⟨⟨A, c, hc⟩, h⟩
+  have h' : TyM.t0 A c = xTy r := Sem.ty.inj h
+  unfold xTy at h'
+  obtain ⟨hA, hh⟩ := TyM.t0_inj h'
+  subst hA
+  cases eq_of_heq hh
+  simp [Code0.level, eD] at hc
 
 /-- A proposition's code is not `xTy`. -/
 theorem prop_ne_xTy (P : Prop) (r : Rec) : TyM.prop P ≠ xTy r := by
