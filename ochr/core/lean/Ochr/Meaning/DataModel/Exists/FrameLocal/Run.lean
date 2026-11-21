@@ -241,6 +241,45 @@ theorem assign_tail (hD : DecLocal K.D) {Q : Pos → Prop} {β β' : Pos → SBi
         split <;> rfl
     · rfl
 
+/-- After a statement position (`SM.stmtIf`): as `Adm.after`. -/
+theorem Adm.afterStmt (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop} {β β' : Pos → SBinding}
+    {s s₁ : SState} {b : Bool} {hint : TyS} {u : Term} {a : Sem × TyS} (hA : Adm K Q β β' s)
+    (hR : RInv (fun _ => True) s) (hu : SM.stmtIf b (runT K ρ φ false hint u) s = some (a, s₁))
+    (hc : Comm Q β (SM.stmtIf b (runT K ρ φ false hint u)) s) :
+    Adm K Q β β' s₁ ∧ RInv (fun _ => True) s₁ ∧ EnvLe s s₁ := by
+  have hx : RInv (fun _ => True) s₁ ∧ EnvLe s s₁ := by
+    rcases SM.stmtIf_some hu with ⟨-, h1⟩ | ⟨-, rfl, -, -⟩
+    · obtain ⟨hR₁, -, e₁, -⟩ := runT_rinv K ρ φ _ hK false u _ s s₁ a hR h1
+      exact ⟨hR₁, e₁⟩
+    · exact ⟨hR, EnvLe.refl _⟩
+  exact ⟨hA.next hx.2 (fix_of_comm hc hA.twin.fix hu), hx.1, hx.2⟩
+
+/-- After a call's head: as `Adm.after`. -/
+theorem Adm.afterHead (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop} {β β' : Pos → SBinding}
+    {s s₁ : SState} {hint : TyS} {f : Term} {a : Sem × TyS} (hA : Adm K Q β β' s)
+    (hR : RInv (fun _ => True) s)
+    (hu : SM.headOf f (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT K ρ φ false hint f) s =
+      some (a, s₁))
+    (hc : Comm Q β (SM.headOf f (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true))
+      (runT K ρ φ false hint f)) s) :
+    Adm K Q β β' s₁ ∧ RInv (fun _ => True) s₁ ∧ EnvLe s s₁ := by
+  have hx : RInv (fun _ => True) s₁ ∧ EnvLe s s₁ := by
+    rcases SM.headOf_some hu with ⟨p, h1⟩ | h1
+    · have h1 := (SM.guarded_some h1).2
+      exact ⟨(readPlace_rinv K φ _ h1 hR).1, readPlace_envLe K φ h1⟩
+    · obtain ⟨hR₁, -, e₁, -⟩ := runT_rinv K ρ φ _ hK false f _ s s₁ a hR h1
+      exact ⟨hR₁, e₁⟩
+  exact ⟨hA.next hx.2 (fix_of_comm hc hA.twin.fix hu), hx.1, hx.2⟩
+
+/-- After a call's arguments: as `Adm.after`. -/
+theorem Adm.afterArgs (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop} {β β' : Pos → SBinding}
+    {s s₁ : SState} {stmt : Bool} {fT : TyM} {args : List Term} {as : List Res} (hA : Adm K Q β β' s)
+    (hR : RInv (fun _ => True) s) (hu : runArgs K ρ φ stmt fT [] args s = some (as, s₁))
+    (hc : Comm Q β (runArgs K ρ φ stmt fT [] args) s) :
+    Adm K Q β β' s₁ ∧ RInv (fun _ => True) s₁ ∧ EnvLe s s₁ := by
+  obtain ⟨hR₁, e₁, -⟩ := runArgs_rinv K ρ φ _ hK stmt fT args [] s s₁ as hR hu
+  exact ⟨hA.next e₁ (fix_of_comm hc hA.twin.fix hu), hR₁, e₁⟩
+
 theorem mem_placeOccsList {a : Term} {as : List Term} (ha : a ∈ as) {c : Nat} {x : Nat × Place × PKind}
     (hx : x ∈ a.placeOccs c) : x ∈ Term.placeOccsList c as := by
   induction as with
@@ -631,6 +670,156 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
             by_cases hE : EndOk K φ Z l
             · rw [if_pos ((endOk_qset K φ hP l).2 hE), if_pos hE]; rfl
             · rw [if_neg (fun h => hE ((endOk_qset K φ hP l).1 h)), if_neg hE]; rfl
+  | tl, .ctor ty c x ps args, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
+    refine comm_erasedIf ?_
+    cases hd : List.find? (fun x => x.name == ty) K.Γ with
+    | none => exact comm_fail _
+    | some d =>
+      dsimp only
+      have hVp : ∀ a ∈ ps, VarsAvoid Q s a := fun a ha => hV.sub fun x hx => by
+        simp only [Term.placeOccs, List.mem_append]; exact .inl (mem_placeOccsList ha hx)
+      have hVa : ∀ a ∈ args, VarsAvoid Q s a := fun a ha => hV.sub fun x hx => by
+        simp only [Term.placeOccs, List.mem_append]; exact .inr (mem_placeOccsList ha hx)
+      refine comm_bind (runParams_qset hK hD d ps 0 [] s Q β β' hA hVp hR) fun psM s₁ h1 => ?_
+      have e₁ := runParams_state K ρ φ d ps 0 [] s s₁ psM h1
+      subst e₁
+      refine comm_bind (runFields_qset hK hD _ d c args 0 _ _ [] s₁ Q β β' hA hVa hR) fun fsol s₂ _ => ?_
+      unfold Comm; dsimp only
+      by_cases hP : ps.isEmpty = true ∨ paramsOk K.dm d psM
+      · rw [if_pos hP, if_pos hP]
+        have co : ∀ r? : Option Rec, Comm Q β' (ctorOut K.dm d c fsol.1 r?) s₂ := fun r? => by
+          cases r? with
+          | none => exact comm_fail _
+          | some r => exact comm_pure _ _
+        exact comm_strictS (co _)
+      · rw [if_neg hP, if_neg hP]; rfl
+  | tl, .call f args hd, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
+    refine comm_erasedIf ?_
+    have hVf : VarsAvoid Q s f := hV.sub fun x hx => by simp [Term.placeOccs, hx]
+    have hVa : ∀ a ∈ args, VarsAvoid Q s a := fun a ha => hV.sub fun x hx => by
+      simp only [Term.placeOccs, List.mem_append]; exact .inr (mem_placeOccsList ha hx)
+    have chead := fun (β₁ : Pos → SBinding) (hA₁ : Adm K Q β β₁ s) =>
+      comm_headOf (f := f) (rd := fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true))
+        (rn := runT K ρ φ false (.plain TyM.err) f) (s := s)
+        (fun p hp => by
+          subst hp
+          exact comm_guarded (contentOk_qset K φ hA₁.twin.pre' p) fun _ =>
+            readPlace_qset K φ hA₁.twin.pre' (rAvoid_of_vars hVf (root_mem_place p)) true)
+        (fun _ => runT_qset hK hD false f _ s Q β β₁ hA₁ hVf hR)
+    refine comm_bind (chead β' hA) fun fv s₁ h1 => ?_
+    obtain ⟨hA₁, hR₁, e₁⟩ := Adm.afterHead K ρ φ hK hA hR h1 (chead β hA.self)
+    refine comm_bind (runArgs_qset hK hD _ _ args [] s₁ Q β β' hA₁ (fun a ha => (hVa a ha).of_envLe e₁) hR₁)
+      fun as s₂ h2 => ?_
+    have hA₂ := (Adm.afterArgs K ρ φ hK hA₁ hR₁ h2
+      (runArgs_qset hK hD _ _ args [] s₁ Q β β hA₁.self (fun a ha => (hVa a ha).of_envLe e₁) hR₁)).1
+    unfold Comm; dsimp only
+    rw [propext (borrowArgsTyped_qset hA₂.twin.pre' _ fv as)]
+    split
+    · exact callOf_qset hA₂.twin.pre' _ fv as
+    · rfl
+  | tl, .prim n args, hint, s, Q, β, β', hA, hV, hR => by
+    have hall : ∀ t ∈ args, ∀ (tl : Bool) (hint : TyS) (s₁ : SState) (β₁ : Pos → SBinding), Adm K Q β β₁ s₁ →
+        VarsAvoid Q s₁ t → RInv (fun _ => True) s₁ → Comm Q β₁ (runT K ρ φ tl hint t) s₁ :=
+      fun t ht tl hint s₁ β₁ hA₁ hV₁ hR₁ => runAll_qset hK hD args t ht tl hint s₁ Q β β₁ hA₁ hV₁ hR₁
+    have hVa : ∀ t ∈ args, VarsAvoid Q s t := fun t ht => hV.sub fun x hx => by
+      simp only [Term.placeOccs]; exact mem_placeOccsList ht hx
+    have prem : ∀ xs : List Term, (∀ x ∈ xs, x ∈ args) → ∀ s₁, Adm K Q β β' s₁ → EnvLe s s₁ →
+        RInv (fun _ => True) s₁ →
+        Comm Q β' (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k)
+          (pure ((.proof, .plain (TyM.prop True)) : Res))) s₁ := by
+      intro xs
+      induction xs with
+      | nil => intro _ s₁ _ _ _; exact comm_pure _ _
+      | cons x xs ih =>
+        intro hxs s₁ hA₁ e₁ hR₁
+        have hx := hxs x (by simp)
+        refine comm_bind (hall x hx false _ s₁ β' hA₁ ((hVa x hx).of_envLe e₁) hR₁) fun _ s₂ h2 => ?_
+        obtain ⟨hA₂, hR₂, e₂⟩ := Adm.after K ρ φ hK hA₁ hR₁ h2
+          (hall x hx false _ s₁ β hA₁.self ((hVa x hx).of_envLe e₁) hR₁)
+        exact ih (fun y hy => hxs y (by simp [hy])) s₂ hA₂ (e₁.trans e₂) hR₂
+    by_cases e1 : ∃ h, n = "symm" ∧ args = [h]
+    · obtain ⟨h0, rfl, rfl⟩ := e1
+      rw [runT]; exact comm_onCopy (prem [h0] (by simp) s hA (EnvLe.refl _) hR)
+    by_cases e2 : ∃ h k, n = "trans" ∧ args = [h, k]
+    · obtain ⟨h0, k0, rfl, rfl⟩ := e2
+      rw [runT]; exact comm_onCopy (prem [h0, k0] (by simp) s hA (EnvLe.refl _) hR)
+    by_cases e3 : ∃ h u, n = "rewrite" ∧ args = [h, u]
+    · obtain ⟨h0, u0, rfl, rfl⟩ := e3
+      rw [runT]; exact comm_onCopy (prem [h0, u0] (by simp) s hA (EnvLe.refl _) hR)
+    by_cases e4 : ∃ h u, n = "rewriteR" ∧ args = [h, u]
+    · obtain ⟨h0, u0, rfl, rfl⟩ := e4
+      rw [runT]; exact comm_onCopy (prem [h0, u0] (by simp) s hA (EnvLe.refl _) hR)
+    by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
+    · obtain ⟨A, a, b, P, h', t, rfl, rfl⟩ := hJ
+      have hVt : VarsAvoid Q s t := hVa t (by simp)
+      rw [runT]
+      unfold Comm; dsimp only; rw [hA.scope]
+      refine comm_erasedIf ?_
+      refine comm_bind (comm_onCopy (hall A (by simp) false _ s β' hA (hVa A (by simp)) hR)) fun _ s₁ e1 => ?_
+      have e := SM.onCopy_state e1; subst s₁
+      refine comm_bind (comm_onCopy (hall a (by simp) false _ s β' hA (hVa a (by simp)) hR)) fun _ s₁ e1 => ?_
+      have e := SM.onCopy_state e1; subst s₁
+      refine comm_bind (comm_onCopy (hall b (by simp) false _ s β' hA (hVa b (by simp)) hR)) fun _ s₁ e1 => ?_
+      have e := SM.onCopy_state e1; subst s₁
+      refine comm_bind (comm_onCopy (hall P (by simp) false _ s β' hA (hVa P (by simp)) hR)) fun _ s₁ e1 => ?_
+      have e := SM.onCopy_state e1; subst s₁
+      refine comm_bind (comm_onCopy (hall h' (by simp) false _ s β' hA (hVa h' (by simp)) hR)) fun _ s₁ e1 => ?_
+      have e := SM.onCopy_state e1; subst s₁
+      unfold Comm; dsimp only
+      obtain ⟨hR₁, e₁', -⟩ := matchEntry_props K φ (fun _ => True) true t hR
+      generalize hme : matchEntry K φ true t s = me at hR₁ e₁'
+      obtain ⟨S₁, L⟩ := me
+      obtain ⟨L', hme', hT₁, -, -, hok⟩ := matchEntry_qset K φ hA.decl hD.inv hA.twin hA.good hA.good' true t
+        (blockCaps_avoid K φ hD hA hVt _) hme
+      rw [hme']
+      dsimp only at hR₁ e₁' ⊢
+      have hA₁ : Adm K Q β β' S₁ := hA.next e₁' hT₁.fix
+      rw [movedPlaces_qset K φ hT₁.pre' hT₁.fix hA.good hA.good']
+      by_cases hm : MatchEntryOk K φ true t s
+      · rw [if_pos (hok.2 hm), if_pos hm]
+        have ct := hall t (by simp) false (.plain TyM.err) S₁ β' hA₁ (hVt.of_envLe e₁') hR₁
+        unfold Comm qmap at ct
+        rw [ct]
+        cases h2 : runT K ρ φ false (.plain TyM.err) t S₁ with
+        | none => rfl
+        | some z =>
+          obtain ⟨⟨r, R⟩, X⟩ := z
+          obtain ⟨hA₂, -, e₂⟩ := Adm.after K ρ φ hK hA₁ hR₁ h2
+            (hall t (by simp) false _ S₁ β hA₁.self (hVt.of_envLe e₁') hR₁)
+          obtain ⟨ej, -, ok⟩ := joinDrop_qset K φ hA₁.decl ⟨hA₂.twin.pre, hA₂.twin.pre', hA₂.twin.fix, e₂⟩
+            (movedPlaces φ S₁) (.prim "J" [A, a, b, P, h', t]) (joinMoves_avoid K φ hD hA₁ (hV.of_envLe e₁') _)
+          simp only [Option.map_some]
+          rw [ej]
+          by_cases hj : JoinDropOk K φ (movedPlaces φ S₁) (.prim "J" [A, a, b, P, h', t]) X
+          · rw [if_pos (ok.2 hj), if_pos hj]; rfl
+          · rw [if_neg (fun h => hj (ok.1 h)), if_neg hj]; rfl
+      · rw [if_neg (fun h => hm (hok.1 h)), if_neg hm]; rfl
+    by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
+    · obtain ⟨u, hn, rfl⟩ := hc
+      have hu : VarsAvoid Q s u := hVa u (by simp)
+      have cu := hall u (by simp) false hint s β' hA hu hR
+      have key : ∀ name : String, Comm Q β' (fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim name [u]))
+          (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT K ρ φ false hint u)) s) s := by
+        intro name
+        unfold Comm; dsimp only; rw [hA.scope]
+        refine comm_erasedIf (comm_headOf (fun p hp => ?_) fun _ => cu)
+        subst hp
+        exact comm_guarded (contentOk_qset K φ hA.twin.pre' p) fun _ =>
+          readPlace_qset K φ hA.twin.pre' (rAvoid_of_vars hu (root_mem_place p)) true
+      rcases hn with rfl | rfl | rfl <;> (rw [runT]; exact key _)
+    have hJ' : ∀ (A a b P h t : Term), n = "J" → args = [A, a, b, P, h, t] → False :=
+      fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩
+    have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
+    have hc2 : ∀ u, n = "peek" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩
+    have hc3 : ∀ u, n = "inplace" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩
+    have f1 : ∀ h, n = "symm" → args = [h] → False := fun h0 a b => e1 ⟨h0, a, b⟩
+    have f2 : ∀ h k, n = "trans" → args = [h, k] → False := fun h0 k0 a b => e2 ⟨h0, k0, a, b⟩
+    have f3 : ∀ h u, n = "rewrite" → args = [h, u] → False := fun h0 u0 a b => e3 ⟨h0, u0, a, b⟩
+    have f4 : ∀ h u, n = "rewriteR" → args = [h, u] → False := fun h0 u0 a b => e4 ⟨h0, u0, a, b⟩
+    rw [runT]
+    all_goals first | exact comm_fail _ | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3
   | _, _, _, _, _, _, _, _, _, _ => sorry
 
 theorem runArm_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D) :
@@ -645,6 +834,44 @@ theorem runArm_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K
       exact runT_qset hK hD tl t hint s Q β β' hA (hV (h, t) (by simp)) hR
     · simp only [hc, if_false]
       exact runArm_qset hK hD tl hint (c - 1) rest s Q β β' hA (fun a ha => hV a (by simp [ha])) hR
+
+theorem runFields_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D) (stmt : Bool) (d : IndDecl)
+    (c : Nat) : ∀ (args : List Term) (i : Nat) (rh : Option Rec) (sol : List (Option Sem)) (earlier : List Sem)
+      (s : SState) (Q : Pos → Prop) (β β' : Pos → SBinding), Adm K Q β β' s → (∀ a ∈ args, VarsAvoid Q s a) →
+      RInv (fun _ => True) s → Comm Q β' (runFields K ρ φ stmt d c i rh sol earlier args) s
+  | [], _, _, _, _, _, _, _, _, _, _, _ => rfl
+  | a :: as, i, rh, sol, earlier, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runFields.eq_def]; dsimp only; rw [hA.scope]
+    have ha := hV a (by simp)
+    refine comm_bind (comm_stmtIf (runT_qset hK hD false a _ s Q β β' hA ha hR)) fun x s₁ h1 => ?_
+    obtain ⟨hA₁, hR₁, e₁⟩ := Adm.afterStmt K ρ φ hK hA hR h1 (comm_stmtIf (runT_qset hK hD false a _ s Q β β hA.self ha hR))
+    obtain ⟨v, R⟩ := x
+    dsimp only
+    exact comm_bind (runFields_qset hK hD stmt d c as (i + 1) rh _ (earlier ++ [v]) s₁ Q β β' hA₁
+      (fun b hb => (hV b (by simp [hb])).of_envLe e₁) hR₁) fun _ _ _ => comm_pure _ _
+
+theorem runArgs_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D) (stmt : Bool) (fT : TyM) :
+    ∀ (args : List Term) (earlier : List Sem) (s : SState) (Q : Pos → Prop) (β β' : Pos → SBinding),
+      Adm K Q β β' s → (∀ a ∈ args, VarsAvoid Q s a) → RInv (fun _ => True) s →
+      Comm Q β' (runArgs K ρ φ stmt fT earlier args) s
+  | [], _, _, _, _, _, _, _, _ => rfl
+  | a :: as, earlier, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runArgs.eq_def]; dsimp only; rw [hA.scope]
+    have ha := hV a (by simp)
+    refine comm_bind (comm_stmtIf (runT_qset hK hD false a _ s Q β β' hA ha hR)) fun x s₁ h1 => ?_
+    obtain ⟨hA₁, hR₁, e₁⟩ := Adm.afterStmt K ρ φ hK hA hR h1 (comm_stmtIf (runT_qset hK hD false a _ s Q β β hA.self ha hR))
+    exact comm_bind (runArgs_qset hK hD stmt fT as (earlier ++ [x.1]) s₁ Q β β' hA₁
+      (fun b hb => (hV b (by simp [hb])).of_envLe e₁) hR₁) fun _ _ _ => comm_pure _ _
+
+theorem runAll_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D) :
+    ∀ (ts : List Term) (t : Term), t ∈ ts → ∀ (tl : Bool) (hint : TyS) (s : SState) (Q : Pos → Prop)
+      (β β' : Pos → SBinding), Adm K Q β β' s → VarsAvoid Q s t → RInv (fun _ => True) s →
+      Comm Q β' (runT K ρ φ tl hint t) s
+  | [], t, ht, _, _, _, _, _, _, _, _, _ => absurd ht List.not_mem_nil
+  | a :: as, t, ht, tl, hint, s, Q, β, β', hA, hV, hR => by
+    rcases List.mem_cons.mp ht with e | ht'
+    · rw [e]; exact runT_qset hK hD tl a hint s Q β β' hA (e ▸ hV) hR
+    · exact runAll_qset hK hD as t ht' tl hint s Q β β' hA hV hR
 
 theorem runParams_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D)
     (d : IndDecl) :
