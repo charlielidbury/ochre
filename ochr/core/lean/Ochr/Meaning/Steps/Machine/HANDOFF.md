@@ -1,7 +1,7 @@
 # Machine lane: working note (keep current; a successor continues from this alone)
 
-Worktree `/home/charlielidbury/repos/ochre-machine`, branch `spine-machine` (push there; never `spine`
-or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
+Worktree `/home/charlielidbury/repos/ochre-machine2`, branch `spine-machine2` (machine2, from 2026-11-21 evening;
+push there; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
 the background), and `taskset -c 0-14 lake build OchrMeaning` before each push. Report to the lead
 (`main`) by SendMessage, then end the turn. Owned: `Steps/MachineMono.lean`, everything under
 `Steps/Machine/`. Never edit the checker or other files (to check a consumer, copy it into a scratch
@@ -52,6 +52,38 @@ decisions reach is `FuelLe` itself one fuel up (`decideFuelLe`, `jdFuelLe`, `jaF
 own form as `decide_fuel_agree'` (`DecideFuelFF.lean`); `DecisionsFF` imports only `Statements`, so it
 can import `DecideFuel` and take that proof term verbatim. NOT the block captures (`ckBlockCaps` runs the machine: a fuel induction over the
 whole block, the same shape as (a) but relational; see the queue).
+
+### machine2: `DecTab.back` and the column's inversions (2026-11-21 evening)
+
+- `DecBack.lean`: `decTab_back` (= `MachineMono.DecTab.back`, = `ColumnC.DecBack`). One-way simulation
+  `Fwd R x` = `Keep x` and every success from `s₁` is one from each `R`-related `s₂` (same value,
+  budget, log). Keep is bundled so binds need `R` only at start states. Relations: `TabLe` (tables;
+  `declCopy` at raw states), `LiveLe` (+ mode, + top readings when `liveScope`), `EnvTab` (+ same
+  frames: the `scopeState` pairs), `LiveEq` (a state against `scopeState` at its own readings:
+  `decTab_declOf_at`, `decTab_placeDecl_at`, the machine's own reading is the table's).
+- `Inv.lean`: run inversions (`runs_get_bind`/`runs_modify_bind` as `Iff.rfl` for `rw`, `Runs.tick_bind`,
+  `Runs.log_bind`, `Runs.onFail_inv`, `Runs.located_inv` (equal up to `locs`), `Runs.noteValue_inv`,
+  Keep lemmas, `preFlags_inv`, the `peel` macro for SMALL hypotheses).
+- `EvalInv.lean`: `evalAt_inv`, `evalInvR`. `StepInv.lean`: `quiet_conv` (D103), `expectTy_inv`,
+  `succInvR`, `letInvR`, inversions of `refineDecl`, `getFlags`, `pushBind`, `pushTemp`, `popTemp`.
+- TECHNIQUE (what worked): `unfold Ochr.evalCore at h` is fast (no zeta); peel `tick`/`get`/`wanted`;
+  then either `change Runs (case's do block) _ _ _ _ at h` (cheap for small cases, `succInvR`) or
+  `simp only [Term.placeOperand?] at h` (reduces the 40-arm match to the case, `letInvR`; a verbatim
+  `change` for `let` took 4 min and failed). Equation lemmas: `f.eq_1` is the `n+1` case where it
+  exists (`eval`, `dropTopBind`, `conv`, `endLoansOfTopBind`); `evalAt.eq_1`/`evalCore`'s time out.
+  Big hypotheses: never `simp`/`split` (zeta duplicates join points, `split`'s simp hits its step
+  limit): targeted `rw [runs_get_bind]`, `rw [if_pos]` with the condition as a side goal,
+  `Runs.bind_inv`, and `clear` what `obtain := Runs.bind_inv h` leaves behind. Witnesses: an `rfl`
+  or a hypothesis about `st₀.field` in an anonymous constructor assigns the state metavariable by
+  first-order approximation before the run does: give states explicitly, or `?_` and fill after,
+  `by exact ⟨rfl, …⟩` to delay. A record literal spanning lines must keep its fields at one indent.
+- Proposed forms (reported to the lead; each docstring says why): `EvalInvR` (pre-pass pinned by the
+  reading, not `D.flags`), `SuccInvR` (typed clause on `T₀` as returned, no `some`), `LetInvR` (`u`'s
+  reading at the ENTRY, `T₀ : Option`, `ModeEq` for the mode, no Inv clause, no `0 < size`).
+  `AssignNumInv` is FALSE without `b.ty = some .tNat` (a field step under a non-number is a match).
+- Open in the column: `VarNumInv` (needs `accessPath`/`accessInside`/`repackAt`/`readPlace`
+  inversions: `firstLiveLoanOnPath` is well-founded, so a Num root needs a lemma that it finds
+  nothing), `InvCore` (ColTerm), `AssignNumInv` (fixed form).
 
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
@@ -217,6 +249,9 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21 night, `spine-machine2` (machine2; `spine` 63ca5e66 and `spine-lead7` fd366a34 merged): `OchrMeaning`
+green; `DecTab.back`, `DropNoopInv`, `EvalInvR`, `SuccInvR`, `LetInvR` proved (`FormFacts` prints their axioms).
 
 2026-11-21 evening, `spine-machine` 6ad1cd32e (after merging `spine` c0c95fb6 and `spine-lead7`; the root
 imports `Steps/Machine/FormFacts`): `OchrMeaning` green. Since the merge with `spine` 1e226c6a the whole lane builds; `machineGrows` has NO
