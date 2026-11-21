@@ -250,7 +250,7 @@ theorem read_t (G : String → Sem × TyS) (T : TyM) (v : Sem) (hw : v.whole)
     (hg : ReadGood dmS.read T v) :
     runT (Kp dmS ΓS G) ρ φ false (.plain TyM.err) (.place (.var 0)) (frame [bindT T v])
       = some ((v, .plain T), frame [bindT T v]) := by
-  show readPlace (Kp dmS ΓS G) φ (.var 0) true (frame [bindT T v]) = _
+  show SM.guarded (ContentOk (Kp dmS ΓS G) φ (.var 0)) (readPlace (Kp dmS ΓS G) φ (.var 0) true) (frame [bindT T v]) = _
   rw [readPlace_frame φ _ [bindT T v] 0 (bindT T v) (by simp) rfl hw hg]
   rfl
 
@@ -274,7 +274,9 @@ theorem sw_runs (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole) (hg : Rea
     (run (Kp dmS ΓS G) ρ φ hint (.letIn (hn "w") (.ctor "Wrap" 0 (hn "MkW") [] [.place (.var 0)]) (num 0))
       (frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv])).isSome := by
   rw [run_letIn, sw_ctor ρ φ G tv hw hg hm]
-  simp [bind, Option.bind, run_num]
+  simp only [bind, Option.bind]
+  rw [Attack.pushBindShaped_noLabel _ _ rfl, frame_push]
+  simp [run_num, held_frame, held_frame_dropLast, letLenders_frame, letLendersOk_frame, letLendersOk_frame_dropLast]
 
 /-- **`SH` in the model**: from a frame holding `t : HL(F0)`, the run of `let w = MkHW(t); 0` fails,
 whatever `F0` means: `HW`'s parameter is a function into `Type₀` (above level 0), which no record
@@ -311,7 +313,9 @@ theorem so_runs (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole) (hg : Rea
     (run (Kp dmS ΓS G) ρ φ hint (.letIn (hn "w") (.ctor "Opt2" 0 (hn "A2") [] [.place (.var 0)]) (num 0))
       (frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv])).isSome := by
   rw [run_letIn, so_ctor ρ φ G tv hw hg hm]
-  simp [bind, Option.bind, run_num]
+  simp only [bind, Option.bind]
+  rw [Attack.pushBindShaped_noLabel _ _ rfl, frame_push]
+  simp [run_num, held_frame, held_frame_dropLast, letLenders_frame, letLendersOk_frame, letLendersOk_frame_dropLast]
 
 end
 
