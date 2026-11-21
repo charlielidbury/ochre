@@ -91,10 +91,13 @@ reference state related to it and good, the strict run of `S(#0)` succeeds with 
 at `Nat`, and the states after (the parameter moved or kept, as the aligned copy decision says) are
 related, with `Pre` again. The untyped hypothesis `hok` is not used. Assumes `BodyLazyInv` (checker)
 and `InvNumA` (checker, read and judged true). -/
-theorem bodyLazy_sim (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd : ParDecI K.D R) :
-    ∀ n, EvalSim K ρ φ n bodyI (LazyNum K ρ R) (· = false) := by
-  intro n st st' typed hint v T? s π ⟨⟨f, j, b, hpos, hb, hbv, hty, htyK⟩, hR, htd⟩ htyp hm _ hp hr _ _ _ _ hfl _ hD bh h
-  subst htyp
+theorem bodyLazy_out (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd : ParDecI K.D R) (n : Nat)
+    (st st' : MState) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState) (π : Nat → Nat)
+    (hP : LazyNum K ρ R st) (hm : Mode st) (hp : Pre K ρ st) (hr : Rel K ρ φ π st s)
+    (hfl : K.D.flags (scopeOf s) bodyI = (false, false)) (hD : DecTab K.D st') (bh : Nat)
+    (h : Runs (Ochr.eval n false bodyI hint) st bh (v, T?) st') :
+    Out K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) bodyI) v T? := by
+  obtain ⟨⟨f, j, b, hpos, hb, hbv, hty, htyK⟩, hR, htd⟩ := hP
   obtain ⟨rfl, rfl, st₁, hq, hki, hcopy, hmove⟩ := hB n hint st st' bh v T? f j b K.D hm htd hpos hb hbv hty hD h
   have hres : resolve s (.var 0) = some (.bind f j, []) := rel_resolve_ck K ρ φ st s π (.var 0) _ hr hpos
   have hvb : valAt st.env (.bind f j) = b.val := by
@@ -235,6 +238,14 @@ theorem bodyLazy_sim (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd :
       · exact ha₁.of_refd hk.absTy.symm hk.neutrals.symm hk.etaRefs.symm hk.refs.symm hk.goal.symm
           (refd_withTempT_to hk.absTy.symm (fun σ' h' => by rw [← hk.norm] at h'; exact h') hvR)
     · exact rel_withTempT_inertA (hr₁.of_kern hk) hsN.inert.toA _
+
+/-- **The same, in the form of `EvalSim`** (`typed = false`); its untyped hypothesis `hok` is unused
+(`bodyLazy_out` does without it). -/
+theorem bodyLazy_sim (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd : ParDecI K.D R) :
+    ∀ n, EvalSim K ρ φ n bodyI (LazyNum K ρ R) (· = false) := by
+  intro n st st' typed hint v T? s π hP htyp hm _ hp hr _ _ _ _ hfl _ hD bh h
+  subst htyp
+  exact bodyLazy_out hB hN hd n st st' hint v T? s π hP hm hp hr hfl hD bh h
 
 end
 

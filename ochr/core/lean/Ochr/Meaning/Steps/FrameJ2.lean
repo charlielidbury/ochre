@@ -163,6 +163,39 @@ def FrameJ2 : Prop :=
     FrameAgreeS K.dm.read (fun l => s₂.nextLoan + l) (inPlaceJ2 K.dm.read s₂ f a) [] 0
       (runT K ρ φ tl h bodyI (inPlaceJ2 K.dm.read s₂ f a)) (runT K ρ φ tl' h' bodyI (closureJ2 K.dm.read φ a))
 
+
+/-! ## Steps (3) and (4) of `J2`'s plan compose (docs/31 D128) -/
+
+/-- **The closure's run of `I`'s body is what the checker's untyped run in place computed**: from the
+checker's callee state related to the in-place reference state (`Pre`, `Rel`, `SGood` there: the glue
+of step (4), hypotheses here), the untyped body step (`bodyLazy_sim`) gives the in-place run's
+success and that its result is the meaning of the checker's value; `FrameJ2` carries both to the
+closure's own state, the run `callOf` applies. Assumes `BodyLazyInv`, `InvNumA` (checker) and `FrameJ2`
+(model). -/
+theorem closureRun_of_checker (hB : CallBody.BodyLazyInv) (hN : InvNumA) (hFJ : FrameJ2)
+    {K : RunCtx} {ρ : Assignment} {φ : Future} {R : List DeclInfo} (hd : ParDecI K.D R) (hc : Strict.FundCtx K)
+    {s₂ : SState} {f : Sem} {a : Nat} {st st' : MState} {n : Nat} {hint : Option Value} {bh : Nat} {v : Value}
+    {T? : Option Value} {π : Nat → Nat}
+    (hP : CallBody.LazyNum K ρ R st) (hm : Mode st) (hp : Pre K ρ st)
+    (hr : Rel K ρ φ π st (inPlaceJ2 K.dm.read s₂ f a)) (hS : Strict.SGood K.dm K.Γ φ (inPlaceJ2 K.dm.read s₂ f a))
+    (hfs : FrameStart (inPlaceJ2 K.dm.read s₂ f a) [])
+    (hrel : FrameRelS K.dm.read (fun l => s₂.nextLoan + l) (inPlaceJ2 K.dm.read s₂ f a) [] 0
+      (inPlaceJ2 K.dm.read s₂ f a) (closureJ2 K.dm.read φ a))
+    (hfl : K.D.flags (scopeOf (inPlaceJ2 K.dm.read s₂ f a)) bodyI = (false, false)) (hD : DecTab K.D st')
+    (h : Runs (Ochr.eval n false bodyI hint) st bh (v, T?) st') (tl : Bool) (h' : TyS) :
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
+      runT K ρ φ tl h' bodyI (closureJ2 K.dm.read φ a) = some (r, s') ∧
+      ∃ T : TyS, meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) T v = r.1 := by
+  obtain ⟨ρ', Δ', π', r, s₁, -, hx, hmean, -, -, -, -⟩ :=
+    CallBody.bodyLazy_out (K := K) (ρ := ρ) (φ := φ) hB hN hd n st st' hint v T? _ π hP hm hp hr hfl hD bh h
+  have hag := hFJ K ρ φ s₂ f a st.tailNext tl (hintM K ρ hint) h' hc hfs hS hrel
+  rw [hx] at hag
+  cases hcl : runT K ρ φ tl h' bodyI (closureJ2 K.dm.read φ a) with
+  | none => rw [hcl] at hag; exact hag.elim
+  | some rs =>
+    rw [hcl] at hag
+    exact ⟨ρ', Δ', π', rs.1, rs.2, rfl, _, hmean.trans hag.1⟩
+
 /-! ## The check on the model's side: the relation holds at `J2`'s call -/
 
 
