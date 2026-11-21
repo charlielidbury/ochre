@@ -893,7 +893,7 @@ theorem finals_of_pop {s₂ s₃ : SState} {start : Nat} (hi₃ : RInv L s₃) (
   intro c hc
   obtain ⟨ht, hc'⟩ := hcells c hc
   rcases hc' with ⟨hcm, ho⟩ | he
-  · exact ordered_after_pop hi₃.1 hi₃.2.1 _ _ (o₃.2 _ c hst₂ ht hcm ho)
+  · exact ordered_after_pop hi₃.1 hi₃.2.1 _ _ (o₃.2 _ c hst₂ (.inl ht) hcm ho)
   · have he₄ := env_nil_of_envLe (envLe_foldl_endLabel
       (s₃.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)) s₃) (env_nil_of_envLe e₃ he)
     have : c ∉ ((s₃.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)).foldl endLabel s₃).positions := by

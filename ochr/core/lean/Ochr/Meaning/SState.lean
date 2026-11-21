@@ -251,6 +251,11 @@ def varPos (s : SState) (i : Nat) : Option Pos :=
 
 def pushFrame (s : SState) : SState := { s with env := s.env ++ [{}] }
 
+/-- The frame a position is in. -/
+def _root_.Ochr.Pos.frameOf : Pos → Nat
+  | .bind f _ => f
+  | .temp f _ => f
+
 /-- A position one frame up: where `p` is in `s.under`. -/
 def _root_.Ochr.Pos.up : Pos → Pos
   | .bind f i => .bind (f + 1) i

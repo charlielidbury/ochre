@@ -76,11 +76,6 @@ end Ochr
 namespace Ochr.Meaning
 open Ochr
 
-/-- The frame a position is in. -/
-def _root_.Ochr.Pos.frameOf : Pos → Nat
-  | .bind f _ => f
-  | .temp f _ => f
-
 /-- Where an in-place top-frame position sits in the closure's frame: frame `1` (the closure's
 frame, above its empty frame 0, docs/31 D126), a temporary after the `c` cells. -/
 def upPos (c : Nat) : Pos → Pos

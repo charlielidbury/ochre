@@ -423,7 +423,7 @@ theorem capMoves_props (g : SState → Nat → SState)
 is written. The target stays a position; at a root, its meaning is then the constant written, and
 a label it still records (another holder was found first) is read by no one. -/
 theorem assign_mid {s₂ s₄ : SState} (hi₂ : RInv L s₂) {pos : Pos} (hpos₂ : pos ∈ s₂.positions)
-    (hp : ¬ IsTemp pos) {lab : Option Nat} (hy₂ : LoU s₂ lab) {steps : List Step} {v : Sem}
+    (hp : IsTop s₂ pos) {lab : Option Nat} (hy₂ : LoU s₂ lab) {steps : List Step} {v : Sem}
     (h3 : setContent K φ pos steps v (if steps.isEmpty = true then
         (match s₂.shape pos with | some l => s₂.endLabel l | none => s₂) else s₂) = some (⟨⟩, s₄)) :
     RInv L s₄ ∧ EnvLe s₂ s₄ ∧ OrdKeep L s₂ s₄ ∧ pos ∈ s₄.positions ∧ LoU s₄ lab ∧
@@ -436,7 +436,7 @@ theorem assign_mid {s₂ s₄ : SState} (hi₂ : RInv L s₂) {pos : Pos} (hpos�
     intro s₃ hi₃ e₃ o₃ hpos₃ hy₃ h3
     obtain ⟨hi₄, hsh, hps⟩ := setContent_rinv K φ L h3 hi₃
     have e := setContent_eq K φ h3
-    refine ⟨hi₄, e₃.trans (setContent_envLe K φ h3), o₃.trans e₃ (setContent_ordKeep K φ hp h3),
+    refine ⟨hi₄, e₃.trans (setContent_envLe K φ h3), o₃.trans e₃ (setContent_ordKeep K φ (hp.envLe e₃).notCell h3),
       by rw [hps]; exact hpos₃, fun y hy => ?_, hsh,
       fun q hq => by rw [e]; exact valAt_setAt_ne _ _ _ _ (fun e' => hq e'.symm), fun hnil ψ => ?_⟩
     · rw [e]
@@ -536,12 +536,12 @@ theorem invalidateOne_props (q : Place) {s : SState} (hi : RInv L s) :
     have hia := access_rinv hi pos (dataHit steps)
     have hea := envLe_access s pos (dataHit steps)
     have hoa := ordKeep_access hi pos (dataHit steps)
-    have hpb : ¬ IsTemp pos := resolve_bind hr
+    have hpb : IsTop (s.access pos (dataHit steps)) pos := (resolve_top hr).envLe hea
     dsimp only
     split
     · rename_i u s'' hs
       obtain ⟨hi₂, -, -⟩ := setContent_rinv K φ L hs hia
-      exact ⟨hi₂, hea.trans (setContent_envLe K φ hs), hoa.trans hea (setContent_ordKeep K φ hpb hs)⟩
+      exact ⟨hi₂, hea.trans (setContent_envLe K φ hs), hoa.trans hea (setContent_ordKeep K φ hpb.notCell hs)⟩
     · exact ⟨hia, hea, hoa⟩
   · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
 
@@ -610,7 +610,7 @@ theorem assignAt_rinv {p : Place} {v : Sem} {lab : Option Nat} {s₁ s' : SState
     generalize hs₂ : (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
       else s₁.access pos (dataHit steps)) = s₂ at h
     obtain ⟨hi₂, hpos₂, e₂, o₂, hy₂⟩ := mid s₂ (by rw [← hs₂]; split <;> simp)
-    have hpb : ¬ IsTemp pos := resolve_bind hr
+    have hpb : IsTop s₂ pos := (resolve_top hr).envLe e₂
     split at h
     · cases h
     rename_i s₄ h3
@@ -851,7 +851,8 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     refine ⟨(letDrop_rinv L hi₃ hy₃ _ ?_).1, (letDrop_rinv L hi₃ hy₃ _ ?_).2.1,
       e₁.trans (envLe_letDrop ((envPush_pushBindShaped _ _).trans_le e₃) _),
       o₁.trans e₁ (o₂.trans' (fun _ hq => mem_positions_pushBindShaped _ hq)
-        (o₃.trans' (fun _ hq => e₃.mem hq) (letDrop_rinv L hi₃ hy₃ _ ?_).2.2))⟩
+        (Nat.le_of_eq (by unfold SState.topIdx; rw [(envPush_pushBindShaped _ _).1]))
+        (o₃.trans' (fun _ hq => e₃.mem hq) (Nat.le_of_eq (topIdx_envLe e₃).symm) (letDrop_rinv L hi₃ hy₃ _ ?_).2.2))⟩
     all_goals (unfold dropped; cases s₃.env.getLast? <;> rfl)
   | tl, .matchNat p z u, hint, s, s', r, hi, h => by
     rw [runT] at h

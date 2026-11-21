@@ -27,13 +27,34 @@ def IsTemp : Pos → Prop
   | .temp _ _ => True
   | .bind _ _ => False
 
+/-- A position no place of `s` resolves to while a run from `s` goes on: a temporary, or any position
+of a frame below the top one. A closure's cells are such positions: since docs/31 D126 they are to be
+bindings of frame 0, below the body's frame (the checker's `checkFix`). -/
+def IsCell (s : SState) (c : Pos) : Prop := IsTemp c ∨ c.frameOf < s.topIdx
+
+/-- A binding of the top frame: what a place resolves to (`resolve_top`). -/
+def IsTop (s : SState) (p : Pos) : Prop := ¬ IsTemp p ∧ p.frameOf = s.topIdx
+
+theorem IsTop.notCell {s : SState} {p : Pos} (h : IsTop s p) : ¬ IsCell s p :=
+  fun hc => hc.elim h.1 fun hl => Nat.lt_irrefl _ (h.2 ▸ hl)
+
+theorem topIdx_envLe {s s' : SState} (e : EnvLe s s') : s'.topIdx = s.topIdx := by
+  unfold SState.topIdx; rw [e.1]
+
+theorem IsTop.envLe {s s' : SState} {p : Pos} (h : IsTop s p) (e : EnvLe s s') : IsTop s' p :=
+  ⟨h.1, by rw [h.2, topIdx_envLe e]⟩
+
+theorem IsCell.mono {s s' : SState} {c : Pos} (h : IsCell s c) (e : s.topIdx ≤ s'.topIdx) : IsCell s' c :=
+  h.imp_right fun hl => Nat.lt_of_lt_of_le hl e
+
 section
 variable (L : Nat → Prop)
 
-/-- A run step keeps its temporaries ordered: every temporary of `s` ordered at a bound at most
-the counter is still ordered at that bound in `s'`; the counter does not go down. -/
+/-- A run step keeps its cells ordered: every cell of `s` (`IsCell`: a temporary, or a position below
+the top frame) ordered at a bound at most the counter is still ordered at that bound in `s'`; the
+counter does not go down. -/
 def OrdKeep (s s' : SState) : Prop :=
-  s.nextLoan ≤ s'.nextLoan ∧ ∀ (b : Nat) (c : Pos), b ≤ s.nextLoan → IsTemp c → c ∈ s.positions →
+  s.nextLoan ≤ s'.nextLoan ∧ ∀ (b : Nat) (c : Pos), b ≤ s.nextLoan → IsCell s c → c ∈ s.positions →
     Ordered L s b (s.valAt c) → Ordered L s' b (s'.valAt c)
 
 variable {L}
@@ -49,13 +70,13 @@ theorem ordKeep_setHeldMem_iff {s t : SState} {l : Nat} {v : Sem} :
     OrdKeep L s (t.setHeldMem l v) ↔ OrdKeep L s t := Iff.rfl
 
 theorem OrdKeep.trans' {a b c : SState} (h₁ : OrdKeep L a b) (e : ∀ q ∈ a.positions, q ∈ b.positions)
-    (h₂ : OrdKeep L b c) : OrdKeep L a c :=
+    (et : a.topIdx ≤ b.topIdx) (h₂ : OrdKeep L b c) : OrdKeep L a c :=
   ⟨Nat.le_trans h₁.1 h₂.1, fun x p hx ht hp ho =>
-    h₂.2 x p (Nat.le_trans hx h₁.1) ht (e p hp) (h₁.2 x p hx ht hp ho)⟩
+    h₂.2 x p (Nat.le_trans hx h₁.1) (ht.mono et) (e p hp) (h₁.2 x p hx ht hp ho)⟩
 
 theorem OrdKeep.trans {a b c : SState} (h₁ : OrdKeep L a b) (e : EnvLe a b) (h₂ : OrdKeep L b c) :
     OrdKeep L a c :=
-  h₁.trans' (fun _ hq => e.mem hq) h₂
+  h₁.trans' (fun _ hq => e.mem hq) (Nat.le_of_eq (topIdx_envLe e).symm) h₂
 
 /-- **An ordered meaning stays ordered** when it is kept or becomes a constant, and the live
 labels change only by labels at least the bound or unread coming in, and unread going out. -/
@@ -87,7 +108,7 @@ theorem ordered_step {s s' : SState} {b : Nat} {f g : SVal} (hf : Ordered L s b 
 
 /-- A step that keeps every temporary's meaning (or makes it a constant) and the counter. -/
 theorem ordKeep_of {s s' : SState} (hn : s.nextLoan ≤ s'.nextLoan)
-    (hv : ∀ c, IsTemp c → c ∈ s.positions → s'.valAt c = s.valAt c ∨ ∃ k, s'.valAt c = fun _ => k)
+    (hv : ∀ c, IsCell s c → c ∈ s.positions → s'.valAt c = s.valAt c ∨ ∃ k, s'.valAt c = fun _ => k)
     (hadd : ∀ y, s'.Live y → ¬ s.Live y → s.nextLoan ≤ y ∨ ∀ q, Indep y (s.valAt q))
     (hrem : ∀ y, s.Live y → ¬ s'.Live y → ∀ q, Indep y (s.valAt q)) : OrdKeep L s s' :=
   ⟨hn, fun b c hb ht hc ho => ordered_step ho (hv c ht hc)
@@ -137,7 +158,25 @@ theorem resolve_bind {s : SState} {p : Place} {pos : Pos} {steps : List Step}
     simp only [e, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
     rw [← h.1]; exact varPos_bind e
 
-theorem ordKeep_setAt {s : SState} {p : Pos} (hp : ¬ IsTemp p) (v : SVal) : OrdKeep L s (s.setAt p v) :=
+theorem varPos_top {s : SState} {i : Nat} {pos : Pos} (h : s.varPos i = some pos) : IsTop s pos := by
+  unfold SState.varPos at h
+  split at h
+  · split at h
+    · cases h; exact ⟨by simp [IsTemp], rfl⟩
+    · cases h
+  · cases h
+
+/-- A place resolves to a binding of the top frame. -/
+theorem resolve_top {s : SState} {p : Place} {pos : Pos} {steps : List Step}
+    (h : resolve s p = some (pos, steps)) : IsTop s pos := by
+  unfold resolve at h
+  cases e : s.varPos p.steps.1 with
+  | none => simp [e] at h
+  | some q =>
+    simp only [e, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+    rw [← h.1]; exact varPos_top e
+
+theorem ordKeep_setAt {s : SState} {p : Pos} (hp : ¬ IsCell s p) (v : SVal) : OrdKeep L s (s.setAt p v) :=
   ordKeep_of (by rw [nextLoan_setAt']; exact Nat.le_refl _)
     (fun c ht _ => .inl (valAt_setAt_ne _ _ _ _ fun e => hp (e ▸ ht)))
     (fun y h1 h2 => absurd ((live_setAt s p v y).mp h1) h2)
@@ -156,7 +195,7 @@ section
 variable (K : RunCtx) (φ : Future)
 
 theorem contentOf_ordKeep {p : Place} {s s' : SState} {x : Sem × TyS × Pos × List Step} (hi : RInv L s)
-    (h : contentOf K φ p s = some (x, s')) : OrdKeep L s s' ∧ ¬ IsTemp x.2.2.1 := by
+    (h : contentOf K φ p s = some (x, s')) : OrdKeep L s s' ∧ IsTop s' x.2.2.1 := by
   unfold contentOf at h
   cases hr : resolve s p with
   | none => rw [hr] at h; cases h
@@ -167,10 +206,10 @@ theorem contentOf_ordKeep {p : Place} {s s' : SState} {x : Sem × TyS × Pos × 
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
-      exact ⟨ordKeep_access hi pos _, resolve_bind hr⟩
+      exact ⟨ordKeep_access hi pos _, (resolve_top hr).envLe (envLe_access s pos _)⟩
     · cases h
 
-theorem setContent_ordKeep {pos : Pos} (hp : ¬ IsTemp pos) {steps : List Step} {v : Sem} {s s' : SState}
+theorem setContent_ordKeep {pos : Pos} {steps : List Step} {v : Sem} {s s' : SState} (hp : ¬ IsCell s pos)
     (h : setContent K φ pos steps v s = some (⟨⟩, s')) : OrdKeep L s s' := by
   rw [setContent_eq K φ h]; exact ordKeep_setAt hp _
 
@@ -233,7 +272,7 @@ theorem readPlace_ordKeep {p : Place} {copy : Bool} {s s' : SState} {r : Res}
           | some y =>
             obtain ⟨⟨⟩, s₂⟩ := y
             rw [hs] at h
-            have o₂ := o₁.trans e₁ (setContent_ordKeep K φ hpb hs)
+            have o₂ := o₁.trans e₁ (setContent_ordKeep K φ hpb.notCell hs)
             have e₂ := e₁.trans (setContent_envLe K φ hs)
             obtain ⟨hi₂, hsh₂, hpos₂⟩ := setContent_rinv K φ L hs hi₁
             simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -268,7 +307,7 @@ theorem borrowPlace_ordKeep {p : Place} {s s' : SState} {r : Res}
     · rw [nextLoan_pushTempShaped, nextLoan_setAt']; exact Nat.le_succ _
     · intro c hct hcm
       rw [valAt_pushTempShaped, valAt_pushTemp_old _ _ (by rw [positions_setAt]; exact hcm),
-        valAt_setAt_ne _ _ _ _ fun e => hpb (by show IsTemp pos; rw [e]; exact hct)]
+        valAt_setAt_ne _ _ _ _ fun e => hpb.notCell (by subst e; exact hct)]
       exact .inl rfl
     · intro y h1 h2
       rcases live_pushTempShaped_new (s := ({ s₁ with nextLoan := s₁.nextLoan + 1 } : SState).setAt pos _)
@@ -395,7 +434,7 @@ theorem ordKeep_dropLast {s : SState}
   · apply valAt_dropLast
     unfold dropped
     split
-    · intro e; cases e; exact ht
+    · intro e; cases e; exact ht.elim id (Nat.lt_irrefl _)
     · intro e; cases e
   · rw [live_iff] at h1
     obtain ⟨q, hq, hs⟩ := h1
@@ -455,7 +494,7 @@ theorem accessLentPrefix_ordKeep {pos : Pos} {steps : List Step} {s : SState} (h
   · exact ordKeep_access hi pos _
   · exact OrdKeep.refl s
 
-theorem dropAt_ordKeep (q : Place) {pos : Pos} (steps : List Step) (hp : ¬ IsTemp pos) {s : SState} (hi : RInv L s) :
+theorem dropAt_ordKeep (q : Place) {pos : Pos} (steps : List Step) {s : SState} (hp : IsTop s pos) (hi : RInv L s) :
     OrdKeep L s (dropAt K φ q pos steps s) := by
   unfold dropAt
   split
@@ -464,7 +503,7 @@ theorem dropAt_ordKeep (q : Place) {pos : Pos} (steps : List Step) (hp : ¬ IsTe
     repeat' split
     all_goals first
       | exact OrdKeep.refl s
-      | (exact (ordKeep_access hi pos _).trans (envLe_access s pos _) (ordKeep_setAt hp _))
+      | (exact (ordKeep_access hi pos _).trans (envLe_access s pos _) (ordKeep_setAt (hp.envLe (envLe_access s pos _)).notCell _))
 
 theorem joinDrop_ordKeep (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) : OrdKeep L s (joinDrop K φ entry t s) := by
   unfold joinDrop
@@ -486,7 +525,7 @@ theorem joinDrop_ordKeep (entry : List Place) (t : Term) {s : SState} (hi : RInv
       split
       · rename_i pos steps hr
         exact (accessLentPrefix_ordKeep hi).trans (accessLentPrefix_envLe _ _ s)
-          (dropAt_ordKeep K φ q steps (resolve_bind hr) (accessLentPrefix_rinv L hi))
+          (dropAt_ordKeep K φ q steps ((resolve_top hr).envLe (accessLentPrefix_envLe _ _ s)) (accessLentPrefix_rinv L hi))
       · exact OrdKeep.refl s
 
 end

@@ -1550,9 +1550,13 @@ theorem assignAt_sgood {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
     | bind f i => exact ⟨f, i, rfl⟩
     | temp => exact absurd this (by simp [IsTemp])
   have hpos : Pos.bind f i ∈ s.positions := resolve_mem hres
-  have hpb : ¬ IsTemp (Pos.bind f i) := resolve_bind hres
+  have hpb0 : IsTop s (Pos.bind f i) := resolve_top hres
   generalize hs₁e : (if (steps.isEmpty && (s.shape (Pos.bind f i)).isSome) = true then s
       else s.access (Pos.bind f i) (dataHit steps)) = s₁ at h hao
+  have hpb : IsTop s₁ (Pos.bind f i) := by
+    rw [← hs₁e]; split
+    · exact hpb0
+    · exact hpb0.envLe (envLe_access s _ _)
   have hs₁ : SGood K.dm K.Γ φ s₁ := by
     rw [← hs₁e]; split
     · exact hs
