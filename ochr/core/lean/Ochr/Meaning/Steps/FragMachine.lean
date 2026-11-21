@@ -167,7 +167,10 @@ checker hands (left free); then, where `u`'s value is a number, after a quiet st
 type, the comparison of `u`'s type with it, the end's [Repack]), the write: `x`'s old content a number
 or `⊥` is overwritten; `x` LENT (`FEnd` at `u`'s end, holder a binding) has its borrow ended first
 (`endE`), then is overwritten. The invariant across the quiet stretch where `u`'s type is `Nat` (as
-`AssignDerefInv`). `#eval`ed in `FragGuards` (number, lent with another borrow live, moved). -/
+`AssignDerefInv`). `#eval`ed in `FragGuards` (number, lent with another borrow live, moved). The mode is
+kept where `x`'s old content is one of those three (machine6, 2026-11-21: for any other old content
+the write's end of it may run the ending machinery on an arbitrary value, which reaches `eval`, so
+unconditional it is a whole-machine fact; as `SeqInvR`'s antecedent). -/
 def AssignVarInv : Prop :=
   ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -180,7 +183,8 @@ def AssignVarInv : Prop :=
       DecTab D st₁ ∧ v = .unit ∧ T? = some .tUnit ∧
       ∀ f j b, ckVarPos st₁.env i = some (.bind f j) → st₁.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
         v₀.Num →
-        ∃ st₂, Quiet st₁ st₂ ∧ ((∀ T, T₀ = some T → (T == .tNat) = true) → KeepsInv st₁ st₂) ∧ ModeEq st₁ st' ∧
+        ∃ st₂, Quiet st₁ st₂ ∧ ((∀ T, T₀ = some T → (T == .tNat) = true) → KeepsInv st₁ st₂) ∧
+          ((b.val.Num ∨ b.val = .bot ∨ ∃ f' j' m c, FEnd st₁.env (.bind f j) (.bind f' j') m c) → ModeEq st₁ st') ∧
           ((b.val.Num ∨ b.val = .bot) → Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) v₀ } st') ∧
           (∀ f' j' m c, FEnd st₁.env (.bind f j) (.bind f' j') m c →
             Kern { st₂ with env := Env.setAtE (endE st₂.env (.bind f j) (.bind f' j') c) (.bind f j) v₀ } st')
