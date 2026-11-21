@@ -22,12 +22,17 @@ theorem res_means_fwd (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) (�
   rw [run_letIn (hfl := fun _ _ => rfl), run_ascribe (hfl := fun _ _ => rfl)]
   simp only [run, SM.erasedIf, SM.stmtIf, SM.headOf, SM.onCopy, meanV_abs, meanV_tNat, K₀, D₀, ρ₀, Δ₀, bind, Option.bind, Option.map, pure,
     Sem.asTy, TyS.plain, Bool.false_eq_true, if_false, runT]
+  -- the strict ascription `σ0 : Nat`: `n` is a `Nat`, and the unknown's run carries no label
+  simp only [SM.strictS, strictVal, pure, labTyOk, reduceCtorEq, false_implies, implies_true, if_true, mem_nat]
   rw [pushBindShaped_noLabel _ _ rfl, pushBind_emptyState]
   simp only [runArgs, bind, pure]
   simp only [run, SM.erasedIf, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, runT]
+  simp only [SM.strictS]
   rw [borrowPlace_var0_one _ _ _ _ (by simp [Sem.whole])]
   dsimp only
-  simp only [List.nil_append, List.foldl_nil, Nat.zero_add, Bool.false_eq_true, reduceIte]
+  simp only [List.nil_append, List.foldl_nil, Nat.zero_add, Bool.false_eq_true, reduceIte, mem_nat, if_true]
+  -- the strict call: the borrow of `c1` is live and holds `Nat`, `σ1`'s parameter's content type
+  erw [if_pos (borrowArgs_S₂ dm.read F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) rfl)]
   erw [callOf_S₂ _ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)]
   dsimp only
   have hp := pushBindShaped_S₃ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)

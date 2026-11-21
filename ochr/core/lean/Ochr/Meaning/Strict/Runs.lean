@@ -63,43 +63,43 @@ theorem nat_not_unit (n : Nat) (R : DataRead) : ¬ (Sem.el0 Nat n ∈ₛ[R] TyM.
 /-- **`(0 : Unit)` has no successful strict run**, whatever the decisions say of it: the strict
 ascription fails (a statement or a proof runs the same clause, on a copy). -/
 theorem zero_unit_none (tl : Bool) (h : TyS) (s : SState) :
-    runS K ρ φ tl h (.ascribe (.val .zero) (.val .tUnit)) s = none := by
+    runT K ρ φ tl h (.ascribe (.val .zero) (.val .tUnit)) s = none := by
   have hn := nat_not_unit 0 K.dm.read
-  rw [runS]
-  show SM.erasedS (K.D.flags (scopeOf s) _) _ s = none
+  rw [runT]
+  show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = none
   generalize K.D.flags (scopeOf s) (.ascribe (.val .zero) (.val .tUnit)) = fl
   obtain ⟨b1, b2⟩ := fl
   cases b2 <;> cases b1 <;>
-    simp [SM.erasedS, SM.stmtIf, SM.strictS, runS, SM.onCopy, bind, pure, meanS, Sem.asTy, strictVal, TyS.plain, hn]
+    simp [SM.erasedIf, SM.stmtIf, SM.strictS, runT, SM.onCopy, bind, pure, meanV, Sem.asTy, strictVal, TyS.plain, hn]
 
 /-- **The untyped `let x = (0 : Unit); x` has no successful strict run**: its binding's run fails. -/
 theorem let_zero_unit_none (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
-    runS K ρ φ tl h (.letIn x (.ascribe (.val .zero) (.val .tUnit)) (.place (.var 0))) s = none := by
-  rw [runS]
-  show SM.erasedS (K.D.flags (scopeOf s) _) _ s = none
+    runT K ρ φ tl h (.letIn x (.ascribe (.val .zero) (.val .tUnit)) (.place (.var 0))) s = none := by
+  rw [runT]
+  show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = none
   generalize K.D.flags (scopeOf s) _ = fl
   obtain ⟨b1, b2⟩ := fl
-  cases b2 <;> cases b1 <;> simp [SM.erasedS, SM.stmtIf, bind, zero_unit_none]
+  cases b2 <;> cases b1 <;> simp [SM.erasedIf, SM.stmtIf, bind, zero_unit_none]
 
 theorem one_mem_nat (R : DataRead) : Sem.el0 Nat 1 ∈ₛ[R] TyM.nat := ⟨1, rfl⟩
 
 /-- **`(S(Z) : Nat)` runs to `1` at `Nat`**, a member (decisions that class nothing a statement or a
 proof). -/
 theorem succ_nat_runs (hfl : ∀ sc t, K.D.flags sc t = (false, false)) (tl : Bool) (h : TyS) (s : SState) :
-    runS K ρ φ tl h (.ascribe (.succ .zero) .nat) s = some ((.el0 Nat 1, .plain TyM.nat), s) ∧
+    runT K ρ φ tl h (.ascribe (.succ .zero) .nat) s = some ((.el0 Nat 1, .plain TyM.nat), s) ∧
       Sem.el0 Nat 1 ∈ₛ[K.dm.read] TyM.nat := by
   refine ⟨?_, one_mem_nat _⟩
   have hm : Sem.el0 Nat 1 ∈ₛ[K.dm.read] TyM.nat := one_mem_nat K.dm.read
-  simp [runS, hfl, SM.erasedS, SM.stmtIf, SM.strictS, SM.onCopy, bind, pure, Sem.succ_el0, Sem.asTy, hm, TyS.plain]
+  simp [runT, hfl, SM.erasedIf, SM.stmtIf, SM.strictS, SM.onCopy, bind, pure, Sem.succ_el0, Sem.asTy, hm, TyS.plain]
 /-- **`Type₁` as a term runs, to a value that is no (partly moved) member of the type the run gives
 it**: `sort 2 : sort 3`, and the bounded model has no `Type₂` (`TyM.univ 3 = err`). The term occurs in
 accepted programs (a codomain `Type_1`, `Regress/CodeRuns`' `Pred`), so the fundamental lemma's
 conclusion is "a partly moved member, OR the type is `err`" (`GoodRes`), not `pmem` alone; the same
 holds of the run as it stands (`runT`). -/
 theorem sort_two_runs (tl : Bool) (h : TyS) (s : SState) :
-    runS K ρ φ tl h (.sort 2) s = some ((.ty (TyM.univ 2), .plain (TyM.univ 3)), s) ∧
+    runT K ρ φ tl h (.sort 2) s = some ((.ty (TyM.univ 2), .plain (TyM.univ 3)), s) ∧
       ¬ DataModel.pmem K.dm.read K.Γ (.ty (TyM.univ 2)) (TyM.univ 3) ∧ TyM.univ 3 = TyM.err := by
-  refine ⟨by rw [runS]; rfl, ?_, rfl⟩
+  refine ⟨by rw [runT]; rfl, ?_, rfl⟩
   rintro (h | ⟨t, _, hm, ht | ho⟩)
   · cases h
   · exact DataModel.err_mem_false _ _ ht
@@ -123,14 +123,14 @@ theorem tyR_true_level : (dm.tyR trueD (trueR dm)).level = some 0 := by
 of which `⋆` is a member (the strict test, `proof_mem_trueD`), and the erased term is `⋆` at
 `prop True` (C1, decision 1). -/
 theorem refl_runs (hok : dm.RecLeafOk trueD (trueR dm)) (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
-    runS (Kt dm Dpf) ρ φ tl h (.ctor "True" 0 x [] []) s = some ((.proof, .plain (TyM.prop True)), s) ∧
+    runT (Kt dm Dpf) ρ φ tl h (.ctor "True" 0 x [] []) s = some ((.proof, .plain (TyM.prop True)), s) ∧
       Sem.proof ∈ₛ[dm.read] dm.tyR trueD (trueR dm) := by
   refine ⟨?_, proof_mem_trueD dm hok⟩
   have hm : Sem.proof ∈ₛ[dm.read] (TyS.plain (dm.tyR trueD (trueR dm))).m := proof_mem_trueD dm hok
   have hfind : [trueD].find? (·.name == "True") = some trueD := rfl
   have hsort : (trueD.sort == 0) = true := rfl
   have hpar : trueD.params.isEmpty = true := rfl
-  simp [runS, Kt, Dpf, SM.erasedS, SM.strictS, runParamsS, runFieldsS, ctorOut, bind, pure, hfind, hsort,
+  simp [runT, Kt, Dpf, SM.erasedIf, SM.strictS, runParams, runFields, ctorOut, bind, pure, hfind, hsort,
     hpar, hm, Sem.isProof]
 
 theorem proof_mem_prop {R : DataRead} {P : Prop} (hP : P) : Sem.proof ∈ₛ[R] TyM.prop P := ⟨⟨hP⟩, rfl⟩
@@ -140,36 +140,36 @@ theorem proof_not_mem_false {R : DataRead} : ¬ (Sem.proof ∈ₛ[R] TyM.prop Fa
 /-- **`(refl : Eq(Nat, Z, Z))`, classed a proof, runs** to `⋆` at the meaning of `Eq(Nat, Z, Z)`,
 which it is a member of. -/
 theorem refl_eq_runs (hok : dm.RecLeafOk trueD (trueR dm)) (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
-    runS (Kt dm Dpf) ρ φ tl h (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero .zero)) s =
+    runT (Kt dm Dpf) ρ φ tl h (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero .zero)) s =
       some ((.proof, .plain (TyM.prop True)), s) := by
-  have hr : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.ctor "True" 0 x [] []) s =
+  have hr : ∀ h s, runT (Kt dm Dpf) ρ φ false h (.ctor "True" 0 x [] []) s =
       some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm hok false h x s).1
-  have he : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.eq .nat .zero .zero) s =
+  have he : ∀ h s, runT (Kt dm Dpf) ρ φ false h (.eq .nat .zero .zero) s =
       some ((.ty (TyM.prop True), .plain (TyM.univ 0)), s) := by
-    intro h s; simp [runS, SM.onCopy, bind, pure]
+    intro h s; simp [runT, SM.onCopy, bind, pure]
   have hm : Sem.proof ∈ₛ[(Kt dm Dpf).dm.read] TyM.prop True := proof_mem_prop trivial
   have hfl : ∀ sc, (Kt dm Dpf).D.flags sc (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero .zero)) = (false, true) :=
     fun _ => rfl
   have hdm : (Kt dm Dpf).dm = dm := rfl
-  rw [runS]
-  simp [hfl, SM.erasedS, SM.strictS, SM.onCopy, bind, pure, hr, he, Sem.asTy, hm, Sem.isProof, TyS.plain]
+  rw [runT]
+  simp [hfl, SM.erasedIf, SM.strictS, SM.onCopy, bind, pure, hr, he, Sem.asTy, hm, Sem.isProof, TyS.plain]
 
 /-- **`(refl : Eq(Nat, Z, S(Z)))` has no successful strict run**: the ascription's test is the
 proposition `0 = 1`. -/
 theorem refl_neq_none (hok : dm.RecLeafOk trueD (trueR dm)) (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
-    runS (Kt dm Dpf) ρ φ tl h (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero (.succ .zero))) s = none := by
-  have hr : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.ctor "True" 0 x [] []) s =
+    runT (Kt dm Dpf) ρ φ tl h (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero (.succ .zero))) s = none := by
+  have hr : ∀ h s, runT (Kt dm Dpf) ρ φ false h (.ctor "True" 0 x [] []) s =
       some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm hok false h x s).1
   have h1 : Sem.el0 Nat 1 ∈ₛ[dm.read] (TyS.plain TyM.nat).m := one_mem_nat _
-  have he : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.eq .nat .zero (.succ .zero)) s =
+  have he : ∀ h s, runT (Kt dm Dpf) ρ φ false h (.eq .nat .zero (.succ .zero)) s =
       some ((.ty (TyM.prop False), .plain (TyM.univ 0)), s) := by
-    intro h s; simp [runS, Dpf, Kt, SM.erasedS, SM.stmtIf, SM.strictS, SM.onCopy, bind, pure, Sem.succ_el0, h1]
+    intro h s; simp [runT, Dpf, Kt, SM.erasedIf, SM.stmtIf, SM.strictS, SM.onCopy, bind, pure, Sem.succ_el0, h1]
   have hn : ¬ Sem.proof ∈ₛ[(Kt dm Dpf).dm.read] TyM.prop False := proof_not_mem_false
   have hfl : ∀ sc, (Kt dm Dpf).D.flags sc (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero (.succ .zero))) =
     (false, true) := fun _ => rfl
   have hdm : (Kt dm Dpf).dm = dm := rfl
-  rw [runS]
-  simp [hfl, SM.erasedS, SM.strictS, SM.onCopy, bind, pure, hr, he, Sem.asTy, hn, TyS.plain]
+  rw [runT]
+  simp [hfl, SM.erasedIf, SM.strictS, SM.onCopy, bind, pure, hr, he, Sem.asTy, hn, TyS.plain]
 
 end
 

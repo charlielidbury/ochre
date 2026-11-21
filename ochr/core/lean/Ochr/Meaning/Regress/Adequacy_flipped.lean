@@ -33,34 +33,48 @@ theorem head_in_place (b : SBinding) (k : Nat) (rn : SM Res) (hw : (b.val φ).wh
   rw [readPlace_of φ K (.var 0) true (one b k) _ _ _ _ _ (contentOf_var0_one K φ k b)]
   simp [hw, one]
 
+/-- A statement or erased clause leaves the state as it was and returns no label. -/
+theorem erasedIf_keeps {fl : Bool × Bool} {x : SM Res} {s s' : SState} {r : Res} (hfl : fl.1 = true)
+    (h : SM.erasedIf fl x s = some (r, s')) : s' = s ∧ r.2.label = none := by
+  by_cases he : fl.2 = true
+  · obtain ⟨rfl, rfl⟩ := SM.erasedIf_erased he h
+    exact ⟨rfl, rfl⟩
+  · simp only [SM.erasedIf, he, Bool.false_eq_true, if_false] at h
+    obtain ⟨hb, -⟩ | ⟨-, e, hl, -⟩ := SM.stmtIf_some h
+    · rw [hfl] at hb; cases hb
+    · exact ⟨e, hl⟩
+
 /-- R1: a statement leaves the state as it was. -/
 theorem stmt_keeps (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (scopeOf s) t).1 = true)
     (r : Res) (s' : SState) (h : run K ρ φ hint t s = some (r, s'))
     (ht : t matches .letIn .. | .seq .. | .matchNat .. | .matchInd .. | .assign .. | .place .. | .call ..) :
     s' = s ∧ r.2.label = none := by
   cases t <;> simp at ht <;>
-    (rw [run, runT] at h
-     simp only [SM.erasedIf, SM.erasedAt] at h
-     split at h
-     · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-       exact ⟨rfl, by first | rfl | exact placeTy_label K φ _ s⟩
-     · obtain ⟨hb, -⟩ | ⟨-, e, hl, -⟩ := SM.stmtIf_some h
-       · rw [hfl] at hb; cases hb
-       · exact ⟨e, hl⟩)
+    (rw [run, runT] at h; exact erasedIf_keeps hfl h)
 
-/-- The audit's A3: an erased term (`Machine.evalAt`'s second flag: a proof) is `•` unrun, the
-state as it was, whatever its clause would do. In particular a match on a proof with two arms, or
-none, no longer fails. -/
-theorem erased_unrun (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (scopeOf s) t).2 = true)
-    (ht : t matches .letIn .. | .seq .. | .matchNat .. | .matchInd .. | .assign .. | .call .. | .ctor .. | .fix ..) :
-    run K ρ φ hint t s = some ((.proof, .plain .err), s) := by
-  cases t <;> simp at ht <;> (rw [run, runT]; simp only [SM.erasedIf, hfl, if_true])
+/-- The audit's A3 and A17 under the strict run (C1, D83): an erased term (`Machine.evalAt`'s second
+flag: a proof), a place included, runs on a copy of the state; where it runs to `•` its result is
+`•` at `True` and the state is as it was. (Before the strict run an erased term was `•` unrun, at
+`err`, and an erased place at its stored type; so a match on a proof with two arms, or none, which
+fails when run, did not fail erased. It fails now: `erased_match_proof_fails`.) -/
+theorem erased_on_copy (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (scopeOf s) t).2 = true)
+    (ht : t matches .letIn .. | .seq .. | .matchNat .. | .matchInd .. | .assign .. | .call .. | .ctor .. | .fix .. | .place ..)
+    (r : Res) (s' : SState) (h : run K ρ φ hint t s = some (r, s')) :
+    s' = s ∧ r = (.proof, .plain (TyM.prop True)) := by
+  cases t <;> simp at ht <;> (rw [run, runT] at h; exact SM.erasedIf_erased hfl h)
 
-/-- The audit's A17: an erased PLACE is `•` unrun, the state as it was, at the place's stored type
-(`placeTy`), as the checker types a proof read at a place. -/
-theorem erased_place (p : Place) (hint : TyS) (s : SState) (hfl : (K.D.flags (scopeOf s) (.place p)).2 = true) :
-    run K ρ φ hint (.place p) s = some ((.proof, placeTy K φ p s), s) := by
-  rw [run, runT]; simp only [SM.erasedAt, hfl, if_true]
+/-- Under the strict run an erased match on a proof with other than one arm fails: its clause, run
+on the copy, finds the tag `•` and no arm to take (a proof scrutinee is matched by its type, D45,
+only where its proposition has one constructor). The checker accepts such matches whose result
+is a proof: `Subsingletons.OrComm`, `OrElim`, `OrLet` (two arms on `Or`) and `Propositions.absurdP`
+(no arms on `False`) in `Examples/Propositions.lean`. On `Or` the run then fails where the checker
+succeeds, at members (on `False` there is no member to run at). -/
+theorem erased_match_proof_fails (p : Place) (n : String) (arms : List (Hint × Term)) (hint : TyS)
+    (s s₁ : SState) (hfl : (K.D.flags (scopeOf s) (.matchInd p n arms)).2 = true)
+    (htag : tagOf K φ p indTag s = some (.proof, s₁)) (harms : arms.length ≠ 1) :
+    run K ρ φ hint (.matchInd p n arms) s = none := by
+  rw [run, runT]
+  simp [SM.erasedIf, hfl, htag, harms, bind, Option.bind]
 
 /-- The audit's A9: a field of type `A` (the one parameter) given a `Nat` solves `A := Nat`
 (`Pair(a, b)`, `Cons(x, xs)`'s head). -/
@@ -86,7 +100,9 @@ theorem ctor_no_hint (ty : String) (c : Nat) (x : Hint) (args : List Term) (s : 
     (hp : d.params.isEmpty = false)
     (fs : List Sem) (sol : List (Option Sem)) (s' : SState)
     (hf : runFields K ρ φ (d.sort == 0) d c 0 none (List.replicate d.params.length none) [] args s = some ((fs, sol), s'))
-    (hsol : sol.all (·.isSome) = true) (hs : (d.sort == 0) = false) :
+    (hsol : sol.all (·.isSome) = true) (hs : (d.sort == 0) = false)
+    -- STRICT: the value built is a member of its type
+    (hm : K.dm.ctorM d (solved sol) c fs ∈ₛ[K.dm.read] K.dm.tyM d (solved sol)) :
     run K ρ φ (.plain .err) (.ctor ty c x [] args) s
       = some ((K.dm.ctorM d (solved sol) c fs, .plain (K.dm.tyM d (solved sol))), s') := by
   rw [run, runT]
@@ -94,8 +110,10 @@ theorem ctor_no_hint (ty : String) (c : Nat) (x : Hint) (args : List Term) (s : 
     List.isEmpty_nil, Bool.not_true, hp, Bool.or_false, TyS.data, TyM.dataRec?, TyM.err]
   rw [hf]
   simp only [hsol, if_true]
-  show ctorOut K.dm d c fs (some (K.dm.recOf d (solved sol))) s' = _
-  simp only [ctorOut, hs, Bool.false_eq_true, if_false]
+  rw [if_pos (.inl rfl)]
+  show SM.strictS K.dm.read (ctorOut K.dm d c fs (some (K.dm.recOf d (solved sol)))) s' = _
+  simp only [SM.strictS, ctorOut, hs, Bool.false_eq_true, if_false, pure]
+  rw [if_pos (by exact hm)]
   rfl
 
 end Ochr.Meaning.Regress.AdequacyFlip

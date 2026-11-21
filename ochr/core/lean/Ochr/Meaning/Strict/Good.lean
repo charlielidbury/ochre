@@ -1,4 +1,4 @@
-import Ochr.Meaning.Strict.RunS
+import Ochr.Meaning.ApplyMem
 import Ochr.Meaning.RunPresInd
 
 /-!
@@ -26,7 +26,7 @@ frame's cells (read at the future, owing nothing).
 
 **The fundamental lemma** (`Fund`): from a good state, a successful strict run returns a good result
 (a member of the type it returns, or at `err`) whose label, if any, records its type (`LabOk`) and is live or read
-by no position (`LoU`, as `RunPresInd` has it), and leaves a good state. A proof's run (`SM.erasedS`) returns `⋆` at a proposition, so its
+by no position (`LoU`, as `RunPresInd` has it), and leaves a good state. A proof's run (`SM.erasedIf`) returns `⋆` at a proposition, so its
 membership is the proposition's truth (`erasedS_true`).
 -/
 
@@ -108,7 +108,7 @@ end
 
 /-- **The fundamental lemma at a term**: every strict run of it, at every hint and tail flag. -/
 def Fund (K : RunCtx) (ρ : Assignment) (φ : Future) (t : Term) : Prop :=
-  ∀ tl hint, FundAt K.dm K.Γ φ (runS K ρ φ tl hint t)
+  ∀ tl hint, FundAt K.dm K.Γ φ (runT K ρ φ tl hint t)
 
 /-! ## Members are whole; a proof's membership -/
 

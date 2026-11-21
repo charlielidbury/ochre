@@ -299,7 +299,7 @@ content, lent at `(r, [*])`. -/
 noncomputable def SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) : SState :=
   { env := [{ binds := [{ b with val := fun φ' => match (φ' (k+1)).as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
-                                                  | none => .err },
+                                                  | none => .moved },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun φ' => φ' (k+2) }],
               temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .moved,
                         fun _ => .moved, fun _ => .el0 Nat (F n).val.1] }],

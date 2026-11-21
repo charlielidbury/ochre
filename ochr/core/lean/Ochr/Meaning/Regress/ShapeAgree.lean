@@ -91,6 +91,7 @@ theorem callOf_cod (R : DataRead) (fv : Res) (args : List Res) {s s' : SState} {
   · rename_i A C t e; rw [e]; exact callOfL_cod (lvl2 R) t _ _ h
   · cases h
 
+open Classical in
 /-- **A call's result has the code its callee's telescope reaches** (the positive form of what was
 `call_noShape`): whatever the callee and the state, a call that is not erased is typed at the
 codomain code of the callee's type at the argument meanings. So a function returned by a call is
@@ -106,13 +107,15 @@ theorem call_cod (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : 
   have key : ∀ r₀ s₀, (do
       let fv ← SM.headOf f (fun p => readPlace K φ p true) (runT K ρ φ false (.plain TyM.err) f)
       let as ← runArgs K ρ φ (K.D.flags (scopeOf s) (.call f args hd)).1 fv.2.m [] args
-      callOf K.dm.read fv as) s = some (r₀, s₀) →
+      fun s => if BorrowArgsTyped K.dm.read fv as s then callOf K.dm.read fv as s else none) s = some (r₀, s₀) →
       ∃ (fv : Res) (as : List Res) (b : Bool), fv.2.m.codAt? K.dm.read (as.map (·.1)) = some (b, r₀.2.m) := by
     intro r₀ s₀ h₀
     obtain ⟨fv, s₁, -, h₁⟩ := SM.bind_some h₀
     obtain ⟨as, s₂, -, h₂⟩ := SM.bind_some h₁
-    obtain ⟨b, hb⟩ := callOf_cod K.dm.read fv as h₂
-    exact ⟨fv, as, b, hb⟩
+    split at h₂
+    · obtain ⟨b, hb⟩ := callOf_cod K.dm.read fv as h₂
+      exact ⟨fv, as, b, hb⟩
+    · cases h₂
   rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, -, -, r₀, s₀, h₀, rfl⟩
   · exact key r s' h
   · exact key r₀ s₀ h₀
@@ -142,14 +145,18 @@ theorem ty_futureFree (hK : ∀ n, (K.C.global n).2.label = none) (T : Value)
   meanV_congrE K ρ φ φ' hK T hint (fun l h => by
     have := Value.hasLoan_of_hasLoanM h; rw [hT l] at this; cases this)
 
-/-! ## A17: a proof has a type in the run only at a place -/
+/-! ## A17, superseded by the strict run: an erased proof is typed at `True` -/
 
-/-- A term the decisions class as a proof, other than a place, is not run and its result is typed
-`err`. (A place is typed at its stored type, `SM.erasedAt`, `AdequacyFlip.erased_place`, so
-`MkPBox(h)` solves its parameter off `h`'s type and runs: `CodeRuns.boxProof`.) -/
-theorem erased_proof_untyped (fl : Bool × Bool) (h : fl.2 = true) (x : SM Res) (s : SState) :
-    SM.erasedIf fl x s = some ((.proof, .plain .err), s) := by
-  simp [SM.erasedIf, h]
+/-- A term the decisions class as a proof runs on a copy of the state (the strict run's C1,
+D83); its result is `•` at `True` where that run returned `•`, and nothing otherwise. (Before the
+strict run, an erased proof other than a place was not run and was typed `err`, and a place was
+typed at its stored type, `SM.erasedAt`.) -/
+theorem erased_proof_true (fl : Bool × Bool) (h : fl.2 = true) (x : SM Res) (s : SState) :
+    SM.erasedIf fl x s = match x s with
+      | some ((.proof, _), _) => some ((.proof, .plain (TyM.prop True)), s)
+      | _ => none := by
+  simp only [SM.erasedIf, h, if_true]
+  split <;> simp_all
 
 /-- A field whose run is typed `err` solves no parameter of its constructor (`Machine.unifyParams`
 reads the parameter off the field's type; before A17 a proof read at a place was typed `err`, so

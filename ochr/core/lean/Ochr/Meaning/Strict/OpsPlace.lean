@@ -718,7 +718,7 @@ ADDED HYPOTHESIS `hp` (the path is `[]` or `[*]`). At a FIELD path two facts are
 (1) for a copy, the read clause `ReadOk` allows any whole value at `err`, where `GoodRes` asks a type
 value; a read THROUGH `⋆` gives `⋆` at `err` (`Sem.stepField` on `⋆`, kernel-checked:
 `follow_through_proof`), which is no good result, so the copy case needs the read clause's escape to be
-`GoodRes`'s (or such reads classed as proofs, which `SM.erasedS` runs and fails at `err`); the copy
+`GoodRes`'s (or such reads classed as proofs, which `SM.erasedIf` runs and fails at `err`); the copy
 case is proved in that form (`readPlace_copy_reads`); (2) for a move, the write of `⊥` into a field
 (`readPlace_field_move_sgood`, a guess: the dependent-values area). -/
 theorem readPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) (hp : p.steps.2 = [] ∨ p.steps.2 = [.deref])

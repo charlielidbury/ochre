@@ -132,8 +132,8 @@ theorem callOf_res_mem {R : DataRead} {fv : Res} {args : List Res} {s s' : SStat
 /-- The repaired call returns what `callOf` returns (only the lenders' reading at an undecodable final
 content differs). -/
 theorem callOfLS_res.{v} (L : Lvl.{v}) {C : Type v} {t : Tel L.Code PUnit C} {fv : Sem} {args : List Res} {s s' : SState}
-    {r : Res} (h : callOfLS L t fv args s = some (r, s')) : ∃ s'', callOfL L t fv args s = some (r, s'') := by
-  unfold callOfLS at h
+    {r : Res} (h : callOfL L t fv args s = some (r, s')) : ∃ s'', callOfL L t fv args s = some (r, s'') := by
+  unfold callOfL at h
   unfold callOfL
   simp only at h ⊢
   cases ha : applyFnL L t fv (args.map (·.1)) with
@@ -151,9 +151,9 @@ theorem callOfLS_res.{v} (L : Lvl.{v}) {C : Type v} {t : Tel L.Code PUnit C} {fv
       exact ⟨_, rfl⟩
 
 theorem callOfS_res {R : DataRead} {fv : Res} {args : List Res} {s s' : SState} {r : Res}
-    (h : callOfS R fv args s = some (r, s')) : ∃ s'', callOf R fv args s = some (r, s'') := by
+    (h : callOf R fv args s = some (r, s')) : ∃ s'', callOf R fv args s = some (r, s'') := by
   rcases fv with ⟨fv, ⟨T, lab⟩⟩
-  unfold callOfS at h
+  unfold callOf at h
   unfold callOf
   cases T with
   | t0 A c => cases c with

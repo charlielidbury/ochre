@@ -142,7 +142,10 @@ theorem absFill_shape (hK : ∀ n, (K.C.global n).2.label = none) (st : MState) 
       ∃ (ty : String) (c : Nat) (h : Hint) (ps fs : List Value) (d : IndDecl),
         st.absTy[σ]? = some (.tInd ty ps) ∧ r = .ind ty c h ps fs ∧
         K.Γ.find? (·.name == ty) = some d ∧ (ps.isEmpty && !d.params.isEmpty) = false ∧
-        ∀ l, Value.anyAtomList (· == .loan l) ps = false) :
+        ∀ l, Value.anyAtomList (· == .loan l) ps = false)
+    -- the strict `.val` clause tests an embedded constructor value against its type: the filler
+    -- means a member of `σ`'s type (what an assignment typing its unknowns gives, `ρ σ ∈ Δ σ`)
+    (hmem : ∀ hint, meanV K ρ ψ hint r ∈ₛ[K.dm.read] (K.Δ σ).m) :
     ∀ hint s, (run K ρ ψ hint (.val r) s).map (·.1.2) = (run K ρ ψ hint (.val (.abs σ)) s).map (·.1.2) := by
   intro hint s
   rw [run_val_def, run_val_def]
@@ -154,14 +157,22 @@ theorem absFill_shape (hK : ∀ n, (K.C.global n).2.label = none) (st : MState) 
       rcases hn with rfl | ⟨v, rfl⟩ <;> rfl
     rw [hv]
     simp only [deltaOf, hT]
-    rfl
+    rcases hn with rfl | ⟨v, rfl⟩ <;> rfl
   · have hP : meanParams K ρ ψ d 0 [] ps = meanParams K ρ (fun _ => .err) d 0 [] ps :=
       meanParams_congrE K ρ ψ (fun _ => .err) hK d ps 0 [] (fun l h => by rw [hl l] at h; cases h)
     have hv : valT K ρ ψ hint (.ind ty c h ps fs) = .plain (K.dm.tyM d (meanParams K ρ (fun _ => .err) d 0 [] ps)) := by
       simp only [valT, hd, hps, Bool.false_eq_true, if_false, hP]
       rfl
+    have hm := hmem hint
+    rw [hΔ] at hm
     rw [hv]
-    simp only [deltaOf, hT, Ochr.Value.tyS, Value.mean, hd, meanParams_eq_mean]
+    simp only [deltaOf, hT, Ochr.Value.tyS, Value.mean, hd, meanParams_eq_mean] at hm ⊢
+    -- a constructor value of a declared type at a known record means a tree, not `err`
+    have hne : meanV K ρ ψ hint (.ind ty c h ps fs) ≠ .err := by
+      simp only [meanV, Value.mean, hd, hps, Bool.false_eq_true, if_false]
+      split <;> simp [DataModel.ctorR]
+    simp only [strictVal, SM.strictS, pure]
+    rw [if_neg hne, if_pos (by exact hm)]
     rfl
 
 end

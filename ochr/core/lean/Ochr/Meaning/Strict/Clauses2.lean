@@ -109,7 +109,7 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 /-- `u; w`: a borrow the discarded value holds ends. -/
 theorem fund_seq {u w : Term} (hu : Fund K ρ φ u) (hw : Fund K ρ φ w) : Fund K ρ φ (.seq u w) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   refine fund_erasedS ?_ s s' r hs h
   intro s₀ s₃ r₀ hs₀ h₀
   obtain ⟨a, s₁, h1, h2⟩ := SM.bind_some h₀
@@ -128,7 +128,7 @@ theorem fund_seq {u w : Term} (hu : Fund K ρ φ u) (hw : Fund K ρ φ w) : Fund
 theorem fund_letIn (hc : FundCtx K) {x : Hint} {u w : Term} (hu : Fund K ρ φ u) (hw : Fund K ρ φ w) :
     Fund K ρ φ (.letIn x u w) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   refine fund_erasedS ?_ s s' r hs h
   intro s₀ s₄ r₀ hs₀ h₀
   simp only [Bind.bind, Option.bind_eq_some_iff] at h₀
@@ -173,7 +173,7 @@ theorem fund_join (hc : FundCtx K) {s₂ : SState} {r : Res} (lend : Option Nat 
 theorem fund_matchNat (hc : FundCtx K) {p : Place} {z u : Term} (hz : Fund K ρ φ z) (hu : Fund K ρ φ u) :
     Fund K ρ φ (.matchNat p z u) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   refine fund_erasedS ?_ s s' r hs h
   intro s₀ s₃ r₀ hs₀ h₀
   simp only [Bind.bind, Option.bind_eq_some_iff] at h₀
@@ -185,7 +185,7 @@ theorem fund_matchNat (hc : FundCtx K) {p : Place} {z u : Term} (hz : Fund K ρ 
   obtain ⟨s₂, lend⟩ := me
   dsimp only at h₀ hs₁' hlend
   split at h₀
-  · cases h2 : runS K ρ φ tl hint z s₂ with
+  · cases h2 : runT K ρ φ tl hint z s₂ with
     | none => rw [h2] at h₀; cases h₀
     | some a =>
       rw [h2] at h₀
@@ -193,7 +193,7 @@ theorem fund_matchNat (hc : FundCtx K) {p : Place} {z u : Term} (hz : Fund K ρ 
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
       obtain ⟨hg, hlab, hlou, hs₄⟩ := hz tl hint _ _ _ hs₁' h2
       exact fund_join hc lend hlend _ _ hg hlab hlou hs₄
-  · cases h2 : runS K ρ φ tl hint u s₂ with
+  · cases h2 : runT K ρ φ tl hint u s₂ with
     | none => rw [h2] at h₀; cases h₀
     | some a =>
       rw [h2] at h₀
@@ -214,11 +214,11 @@ section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 theorem fund_runArmS : ∀ (arms : List (Hint × Term)), (∀ a ∈ arms, Fund K ρ φ a.2) →
-    ∀ tl hint c, FundAt K.dm K.Γ φ (runArmS K ρ φ tl hint c arms)
-  | [], _, tl, hint, c => by intro s s' r hs h; simp [runArmS, SM.fail] at h
+    ∀ tl hint c, FundAt K.dm K.Γ φ (runArm K ρ φ tl hint c arms)
+  | [], _, tl, hint, c => by intro s s' r hs h; simp [runArm, SM.fail] at h
   | (x, t) :: rest, ha, tl, hint, c => by
     intro s s' r hs h
-    rw [runArmS] at h
+    rw [runArm] at h
     split at h
     · exact ha (x, t) (List.mem_cons_self ..) tl hint s s' r hs h
     · exact fund_runArmS rest (fun a h' => ha a (List.mem_cons_of_mem _ h')) tl hint (c - 1) s s' r hs h
@@ -228,7 +228,7 @@ or a one-constructor type). -/
 theorem fund_matchInd (hc : FundCtx K) {p : Place} {n : String} {arms : List (Hint × Term)}
     (ha : ∀ a ∈ arms, Fund K ρ φ a.2) : Fund K ρ φ (.matchInd p n arms) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   refine fund_erasedS ?_ s s' r hs h
   intro s₀ s₃ r₀ hs₀ h₀
   simp only [Bind.bind, Option.bind_eq_some_iff] at h₀
@@ -242,7 +242,7 @@ theorem fund_matchInd (hc : FundCtx K) {p : Place} {n : String} {arms : List (Hi
   dsimp only at h₀ hs₁' hlend
   split at h₀
   · rename_i c _
-    cases h2 : runArmS K ρ φ tl hint c arms s₂ with
+    cases h2 : runArm K ρ φ tl hint c arms s₂ with
     | none => rw [h2] at h₀; cases h₀
     | some a =>
       rw [h2] at h₀
@@ -271,7 +271,7 @@ term, the join. -/
 theorem fund_J (hc : FundCtx K) {A a b P h t : Term} (ht : Fund K ρ φ t) :
     Fund K ρ φ (.prim "J" [A, a, b, P, h, t]) := fun tl hint => by
   intro s s' r hs hr
-  rw [runS] at hr
+  rw [runT] at hr
   refine fund_erasedS ?_ s s' r hs hr
   intro s₀ s₃ r₀ hs₀ h₀
   obtain ⟨_, t₁, g₁, k₁⟩ := SM.bind_some h₀
@@ -297,7 +297,7 @@ theorem fund_J (hc : FundCtx K) {A a b P h t : Term} (ht : Fund K ρ φ t) :
 
 /-- `clone`, `peek`, `inplace` of a term: a place read in place, or the term's run. -/
 theorem fund_inPlace (hc : FundCtx K) {u : Term} (hu : Fund K ρ φ u) {fl : Bool × Bool} (tl : Bool) (hint : TyS) :
-    FundAt K.dm K.Γ φ (SM.erasedS fl (SM.headOf u (fun p => readPlace K φ p true) (runS K ρ φ false hint u))) := by
+    FundAt K.dm K.Γ φ (SM.erasedIf fl (SM.headOf u (fun p => readPlace K φ p true) (runT K ρ φ false hint u))) := by
   refine fund_erasedS ?_
   intro s s' r hs h
   rcases headOf_some' h with ⟨p, -, h⟩ | h
@@ -338,7 +338,7 @@ captures accessed and the non-copy ones moved. -/
 theorem fund_fix (hc : FundCtx K) {self : Hint} {hs : List Hint} {ds : List Term} {c : Term} {dec : Option Nat}
     {body : Term} : Fund K ρ φ (.fix self hs ds c dec body) := fun tl hint => by
   intro s s' r hs' h
-  rw [runS] at h
+  rw [runT] at h
   refine fund_erasedS ?_ s s' r hs' h
   intro s₀ s₁ r₀ hs₀ h₀
   dsimp only at h₀

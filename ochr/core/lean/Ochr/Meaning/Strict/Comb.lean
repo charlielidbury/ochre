@@ -99,28 +99,23 @@ theorem proof_mem_true (R : DataRead) : Sem.proof ∈ₛ[R] TyM.prop True := ⟨
 
 /-- An erased proof's run, taken apart: its clause ran (on a copy) to `⋆`. -/
 theorem erasedS_proof_some {fl : Bool × Bool} {x : SM Res} {s s' : SState} {r : Res} (hp : fl.2 = true)
-    (h : SM.erasedS fl x s = some (r, s')) :
+    (h : SM.erasedIf fl x s = some (r, s')) :
     ∃ T s₁, x s = some ((.proof, T), s₁) ∧ r = (.proof, .plain (TyM.prop True)) ∧ s' = s := by
-  unfold SM.erasedS at h
+  unfold SM.erasedIf at h
   rw [if_pos hp] at h
   cases hx : x s with
   | none => rw [hx] at h; cases h
   | some p =>
     rw [hx] at h
     obtain ⟨⟨v, T⟩, s₁⟩ := p
-    simp only at h
-    by_cases ht : v.isProof = true
-    · rw [if_pos ht] at h
-      cases h
-      have hv : v = .proof := by cases v <;> simp_all [Sem.isProof]
-      subst hv
-      exact ⟨T, s₁, rfl, rfl, rfl⟩
-    · rw [if_neg ht] at h; cases h
+    cases v <;> simp only [reduceCtorEq] at h
+    cases h
+    exact ⟨T, s₁, rfl, rfl, rfl⟩
 
 /-- **A proof's run means its proposition is true**: where the clause obeys the lemma, an erased proof
 that runs ran its clause to `⋆` at a type of which `⋆` is a member, or at `err` (a field of `⋆`). -/
 theorem erasedS_clause_true {fl : Bool × Bool} {x : SM Res} (hx : FundAt dm Γ φ x) (hp : fl.2 = true)
-    {s s' : SState} {r : Res} (hs : SGood dm Γ φ s) (h : SM.erasedS fl x s = some (r, s')) :
+    {s s' : SState} {r : Res} (hs : SGood dm Γ φ s) (h : SM.erasedIf fl x s = some (r, s')) :
     ∃ T s₁, x s = some ((.proof, T), s₁) ∧ (Sem.proof ∈ₛ[dm.read] T.m ∨ T.m = TyM.err) := by
   obtain ⟨T, s₁, hx₁, -, -⟩ := erasedS_proof_some hp h
   refine ⟨T, s₁, hx₁, ?_⟩
@@ -131,13 +126,13 @@ theorem erasedS_clause_true {fl : Bool × Bool} {x : SM Res} (hx : FundAt dm Γ 
 
 /-- **An erased term**: a proof is `⋆` at `prop True`, the state unchanged; a statement is its
 clause's, label dropped, the state unchanged; otherwise the clause itself. -/
-theorem fund_erasedS {fl : Bool × Bool} {x : SM Res} (hx : FundAt dm Γ φ x) : FundAt dm Γ φ (SM.erasedS fl x) := by
+theorem fund_erasedS {fl : Bool × Bool} {x : SM Res} (hx : FundAt dm Γ φ x) : FundAt dm Γ φ (SM.erasedIf fl x) := by
   intro s s' r hs h
   by_cases hp : fl.2 = true
   · obtain ⟨T, s₁, -, rfl, hss⟩ := erasedS_proof_some hp h
     exact ⟨.inl (proof_mem_true _), (fun l hl => by cases hl), (fun l hl => by cases hl), hss ▸ hs⟩
   · have h' : SM.stmtIf fl.1 x s = some (r, s') := by
-      unfold SM.erasedS at h; rw [if_neg hp] at h; exact h
+      unfold SM.erasedIf at h; rw [if_neg hp] at h; exact h
     rcases SM.stmtIf_some h' with ⟨-, h'⟩ | ⟨-, hss, hl, r₀, s₀, h0, rfl⟩
     · exact hx s s' r hs h'
     · exact ⟨(hx s s₀ r₀ hs h0).1, (fun l hl' => by cases hl'), (fun l hl' => by cases hl'), hss ▸ hs⟩

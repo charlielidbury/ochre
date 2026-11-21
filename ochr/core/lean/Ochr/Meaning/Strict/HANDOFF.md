@@ -1,10 +1,10 @@
 # The strict reference run and the fundamental lemma: handoff (working file)
 
-Lane `spine-model` (worktree `ochre-model`), opened 2026-11-20. The orchestrator accepted the prototype (strictness inside the run, option (a)) and decided its seven findings (2026-11-21). The fundamental lemma is now proved on the COPY `runS` for every clause, modulo three named guesses at field paths (the dependent-values area, staffed separately). `Run.lean` is unchanged: the data layer's port (record layout) lands first; then this lane merges it and ports `runS` into `Run.lean` (one run, strict; the lead's request (b) is moot).
+Lane `spine-model` (worktree `ochre-model`), opened 2026-11-20. The orchestrator accepted the prototype (strictness inside the run, option (a)) and decided its seven findings (2026-11-21). PORTED (2026-11-21): the strict run IS `Run.lean`'s `runT` (one run); the copy `RunS.lean` is deleted and every file here is about `runT`. The fundamental lemma `fund_all` holds for every clause of the real run, modulo three named guesses at field paths (the dependent-values area, staffed separately). The core lemmas are back on the standard axioms and the concrete runs (`Regress/`, `Attack/`, `DataModel/`) build against the strict run; what changed in them is listed under "The port".
 
 ## Files (read in this order)
 
-- `RunS.lean`: the strict run `runS` (a copy of `Run.lean`'s mutual block, `S`-suffixed). Strict points marked `STRICT`/`C1`/`REPAIR`. Helpers: `SM.strictS`, `SM.erasedS`, `strictVal`, `labTyOk`, `paramsOk`, `BorrowArgsTyped`, `callOfLS`/`callOfS`.
+- `Run.lean` (not here): the strict run. Strict points marked `STRICT` at their sites. Helpers: `SM.strictS`, `SM.erasedIf` (C1), `strictVal`, `labTyOk`, `paramsOk`, `BorrowArgsTyped`, `callOfL`/`callOf` (`moved` in the undecodable branch).
 - `Good.lean`: `NoData`, `GoodRes`, `PMem`, `GoodVal`, `TypedF`, `ReadOk` (THE READ CLAUSE), `SGood`, `LabOk`, `StatePres`, `FundAt`, `Fund`; members whole; types kept by ends/access.
 - `Ops.lean`: `MemReads` (the data layer's read lemma, a hypothesis); whole writes (`sgood_setAt_const`, `sgood_setAt_pmem`), ends (`endAt_sgood`), [Access] (`access_sgood`).
 - `Call.lean`: a call's result is a member (`callOf_res_mem`, from `ApplyMem.app_mem'`/`app_mem_ref`); `callOfS_res`.
@@ -18,7 +18,7 @@ Lane `spine-model` (worktree `ochre-model`), opened 2026-11-20. The orchestrator
 
 ## The statement
 
-`fund_all (hc : FundCtx K) : ∀ t, t.valsOk (fun v => Fund K ρ φ (.val v)) → Fund K ρ φ t`, where `Fund K ρ φ t := ∀ tl hint, FundAt K.dm K.Γ φ (runS K ρ φ tl hint t)` and `FundAt dm Γ φ x := ∀ s s' r, SGood dm Γ φ s → x s = some (r, s') → GoodRes dm.read r ∧ LabOk dm s' r ∧ LoU s' r.2.label ∧ SGood dm Γ φ s'`.
+`fund_all (hc : FundCtx K) : ∀ t, t.valsOk (fun v => Fund K ρ φ (.val v)) → Fund K ρ φ t`, where `Fund K ρ φ t := ∀ tl hint, FundAt K.dm K.Γ φ (runT K ρ φ tl hint t)` and `FundAt dm Γ φ x := ∀ s s' r, SGood dm Γ φ s → x s = some (r, s') → GoodRes dm.read r ∧ LabOk dm s' r ∧ LoU s' r.2.label ∧ SGood dm Γ φ s'`.
 
 - `SGood dm Γ φ s`, at every typed future `ψ` (`TypedF`: agrees with `φ` off the live labels, each live label a partly moved MEMBER (`PMem`, no `OpenIn`) of its recorded content type): `bind` (each existing binding: `GoodVal`, a partly moved member or a value with no data at `err`), `holder` (`PMem` of the label's content type), `held` (records are members), `holderTy`, `acyc` (`RInv (fun _ => True)`: the label order), `fresh` (`ReadsBelow`), `read` (`ReadOk`).
 - `GoodRes`: a whole member, `⊥`, or a value with no data (`.ty _` or `⋆`) at `err`.
@@ -27,7 +27,7 @@ Lane `spine-model` (worktree `ochre-model`), opened 2026-11-20. The orchestrator
 
 ## Decisions in force (orchestrator, 2026-11-21) and how they are built
 
-1. Equality rules: premise proofs run on a copy, `⋆` at `prop True` (`fund_premises`). Generalised (this lane, to report): EVERY erased proof is `⋆` at `prop True` (`SM.erasedS`), since a field of `⋆` is read at `err` and would otherwise fail C1; the clause's own type is still checked by the lemma at the clause (`erasedS_clause_true`).
+1. Equality rules: premise proofs run on a copy, `⋆` at `prop True` (`fund_premises`). Generalised (this lane, to report): EVERY erased proof is `⋆` at `prop True` (`SM.erasedIf`), since a field of `⋆` is read at `err` and would otherwise fail C1; the clause's own type is still checked by the lemma at the clause (`erasedS_clause_true`).
 2. Borrow invariance at calls: `BorrowArgsTyped`, extended (this lane) with "the argument's label is live", which discharges `callOfS_sgood`'s liveness need.
 3. Partly moved futures, with `moved` in `callOfL`'s undecodable branch (the orchestrator reversed its first ruling, strict ends, on this lane's measurement: one line in Run.lean and one literal in `Locality.callOfL_ref_inv`'s proof, against a dozen signatures the step statements consume; the relation's records clause never takes the changed branch). The checker's rule (no end over moved-out content) is carried as the named fact `EndWhole`, which the simulation may use and the lemma does not need.
 4. Reads at field paths: an invariant (`ReadOk`), not strict reads; the read case is proved from it.
@@ -62,12 +62,23 @@ What the read clause says at the empty path: a binding's whole value is a member
 ## Other findings for the orchestrator
 
 - `.tind` at a `Type₁` declaration: the model reads every data declaration as a `Type₀` code, so `D(ā) : Type₁` is no member of `univ 2`; `FundCtx.sorts` excludes it.
-- `bodyAt` (the `.fix` clause's frame) sets `heldMem` but not `heldTy` for a borrow parameter's label: a closure body's frame is not `SGood`. Not read by the lemma (strict `.fix`), but the simulation's body runs (`runBody`, in place) will need the record typed.
+- `bodyAt` (the `.fix` clause's frame) set `heldMem` but not `heldTy` for a borrow parameter's label. FIXED in the port: `bodyAt` and `RunCongr`'s `fixStep` mirror set both.
+- ADEQUACY (kernel-checked, `Regress/Adequacy_flipped.erased_match_proof_fails`): under C1 an erased match on a proof with other than one arm FAILS (the tag is `⋆`, no arm can be chosen). The checker accepts `Subsingletons.OrComm`/`OrElim`/`OrLet` (two arms on `Or`, result a proof) and `Propositions.absurdP` (no arms on `False`). On `Or` the strict run therefore fails where the checker succeeds, at members; the simulation side's "an accepted program's run succeeds" is false there. The lemma is unaffected (it is about successful runs). Needs a ruling: e.g. an erased proof match picks the arm whose constructor's field propositions hold (classically), or the run trusts an erased match's result type when every arm is a proof.
+
+## The port (2026-11-21): what changed besides `Run.lean`
+
+Definitions the step statements consume that changed: `runT` (strict clauses; `.place`/`.borrow`/`.assign`/`.call`/`.ascribe`/`.succ`/`.ctor`/`.fix`/`.val`/the equality rules), `SM.erasedIf` (C1; `SM.erasedAt` deleted, an erased place is `⋆` at `True` like every proof), `callOfL` (`moved`, not `err`, in the undecodable branch), `bodyAt` (records `heldTy`), `strictVal` (new; a constructor value whose meaning is `err` fails outright, so that the test never reads the hint where the meaning is `err`: needed by `HintIndep`). Unchanged: `dropAt`, `joinDrop`, `matchEntry`, `runBodyRef`/`CallRef`, `contentOf`, `assignAt`, `ctorOut`. No file under `Steps/` needed a change.
+Core lemmas: `RunPresInd`, `RunCongr` (+ `strictVal_state`, `premises_congr`), `AssignCongr`, `RunSubst`, `RunSubstAbs`, `Lemmas.fillOK_upd` (through `strictVal_state`), `HintIndep` (the `.val` case reads `strictVal`; erasure keeps the value), `SubstAbs.absFill_shape` (NEW HYPOTHESIS `hmem`: the filler means a member of `Δ σ`, `ρ σ ∈ Δ σ`, since a constructor filler is now tested; it had no caller).
+Concrete runs, changed only where strictness adds a test to discharge or fails by design:
+- flipped by design: `OpenFalse.run_ascribe_trusted` → `run_ascribe_strict` (`(0 : Unit)` fails); `Adequacy_flipped.erased_unrun`/`erased_place` → `erased_on_copy`; `ShapeAgree.erased_proof_untyped` → `erased_proof_true`; `ReturnedRead.callOf_reads_decoded` (the lender now reads `moved` where the checker's mark does: the D66 discrepancy at `moved` is gone).
+- new membership hypotheses where a data model is arbitrary: `Adequacy_flipped.ctor_no_hint`, `CodeRuns.boxProof`/`run_ctor` (discharged in the `List`/`Rose` runs from `DataCodes`), `ParamSolve.ctor1_runs`/`sw_*`/`so_*` (discharged by `CtorMem.sw_runs_strict`/`so_runs_strict` from `t ∈ Tag(3)`).
+- states carrying `moved` for an undecodable final content: `Attack/RunEqs` (`S₃`, `S₄`, …), `CallInPlace` (`SC1`, `yR1`, `callOf_id1`), `DepSites.SRb`; and `heldTy` at a body frame's parameter label: `CallInPlace.SB`/`SBs`.
+- every other run: the strict tests discharged (`mem_nat`, `borrowArgs_S₂`, `borrowArgs_psInc`, closures built hence members, `run_incT`/`run_id1T`).
 
 ## Idioms
 
-- A clause case: `intro s s' r hs h; rw [runS] at h; refine fund_erasedS ?_ s s' r hs h; intro s₀ s₁ r₀ hs₀ h₀` then `SM.bind_some` / `Option.bind_eq_some_iff` destructuring as `RunPresInd` does.
-- `.prim` clauses: `rw [runS]` on a generic `.prim n args` yields the catch-all equation plus one side goal per earlier pattern (`runS_prim_other`); the specific ones reduce by `rfl` (`fund_premises … rfl`).
+- A clause case: `intro s s' r hs h; rw [runT] at h; refine fund_erasedS ?_ s s' r hs h; intro s₀ s₁ r₀ hs₀ h₀` then `SM.bind_some` / `Option.bind_eq_some_iff` destructuring as `RunPresInd` does.
+- `.prim` clauses: `rw [runT]` on a generic `.prim n args` yields the catch-all equation plus one side goal per earlier pattern (`runS_prim_other`); the specific ones reduce by `rfl` (`fund_premises … rfl`).
 - Liveness of results: reuse `RunPresInd`/`RunPres` (`readPlace_rinv`, `borrowPlace_rinv`, `letDrop_rinv`, `joinDrop_lou`, `lou_setLent`); label records: `HeldSame`.
 - Mutual induction over nested `Term`: `termination_by structural` on each of `fund_all`, `fund_list`, `fund_arms`, the list cases as terms (`(List.mem_cons.mp h).elim …`), not tactic `rcases … rfl`.
 
@@ -82,7 +93,7 @@ What the read clause says at the empty path: a binding's whole value is a member
 
 ## Next
 
-0. The frame lemmas of (iii) above (in-place call frame push/pop/renaming; `bodyAt` with `heldTy` set).
-1. The data layer's port is merged (spine be901e24). Port `runS` into `Run.lean` (the strict run replaces `runT`), carrying the measured repairs (RunPresInd, RunCongr, AssignCongr, RunSubst/RunSubstAbs with `FillOK` carrying the fill's membership, Regress), then move `Strict/*` onto `runT`.
-2. The field guesses: owned by the dependent-values attack; this lane supplies their exact statements.
+0. The dependent-values step, after the checker's D112 is on `main` and that agent has written the exact clauses: mirrored invalidation, open membership in `SGood`, strict whole reads/borrows; then the three field guesses.
+1. The frame lemmas of (iii) above (in-place call frame push/pop/renaming; `bodyAt` now records `heldTy`).
+2. The erased proof match with several arms (see the adequacy finding): a ruling first.
 3. The strict type formers' "well typed inside" (brief item 2) is not started.

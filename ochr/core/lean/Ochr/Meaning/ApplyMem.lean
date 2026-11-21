@@ -66,15 +66,6 @@ theorem MemList.append {R : DataRead} : ∀ {fs Ts gs Us}, MemList R fs Ts → M
 section
 variable (L : Lvl.{u})
 
-/-- The content types of the borrow parameters a telescope code reaches at the arguments, in order
-(`[]` past an argument that does not decode). -/
-noncomputable def telRefTysL : {Fin C : Type u} → Tel L.Code Fin C → List Sem → List TyM
-  | _, _, .param _ isRef _ c _ k, a :: as =>
-    match L.dec c a with
-    | some x => (if isRef then [L.toTy c] else []) ++ telRefTysL (k x) as
-    | none => []
-  | _, _, _, _ => []
-
 /-- **Application along a telescope lands in the codomain**: where the arguments reach a data
 codomain `B` (`telCodL`), applying any element gives a result that is a member of `B`, and final
 contents that are members of the borrow parameters' content types (those `readFin` already holds,

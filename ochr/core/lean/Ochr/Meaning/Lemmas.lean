@@ -87,12 +87,13 @@ theorem fillOK_upd (φ : Future) (l : Nat) (w : Value) (hK : ∀ n, (K.C.global 
     fun y hy => Future.upd_other _ _ hy
   refine ⟨fun hint => ?_, fun hint s => ?_, hD⟩
   · rw [meanV_congr K ρ _ φ hint w hK (fun y hy => hagree y (hw' y hy)), hf hint (.plain .err), Future.upd_same]
-  · have h0 := hc hint (emptyState 0)
+  · -- the filler's strict `.val` decides from its result alone, so the agreement at the empty
+    -- state (`run_congrE`) carries to `s`
+    have h0 := hc hint s
     have hr := run_congrE K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hK (.val w) hint (emptyState 0)
       (fun y => y ≠ l) (fun y hy => (hagree y hy).symm) (fun y hy => hw' y hy) (rinv_emptyState _)
     rw [run_val_def, run_val_def] at h0 hr ⊢
-    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h0 hr ⊢
-    rw [← hr.1.2]
+    rw [strictVal_state _ _ _ s (emptyState 0), ← hr, ← strictVal_state]
     exact h0
 
 /-- Filling a loan is fixing the future, for values. The hypotheses are m2-proofs' C and (P1) the

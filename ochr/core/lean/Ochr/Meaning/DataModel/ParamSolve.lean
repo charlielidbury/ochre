@@ -194,7 +194,7 @@ theorem ctor1_fails (K : RunCtx) (d : IndDecl) (ty : String) (c : Nat) (x : Hint
   have hne : d.params ≠ [] := fun h => by rw [h] at hp; cases hp
   rw [if_neg (by simp [hp])]
   simp only [SM.stmtIf, Bool.false_eq_true, if_false, Regress.CE4flip.SM.bind_apply, ha, pure, hp, hu]
-  simp [ctorOut, SM.fail]
+  simp [ctorOut, SM.fail, SM.strictS]
 
 /-- **A one-field constructor with one unwritten parameter and no hint runs** when the field's
 type gives the parameter back (`p`): the field runs at `err`, `unifyTyS` solves the parameter, and
@@ -205,7 +205,9 @@ theorem ctor1_runs (K : RunCtx) (d : IndDecl) (ty : String) (c : Nat) (x : Hint)
     (hFT : fieldTerm d c 0 = some FT) (hfv : FT.freeVars = [0])
     (hint : TyS) (hh : hint.data = none)
     (v : Sem) (R : TyS) (s' : SState) (ha : runT K ρ φ false (.plain TyM.err) a s = some ((v, R), s'))
-    (p : Sem) (hu : unifyTyS K.dm 1 FT R [none] = [some p]) :
+    (p : Sem) (hu : unifyTyS K.dm 1 FT R [none] = [some p])
+    -- STRICT: the value built is a member of its type
+    (hm : DataModel.ctorR d (K.dm.recOf d [p]) c [v] ∈ₛ[K.dm.read] K.dm.tyR d (K.dm.recOf d [p])) :
     run K ρ φ hint (.ctor ty c x [] [a]) s =
       some ((DataModel.ctorR d (K.dm.recOf d [p]) c [v], .plain (K.dm.tyR d (K.dm.recOf d [p]))), s') := by
   have hpe : d.params.isEmpty = false := by
@@ -218,7 +220,8 @@ theorem ctor1_runs (K : RunCtx) (d : IndDecl) (ty : String) (c : Nat) (x : Hint)
   simp only [runFields, hFT, hfv, hs, Bool.false_and, SM.stmtIf, Bool.false_eq_true, if_false]
   rw [if_neg (by simp [hp])]
   simp only [SM.stmtIf, Bool.false_eq_true, if_false, Regress.CE4flip.SM.bind_apply, ha, pure, hp, hu]
-  simp [ctorOut, hs, solved, pure]
+  simp [ctorOut, hs, solved, pure, SM.strictS]
+  exact hm
 
 /-- A frame holding `t` at type `T`. -/
 def bindT (T : TyM) (v : Sem) : SBinding := { ty := .plain T, val := fun _ => v, decl := .other }
@@ -233,20 +236,23 @@ theorem read_t (G : String → Sem × TyS) (T : TyM) (v : Sem) (hw : v.whole) :
 /-- **`SW` in the model** (Handoff 3b; before it, the run failed): from a frame holding
 `t : Tag(3)`, `MkW(t)` with no parameter written and no hint runs to `Wrap(3)`'s tree at `Wrap(3)`'s
 type, as the checker's `MkW(t) : Wrap(3)`; and `let w = MkW(t); 0` runs. -/
-theorem sw_ctor (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole) :
+theorem sw_ctor (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole)
+    (hm : dmS.ctorM wrapD [.el0 Nat 3] 0 [tv] ∈ₛ[dmS.read] dmS.tyM wrapD [.el0 Nat 3]) :
     run (Kp dmS ΓS G) ρ φ (.plain .err) (.ctor "Wrap" 0 (hn "MkW") [] [.place (.var 0)])
       (frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv]) =
       some ((dmS.ctorM wrapD [.el0 Nat 3] 0 [tv], .plain (dmS.tyM wrapD [.el0 Nat 3])),
         frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv]) := by
   rw [ctor1_runs ρ φ _ wrapD "Wrap" 0 _ _ _ _ rfl rfl rfl rfl rfl rfl _ rfl tv _ _ (read_t ρ φ G _ tv hw)
-    (ofSmall (Sem.el0 Nat 3).small) (wrap_solves _)]
+    (ofSmall (Sem.el0 Nat 3).small) (wrap_solves _)
+    (by rw [show (Kp dmS ΓS G).dm = dmS from rfl, recOf_ofSmall _ wrapD (by simp)]; exact hm)]
   rw [show (Kp dmS ΓS G).dm = dmS from rfl, recOf_ofSmall _ wrapD (by simp)]
   rfl
 
-theorem sw_runs (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole) (hint : TyS) :
+theorem sw_runs (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole)
+    (hm : dmS.ctorM wrapD [.el0 Nat 3] 0 [tv] ∈ₛ[dmS.read] dmS.tyM wrapD [.el0 Nat 3]) (hint : TyS) :
     (run (Kp dmS ΓS G) ρ φ hint (.letIn (hn "w") (.ctor "Wrap" 0 (hn "MkW") [] [.place (.var 0)]) (num 0))
       (frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv])).isSome := by
-  rw [run_letIn, sw_ctor ρ φ G tv hw]
+  rw [run_letIn, sw_ctor ρ φ G tv hw hm]
   simp [bind, Option.bind, run_num]
 
 /-- **`SH` in the model**: from a frame holding `t : HL(F0)`, the run of `let w = MkHW(t); 0` fails,
@@ -262,20 +268,23 @@ theorem sh_fails (G : String → Sem × TyS) (f tv : Sem) (hw : tv.whole) (hint 
 /-- **`SO` in the model** (before Handoff 3b the run failed, no field determining `Opt2`'s
 record): from a frame holding `t : Tag(3)`, `A2(t)` runs to `Opt2(3)`'s tree at `Opt2(3)`'s type,
 whose record holds `B2`'s equation `3 = 3`; and `let w = A2(t); 0` runs. -/
-theorem so_ctor (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole) :
+theorem so_ctor (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole)
+    (hm : dmS.ctorM opt2D [.el0 Nat 3] 0 [tv] ∈ₛ[dmS.read] dmS.tyM opt2D [.el0 Nat 3]) :
     run (Kp dmS ΓS G) ρ φ (.plain .err) (.ctor "Opt2" 0 (hn "A2") [] [.place (.var 0)])
       (frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv]) =
       some ((dmS.ctorM opt2D [.el0 Nat 3] 0 [tv], .plain (dmS.tyM opt2D [.el0 Nat 3])),
         frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv]) := by
   rw [ctor1_runs ρ φ _ opt2D "Opt2" 0 _ _ _ _ rfl rfl rfl rfl rfl rfl _ rfl tv _ _ (read_t ρ φ G _ tv hw)
-    (ofSmall (Sem.el0 Nat 3).small) (wrap_solves _)]
+    (ofSmall (Sem.el0 Nat 3).small) (wrap_solves _)
+    (by rw [show (Kp dmS ΓS G).dm = dmS from rfl, recOf_ofSmall _ opt2D (by simp)]; exact hm)]
   rw [show (Kp dmS ΓS G).dm = dmS from rfl, recOf_ofSmall _ opt2D (by simp)]
   rfl
 
-theorem so_runs (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole) (hint : TyS) :
+theorem so_runs (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole)
+    (hm : dmS.ctorM opt2D [.el0 Nat 3] 0 [tv] ∈ₛ[dmS.read] dmS.tyM opt2D [.el0 Nat 3]) (hint : TyS) :
     (run (Kp dmS ΓS G) ρ φ hint (.letIn (hn "w") (.ctor "Opt2" 0 (hn "A2") [] [.place (.var 0)]) (num 0))
       (frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv])).isSome := by
-  rw [run_letIn, so_ctor ρ φ G tv hw]
+  rw [run_letIn, so_ctor ρ φ G tv hw hm]
   simp [bind, Option.bind, run_num]
 
 end

@@ -238,7 +238,7 @@ noncomputable def fixStep (sa : SState × List Sem × List Pos) (ap : Sem × PiD
     let s := s.pushTemp fun ψ => ψ l
     let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
     -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
-    let s := pushBindShaped (s.setHeldMem l ap.1) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
+    let s := pushBindShaped ((s.setHeldMem l ap.1).setHeldTy l T.m) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
     (s, acc ++ [ap.1], cells ++ [cell])
   else
     (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
@@ -285,11 +285,11 @@ noncomputable def fixMoves (t : Term) (s : SState) : SState :=
 theorem run_fix_def (tl : Bool) (hint : TyS) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
     (body : Term) (s : SState) :
     runT K ρ φ tl hint (.fix self hs ds c dec body) s =
-      SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun _ => some ((closureAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
+      SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun _ => SM.strictS K.dm.read (fun s' => some ((closureAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
           (fixG K ρ φ (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c) (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
             (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)) s.nextLoan dec body),
         .plain (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c))),
-        fixMoves K (.fix self hs ds c dec body) s)) s := by
+        s')) (fixMoves K (.fix self hs ds c dec body) s)) s := by
   rw [runT]
   rfl
 
@@ -421,6 +421,35 @@ theorem pushBindShaped_setHeldMem (s : SState) (l : Nat) (v : Sem) (b : SBinding
     simp only [SState.setHeldMem_env]
     cases h : ((s.takeLabel k).pushBind b).env.getLast? <;> rfl
 
+theorem formInv_setHeldTy {start : Nat} {s : SState} {l : Nat} {T : TyM} {acc : List Sem} {cells : List Pos} :
+    FormInv L start (s.setHeldTy l T, acc, cells) ↔ FormInv L start (s, acc, cells) := Iff.rfl
+
+theorem setAt_setHeldTy (s : SState) (l : Nat) (T : TyM) (p : Pos) (g : SVal) :
+    (s.setHeldTy l T).setAt p g = (s.setAt p g).setHeldTy l T := by
+  cases p <;> rfl
+
+theorem takeLabel_setHeldTy (s : SState) (l : Nat) (T : TyM) (k : Nat) :
+    (s.setHeldTy l T).takeLabel k = (s.takeLabel k).setHeldTy l T := by
+  unfold SState.takeLabel
+  have hh : (s.setHeldTy l T).holderOf k = s.holderOf k := rfl
+  rw [hh]
+  cases h : s.holderOf k with
+  | none => rfl
+  | some r => dsimp only; rw [setAt_setHeldTy]; rfl
+
+theorem pushBindShaped_setHeldTy (s : SState) (l : Nat) (T : TyM) (b : SBinding) :
+    pushBindShaped (s.setHeldTy l T) b = (pushBindShaped s b).setHeldTy l T := by
+  unfold pushBindShaped
+  cases b.ty.label with
+  | none => rfl
+  | some k =>
+    dsimp only
+    rw [takeLabel_setHeldTy]
+    have he : (((s.takeLabel k).setHeldTy l T).pushBind b) = ((s.takeLabel k).pushBind b).setHeldTy l T := rfl
+    rw [he]
+    simp only [SState.setHeldTy_env]
+    cases h : ((s.takeLabel k).pushBind b).env.getLast? <;> rfl
+
 theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : FormInv L start sa) (ap : Sem × PiDom) :
     FormInv L start (fixStep fb sa ap) := by
   obtain ⟨s, acc, cells⟩ := sa
@@ -429,8 +458,8 @@ theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : For
   unfold fixStep
   dsimp only
   split
-  · simp only [SState.freshLoan, pushBindShaped_setHeldMem]
-    rw [formInv_setHeldMem]
+  · simp only [SState.freshLoan, pushBindShaped_setHeldTy, pushBindShaped_setHeldMem]
+    rw [formInv_setHeldTy, formInv_setHeldMem]
     generalize hs₀ : ({ s with nextLoan := s.nextLoan + 1 } : SState) = s₀
     have hi₀ : RInv L s₀ := by rw [← hs₀]; exact freshLoan_rinv hi
     have hpos₀ : s₀.positions = s.positions := by rw [← hs₀]; rfl
@@ -674,12 +703,36 @@ noncomputable def valT (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS)
   | _ => hint
 
 theorem runT_val_def (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (v : Value) (s : SState) {tl : Bool} :
-    runT K ρ φ tl hint (.val v) s = some ((meanV K ρ φ hint v, { valT K ρ φ hint v with label := none }), s) := by
+    runT K ρ φ tl hint (.val v) s = strictVal K.dm.read v (meanV K ρ φ hint v, { valT K ρ φ hint v with label := none }) s := by
   cases v <;> rfl
 
 theorem run_val_def (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (v : Value) (s : SState) :
-    run K ρ φ hint (.val v) s = some ((meanV K ρ φ hint v, { valT K ρ φ hint v with label := none }), s) :=
+    run K ρ φ hint (.val v) s = strictVal K.dm.read v (meanV K ρ φ hint v, { valT K ρ φ hint v with label := none }) s :=
   runT_val_def K ρ φ hint v s
+
+/-- A strict `.val` decides from its result alone: the state is passed through. -/
+theorem strictVal_state (R : DataRead) (v : Value) (x : Res) (s s' : SState) :
+    strictVal R v x s = (strictVal R v x s').map (fun p => (p.1, s)) := by
+  cases v <;> simp only [strictVal, SM.strictS, pure] <;> (try split) <;> (try split) <;> simp_all
+
+theorem SM.strictS_congr {R : DataRead} {x x' : SM Res} {s : SState} (h : x s = x' s) :
+    SM.strictS R x s = SM.strictS R x' s := by
+  simp only [SM.strictS, h]
+
+/-- The four equality rules' premises, run in sequence: the same in two contexts where each premise's
+run is (congruence and substitution lemmas share it). -/
+theorem premises_congr_all {K K' : RunCtx} {ρ ρ' : Assignment} {φ φ' : Future} :
+    ∀ (xs : List Term), (∀ x ∈ xs, ∀ s, runT K ρ φ false (.plain .err) x s = runT K' ρ' φ' false (.plain .err) x s) →
+    ∀ s, (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k)
+        (pure ((.proof, .plain (TyM.prop True)) : Res))) s =
+      (xs.foldr (fun t k => runT K' ρ' φ' false (.plain TyM.err) t >>= fun _ => k)
+        (pure ((.proof, .plain (TyM.prop True)) : Res))) s
+  | [], _, _ => rfl
+  | x :: xs, hx, s => by
+    simp only [List.foldr_cons]
+    apply SM.bind_congr (hx x (by simp) s)
+    intro _ s₁ _
+    exact premises_congr_all xs (fun y hy => hx y (by simp [hy])) s₁
 
 theorem SM.onCopy_congr {α : Type 3} {x x' : SM α} {s : SState} (h : x s = x' s) :
     SM.onCopy x s = SM.onCopy x' s := by
@@ -687,6 +740,20 @@ theorem SM.onCopy_congr {α : Type 3} {x x' : SM α} {s : SState} (h : x s = x' 
 
 section
 variable (K : RunCtx) (ρ : Assignment) (φ φ' : Future)
+
+/-- The four equality rules' premises, run in sequence (on one copy): the same at both futures, each
+premise's run being. -/
+theorem premises_congr (hK : ∀ n, (K.C.global n).2.label = none) {L : Nat → Prop} :
+    ∀ (xs : List Term) (s : SState), RInv L s →
+    (∀ x ∈ xs, ∀ s, RInv L s → runT K ρ φ false (.plain .err) x s = runT K ρ φ' false (.plain .err) x s) →
+    (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k) (pure ((.proof, .plain (TyM.prop True)) : Res))) s =
+    (xs.foldr (fun t k => runT K ρ φ' false (.plain TyM.err) t >>= fun _ => k) (pure ((.proof, .plain (TyM.prop True)) : Res))) s
+  | [], _, _, _ => rfl
+  | x :: xs, s, hi, hx => by
+    simp only [List.foldr_cons]
+    apply SM.bind_congr (hx x (by simp) s hi)
+    intro a s₁ h1
+    exact premises_congr hK xs s₁ (runT_rinv K ρ φ L hK false x _ s s₁ a hi h1).1 (fun y hy => hx y (by simp [hy]))
 
 mutual
 /-- **Part (E)**: the run at two futures that agree on `L`, from a state with `RInv L`, of a term
@@ -696,10 +763,9 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     runT K ρ φ tl hint t s = runT K ρ φ' tl hint t s
   | tl, .place p, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
-    refine SM.erasedAt_congr ?_ (readPlace_congr K hφ hi p _)
-    unfold placeTy; rw [contentOf_congr K hφ hi p]
+    exact SM.erasedIf_congr (readPlace_congr K hφ hi p _)
   | tl, .borrow p, hint, s, L, hφ, ht, hi => by
-    rw [runT, runT]; exact SM.erasedIf_congr (borrowPlace_congr K hφ hi p)
+    rw [runT, runT]; exact SM.erasedIf_congr (SM.strictS_congr (borrowPlace_congr K hφ hi p))
   | tl, .seq u w, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
@@ -714,11 +780,13 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
   | tl, .succ u, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
+    refine SM.strictS_congr ?_
     apply SM.bind_congr (runT_congrE hK false u _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     intro a s₁ _; rfl
   | tl, .ref A, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
+    refine SM.strictS_congr ?_
     apply SM.bind_congr (runT_congrE hK false A _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     intro a s₁ _; rfl
   | tl, .const n, hint, s, L, hφ, ht, hi => by rw [runT, runT]
@@ -727,7 +795,12 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
   | tl, .unit, hint, s, L, hφ, ht, hi => by rw [runT, runT]
   | tl, .zero, hint, s, L, hφ, ht, hi => by rw [runT, runT]
   | tl, .tt, hint, s, L, hφ, ht, hi => by rw [runT, runT]
-  | tl, .cong f g, hint, s, L, hφ, ht, hi => by rw [runT, runT]
+  | tl, .cong f g, hint, s, L, hφ, ht, hi => by
+    rw [runT, runT]
+    have hg : ∀ s', RInv L s' → runT K ρ φ false (.plain .err) g s' = runT K ρ φ' false (.plain .err) g s' :=
+      fun s' hi' => runT_congrE hK false g _ s' L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi'
+    exact SM.onCopy_congr (premises_congr K ρ φ φ' hK [g] s hi (fun y hy => by
+      rw [List.mem_singleton.mp hy]; exact hg))
   | tl, .val v, hint, s, L, hφ, ht, hi => by
     have hv : ∀ l, v.hasLoanM l = true → φ l = φ' l := fun l h => hφ l (ht l h)
     rw [runT_val_def, runT_val_def, meanV_congrE hK v hint hv]
@@ -751,6 +824,7 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
   | tl, .ascribe u A, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
+    refine SM.strictS_congr ?_
     apply SM.bind_congr (SM.onCopy_congr (runT_congrE hK false A _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi))
     rintro ⟨TA, _⟩ s₁ h1
     have e := SM.onCopy_state h1
@@ -873,6 +947,12 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     rintro ⟨⟨v, R⟩, s₁⟩ h2
     have hi₁ := (runT_rinv K ρ φ L hK false u _ s s₁ _ hi h2).1
     dsimp only
+    have hpt : placeTy K φ p s₁ = placeTy K φ' p s₁ := by unfold placeTy; rw [contentOf_congr K hφ hi₁ p]
+    rw [hpt]
+    by_cases hcnd : v ∈ₛ[K.dm.read] (placeTy K φ' p s₁).m ∧ labTyOk s₁ R.label (placeTy K φ' p s₁).m
+    rotate_left
+    · rw [if_neg hcnd, if_neg hcnd]
+    rw [if_pos hcnd, if_pos hcnd]
     unfold assignAt
     cases hr : resolve s₁ p with
     | none => rfl
@@ -924,14 +1004,20 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
         run K ρ φ hint t s = run K ρ φ' hint t s := fun t hm hint s hi =>
       runAll_congrE hK args t hm hint s L hφ
         (fun l h => ht l (by simp only [Term.anyAtom]; exact anyAtomList_of_mem hm h)) hi
-    by_cases h1 : n = "symm"
-    · subst h1; rw [runT, runT]
-    by_cases h2 : n = "trans"
-    · subst h2; rw [runT, runT]
-    by_cases h3 : n = "rewrite"
-    · subst h3; rw [runT, runT]
-    by_cases h4 : n = "rewriteR"
-    · subst h4; rw [runT, runT]
+    have hprem : ∀ xs : List Term, (∀ x ∈ xs, x ∈ args) →
+        SM.onCopy (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k)
+          (pure ((.proof, .plain (TyM.prop True)) : Res))) s =
+        SM.onCopy (xs.foldr (fun t k => runT K ρ φ' false (.plain TyM.err) t >>= fun _ => k)
+          (pure ((.proof, .plain (TyM.prop True)) : Res))) s := fun xs hxs =>
+      SM.onCopy_congr (premises_congr K ρ φ φ' hK xs s hi (fun x hx s' hi' => hall x (hxs x hx) _ s' hi'))
+    by_cases e1 : ∃ h, n = "symm" ∧ args = [h]
+    · obtain ⟨h0, rfl, hargs⟩ := e1; subst hargs; rw [runT, runT]; exact hprem [h0] (by simp)
+    by_cases e2 : ∃ h k, n = "trans" ∧ args = [h, k]
+    · obtain ⟨h0, k0, rfl, hargs⟩ := e2; subst hargs; rw [runT, runT]; exact hprem [h0, k0] (by simp)
+    by_cases e3 : ∃ h u, n = "rewrite" ∧ args = [h, u]
+    · obtain ⟨h0, u0, rfl, hargs⟩ := e3; subst hargs; rw [runT, runT]; exact hprem [h0, u0] (by simp)
+    by_cases e4 : ∃ h u, n = "rewriteR" ∧ args = [h, u]
+    · obtain ⟨h0, u0, rfl, hargs⟩ := e4; subst hargs; rw [runT, runT]; exact hprem [h0, u0] (by simp)
     by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
     · obtain ⟨A, a, b, P, h', t, rfl, hargs⟩ := hJ
       have hm : ∀ x, x ∈ [A, a, b, P, h', t] → x ∈ args := fun x hx => by rw [hargs]; exact hx
@@ -967,8 +1053,12 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
     have hc2 : ∀ u, n = "peek" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩
     have hc3 : ∀ u, n = "inplace" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩
-    rw [runT.eq_42 K ρ φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
-      runT.eq_42 K ρ φ' tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
+    have f1 : ∀ h, n = "symm" → args = [h] → False := fun h0 a b => e1 ⟨h0, a, b⟩
+    have f2 : ∀ h k, n = "trans" → args = [h, k] → False := fun h0 k0 a b => e2 ⟨h0, k0, a, b⟩
+    have f3 : ∀ h u, n = "rewrite" → args = [h, u] → False := fun h0 u0 a b => e3 ⟨h0, u0, a, b⟩
+    have f4 : ∀ h u, n = "rewriteR" → args = [h, u] → False := fun h0 u0 a b => e4 ⟨h0, u0, a, b⟩
+    rw [runT, runT]
+    all_goals first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3
   | tl, .fix self hs ds c dec body, hint, s, L, hφ, ht, hi => by
     have hbs : bindsOf K ρ φ s ds = bindsOf K ρ φ' s ds :=
       runBinds_congrE hK s L hφ hi (K.D.paramDecls (scopeOf s) ds) ds [] (fun l h => ht l (by simp [Term.anyAtom, h]))

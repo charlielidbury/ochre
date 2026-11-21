@@ -3,13 +3,13 @@ import Ochr.Meaning.Strict.Ops
 import Ochr.Meaning.MonoHolders
 
 /-!
-# A call keeps the invariant (`callOfS`)
+# A call keeps the invariant (`callOf`)
 
 The consumed borrow arguments' holders read `⊥`; every position reads its old meaning at the future
 with the consumed labels fixed to the callee's final contents, which are members of the parameters'
 content types (`ApplyMem.app_mem_finals`), so of the labels' (`BorrowArgsTyped`): a typed future of
 the state before. At a returned borrow `k` (fresh), a typed future gives `k` a partly moved member;
-where it decodes, the finals are the backward function's (members); where it does not, `callOfLS`
+where it decodes, the finals are the backward function's (members); where it does not, `callOfL`
 fixes them to `⊥`, a partly moved member of anything.
 
 One hypothesis beyond the stub's (`hlive`): each borrow argument's label is live, or no position
@@ -196,25 +196,25 @@ theorem typed_transport {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : 
     obtain ⟨y, hy, rfl⟩ := List.mem_map.1 he
     exact (hD y hy).2 p
 
-/-! ## The label order and the fresh-label bound, for the repaired call (`callOfLS`)
+/-! ## The label order and the fresh-label bound, for the repaired call (`callOfL`)
 
-`callOfLS` is `callOfL` with `⊥` for `err` in one branch, so these are `Locality.callOfL_ref_inv`,
+`callOfL` is `callOfL` with `⊥` for `err` in one branch, so these are `Locality.callOfL_ref_inv`,
 `RunPres.callOfL_rinv` and `MonoHolders.callOfL_readsBelow`, re-run (`park_fix_inv` takes the
 undecodable branch's list as a parameter). -/
 
 theorem callOfLS_eq_data (Lv : Lvl.{u}) {C : Type u} {t : Tel Lv.Code PUnit C} {fv : Sem} {args : List Res}
     {s s' : SState} {r : Res} {r' : Sem} {T' : TyM} {finals : List Sem}
     (happ : applyFnL Lv t fv (args.map (·.1)) = some (.data r' T' finals))
-    (h : callOfLS Lv t fv args s = some (r, s')) : callOfL Lv t fv args s = some (r, s') := by
-  unfold callOfLS at h; unfold callOfL; dsimp only at h ⊢; rw [happ] at h ⊢; exact h
+    (h : callOfL Lv t fv args s = some (r, s')) : callOfL Lv t fv args s = some (r, s') := by
+  unfold callOfL at h; unfold callOfL; dsimp only at h ⊢; rw [happ] at h ⊢; exact h
 
 theorem callOfLS_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem)
     (args : List Res) {s s' : SState} (h1 : SState.Inv1 L s) (h2 : SState.Inv2 L s) (hsa : SState.ShapeAt s)
-    {res : Res} (h : callOfLS Lv t fv args s = some (res, s'))
+    {res : Res} (h : callOfL Lv t fv args s = some (res, s'))
     {U : Type u} {c : Lv.Code U} {fwd : U} {back : U → List Sem}
     (happ : applyFnL Lv t fv (args.map (·.1)) = some (.ref U c fwd back)) :
     SState.Inv1 L s' ∧ SState.Inv2 L s' := by
-  unfold callOfLS at h
+  unfold callOfL at h
   dsimp only at h
   rw [happ] at h
   simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
@@ -258,10 +258,10 @@ theorem callOfLS_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel
 
 theorem callOfLS_rinv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem)
     (args : List Res) {s s' : SState} {r : Res} (hi : SState.RInv L s)
-    (h : callOfLS Lv t fv args s = some (r, s')) : SState.RInv L s' := by
+    (h : callOfL Lv t fv args s = some (r, s')) : SState.RInv L s' := by
   obtain ⟨h1, h2, hsa⟩ := hi
   cases happ : applyFnL Lv t fv (args.map (·.1)) with
-  | none => unfold callOfLS at h; dsimp only at h; rw [happ] at h; cases h
+  | none => unfold callOfL at h; dsimp only at h; rw [happ] at h; cases h
   | some res =>
     cases res with
     | data r' T' finals =>
@@ -269,7 +269,7 @@ theorem callOfLS_rinv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv
     | ref U c fwd back =>
       obtain ⟨i1, i2⟩ := callOfLS_ref_inv Lv t fv args h1 h2 hsa h happ
       have h' := h
-      unfold callOfLS at h'; dsimp only at h'; rw [happ] at h'
+      unfold callOfL at h'; dsimp only at h'; rw [happ] at h'
       simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h'
       obtain ⟨rfl, rfl⟩ := h'
       rw [SState.inv1_setHeldMem, SState.inv1_setHeldTy, SState.inv1_setLent] at i1
@@ -300,8 +300,8 @@ theorem callOfLS_rinv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv
 
 theorem callOfLS_readsBelow (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem)
     (args : List Res) (s : SState) (hs : s.ReadsBelow) {r : Res} {s' : SState}
-    (h : callOfLS Lv t fv args s = some (r, s')) : s'.ReadsBelow := by
-  unfold callOfLS at h
+    (h : callOfL Lv t fv args s = some (r, s')) : s'.ReadsBelow := by
+  unfold callOfL at h
   try dsimp only at h
   have hs₀ := SState.readsBelow_foldl_takeLabel hs ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)
   split at h
@@ -759,7 +759,7 @@ theorem callOfLS_sgood_data {dm : DataModel} {Γ : List IndDecl} {φ : Future} (
       l ∈ s.liveLabels ∨ ∀ p, Indep l (s.valAt p))
     {r' : Sem} {T' : TyM} {finals : List Sem}
     (happ : applyFnL Lv t fv (args.map (·.1)) = some (.data r' T' finals))
-    (h : callOfLS Lv t fv args s = some (r, s')) : LabOk dm s' r ∧ SGood dm Γ φ s' := by
+    (h : callOfL Lv t fv args s = some (r, s')) : LabOk dm s' r ∧ SGood dm Γ φ s' := by
   have hacyc := callOfLS_rinv Lv t fv args hs.acyc h
   have hfresh := callOfLS_readsBelow Lv t fv args s hs.fresh h
   -- the finals: members of the parameters' content types, one per borrow parameter
@@ -779,7 +779,7 @@ theorem callOfLS_sgood_data {dm : DataModel} {Γ : List IndDecl} {φ : Future} (
   have hFm := fixes_pmem (Γ := Γ) Lv t args hR ht hfm
   have hFl := fixes_keys_live Lv t args hlive finals
   -- the state
-  unfold callOfLS at h
+  unfold callOfL at h
   dsimp only at h
   rw [happ] at h
   simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -805,7 +805,7 @@ theorem callOfLS_sgood_ref {dm : DataModel} {Γ : List IndDecl} {φ : Future} (L
       l ∈ s.liveLabels ∨ ∀ p, Indep l (s.valAt p))
     {U : Type v} {c : Lv.Code U} {fwd : U} {back : U → List Sem}
     (happ : applyFnL Lv t fv (args.map (·.1)) = some (.ref U c fwd back))
-    (h : callOfLS Lv t fv args s = some (r, s')) : LabOk dm s' r ∧ SGood dm Γ φ s' := by
+    (h : callOfL Lv t fv args s = some (r, s')) : LabOk dm s' r ∧ SGood dm Γ φ s' := by
   have hacyc := callOfLS_rinv Lv t fv args hs.acyc h
   have hfresh := callOfLS_readsBelow Lv t fv args s hs.fresh h
   obtain ⟨F, -, happ'⟩ : ∃ F, Lv.unpack C fv = some F ∧
@@ -842,7 +842,7 @@ theorem callOfLS_sgood_ref {dm : DataModel} {Γ : List IndDecl} {φ : Future} (L
   have hEl := fixes_keys_live Lv t args hlive
     ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)
   have hc : Lv.enc c fwd ∈ₛ[dm.read] Lv.toTy c := hR ▸ hE c fwd
-  unfold callOfLS at h
+  unfold callOfL at h
   dsimp only at h
   rw [happ] at h
   simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
@@ -866,7 +866,7 @@ open Ochr.Meaning
 
 universe w
 
-/-- A call at level `Lv` (`callOfLS`) keeps the invariant. -/
+/-- A call at level `Lv` (`callOfL`) keeps the invariant. -/
 theorem callOfLS_sgood {dm : DataModel} {Γ : List IndDecl} {φ : Future} (Lv : Lvl.{w}) (hE : Lv.EncMem)
     (hR : Lv.read = dm.read) {C : Type w} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
     {s s' : SState} {r : Res} (hs : SGood dm Γ φ s)
@@ -874,9 +874,9 @@ theorem callOfLS_sgood {dm : DataModel} {Γ : List IndDecl} {φ : Future} (Lv : 
       s.heldTy l = (telRefTysL Lv t (args.map (·.1))).getD i TyM.err)
     (hlive : ∀ l, some l ∈ ((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label) →
       l ∈ s.liveLabels ∨ ∀ p, Indep l (s.valAt p))
-    (h : callOfLS Lv t fv args s = some (r, s')) : LabOk dm s' r ∧ SGood dm Γ φ s' := by
+    (h : callOfL Lv t fv args s = some (r, s')) : LabOk dm s' r ∧ SGood dm Γ φ s' := by
   cases happ : applyFnL Lv t fv (args.map (·.1)) with
-  | none => unfold callOfLS at h; dsimp only at h; rw [happ] at h; cases h
+  | none => unfold callOfL at h; dsimp only at h; rw [happ] at h; cases h
   | some res =>
     cases res with
     | data r' T' finals => exact callOfLS_sgood_data Lv hE hR t fv args hs ht hlive happ h
@@ -889,7 +889,7 @@ position (`hlive`; `RunPresInd`'s `LoU` of each argument's run), see the module 
 theorem callOfS_sgood {K : RunCtx} {φ : Future} (_hMR : MemReads K.dm K.Γ) {fv : Res} {as : List Res}
     {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s) (_hf : GoodRes K.dm.read fv)
     (ht : BorrowArgsTyped K.dm.read fv as s)
-    (h : callOfS K.dm.read fv as s = some (r, s')) :
+    (h : callOf K.dm.read fv as s = some (r, s')) :
     LabOk K.dm s' r ∧ SGood K.dm K.Γ φ s' := by
   -- each borrow argument's label is live (the strict test)
   have hlive : ∀ l, some l ∈ refLabelsOf K.dm.read fv as → l ∈ s.liveLabels ∨ ∀ p, Indep l (s.valAt p) := by
@@ -899,7 +899,7 @@ theorem callOfS_sgood {K : RunCtx} {φ : Future} (_hMR : MemReads K.dm K.Γ) {fv
   have ht' := fun i l h => (ht i l h).2
   clear ht
   rcases fv with ⟨fv, ⟨T, lab⟩⟩
-  unfold callOfS at h
+  unfold callOf at h
   cases T with
   | t0 A c =>
     cases c with

@@ -44,7 +44,7 @@ theorem fund_eq (A a b : Term) : Fund K ρ φ (.eq A a b) := fun tl hint => by
 /-- `Id(A, t, u)`: a proposition; the state is the one it started from. -/
 theorem fund_id (A t u : Term) : Fund K ρ φ (.id A t u) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   simp only [Bind.bind, Option.bind_eq_some_iff] at h
   obtain ⟨_, _, _, _, _, _, h⟩ := h
   simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -54,18 +54,18 @@ theorem fund_id (A t u : Term) : Fund K ρ φ (.id A t u) := fun tl hint => by
 /-- A Π-type: its code at its declared sort; the state unchanged. -/
 theorem fund_pi (hs : List Hint) (ds : List Term) (c : Term) : Fund K ρ φ (.pi hs ds c) := fun tl hint => by
   intro s s' r hs' h
-  rw [runS] at h
+  rw [runT] at h
   simp only [Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
   exact ⟨goodRes_pi _ _ _, (fun l h' => by cases h'), (fun l h' => by cases h'), hs'⟩
 
 theorem runParamsS_state (d : IndDecl) : ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s s' : SState)
-    (ps : List Sem), runParamsS K ρ φ d i earlier args s = some (ps, s') → s' = s
+    (ps : List Sem), runParams K ρ φ d i earlier args s = some (ps, s') → s' = s
   | [], i, earlier, s, s', ps, h => by
-    simp only [runParamsS] at h
+    simp only [runParams] at h
     exact (Prod.mk.inj (SM.pure_some h)).2
   | a :: as, i, earlier, s, s', ps, h => by
-    simp only [runParamsS] at h
+    simp only [runParams] at h
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     have e1 := SM.onCopy_state h1
     subst e1
@@ -77,7 +77,7 @@ theorem runParamsS_state (d : IndDecl) : ∀ (args : List Term) (i : Nat) (earli
 /-- `D(ā)`: the declaration's code at its sort (not `Type₁`); the parameters run on copies. -/
 theorem fund_tind (hc : FundCtx K) (n : String) (args : List Term) : Fund K ρ φ (.tind n args) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   cases hd : K.Γ.find? (·.name == n) with
   | none => simp only [hd] at h; cases h
   | some d =>
@@ -100,21 +100,21 @@ theorem presLab_bind_pure {x : SM Res} (hx : FundAt K.dm K.Γ φ x) (g : Res →
 /-- `&A`: strict at `Type₀`; the state is `A`'s run's. -/
 theorem fund_ref {A : Term} (hA : Fund K ρ φ A) : Fund K ρ φ (.ref A) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   exact fund_erasedS (fund_strictS (presLab_bind_pure (hA false _) (fun r => (r.1, .plain (TyM.univ 1)))
     (fun _ => rfl))) s s' r hs h
 
 /-- `S(u)`: strict at `Nat`. -/
 theorem fund_succ {u : Term} (hu : Fund K ρ φ u) : Fund K ρ φ (.succ u) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   exact fund_erasedS (fund_strictS (presLab_bind_pure (hu false _) (fun r => (r.1.succ, .plain TyM.nat))
     (fun _ => rfl))) s s' r hs h
 
 /-- `(u : A)`: strict at the annotation, the result's label at it; the state is `u`'s run's. -/
 theorem fund_ascribe {u A : Term} (hu : Fund K ρ φ u) : Fund K ρ φ (.ascribe u A) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   refine fund_erasedS (fund_strictS ?_) s s' r hs h
   intro s₀ s₁ r₀ hs₀ h₀
   obtain ⟨x, s₂, h1, h2⟩ := SM.bind_some h₀
@@ -129,7 +129,7 @@ theorem fund_ascribe {u A : Term} (hu : Fund K ρ φ u) : Fund K ρ φ (.ascribe
 
 /-- The four equality rules (decision 1): the premise proofs run on a copy; `⋆` at `prop True`. -/
 theorem fund_premises (xs : List Term) (x : SM Res)
-    (hx : x = SM.onCopy (xs.foldr (fun t k => runS K ρ φ false (.plain TyM.err) t >>= fun _ => k)
+    (hx : x = SM.onCopy (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k)
       (pure (.proof, .plain (TyM.prop True))))) : FundAt K.dm K.Γ φ x := by
   subst hx
   refine fund_onCopy fun s s' r h => ?_
@@ -157,13 +157,13 @@ theorem fund_rewriteR (h u : Term) : Fund K ρ φ (.prim "rewriteR" [h, u]) := f
 /-- A place read (copy or move): `readPlace_fund_all`. -/
 theorem fund_place (hc : FundCtx K) (p : Place) : Fund K ρ φ (.place p) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   exact fund_erasedS (readPlace_fund_all hc.reads p _) s s' r hs h
 
 /-- `&p` (strict at the place's type): `borrowPlace_fund`. -/
 theorem fund_borrow (hc : FundCtx K) (p : Place) : Fund K ρ φ (.borrow p) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   exact fund_erasedS (borrowPlace_fund hc.reads p) s s' r hs h
 
 theorem assignAt_res {p : Place} {v : Sem} {lab : Option Nat} {s s' : SState} {r : Res}
@@ -180,7 +180,7 @@ theorem assignAt_res {p : Place} {v : Sem} {lab : Option Nat} {s s' : SState} {r
 theorem fund_assign (hc : FundCtx K) {p : Place} {u : Term} (hu : Fund K ρ φ u) : Fund K ρ φ (.assign p u) :=
     fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   refine fund_erasedS ?_ s s' r hs h
   intro s₀ s₄ r₀ hs₀ h₀
   simp only [Bind.bind, Option.bind_eq_some_iff] at h₀
@@ -201,13 +201,13 @@ theorem statePres_stmtIf {b : Bool} {x : SM Res} (hx : StatePres K.dm K.Γ φ x)
 
 theorem runFieldsS_pres (stmt : Bool) (d : IndDecl) (c : Nat) :
     ∀ (args : List Term), (∀ a ∈ args, Fund K ρ φ a) → ∀ (i : Nat) (rh : Option Rec) (sol : List (Option Sem))
-      (earlier : List Sem), StatePres K.dm K.Γ φ (runFieldsS K ρ φ stmt d c i rh sol earlier args)
+      (earlier : List Sem), StatePres K.dm K.Γ φ (runFields K ρ φ stmt d c i rh sol earlier args)
   | [], _, i, rh, sol, earlier, s, s', fs, hs, h => by
-    simp only [runFieldsS] at h
+    simp only [runFields] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h)
     exact hs
   | a :: as, ha, i, rh, sol, earlier, s, s', fs, hs, h => by
-    simp only [runFieldsS] at h
+    simp only [runFields] at h
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
@@ -216,13 +216,13 @@ theorem runFieldsS_pres (stmt : Bool) (d : IndDecl) (c : Nat) :
 
 theorem runArgsS_pres (stmt : Bool) (fT : TyM) :
     ∀ (args : List Term), (∀ a ∈ args, Fund K ρ φ a) → ∀ (earlier : List Sem),
-      StatePres K.dm K.Γ φ (runArgsS K ρ φ stmt fT earlier args)
+      StatePres K.dm K.Γ φ (runArgs K ρ φ stmt fT earlier args)
   | [], _, earlier, s, s', rs, hs, h => by
-    simp only [runArgsS] at h
+    simp only [runArgs] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h)
     exact hs
   | a :: as, ha, earlier, s, s', rs, hs, h => by
-    simp only [runArgsS] at h
+    simp only [runArgs] at h
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
@@ -235,7 +235,7 @@ member of its type by the strict test (`CtorMem.ctorOut_mem` discharges it: fiel
 theorem fund_ctor {ty : String} {c : Nat} {x : Hint} {ps args : List Term}
     (hargs : ∀ a ∈ args, Fund K ρ φ a) : Fund K ρ φ (.ctor ty c x ps args) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   refine fund_erasedS ?_ s s' r hs h
   intro s₀ s₃ r₀ hs₀ h₀
   cases hd : K.Γ.find? (·.name == ty) with
@@ -261,18 +261,18 @@ universe u
 
 /-- A call's result label (a returned borrow's, parked) is live, or nothing reads it. -/
 theorem callOfLS_lou (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
-    {s s' : SState} {r : Res} (hsa : ShapeAt s) (h : callOfLS Lv t fv args s = some (r, s')) : LoU s' r.2.label := by
+    {s s' : SState} {r : Res} (hsa : ShapeAt s) (h : callOfL Lv t fv args s = some (r, s')) : LoU s' r.2.label := by
   cases happ : applyFnL Lv t fv (args.map (·.1)) with
-  | none => unfold callOfLS at h; dsimp only at h; rw [happ] at h; cases h
+  | none => unfold callOfL at h; dsimp only at h; rw [happ] at h; cases h
   | some res =>
     cases res with
     | data r' T' finals =>
-      unfold callOfLS at h; dsimp only at h; rw [happ] at h
+      unfold callOfL at h; dsimp only at h; rw [happ] at h
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
       exact fun l hl => by simp [TyS.plain] at hl
     | ref U c fwd back =>
-      unfold callOfLS at h; dsimp only at h; rw [happ] at h
+      unfold callOfL at h; dsimp only at h; rw [happ] at h
       simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
       rw [lou_setHeldMem, lou_setHeldTy, lou_setLent]
@@ -309,9 +309,9 @@ theorem callOfLS_lou (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv :
           (live_pushTempShaped_self _ _ _ hne)
 
 theorem callOfS_lou {R : DataRead} {fv : Res} {as : List Res} {s s' : SState} {r : Res} (hsa : ShapeAt s)
-    (h : callOfS R fv as s = some (r, s')) : LoU s' r.2.label := by
+    (h : callOf R fv as s = some (r, s')) : LoU s' r.2.label := by
   rcases fv with ⟨fv, ⟨T, lab⟩⟩
-  unfold callOfS at h
+  unfold callOf at h
   cases T with
   | t0 A c => cases c with
     | pi C t => dsimp only at h; exact callOfLS_lou (lvl0 R) t fv as hsa h
@@ -338,7 +338,7 @@ result is a member of the type it is given (`callOf_res_mem`, from `ApplyMem.app
 theorem fund_call (hc : FundCtx K) {f : Term} {args : List Term} {hd : Bool} (hf : Fund K ρ φ f)
     (hargs : ∀ a ∈ args, Fund K ρ φ a) : Fund K ρ φ (.call f args hd) := fun tl hint => by
   intro s s' r hs h
-  rw [runS] at h
+  rw [runT] at h
   refine fund_erasedS ?_ s s' r hs h
   intro s₀ s₃ r₀ hs₀ h₀
   obtain ⟨fv, s₁, h1, h2⟩ := SM.bind_some h₀

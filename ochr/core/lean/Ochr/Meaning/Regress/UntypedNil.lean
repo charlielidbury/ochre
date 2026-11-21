@@ -142,7 +142,7 @@ theorem run_nil_none (K : RunCtx) (ρ : Assignment) (φ : Future) (s : SState)
     run K ρ φ (.plain .err) nil0 s = none := by
   have hfl' : K.D.flags (scopeOf s) (Term.ctor "List" 0 ⟨"Nil"⟩ [] []) = (false, false) := hfl
   simp [run, runT, nil0, SM.erasedIf, hfl', hΓ, listD, runParams, runFields, SM.stmtIf, TyS.plain,
-    TyM.err, bind, pure, TyS.data, TyM.dataRec?, ctorOut, SM.fail]
+    TyM.err, bind, pure, TyS.data, TyM.dataRec?, ctorOut, SM.fail, SM.strictS]
 
 /-! ## The statements as they stood (spine 6f434832), with no restriction of untyped runs -/
 

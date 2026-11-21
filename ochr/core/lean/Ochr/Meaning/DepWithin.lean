@@ -295,7 +295,7 @@ theorem dws_callOfL_ref.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C
       y ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id :=
     fun x y hy => fixes_keys _ _ y hy
   have hke : ∀ y ∈ (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip
-        ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.err)).filterMap
+        ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)).filterMap
         fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1),
       y ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id :=
     fun y hy => fixes_keys _ _ y hy

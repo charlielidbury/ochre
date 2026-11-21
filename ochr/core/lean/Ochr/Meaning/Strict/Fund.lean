@@ -1,7 +1,7 @@
 import Ochr.Meaning.Strict.Clauses2
 
 /-!
-# THE FUNDAMENTAL LEMMA (on the strict run `runS`)
+# THE FUNDAMENTAL LEMMA (on the strict run `runT`)
 
 From a model state whose positions hold members of their types (`SGood`), a successful strict run
 returns a member of the type it returns (or `⊥`, or a value with no data at `err`), whose borrow label,
@@ -25,8 +25,8 @@ theorem runS_prim_other (n : String) (args : List Term) (tl : Bool) (hint : TyS)
     (h5 : ∀ A a b P h t, ¬ (n = "J" ∧ args = [A, a, b, P, h, t]))
     (h6 : ∀ u, ¬ (n = "clone" ∧ args = [u])) (h7 : ∀ u, ¬ (n = "peek" ∧ args = [u]))
     (h8 : ∀ u, ¬ (n = "inplace" ∧ args = [u])) :
-    runS K ρ φ tl hint (.prim n args) s = none := by
-  rw [runS]
+    runT K ρ φ tl hint (.prim n args) s = none := by
+  rw [runT]
   · rfl
   · exact fun h e1 e2 => h1 h ⟨e1, e2⟩
   · exact fun h k e1 e2 => h2 h k ⟨e1, e2⟩
@@ -51,13 +51,13 @@ theorem fund_prim (hc : FundCtx K) (n : String) (args : List Term) (ha : ∀ t �
   · obtain ⟨A, a, b, P, h, t, rfl, rfl⟩ := e5; exact fund_J hc (ha t (by simp))
   by_cases e6 : ∃ u, n = "clone" ∧ args = [u]
   · obtain ⟨u, rfl, rfl⟩ := e6
-    intro tl hint s s' r hs h; rw [runS] at h; exact fund_inPlace hc (ha u (by simp)) tl hint s s' r hs h
+    intro tl hint s s' r hs h; rw [runT] at h; exact fund_inPlace hc (ha u (by simp)) tl hint s s' r hs h
   by_cases e7 : ∃ u, n = "peek" ∧ args = [u]
   · obtain ⟨u, rfl, rfl⟩ := e7
-    intro tl hint s s' r hs h; rw [runS] at h; exact fund_inPlace hc (ha u (by simp)) tl hint s s' r hs h
+    intro tl hint s s' r hs h; rw [runT] at h; exact fund_inPlace hc (ha u (by simp)) tl hint s s' r hs h
   by_cases e8 : ∃ u, n = "inplace" ∧ args = [u]
   · obtain ⟨u, rfl, rfl⟩ := e8
-    intro tl hint s s' r hs h; rw [runS] at h; exact fund_inPlace hc (ha u (by simp)) tl hint s s' r hs h
+    intro tl hint s s' r hs h; rw [runT] at h; exact fund_inPlace hc (ha u (by simp)) tl hint s s' r hs h
   intro tl hint s s' r hs h
   rw [runS_prim_other n args tl hint s (fun h e => e1 ⟨h, e⟩) (fun h k e => e2 ⟨h, k, e⟩)
     (fun h u e => e3 ⟨h, u, e⟩) (fun h u e => e4 ⟨h, u, e⟩) (fun A a b P h t e => e5 ⟨A, a, b, P, h, t, e⟩)
