@@ -384,6 +384,63 @@ noncomputable def indTag (v : Sem) (_ : TyS) : Sem :=
   | .dat _ _ c _ => .el0 Nat c
   | _ => .err
 
+/-- A typed future of a state (the orchestrator's ruling (A), 2026-11-21, docs/31 D106): the run's
+own off the live labels; each live label a whole MEMBER of its recorded content type. A label's
+value in a future is its borrow's content when the borrow ends, and an end is strict (`EndOk`), so
+no future the run realises gives a label a partly moved value; a partly moved CURRENT content of a
+live borrow is state (its holder's), not future. (It was an open member until the ruling: the
+relation compares only at whole futures, and a state good at open ones could be stuck where the
+checker is not, `Strict/OpenFutureCE`.) -/
+def TypedFut (s : SState) (ψ : Future) : Prop :=
+  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, ψ l ∈ₛ[K.dm.read] s.heldTy l
+
+/-- **STRICT END** (ruling (A)): the borrow `l` may end only where its holder's content is a member of
+its recorded content type at every typed future (the checker's rule, main's D98: no borrow ends over
+moved-out content). -/
+def EndOk (s : SState) (l : Nat) : Prop :=
+  ∀ r, s.holderOf l = some r → ∀ ψ, TypedFut K φ s ψ → s.valAt r ψ ∈ₛ[K.dm.read] s.heldTy l
+
+/-- `ok` holds at each step of a fold, at the state that step starts from. -/
+def FoldOk {α : Type} (f : SState → α → SState) (ok : SState → α → Prop) : List α → SState → Prop
+  | [], _ => True
+  | a :: as, s => ok s a ∧ FoldOk f ok as (f s a)
+
+/-- Every end of `ls.foldl SState.endLabel s` is strict-OK. -/
+def EndsOk (ls : List Nat) (s : SState) : Prop := FoldOk SState.endLabel (EndOk K φ) ls s
+
+/-- One round of [Access] (`SState.access`'s step). -/
+noncomputable def accRound (p : Pos) (hit : List Step → Bool) (s : SState) : SState :=
+  (s.liveLabels.filter (s.reached p hit)).foldl SState.endLabel s
+
+/-- Every end [Access] makes is strict-OK: round `k`'s ends, at the state after `k` rounds. -/
+def AccessOk (s : SState) (p : Pos) (hit : List Step → Bool) : Prop :=
+  ∀ k, k < s.liveLabels.length →
+    EndsOk K φ (((List.range k).foldl (fun t _ => accRound p hit t) s).liveLabels.filter
+      (((List.range k).foldl (fun t _ => accRound p hit t) s).reached p hit))
+      ((List.range k).foldl (fun t _ => accRound p hit t) s)
+
+/-- STRICT END: the ends of a read's or a borrow's access of `p` (`contentOf`). -/
+def ContentOk (p : Place) (s : SState) : Prop :=
+  match resolve s p with
+  | some (pos, steps) => AccessOk K φ s pos (dataHit steps)
+  | none => True
+
+/-- STRICT END: the ends of a match's access for the tag (`tagOf`). -/
+def TagOk (p : Place) (s : SState) : Prop :=
+  match resolve s p with
+  | some (pos, steps) => AccessOk K φ s pos (tagHit steps)
+  | none => True
+
+/-- STRICT END: an assignment's ends (`assignAt`): its access, then the old borrow's end at a root. -/
+def AssignOk (p : Place) (s : SState) : Prop :=
+  match resolve s p with
+  | some (pos, steps) =>
+    ((steps.isEmpty && (s.shape pos).isSome) = false → AccessOk K φ s pos (dataHit steps)) ∧
+    (steps.isEmpty = true → ∀ l,
+      (if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (dataHit steps)).shape pos = some l →
+      EndOk K φ (if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (dataHit steps)) l)
+  | none => True
+
 /-- The content of a place after [Access] for it (static, docs/31 D29: the borrows lent at, over
 or under the place have ended), read at the state's typed future (`SState.typedFuture`: each live
 label its recorded member, docs/31 D68), with its type. That future is typed at a related state, so
@@ -417,11 +474,6 @@ noncomputable def tagOf (p : Place) (tag : Sem → TyS → Sem) : SM Sem := fun 
     let s := s.access pos (tagHit steps)
     some (o (s.valAt pos (s.typedFuture φ)), s)
   | none => none
-
-/-- A typed future of a state: the run's own off the live labels; each live label an open member
-of its recorded content type. -/
-def TypedFut (s : SState) (ψ : Future) : Prop :=
-  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, K.dm.pmem K.Γ (ψ l) (s.heldTy l)
 
 /-- Set the content of a place to a constant meaning, pointwise in the future (no access: the
 caller has done it). STRICT (the orchestrator's rule, 2026-11-21: every write at a field path ends
@@ -502,9 +554,13 @@ def StateOk (s : SState) : Prop :=
 unknowns): after a write or a borrow at a field path, and D112's invalidation, every position holds
 an open member of its type at every typed future (a write of an index, or a lent index, could leave
 a later field outside the type the read gives it; the invalidation's ends pass contents on). A
-write or a borrow at a root or through `*` (`[]`, `[*]`) is whole, tested by the clause itself (the
-orchestrator's rule, 2026-11-21, tests the FIELD paths; testing `[*]` too rejected a write through a
-reference in a call frame whose other positions are not open members, `Regress/CallInPlace`). -/
+write or a borrow at a root or through `*` (`[]`, `[*]`) is whole, tested by the clause itself. The
+exemption of `[*]` was made when testing it rejected `*x := S(*x)` in `Regress/CallInPlace`; the cause
+was the non-recursive `self` bound to `err` (docs/31 D113), now gone, so the test could come back. It
+is kept out: from a good state the test at `[*]` always passes (`Strict/OpsPlace` proves the root and
+`*` cases from the clause's own membership test), and restoring it means restating the regress runs
+through `*`, which are stated over states with an arbitrary `self` or arbitrary meanings (docs/31
+D113). -/
 def lentOk (p : Place) (s : SState) : Prop :=
   match resolve s p with
   | some (_, steps) => steps = [] ∨ steps = [.deref] ∨ StateOk K φ s
@@ -523,6 +579,16 @@ noncomputable def invalidateOne (s : SState) (q : Place) : SState :=
 
 noncomputable def invalidate (p : Place) (s : SState) : SState :=
   (K.D.invalidated (scopeOf s) p).foldl (invalidateOne K φ) s
+
+/-- STRICT END (ruling (A)): the ends of one invalidated place's access. -/
+def InvalOneOk (s : SState) (q : Place) : Prop :=
+  match resolve s q with
+  | some (pos, steps) => AccessOk K φ s pos (dataHit steps)
+  | none => True
+
+/-- STRICT END: every end D112's invalidation makes. -/
+def InvalidateOk (p : Place) (s : SState) : Prop :=
+  FoldOk (invalidateOne K φ) (InvalOneOk K φ) (K.D.invalidated (scopeOf s) p) s
 
 /-- A place's type: its content's type, read on a discarded copy; `err` where the place does not
 resolve. Label-free (`placeTy_label`). The strict assignment tests the value written against it. -/
@@ -622,6 +688,18 @@ noncomputable def discardEnd (R : TyS) (s : SState) : SState :=
   | some l => s.endLabel l
   | none => s
 
+/-- STRICT END: the end of a let's binding when it holds no borrow (`letLenders`'s access). -/
+def LetLendersOk (s : SState) : Prop :=
+  match s.env.getLast? with
+  | some fr => AccessOk K φ s (.bind s.topIdx (fr.binds.length - 1)) (dataHit [])
+  | none => True
+
+/-- STRICT END: a discarded value's borrow. -/
+def DiscardOk (R : TyS) (s : SState) : Prop :=
+  match R.label with
+  | some l => EndOk K φ s l
+  | none => True
+
 /-- The shortest strict prefix of `steps` at which a live label has a site at `pos`: where the
 checker's path stops at a lent part (`Machine.movedPlace`: a place under a loan or a sealed fill
 does not exist, and its longest existing prefix, a fill, is accessed whole). Sites are matched by
@@ -696,6 +774,36 @@ noncomputable def joinDrop (entry : List Place) (t : Term) (s : SState) : SState
     | some (pos, steps) => dropAt K φ q pos steps (accessLentPrefix pos steps s)
     | none => s) s
 
+/-- STRICT END: the access of a lent prefix. -/
+def LentPrefixOk (pos : Pos) (steps : List Step) (s : SState) : Prop :=
+  match lentPrefix s pos steps with
+  | some ψ => AccessOk K φ s pos (dataHit ψ)
+  | none => True
+
+/-- STRICT END: the drop of one place: a borrow at a root ends; otherwise the access, where it is
+kept (no copy, and the write made). -/
+def DropOk (q : Place) (pos : Pos) (steps : List Step) (s : SState) : Prop :=
+  match steps, s.shape pos with
+  | [], some l => EndOk K φ s l
+  | _, _ =>
+    K.D.copy (K.D.placeDecl (scopeOf s) q) = false →
+    (∀ ψ, TypedFut K φ (s.access pos (dataHit steps)) ψ →
+      (Sem.updAt K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos) (fun _ => .moved) steps
+        ((s.access pos (dataHit steps)).valAt pos ψ)).isSome) →
+    AccessOk K φ s pos (dataHit steps)
+
+/-- STRICT END: one step of the join's drop. -/
+def JoinStepOk (s : SState) (q : Place) : Prop :=
+  match resolve s q with
+  | some (pos, steps) => LentPrefixOk K φ pos steps s ∧ DropOk K φ q pos steps (accessLentPrefix pos steps s)
+  | none => True
+
+/-- STRICT END: every end the join's drop makes. -/
+def JoinDropOk (entry : List Place) (t : Term) (s : SState) : Prop :=
+  FoldOk (fun s q => match resolve s q with
+    | some (pos, steps) => dropAt K φ q pos steps (accessLentPrefix pos steps s)
+    | none => s) (JoinStepOk K φ) (K.D.joinMoves (scopeOf s) entry t) s
+
 /-- `movedPlace`'s access while a block's captures are computed: the lent prefix, accessed whole. -/
 noncomputable def entryReroot (s : SState) (q : Place) : SState := match resolve s q with
   | some (pos, steps) => accessLentPrefix pos steps s
@@ -717,6 +825,26 @@ transported term, first do what the stuck block they would close off does at its
 is lent, so the reference's data access ends the same). `bc` is `Decisions.blockCaps`. -/
 noncomputable def entryAccess (bc : List Place × List (Place × Nat)) (s : SState) : SState :=
   bc.2.foldl (entryCap K φ) (bc.1.foldl entryReroot s)
+
+/-- STRICT END: one re-rooted place's access at an entry. -/
+def EntryRerootOk (s : SState) (q : Place) : Prop :=
+  match resolve s q with
+  | some (pos, steps) => LentPrefixOk K φ pos steps s
+  | none => True
+
+/-- STRICT END: one capture's access at an entry, and its invalidation for a capture by `&`. -/
+def EntryCapOk (s : SState) (qk : Place × Nat) : Prop :=
+  (match resolve s qk.1 with
+    | some (pos, steps) => AccessOk K φ s pos (dataHit steps)
+    | none => True) ∧
+  (qk.2 == 1 → InvalidateOk K φ qk.1 (match resolve s qk.1 with
+    | some (pos, steps) => s.access pos (dataHit steps)
+    | none => s))
+
+/-- STRICT END: every end [Entry] makes. -/
+def EntryAccessOk (bc : List Place × List (Place × Nat)) (s : SState) : Prop :=
+  FoldOk entryReroot (EntryRerootOk K φ) bc.1 s ∧
+    FoldOk (entryCap K φ) (EntryCapOk K φ) bc.2 (bc.1.foldl entryReroot s)
 
 /-- The sites, as fills, of the borrows a block takes by move (`joinEnds`' marks for its
 reserved label, made after the entry and before the arm). -/
@@ -767,6 +895,10 @@ noncomputable def matchEntry (ent : Bool) (mt : Term) (s : SState) : SState × (
     (s₁, fun lab s₂ => if isRefDecl (K.D.declOf (scopeOf s₁) mt) then entryLend bc (entrySnapshot bc s₁) lab s₂ else s₂)
   else (s, fun _ s₂ => s₂)
 
+/-- STRICT END: [Entry]'s ends, when it is made. -/
+def MatchEntryOk (ent : Bool) (mt : Term) (s : SState) : Prop :=
+  ent = true → EntryAccessOk K φ (K.D.blockCaps (scopeOf s) (movedPlaces φ s) mt) s
+
 /-- An observation for `Id` (docs/27 Def. 5, D84 [Obs-ref]): after the side's run, each borrow
 binding the side re-points (`rePointed`, static) has a fresh value written through it, the
 `i`-th of `ws` for the `i`-th re-pointed binding, so that where it points is observed through
@@ -807,6 +939,12 @@ noncomputable def capStep (s : SState) (i : Nat) : SState := match s.varPos i wi
     let s := s.access pos (dataHit [])
     if K.D.copy (K.D.placeDecl (scopeOf s) (.var i)) then s else s.setAt pos fun _ => .moved
   | none => s
+
+/-- STRICT END: one capture's access when a closure is formed. -/
+def CapOk (s : SState) (i : Nat) : Prop :=
+  match s.varPos i with
+  | some pos => AccessOk K φ s pos (dataHit [])
+  | none => True
 
 /-- The content types of the borrow parameters a telescope code reaches at the arguments, in order
 (`[]` past an argument that does not decode). -/
@@ -900,7 +1038,61 @@ theorem ctorOut_inv {dm : DataModel} {d : IndDecl} {c : Nat} {fs : List Sem} {r?
     simp only [ctorOut, pure, Option.some.injEq, Prod.mk.injEq] at h
     exact ⟨h.2.symm, rr, rfl, h.1.symm⟩
 
+/-- A test in an `Option` computation at any universe (STRICT END, ruling (A)). -/
+noncomputable def optCheck.{u} (P : Prop) : Option PUnit.{u+1} := if P then some ⟨⟩ else none
+
+/-- A computation run only where `ok` holds of the state it starts from (STRICT END, ruling (A)). -/
+noncomputable def SM.guarded {α : Type 3} (ok : SState → Prop) (x : SM α) : SM α := fun s =>
+  if ok s then x s else none
+
+/-- A state change made only where `ok` holds of the state it starts from (STRICT END, ruling (A)). -/
+noncomputable def SM.guardMod (ok : SState → Prop) (f : SState → SState) : SM PUnit := fun s =>
+  if ok s then some (⟨⟩, f s) else none
+
+theorem SM.guarded_some {α : Type 3} {ok : SState → Prop} {x : SM α} {s : SState} {r : α × SState}
+    (h : SM.guarded ok x s = some r) : ok s ∧ x s = some r := by
+  unfold SM.guarded at h
+  split at h
+  · exact ⟨‹_›, h⟩
+  · cases h
+
+theorem SM.guarded_of {α : Type 3} {ok : SState → Prop} {x : SM α} {s : SState} (h : ok s) :
+    SM.guarded ok x s = x s := by
+  unfold SM.guarded; rw [if_pos h]
+
+theorem SM.guarded_congr {α : Type 3} {ok ok' : SState → Prop} {x x' : SM α} {s : SState}
+    (hok : ok s ↔ ok' s) (hx : x s = x' s) : SM.guarded ok x s = SM.guarded ok' x' s := by
+  unfold SM.guarded; rw [propext hok, hx]
+
+theorem SM.guardMod_some {ok : SState → Prop} {f : SState → SState} {s s' : SState} {u : PUnit}
+    (h : SM.guardMod ok f s = some (u, s')) : ok s ∧ s' = f s := by
+  unfold SM.guardMod at h
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h; exact ⟨‹_›, h.2.symm⟩
+  · cases h
+
+theorem SM.guardMod_of {ok : SState → Prop} {f : SState → SState} {s : SState} (h : ok s) :
+    SM.guardMod ok f s = some (⟨⟩, f s) := by
+  unfold SM.guardMod; rw [if_pos h]
+
+theorem SM.guardMod_congr {ok ok' : SState → Prop} {f : SState → SState} {s : SState} (hok : ok s ↔ ok' s) :
+    SM.guardMod ok f s = SM.guardMod ok' f s := by
+  unfold SM.guardMod; rw [propext hok]
+
+theorem optCheck_congr.{u} {P Q : Prop} (h : P ↔ Q) : optCheck.{u} P = optCheck.{u} Q := by
+  rw [propext h]
+
+theorem optCheck_some.{u} {P : Prop} {x : PUnit.{u+1}} (h : optCheck.{u} P = some x) : P := by
+  unfold optCheck at h; split at h
+  · assumption
+  · cases h
+
+theorem optCheck_of.{u} {P : Prop} (h : P) : optCheck.{u} P = some ⟨⟩ := by
+  unfold optCheck; rw [if_pos h]
+
 mutual
+
+
 /-- The reference run of a term at the future `φ`, at the type `hint` its context expects, in
 tail position when `tl` (D90's tail flag, docs/31 D29 point 2). A term is in tail position when it
 is a function's body (the `.fix` clause's body run), or a tail's `let` body, sequence tail, match
@@ -912,14 +1104,14 @@ so it is not either. -/
 noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
   -- C1: a proof read at a place is read, on a copy, at the place's type
   | .place p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.place p))
-      (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p))) s
+      (SM.guarded (ContentOk K φ p) (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p)))) s
   -- STRICT: the borrowed content is a member of its type (a borrow's record is a member)
   | .borrow p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.borrow p)) (fun s =>
-      match SM.strictS K.dm.read (borrowPlace K φ p) s with
+      match SM.strictS K.dm.read (SM.guarded (ContentOk K φ p) (borrowPlace K φ p)) s with
       | some (r, s₁) =>
         -- D112: the borrow invalidates; STRICT below a root: the lender stays an open member
         let s₂ := invalidate K φ p s₁
-        if lentOk K φ p s₂ then some (r, s₂) else none
+        if InvalidateOk K φ p s₁ ∧ lentOk K φ p s₂ then some (r, s₂) else none
       | none => none) s
   | .assign p u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.assign p u)) (fun s => do
     -- the right-hand side runs BEFORE the place is accessed (`evalCore`'s `.assign`, then
@@ -933,11 +1125,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- STRICT: the value written is a member of the place's type at the write (read on a
     -- discarded copy, `placeTy`; the hint `T` was read before the right-hand side ran)
     if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
-      match assignAt K φ p v R.label s with
+      match SM.guarded (AssignOk K φ p) (assignAt K φ p v R.label) s with
       | some (r, s₁) =>
         -- D112: the write invalidates; STRICT below a root: the position stays an open member
         let s₂ := invalidate K φ p s₁
-        if lentOk K φ p s₂ then some (r, s₂) else none
+        if InvalidateOk K φ p s₁ ∧ lentOk K φ p s₂ then some (r, s₂) else none
       | none => none
     else none) s
   | .letIn x u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.letIn x u w)) (fun s => do
@@ -952,38 +1144,48 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       | none => none
     -- a binding holding no borrow ends the borrows lent at it (D65, `endLoansOfTopBind`: the
     -- non-lexical reading; docs/31 D29: the checker ends them, so the reference must)
-    let s := match held with | some l => s.endLabel l | none => letLenders s
-    some ((r, R), s.dropLast)) s
+    -- STRICT END (ruling (A))
+    if (match held with | some l => EndOk K φ s l | none => LetLendersOk K φ s) then
+      let s := match held with | some l => s.endLabel l | none => letLenders s
+      some ((r, R), s.dropLast)
+    else none) s
   | .seq u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.seq u w)) (do
     -- [Drop] of a discarded value (`Machine.dropValue`): a borrow it holds ends now, as the
     -- checker ends it (docs/31 D29: the two hold the same live borrows at every point; it used
     -- to stay parked until an access depended on it, an early end of the checker's)
     let r ← runT false (.plain TyM.err) u
-    SM.modify (discardEnd r.2)
+    -- STRICT END (ruling (A))
+    SM.guardMod (DiscardOk K φ r.2) (discardEnd r.2)
     runT tl hint w) s
   | .matchNat p z u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchNat p z u)) (fun s => do
     -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access] for the tag: the
     -- audit's A1); `⊥` is an error; then D84's drop at the join
-    let (tg, s) ← tagOf K φ p natTag s
+    let (tg, s) ← SM.guarded (TagOk K φ p) (tagOf K φ p natTag) s
     -- D90 [Entry]: not in tail position, the stuck block's captures are accessed first, and a
     -- borrow-typed match's result is lent what the block's would be (`matchEntry`)
+    -- STRICT END (ruling (A)): [Entry]'s ends, and the join's
+    let _ ← optCheck (MatchEntryOk K φ (!tl) (.matchNat p z u) s)
     let (s, lend) := matchEntry K φ (!tl) (.matchNat p z u) s
     let entry := movedPlaces φ s
     match tg.asNat with
     | some 0 => do
       let ((r, R), s) ← runT tl hint z s
+      let _ ← optCheck (JoinDropOk K φ entry (.matchNat p z u) s)
       some ((r, R), lend R.label (joinDrop K φ entry (.matchNat p z u) s))
     | some (_ + 1) => do
       let ((r, R), s) ← runT tl hint u s
+      let _ ← optCheck (JoinDropOk K φ entry (.matchNat p z u) s)
       some ((r, R), lend R.label (joinDrop K φ entry (.matchNat p z u) s))
     | none => none) s
   | .matchInd p n arms => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchInd p n arms)) (fun s => do
-    let (tg, s) ← tagOf K φ p indTag s
+    let (tg, s) ← SM.guarded (TagOk K φ p) (tagOf K φ p indTag) s
     -- D93: a match on a type with one constructor never closes off, so it has no entry and no
     -- join, on any path (`Machine.evalMatchInd`: its one arm runs directly)
     let one := oneCtor K.Γ n
     -- D90 [Entry], not in tail position, not on a proof (`evalMatchByType` has none), and not on a
     -- one-constructor type (D93)
+    -- STRICT END (ruling (A)): [Entry]'s ends, and the join's
+    let _ ← optCheck (MatchEntryOk K φ (!tl && !tg.isProof && !one) (.matchInd p n arms) s)
     let (s, lend) := matchEntry K φ (!tl && !tg.isProof && !one) (.matchInd p n arms) s
     let entry := movedPlaces φ s
     -- a proof scrutinee is matched by its type (D45): the one arm of a one-constructor
@@ -994,6 +1196,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     match c? with
     | some c => do
       let ((r, R), s) ← runArm tl hint c arms s
+      let _ ← optCheck (tg.isProof = true ∨ one = true ∨ JoinDropOk K φ entry (.matchInd p n arms) s)
       -- a match on a proof has no join (`Machine.evalMatchByType`: its one arm runs on every
       -- path; the audit's A4)
       some ((r, R), match tg with
@@ -1147,9 +1350,12 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         -- borrow; a labelled result at a data codomain (ill-typed) is ended with the rest, else
         -- its cell reads the future at the run's own label in `mkLeafData`
         let keep : Option Nat := if out.isRef then R.label else none
-        let s₄ := (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ keep).foldl SState.endLabel s₃
-        let finals := cells.map fun c => s₄.valAt c
-        some ⟨r, finals, R.label⟩
+        -- STRICT END (ruling (A)): the frame pop's ends
+        if EndsOk K φ (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ keep) s₃ then
+          let s₄ := (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ keep).foldl SState.endLabel s₃
+          let finals := cells.map fun c => s₄.valAt c
+          some ⟨r, finals, R.label⟩
+        else none
       | none => none
     let closureOf (g : List Sem → Option BodyOut) : Sem := closureAt K.dm.read l φ ps out g
     let rankOf (args : List Sem) : Nat := match dec with
@@ -1165,15 +1371,21 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
         (fun k gk => bodyAt (piTyAt K.dm.read l ps (weakCod l rankOf k out))
           (closureAt K.dm.read l φ ps (weakCod l rankOf k out) (stageFn l ps rankOf k gk)))
-    let g : List Sem → Option BodyOut := match dec with
-      | some _ => fun args => stage (rankOf args + 1) args
-      | none => bodyAt piT .err
+    -- a non-recursive `fix` is the recursive one at rank `0` (`rankOf` is `0` without `dec`): its
+    -- `self` is stage 0's closure at the weakened type, a member of it (`stage_mem`), never read (the
+    -- checker has no `self` in scope there, D31). It was `err`, an open member of nothing, and the
+    -- strict test after a write at a field path, which reads every binding, failed on every such
+    -- body (`Strict/FrameCE`: `SetFstOwned`, `PartMove`, accepted, had no meaning; docs/31 D113)
+    let g : List Sem → Option BodyOut := fun args => stage (rankOf args + 1) args
     -- forming the closure (`Machine.capture`) accesses each captured variable, oldest binding
     -- first, and then moves it unless its declared reading is copy (D80): the checker's [Access]
     -- before the capture ends the borrows lent at it (docs/31 D29 point 2, D37)
+    -- STRICT END (ruling (A)): the captures' accesses
+    if FoldOk (capStep K) (CapOk K φ) (capOrder (.fix self hs ds c dec body)) s then
     let s' := (capOrder (.fix self hs ds c dec body)).foldl (capStep K) s
     -- STRICT: the closure is a member of its function type (else it is `err`, `closureL_mem`)
-    SM.strictS K.dm.read (fun s' => some ((closureOf g, .plain piT), s')) s') s
+    SM.strictS K.dm.read (fun s' => some ((closureOf g, .plain piT), s')) s'
+    else none) s
   | .call f args hd => fun s =>
     let fl := K.D.flags (scopeOf s) (.call f args hd)
     -- a statement call runs on a copy that is thrown away (E1; `Decisions.flags`, aligned), and
@@ -1184,7 +1396,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       -- a call reads its head in place: it does not consume the function it calls (D53 (e),
       -- `evalCall`'s `inPlace`; D19, R2: `run f` moved a function variable out, so `f(f(n))`
       -- failed)
-      let fv ← SM.headOf f (fun p => readPlace K φ p true) (runT false (.plain TyM.err) f)
+      let fv ← SM.headOf f (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT false (.plain TyM.err) f)
       -- a statement call's arguments are statement positions, each on its own copy (R4)
       let as ← runArgs fl.1 fv.2.m [] args
       -- STRICT: a borrow argument's label holds its parameter's content type
@@ -1251,19 +1463,25 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- D90 [Entry]: `J` computes, so its transported term's stuck block's captures are accessed
     -- first; then the term runs as the one arm of D84's join (`Machine.evalCore`'s `J`)
     fun s =>
+      -- STRICT END (ruling (A)): [Entry]'s ends, and the join's
+      if MatchEntryOk K φ true t s then
       let s := (matchEntry K φ true t s).1
       let entry := movedPlaces φ s
       match runT false hint t s with
-      | some ((r, R), s) => some ((r, R), joinDrop K φ entry (.prim "J" [A, a, b, P, h, t]) s)
-      | none => none) s
+      | some ((r, R), s) =>
+        if JoinDropOk K φ entry (.prim "J" [A, a, b, P, h, t]) s then
+          some ((r, R), joinDrop K φ entry (.prim "J" [A, a, b, P, h, t]) s)
+        else none
+      | none => none
+      else none) s
   -- `clone`, `peek` and `inplace` of a place read it in place: not consumed (`inplace` is a stuck
   -- block's read-only capture; it used to be `run hint u`, a move: D19)
   | .prim "clone" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "clone" [u]))
-      (SM.headOf u (fun p => readPlace K φ p true) (runT false hint u)) s
+      (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT false hint u)) s
   | .prim "peek" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "peek" [u]))
-      (SM.headOf u (fun p => readPlace K φ p true) (runT false hint u)) s
+      (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT false hint u)) s
   | .prim "inplace" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "inplace" [u]))
-      (SM.headOf u (fun p => readPlace K φ p true) (runT false hint u)) s
+      (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT false hint u)) s
   | .prim _ _ => SM.fail
   -- STRICT: the term's value is a member of the annotation
   | .ascribe u A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ascribe u A)) (SM.strictS K.dm.read <| do

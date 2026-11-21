@@ -6,9 +6,9 @@ import Ochr.Meaning.RunPresInd
 
 **The invariant** (`SGood dm Γ φ s`, in terms of `SState` alone), at every TYPED future `ψ` of the
 state (`TypedF`: `ψ` agrees with the run's future `φ` off the live labels, as the relation compares
-states, and gives each live label an open member (`DataModel.OMem`) of the content type recorded for
-it when it was made, `heldTy`; open, because a borrow may end with parts of its content moved out,
-D53 (h), and its lenders then read those parts moved):
+states, and gives each live label a WHOLE member (`WMem`) of the content type recorded for it when it
+was made, `heldTy`; ruling (A), docs/31 D106: a label's value in a future is its borrow's content when
+it ends, and every end is strict, `EndOkF`; a partly moved CURRENT content is the holder's, state):
 - `bind`: every binding holds an open member of its stored type, or is at the error type (`GoodRes`:
   no type known, nothing owed);
 - `holder`: every holder of a borrow holds an open member of its label's content type;
@@ -43,12 +43,15 @@ a field of `⋆`, which a read types `err`). -/
 def GoodRes (R : DataRead) (r : Res) : Prop :=
   r.1 ∈ₛ[R] r.2.m ∨ r.1 = .moved ∨ (r.2.m = TyM.err ∧ NoData r.1)
 
-/-- What a live label's final content and a holder's content are: an OPEN member (`DataModel.OMem`,
+/-- What a holder's content is: an OPEN member (`DataModel.OMem`,
 the dependent-values unit; it was a partly moved member, which reads wrong types once an index is
 moved, `ReadProto.not_memReads_dep`). -/
 def PMem (dm : DataModel) (Γ : List IndDecl) (v : Sem) (T : TyM) : Prop := dm.pmem Γ v T
 
 theorem PMem.pmem {dm : DataModel} {Γ : List IndDecl} {v : Sem} {T : TyM} (h : PMem dm Γ v T) : dm.pmem Γ v T := h
+
+/-- A typed future's value for a live label: a whole MEMBER (ruling (A), docs/31 D106). -/
+def WMem (dm : DataModel) (_Γ : List IndDecl) (v : Sem) (T : TyM) : Prop := v ∈ₛ[dm.read] T
 
 /-- A binding's value is good: an open member of its stored type, or a type value at `err`. -/
 def GoodVal (dm : DataModel) (Γ : List IndDecl) (v : Sem) (T : TyM) : Prop :=
@@ -58,9 +61,9 @@ section
 variable (dm : DataModel) (Γ : List IndDecl) (φ : Future)
 
 /-- A future typed at a state: it agrees with the run's future off the live labels, and gives each
-live label an open member of its recorded content type. -/
+live label a whole member of its recorded content type (ruling (A), docs/31 D106). -/
 def TypedF (s : SState) (ψ : Future) : Prop :=
-  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, PMem dm Γ (ψ l) (s.heldTy l)
+  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, WMem dm Γ (ψ l) (s.heldTy l)
 
 /-- **The model-side invariant.** -/
 structure SGood (s : SState) : Prop where
@@ -216,15 +219,20 @@ end Ochr.Meaning.Strict
 namespace Ochr.Meaning.Strict
 open Ochr.Meaning
 
-/-- **A named fact the simulation may use (the checker's rule, D98; D53 for a parameter's borrow at
-the function's end): no borrow ends over moved-out content.** On a reference state related to a state
-the checker reaches, the holder of a label about to end holds a WHOLE value at every typed future. The
-fundamental lemma does not need it (its typed futures give live labels open members, and
-`endAt_sgood` holds without it); the simulation may use it where it wants an ended borrow's content
-whole (e.g. to relate the reference's lenders after an end to the checker's, at whole-member
-futures). Not proved here: it is a fact about the checker, to be read off `Machine` by the simulation
-side. -/
-def EndWhole (dm : DataModel) (Γ : List IndDecl) (φ : Future) (s : SState) (l : Nat) : Prop :=
-  ∀ r, s.holderOf l = some r → ∀ ψ, TypedF dm Γ φ s ψ → (s.valAt r ψ).whole
+/-- **The strict end, at the invariant's level** (ruling (A), docs/31 D106; it was `EndWhole`, a named
+fact the lemma did not use): the borrow `l` ends only where its holder's content is a member of its
+recorded type at every typed future. The run's test `Run.EndOk K φ` is this at `K.dm K.Γ`
+(definitionally); the simulation discharges it from the checker's rule (main's D98: no borrow ends
+over moved-out content). -/
+def EndOkF (dm : DataModel) (Γ : List IndDecl) (φ : Future) (s : SState) (l : Nat) : Prop :=
+  ∀ r, s.holderOf l = some r → ∀ ψ, TypedF dm Γ φ s ψ → s.valAt r ψ ∈ₛ[dm.read] s.heldTy l
+
+/-- Every end [Access] makes is a strict end (`Run.AccessOk K φ` at `K.dm K.Γ`). -/
+def AccessOkF (dm : DataModel) (Γ : List IndDecl) (φ : Future) (s : SState) (p : Pos) (hit : List Step → Bool) :
+    Prop :=
+  ∀ k, k < s.liveLabels.length →
+    FoldOk SState.endLabel (EndOkF dm Γ φ) (((List.range k).foldl (fun t _ => accRound p hit t) s).liveLabels.filter
+      (((List.range k).foldl (fun t _ => accRound p hit t) s).reached p hit))
+      ((List.range k).foldl (fun t _ => accRound p hit t) s)
 
 end Ochr.Meaning.Strict

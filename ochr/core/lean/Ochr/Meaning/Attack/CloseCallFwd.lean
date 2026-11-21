@@ -28,11 +28,12 @@ theorem res_means_fwd (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) (�
   simp only [runArgs, bind, pure]
   simp only [run, SM.erasedIf, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, runT]
   simp only [SM.strictS]
+  erw [SM.guarded_of (contentOk_one _ _ _ _)]
   rw [borrowPlace_var0_one _ _ _ _ (by simp [Sem.whole])]
   dsimp only
   simp only [List.nil_append, List.foldl_nil, Nat.zero_add, Bool.false_eq_true, reduceIte, mem_nat, if_true]
-  erw [if_pos (lentOk_root (K₀ dm C) φ (pos := .bind 0 0) rfl)]
   erw [invalidate_noInv (K₀ dm C) φ (fun _ _ => rfl)]
+  erw [if_pos ⟨invalidateOk_noInv (K₀ dm C) φ (fun _ _ => rfl) _ _, lentOk_root (K₀ dm C) φ (pos := .bind 0 0) rfl⟩]
   dsimp only
   -- the strict call: the borrow of `c1` is live and holds `Nat`, `σ1`'s parameter's content type
   erw [if_pos (borrowArgs_S₂ dm.read F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) rfl)]
@@ -40,6 +41,11 @@ theorem res_means_fwd (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) (�
   dsimp only
   have hp := pushBindShaped_S₃ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)
   simp only [rBind] at hp
-  simp only [hp, readPlace_deref_r]
+  simp only [hp]
+  erw [SM.guarded_of (contentOk_deref_S₄ _ φ F n _ 0 (.el0 Nat n))]
+  simp only [readPlace_deref_r]
+  erw [if_pos (guard_S₄ _ φ F n _ 0 (.el0 Nat n))]
+  simp only [held_S₄]
+  erw [if_pos (letGuard_noShape _ φ _ (shape_S₄_end F n _ 0 (.el0 Nat n)))]
 
 end Ochr.Meaning.Attack

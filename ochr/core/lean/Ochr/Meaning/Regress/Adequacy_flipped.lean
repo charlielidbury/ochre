@@ -28,9 +28,15 @@ def one (b : SBinding) (k : Nat) : SState := { env := [{ binds := [b] }], shape 
 /-- R2: the head of a call, a place, is read in place. -/
 theorem head_in_place (b : SBinding) (k : Nat) (rn : SM Res) (hw : (b.val φ).whole)
     (hg : ReadGood K.dm.read b.ty.m (b.val φ)) :
-    SM.headOf (.place (.var 0)) (fun p => readPlace K φ p true) rn (one b k)
+    SM.headOf (.place (.var 0)) (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) rn (one b k)
       = some ((b.val φ, { b.ty with label := none }), one b k) := by
-  show readPlace K φ (.var 0) true (one b k) = _
+  show SM.guarded (ContentOk K φ (.var 0)) (readPlace K φ (.var 0) true) (one b k) = _
+  have hok : ContentOk K φ (.var 0) (one b k) := by
+    have hr : resolve (one b k) (.var 0) = some (.bind 0 0, []) := by
+      simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, one]
+    unfold ContentOk; rw [hr]
+    exact accessOk_noLive K φ (liveLabels_noshape _ rfl) _ _
+  rw [SM.guarded_of hok]
   rw [readPlace_of φ K (.var 0) true (one b k) _ _ _ _ _ (contentOf_var0_one K φ k b)]
   simp [hw, hg, one]
 
@@ -78,8 +84,11 @@ theorem erased_match_proof_fails (p : Place) (n : String) (arms : List (Hint × 
     (hno : ∀ c, SM.ranProof (runArm K ρ φ tl hint c arms s₁) = false) :
     runT K ρ φ tl hint (.matchInd p n arms) s = none := by
   rw [runT]
-  simp only [SM.erasedIf, hfl, if_true, bind, Option.bind, htag, matchEntry, Sem.isProof, Bool.not_true,
-    Bool.and_false, Bool.false_and, if_false, harms]
+  by_cases hT : ¬ TagOk K φ p s
+  · simp [SM.erasedIf, hfl, bind, Option.bind, SM.guarded, hT]
+  have hT : TagOk K φ p s := Classical.byContradiction hT
+  simp only [SM.erasedIf, hfl, if_true, bind, Option.bind, SM.guarded_of hT, htag, matchEntry, Sem.isProof, Bool.not_true,
+    Bool.and_false, Bool.false_and, if_false, harms, optCheck, MatchEntryOk]
   have hf : List.find? (fun _ => false) (List.range arms.length) = none := by
     rw [List.find?_eq_none]; intro _ _; exact Bool.false_ne_true
   simp [SM.anyArm, hno, hf]
@@ -89,12 +98,12 @@ theorem erased_match_proof_fails (p : Place) (n : String) (arms : List (Hint × 
 `True`, the state as it was. -/
 theorem erased_match_proof_runs (p : Place) (n : String) (h₁ h₂ : Hint) (t₁ t₂ : Term) (hint : TyS) (tl : Bool)
     (s s₁ s₂ : SState) (R : TyS) (hfl : (K.D.flags (scopeOf s) (.matchInd p n [(h₁, t₁), (h₂, t₂)])).2 = true)
-    (htag : tagOf K φ p indTag s = some (.proof, s₁))
+    (hT : TagOk K φ p s) (htag : tagOf K φ p indTag s = some (.proof, s₁))
     (h1 : runT K ρ φ tl hint t₁ s₁ = none) (h2 : runT K ρ φ tl hint t₂ s₁ = some ((.proof, R), s₂)) :
     runT K ρ φ tl hint (.matchInd p n [(h₁, t₁), (h₂, t₂)]) s = some ((.proof, .plain (TyM.prop True)), s) := by
   rw [runT]
-  simp only [SM.erasedIf, hfl, if_true, bind, Option.bind, htag, matchEntry, Sem.isProof, Bool.not_true,
-    Bool.and_false, Bool.false_and, if_false]
+  simp only [SM.erasedIf, hfl, if_true, bind, Option.bind, SM.guarded_of hT, htag, matchEntry, Sem.isProof, Bool.not_true,
+    Bool.and_false, Bool.false_and, if_false, optCheck, MatchEntryOk]
   simp [SM.anyArm, runArm, h1, h2, SM.ranProof, List.range, List.range.loop]
 
 /-- The audit's A9: a field of type `A` (the one parameter) given a `Nat` solves `A := Nat`

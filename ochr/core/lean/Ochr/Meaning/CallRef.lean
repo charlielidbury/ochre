@@ -36,16 +36,21 @@ noncomputable def callFrame (cs : List Value) (rd : List (DeclInfo × Value)) (f
     (pushBindShaped s { ty := { T with label := a.2.label }, val := fun _ => a.1, decl := d }, acc ++ [a.1])
   (args.foldl step (s, [])).1
 
-/-- The frame's pop after the body (`Machine.runBodyCore`'s `popFrame`): every live borrow held in
-the callee's frame or made by the body ends, but the returned one (`keep`), in label order as the
-closure's meaning ends them (`bodyAt`); the frame goes, and the returned borrow's holder moves to a
-temporary of the caller's frame. -/
-noncomputable def popCallFrame (start : Nat) (keep : Option Nat) (s : SState) : SState :=
+/-- The labels the frame's pop ends, in label order: every live borrow made by the body (at or above
+`start`) or held in the callee's frame, but the returned one (`keep`), as the closure's meaning ends
+them (`bodyAt`). -/
+noncomputable def popEnds (start : Nat) (keep : Option Nat) (s : SState) : List Nat :=
   let top := s.topIdx
   let inTop (l : Nat) : Bool := match s.holderOf l with
     | some (.bind f _) | some (.temp f _) => f == top
     | none => false
-  let s₁ := (s.liveLabels.filter fun l => (decide (start ≤ l) || inTop l) && decide (some l ≠ keep)).foldl SState.endLabel s
+  s.liveLabels.filter fun l => (decide (start ≤ l) || inTop l) && decide (some l ≠ keep)
+
+/-- The frame's pop after the body (`Machine.runBodyCore`'s `popFrame`): the borrows `popEnds` lists
+end; the frame goes, and the returned borrow's holder moves to a temporary of the caller's frame. -/
+noncomputable def popCallFrame (start : Nat) (keep : Option Nat) (s : SState) : SState :=
+  let top := s.topIdx
+  let s₁ := (popEnds start keep s).foldl SState.endLabel s
   let held : Option (Nat × SVal) := keep.bind fun k => (s₁.holderOf k).map fun p => (k, s₁.valAt p)
   let s₂ : SState := { s₁ with env := s₁.env.dropLast, shape := fun p => match p with
     | .bind f _ | .temp f _ => if f = top then none else s₁.shape p }
@@ -53,9 +58,11 @@ noncomputable def popCallFrame (start : Nat) (keep : Option Nat) (s : SState) : 
   | some (k, v) => s₂.pushTempShaped v k
   | none => s₂
 
+open Classical in
 /-- **The reference's run of a known callee's body in place** (the checker's `runBody`): the frame
 pushed (`callFrame`), the body run in tail position at the codomain the code reaches at the
-arguments (the `.fix` clause's hint, `fixCod`), the frame popped (`popCallFrame`). The parameters'
+arguments (the `.fix` clause's hint, `fixCod`), the frame popped (`popCallFrame`), each of the pop's
+ends strict (`EndsOk`, as `bodyAt`'s pop: ruling (A), every end of a borrow is a strict point). The parameters'
 binders and the codomain are read in the callee's frame of captures, as the `.fix` clause reads them
 in the closure's (`bindsOf`, `codOf`). -/
 noncomputable def runBodyRef (fres : Res) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
@@ -70,7 +77,9 @@ noncomputable def runBodyRef (fres : Res) (cs : List Value) (t : Term) (rd : Lis
     match runT K ρ φ true (.plain (out.cod (args.map (·.1)))) body (callFrame K ρ φ cs rd fres cd bs args s) with
     | some ((r, R), s₁) =>
       let keep : Option Nat := if out.isRef then R.label else none
-      some ((r, { R with label := keep }), popCallFrame start keep s₁)
+      -- STRICT END (ruling (A), docs/31 D106): the pop's ends, as `bodyAt`'s
+      if EndsOk K φ (popEnds start keep s₁) s₁ then some ((r, { R with label := keep }), popCallFrame start keep s₁)
+      else none
     | none => none
   | _ => none
 

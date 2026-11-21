@@ -62,6 +62,12 @@ theorem access_SPr (c : Sem) (hit : List Step → Bool) : (SPr selfB d c r).acce
     | succ n ih => rw [List.range_succ, List.foldl_append, ih]; simp [liveLabels_SPr, reached_SPr]
   exact h _
 
+theorem contentOk_SPr (c : Sem) : ContentOk (Kc dm) φ (.deref (.var 0)) (SPr selfB d c r) := by
+  unfold ContentOk
+  rw [show resolve (SPr selfB d c r) (.deref (.var 0)) = some (.bind 1 1, [.deref]) by
+    simp [resolve, SState.varPos, SState.topIdx, Place.steps, SPr]]
+  exact Attack.accessOk_unreached _ φ fun l => reached_SPr selfB d c _ l
+
 theorem typedFuture_SPr (c : Sem) (ψ : Future) : (SPr selfB d c r).typedFuture ψ = ψ.upd 0 r := by
   funext l; unfold SState.typedFuture; rw [liveLabels_SPr]
   by_cases hl : l = 0 <;> simp [hl, SPr, Future.upd]
@@ -79,7 +85,8 @@ theorem contentOf_SPr (c : Sem) :
 theorem run_id1_r (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint id1Body (SPr selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, { T₀ with label := some 2 }), SPr2 selfB d T₀.m (.el0 Nat a) r) := by
-  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS,
+    SM.guarded_of (contentOk_SPr dm φ selfB d (.el0 Nat a))]
   unfold borrowPlace
   simp only [contentOf_SPr, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
@@ -90,7 +97,7 @@ theorem run_id1_r (a : Nat) (hint : TyS) (tl : Bool) :
   dsimp only
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  all_goals first | rfl | exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Place.steps, SPr, yFrame, Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)])
+  all_goals first | rfl | exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Place.steps, SPr, yFrame, Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)])⟩
 
 end
 
@@ -157,6 +164,16 @@ theorem id1_inPlace_typed :
   let d := ((bindsOf (Kc dm) ρ φ S₂r.pushFrame [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
   have hpop := popCallFrame_two 2 (SPr2 (selfId1P dm ρ φ cd) d T₀.m (.el0 Nat 2) (.el0 Nat 2)) 0 2 1 1 (.temp 1 0)
     (liveLabels_SPr2 _ _ _ _) (holderOf_SPr2 _ _ _ _) rfl (by decide) (holderOf_end_SPr2 _ _ _ _)
+  -- the pop's strict end (ruling (A)): `x`'s label `0` ends over `x`'s content, which reads the
+  -- reborrow `2`'s final content, a number at every typed future
+  have hguard : EndsOk (Kc dm) φ (popEnds 2 (some 2) (SPr2 (selfId1P dm ρ φ cd) d T₀.m (.el0 Nat 2) (.el0 Nat 2)))
+      (SPr2 (selfId1P dm ρ φ cd) d T₀.m (.el0 Nat 2) (.el0 Nat 2)) := by
+    rw [popEnds_two 2 _ 0 2 1 1 (liveLabels_SPr2 _ _ _ _) (holderOf_SPr2 _ _ _ _) rfl (by decide)]
+    refine ⟨fun q hq ψ hψ => ?_, trivial⟩
+    rw [holderOf_SPr2] at hq
+    cases hq
+    have h2 := hψ.2 2 (by rw [liveLabels_SPr2]; simp)
+    simpa [SPr2, SState.valAt, xB, T₀, yB] using h2
   have hrun : runCallRef (Kc dm) ρ φ (fresId1 dm ρ φ) [] id1T [] [(.el0 Nat 2, { yB.ty with label := some 0 })]
       (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Nat 2, { T₀ with label := some 1 }),
         (popCallFrame 2 (some 2) (SPr2 (selfId1P dm ρ φ cd) d T₀.m (.el0 Nat 2) (.el0 Nat 2))).endInto 2 1) := by
@@ -166,8 +183,11 @@ theorem id1_inPlace_typed :
     unfold runBodyRef
     simp only [hs₀]
     rw [callFrame_id1r dm ρ φ _ _ rfl, run_id1_r]
-    simp [outId1, codOf_id1, S₂r, Attack.S₂, SState.freshLoan, SState.setLent]
-    rfl
+    dsimp only
+    rw [if_pos]
+    · simp [outId1, codOf_id1, S₂r, Attack.S₂, SState.freshLoan, SState.setLent]
+      rfl
+    · exact hguard
   refine ⟨_, _, hrun, rfl, ?_, ?_, ?_, ?_⟩
   · rw [hpop, endLabel_SPr2]
     simp [SState.endInto, SState.positions, SState.pushTempShaped, SState.pushTemp, SState.mapVals, SState.topIdx, SPr2,

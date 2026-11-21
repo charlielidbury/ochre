@@ -17,8 +17,10 @@ site recorded), `x₁ : Nat` holding `0` (`1`), `heldTy 0 = Nat`, `heldMem 0 = 1
 (`s₀_good`). The state the old run left after moving out `x₀.0` is not (`s₁_bad`). Under the rule,
 the write is tested defined at every typed future, and at `φ₀` (label `0` the number `0`) the path
 `.0` is absent: the write fails (`setContent_s₀`), the read's move fails (`readPlace_p₀`), and the
-term `x₀.0` is stuck at `s₀` (`runT_p₀`). The simulation's obligation (`Meaning/OPEN.md`) is what
-keeps related states away from `s₀`.
+term `x₀.0` is stuck at `s₀` (`runT_p₀`). Still so under ruling (A) (typed futures at whole members,
+docs/31 D106): `0` is a member of `Nat`. EXCLUDED, not dissolved: `x₀` reads label `0` with no site
+recorded, so `s₀` is related to no checker state (`Rel.sites`); the simulation's obligation
+(`Meaning/OPEN.md`) is what keeps related states away from it.
 -/
 
 namespace Ochr.Meaning.Strict.FieldWriteCE
@@ -102,7 +104,7 @@ theorem s₀_good (dm : DataModel) : SGood dm [] φ₀ s₀ := by
   · rw [positions_s₀] at hp
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false] at hp
     rcases hp with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-    · exact .inl (hψ.2 0 (by rw [live_s₀]; simp))
+    · exact .inl (.mem (hψ.2 0 (by rw [live_s₀]; simp)))
     · exact .inl (.mem (nat_mem dm 1))
   · obtain ⟨rfl, rfl⟩ := sh₀_some hl
     exact .mem (nat_mem dm 1)
@@ -137,7 +139,7 @@ theorem setContent_s₀ (dm : DataModel) :
   unfold setContent
   rw [if_neg]
   intro hall
-  have hTF : TypedFut (Kc dm) φ₀ s₀ φ₀ := ⟨fun _ _ => rfl, fun _ _ => .mem (nat_mem dm 0)⟩
+  have hTF : TypedFut (Kc dm) φ₀ s₀ φ₀ := ⟨fun _ _ => rfl, fun _ _ => nat_mem dm 0⟩
   have h := hall φ₀ hTF
   have hu : Sem.updAt dm [] (.plain TyM.nat) (fun _ => .moved) [.proj 0] (Sem.el0 Nat 0) = none := by
     rw [Sem.updAt.eq_def]
@@ -152,7 +154,7 @@ theorem s₁_bad (dm : DataModel) : ¬ SGood dm [] φ₀ (s₁ dm) := by
   intro hs
   have hTF : TypedF dm [] φ₀ (s₁ dm) φ₀ := by
     refine ⟨fun _ _ => rfl, fun l _ => ?_⟩
-    exact .mem (nat_mem dm 0)
+    exact nat_mem dm 0
   have hp : Pos.bind 0 0 ∈ (s₁ dm).positions := by
     unfold s₁; rw [SState.positions_setAt, positions_s₀]; simp
   have h := hs.bind φ₀ hTF 0 0 hp
@@ -216,6 +218,10 @@ it. -/
 theorem runT_p₀ (dm : DataModel) (ρ : Assignment) :
     runT (Kc dm) ρ φ₀ false (.plain TyM.err) (.place p₀) s₀ = none := by
   rw [runT]
-  exact readPlace_p₀ dm
+  show SM.guarded (ContentOk (Kc dm) φ₀ p₀) (readPlace (Kc dm) φ₀ p₀ false) s₀ = none
+  unfold SM.guarded
+  split
+  · exact readPlace_p₀ dm
+  · rfl
 
 end Ochr.Meaning.Strict.FieldWriteCE

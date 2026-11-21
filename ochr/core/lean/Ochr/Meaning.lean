@@ -103,6 +103,19 @@ import Ochr.Meaning.Regress.InFlight
 import Ochr.Meaning.Regress.EvalMemGap
 import Ochr.Meaning.Steps.EvalMem
 import Ochr.Meaning.Steps.StrictSim
+import Ochr.Meaning.Steps.Form
+import Ochr.Meaning.Steps.FormErase
+import Ochr.Meaning.Steps.FormKern
+import Ochr.Meaning.Steps.FormMachine
+import Ochr.Meaning.Steps.ColumnTemp
+import Ochr.Meaning.Steps.ColumnPlumbAux
+import Ochr.Meaning.Steps.ColumnPlumb
+import Ochr.Meaning.Steps.Column
+import Ochr.Meaning.Steps.ColumnRead
+import Ochr.Meaning.Steps.ColumnLet
+import Ochr.Meaning.Steps.ColumnStart
+import Ochr.Meaning.Steps.ColumnC
+import Ochr.Meaning.Steps.ColumnWrite
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects
@@ -126,6 +139,8 @@ import Ochr.Meaning.ClosureStage
 import Ochr.Meaning.ApplyMem
 import Ochr.Meaning.DataModel.CtorMem
 import Ochr.Meaning.DataModel.Canonical.Knot
+import Ochr.Meaning.DataModel.Exists.PreludeModel
+import Ochr.Meaning.DataModel.Exists.PropNestCE
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE
@@ -133,6 +148,8 @@ import Ochr.Meaning.Strict.FieldWriteCE
 import Ochr.Meaning.Strict.Typed
 import Ochr.Meaning.Strict.ReadProto
 import Ochr.Meaning.Strict.Witness
+import Ochr.Meaning.Strict.OpenFutureCE
+import Ochr.Meaning.Strict.FrameCE
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

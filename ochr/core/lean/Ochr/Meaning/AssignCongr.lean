@@ -34,6 +34,7 @@ theorem fixBodyAt_congrA {body : Term} {fb : List PBind × PBind}
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
   rw [hb]
+  rfl
 
 theorem fixStage_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
@@ -53,13 +54,10 @@ theorem fixG_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
     (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (dec : Option Nat) :
     fixG K ρ φ fb l s ps out piT start dec body = fixG (KA K Δ') ρ' φ fb l s ps out piT start dec body := by
-  cases dec with
-  | none => exact funext fun args => fixBodyAt_congrA K Δ' ρ ρ' φ hb s ps out piT start _ args
-  | some j =>
-    funext args
-    show fixStage K ρ φ fb l s ps out (some j) start body (fixRank (some j) args + 1) args
-      = fixStage (KA K Δ') ρ' φ fb l s ps out (some j) start body (fixRank (some j) args + 1) args
-    rw [fixStage_congrA K Δ' ρ ρ' φ hb]
+  funext args
+  show fixStage K ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
+    = fixStage (KA K Δ') ρ' φ fb l s ps out dec start body (fixRank dec args + 1) args
+  rw [fixStage_congrA K Δ' ρ ρ' φ hb]
 
 end
 
@@ -165,8 +163,9 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     rw [runT, runT]
     dsimp only
     refine SM.erasedIf_congr ?_
-    have hhead : SM.headOf f (fun p => readPlace K φ p true) (runT K ρ φ false (.plain .err) f) s
-        = SM.headOf f (fun p => readPlace (KA K Δ') φ p true) (runT (KA K Δ') ρ' φ false (.plain .err) f) s :=
+    have hhead : SM.headOf f (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT K ρ φ false (.plain .err) f) s
+        = SM.headOf f (fun p => SM.guarded (ContentOk (KA K Δ') φ p) (readPlace (KA K Δ') φ p true))
+          (runT (KA K Δ') ρ' φ false (.plain .err) f) s :=
       SM.headOf_congr (fun p => rfl) (runT_congrA false f _ s fun σ h => ha σ (by simp [Term.anyAtom, h]))
     apply SM.bind_congr hhead
     intro fv s₁ _
@@ -179,6 +178,8 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     apply Option.bind_congr' rfl
     rintro ⟨tg, s₀⟩ _
     dsimp only
+    apply Option.bind_congr' rfl
+    intro _ _
     rw [show matchEntry (KA K Δ') φ (!tl) (.matchNat p z u) s₀ = matchEntry K φ (!tl) (.matchNat p z u) s₀ from rfl]
     generalize matchEntry K φ (!tl) (.matchNat p z u) s₀ = me
     obtain ⟨s₁, lend⟩ := me
@@ -196,6 +197,8 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     apply Option.bind_congr' rfl
     rintro ⟨tg, s₀⟩ _
     dsimp only
+    apply Option.bind_congr' rfl
+    intro _ _
     rw [show matchEntry (KA K Δ') φ (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀
       = matchEntry K φ (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀ from rfl]
     generalize matchEntry K φ (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀ = me

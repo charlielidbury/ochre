@@ -35,7 +35,7 @@ theorem DataModel.tyR_level (dm : DataModel) (d : IndDecl) (r : Rec) (hs : d.sor
   by_cases h0 : d.sort = 0
   · simp [h0]; rfl
   · have h1 : d.sort = 1 := by omega
-    simp [h1]; rfl
+    simp [h1, TyM.level, Code0.level]
 
 theorem DataModel.tyM_level (dm : DataModel) (d : IndDecl) (ps : List Sem) (hs : d.sort ≤ 1) :
     (dm.tyM d ps).level = some d.sort :=

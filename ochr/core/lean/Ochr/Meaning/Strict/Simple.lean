@@ -54,7 +54,7 @@ theorem goodRes_tyR (dm : DataModel) (d : IndDecl) (r : Rec) (hs : d.sort ≠ 2)
   · have hb : (d.sort == 0) = false := by simpa using h0
     simp only [hb, Bool.false_eq_true, if_false]
     by_cases h1 : d.sort = 1
-    · rw [h1]; exact .inl (ty_univ1_mem _ rfl)
+    · rw [h1]; exact .inl (ty_univ1_mem _ (by simp [Code0.level, hb]))
     · obtain ⟨n, hn⟩ : ∃ n, d.sort = n + 3 := ⟨d.sort - 3, by omega⟩
       rw [hn]; exact goodRes_ty_err _
 

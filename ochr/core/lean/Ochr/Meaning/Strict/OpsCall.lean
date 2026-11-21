@@ -160,10 +160,10 @@ state before: reset the fixed labels that are not live (no position reads them) 
 labels `E` (not live, unread: the returned borrow's fresh label) to the run's future. -/
 theorem typed_transport {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : SState} (F : List (Nat × Sem))
     (E : List Nat) (ψ' : Future)
-    (hF : ∀ y f, (y, f) ∈ F → PMem dm Γ f (s.heldTy y))
+    (hF : ∀ y f, (y, f) ∈ F → f ∈ₛ[dm.read] s.heldTy y)
     (hFlive : ∀ y ∈ F.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hE : ∀ y ∈ E, y ∉ s.liveLabels ∧ ∀ p, Indep y (s.valAt p))
-    (hlive : ∀ y ∈ s.liveLabels, y ∉ F.map (·.1) → PMem dm Γ (ψ' y) (s.heldTy y))
+    (hlive : ∀ y ∈ s.liveLabels, y ∉ F.map (·.1) → ψ' y ∈ₛ[dm.read] s.heldTy y)
     (hagree : ∀ y, y ∉ s.liveLabels → y ∉ F.map (·.1) → y ∉ E → ψ' y = φ y) :
     ∃ ψ₀, TypedF dm Γ φ s ψ₀ ∧ ∀ p, s.valAt p (ψ'.updList F) = s.valAt p ψ₀ := by
   let D : List Nat := (F.map (·.1)).filter (fun y => decide (y ∉ s.liveLabels)) ++ E
@@ -190,7 +190,7 @@ theorem typed_transport {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : 
       exact hagree y hy hyF hyE
   · have hyD : y ∉ D := fun hm => (hD y hm).1 hy
     rw [Future.updList_of_not_mem R _ y (by rw [hRk]; exact hyD)]
-    exact updList_prop (fun f => PMem dm Γ f (s.heldTy y)) F ψ' y (fun f hf => hF y f hf)
+    exact updList_prop (fun f => f ∈ₛ[dm.read] s.heldTy y) F ψ' y (fun f hf => hF y f hf)
       (fun hn => hlive y hy hn)
   · refine (eq_updList_indep (v := s.valAt p) (ψ'.updList F) R fun e he => ?_).symm
     obtain ⟨y, hy, rfl⟩ := List.mem_map.1 he
@@ -471,7 +471,7 @@ theorem fixes_pmem (hR : Lv.read = dm.read)
       s.heldTy l = (telRefTysL Lv t (args.map (·.1))).getD i TyM.err)
     {fs : List Sem} (hfs : MemList Lv.read fs (telRefTysL Lv t (args.map (·.1)))) :
     ∀ y f, (y, f) ∈ ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip fs).filterMap
-      (fun (l?, f) => l?.map (·, f)) → PMem dm Γ f (s.heldTy y) := by
+      (fun (l?, f) => l?.map (·, f)) → f ∈ₛ[dm.read] s.heldTy y := by
   intro y f hm
   obtain ⟨i, hi, hf⟩ := fixes_mem hm
   obtain ⟨T, hT, hfT⟩ := MemList.get hfs hf
@@ -479,7 +479,7 @@ theorem fixes_pmem (hR : Lv.read = dm.read)
   rw [List.getD_eq_getElem?_getD, hT, Option.getD_some] at e
   rw [e]
   rw [hR] at hfT
-  exact .mem hfT
+  exact hfT
 
 theorem fixes_keys_live
     (hlive : ∀ l, some l ∈ ((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label) →
@@ -501,7 +501,7 @@ open members of the labels' content types. -/
 theorem sgood_mapVals_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : SState} (hs : SGood dm Γ φ s)
     (Ls : List Nat) (FF : List (Nat × Sem))
     (hcov : ∀ l ∈ Ls, l ∈ FF.map (·.1))
-    (hFm : ∀ y f, (y, f) ∈ FF → PMem dm Γ f (s.heldTy y))
+    (hFm : ∀ y f, (y, f) ∈ FF → f ∈ₛ[dm.read] s.heldTy y)
     (hFl : ∀ y ∈ FF.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hacyc : SState.RInv (fun _ => True) ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)))
     (hfresh : ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)).ReadsBelow) :
@@ -582,8 +582,8 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
     {X : Type u} (Ls : List Nat) (dec : Sem → Option X) (fx : X → List (Nat × Sem)) (ee : List (Nat × Sem))
     (le : List Site) (Tk : TyM) (c : Sem) (hc : c ∈ₛ[dm.read] Tk) (g : Pos → SVal → SVal)
     (hcov : ∀ x, ∀ l ∈ Ls, l ∈ (fx x).map (·.1)) (hcovE : ∀ l ∈ Ls, l ∈ ee.map (·.1))
-    (hFm : ∀ x y f, (y, f) ∈ fx x → PMem dm Γ f (s.heldTy y))
-    (hEm : ∀ y f, (y, f) ∈ ee → PMem dm Γ f (s.heldTy y))
+    (hFm : ∀ x y f, (y, f) ∈ fx x → f ∈ₛ[dm.read] s.heldTy y)
+    (hdec : ∀ v, v ∈ₛ[dm.read] Tk → (dec v).isSome)
     (hFl : ∀ x, ∀ y ∈ (fx x).map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hEl : ∀ y ∈ ee.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hg : ∀ p v ψ, (∃ x, dec (ψ (Ls.foldl SState.takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
@@ -663,16 +663,30 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
   have key : ∀ ψ', TypedF dm Γ φ S ψ' → ∃ ψ₀, TypedF dm Γ φ s ψ₀ ∧
       ∀ p ∈ s.positions, S.valAt p ψ' = s.valAt p ψ₀ ∨ S.valAt p ψ' = .moved := by
     intro ψ' hψ'
-    -- the finals the future fixes
-    obtain ⟨Fx, hFxm, hFxl, hFxc, hgx⟩ : ∃ Fx : List (Nat × Sem), (∀ y f, (y, f) ∈ Fx → PMem dm Γ f (s.heldTy y)) ∧
+    -- with no frame there is no position: any typed future of `s` will do
+    by_cases hkl : k ∈ S.liveLabels
+    rotate_left
+    · have he₃ : S₃.env = [] := Classical.byContradiction fun hne => hkl (by
+        rw [hliveS, ← hS₄]; exact SState.live_pushTempShaped_self _ _ _ hne)
+      have hnil : s.positions = [] := by rw [← hpos₃, SState.positions_eq, he₃]; rfl
+      refine ⟨s.typedFuture φ, ⟨fun l hl => by simp [SState.typedFuture, hl], fun l hl => ?_⟩, fun p hp => ?_⟩
+      · show WMem dm Γ (if l ∈ s.liveLabels then s.heldMem l else φ l) _
+        rw [if_pos hl]; exact hs.held l hl
+      · rw [hnil] at hp; cases hp
+    -- the finals the future fixes: `k` holds a member of its content type at a typed future (ruling
+    -- (A)), which decodes, so the undecodable branch is not taken
+    obtain ⟨Fx, hFxm, hFxl, hFxc, hgx⟩ : ∃ Fx : List (Nat × Sem), (∀ y f, (y, f) ∈ Fx → f ∈ₛ[dm.read] s.heldTy y) ∧
         (∀ y ∈ Fx.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p)) ∧ (∀ l ∈ Ls, l ∈ Fx.map (·.1)) ∧
         ∀ p v, g p v ψ' = v (ψ'.updList Fx) := by
       cases hd : dec (ψ' k) with
       | none =>
-        refine ⟨ee, hEm, hEl, hcovE, fun p v => ?_⟩
-        rcases hg p v ψ' with ⟨x, hx, -⟩ | ⟨-, e⟩
-        · rw [hd] at hx; cases hx
-        · exact e
+        exfalso
+        have hk := hψ'.2 k hkl
+        have hk' : ψ' k ∈ₛ[dm.read] Tk := by
+          have : WMem dm Γ (ψ' k) (S.heldTy k) := hk
+          rw [hHTS, if_pos rfl] at this; exact this
+        have := hdec _ hk'
+        rw [hd] at this; cases this
       | some x =>
         refine ⟨fx x, hFm x, hFl x, hcov x, fun p v => ?_⟩
         rcases hg p v ψ' with ⟨x', hx, e⟩ | ⟨hx, -⟩
@@ -760,7 +774,7 @@ theorem callOfLS_sgood_data {dm : DataModel} {Γ : List IndDecl} {φ : Future} (
   simp only [Nat.zero_add] at hfin
   have hcov := fixes_cover (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)) finals
     (by rw [List.length_map, zip_filter_len args _ (by simpa using hlen), hfin]; exact Nat.le_refl _)
-  have hFm := fixes_pmem (Γ := Γ) Lv t args hR ht hfm
+  have hFm := fixes_pmem Lv t args hR ht hfm
   have hFl := fixes_keys_live Lv t args hlive finals
   -- the state
   unfold callOfL at h
@@ -780,8 +794,41 @@ universe v
 
 /-! ## A call returning a borrow -/
 
+/-- **A level's codes' members are encodings** (the converse of `Lvl.EncMem`). -/
+def _root_.Ochr.Meaning.Lvl.MemEnc (L : Lvl.{v}) : Prop :=
+  ∀ {A : Type v} (c : L.Code A) (x : Sem), x ∈ₛ[L.read] L.toTy c → ∃ a, L.enc c a = x
+
+/-- **A member of a code's type decodes** (ruling (A): at a typed future a returned borrow's label
+holds a member of its code's type, so `callOfL`'s undecodable branch is not taken there). -/
+theorem _root_.Ochr.Meaning.Lvl.dec_of_mem {L : Lvl.{v}} (hL : L.Lawful) (hM : L.MemEnc) {A : Type v}
+    (c : L.Code A) (x : Sem) (h : x ∈ₛ[L.read] L.toTy c) : (L.dec c x).isSome := by
+  obtain ⟨a, rfl⟩ := hM c x h
+  rw [hL.dec_enc]; rfl
+
+theorem lvl0_memEnc (R : DataRead) : (lvl0 R).MemEnc := fun _ _ h => h
+
+theorem lvl1_memEnc (R : DataRead) : (lvl1 R).MemEnc := by
+  intro A c x h
+  cases c with
+  | lift B c => obtain ⟨b, hb⟩ := h; exact ⟨ULift.up b, hb⟩
+  | univ0 => exact h
+  | univ1 => exact h
+  | pi C t => exact h
+
+theorem lvl2_memEnc (R : DataRead) : (lvl2 R).MemEnc := by
+  intro A c x h
+  cases c with
+  | lift B c =>
+    cases c with
+    | lift B' c' => obtain ⟨b, hb⟩ := h; exact ⟨ULift.up (ULift.up b), hb⟩
+    | univ0 => obtain ⟨b, hb⟩ := h; exact ⟨ULift.up b, hb⟩
+    | univ1 => obtain ⟨b, hb⟩ := h; exact ⟨ULift.up b, hb⟩
+    | pi C t => obtain ⟨b, hb⟩ := h; exact ⟨ULift.up b, hb⟩
+  | univ2 => exact h
+  | pi C t => exact h
+
 theorem callOfLS_sgood_ref {dm : DataModel} {Γ : List IndDecl} {φ : Future} (Lv : Lvl.{v}) (hE : Lv.EncMem)
-    (hR : Lv.read = dm.read) {C : Type v} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
+    (hL : Lv.Lawful) (hME : Lv.MemEnc) (hR : Lv.read = dm.read) {C : Type v} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
     {s s' : SState} {r : Res} (hs : SGood dm Γ φ s)
     (ht : ∀ (i l : Nat), (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label))[i]? = some (some l) →
       s.heldTy l = (telRefTysL Lv t (args.map (·.1))).getD i TyM.err)
@@ -813,15 +860,7 @@ theorem callOfLS_sgood_ref {dm : DataModel} {Γ : List IndDecl} {φ : Future} (L
   have hcovE := fixes_cover (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label))
     ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)
     (by simp only [List.length_map]; exact Nat.le_refl _)
-  have hFm := fun x => fixes_pmem (Γ := Γ) Lv t args hR ht (hfm x)
-  have hEm : ∀ y f, (y, f) ∈ ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip
-      ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)).filterMap
-      (fun (l?, f) => l?.map (·, f)) → PMem dm Γ f (s.heldTy y) := by
-    intro y f hm
-    obtain ⟨i, -, hf⟩ := fixes_mem hm
-    rw [List.getElem?_map] at hf
-    obtain ⟨_, -, hfe⟩ := Option.map_eq_some_iff.1 hf
-    rw [← hfe]; exact .moved _
+  have hFm := fun x => fixes_pmem Lv t args hR ht (hfm x)
   have hFl := fun x => fixes_keys_live Lv t args hlive (back x)
   have hEl := fixes_keys_live Lv t args hlive
     ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)
@@ -836,7 +875,8 @@ theorem callOfLS_sgood_ref {dm : DataModel} {Γ : List IndDecl} {φ : Future} (L
     subst hl
     refine ⟨by simp [SState.setHeldMem, SState.setHeldTy], ?_⟩
     simpa [SState.setHeldMem, SState.setHeldTy] using hc
-  · refine sgood_park_fix hs _ (Lv.dec c) _ _ _ _ _ hc _ hcov hcovE hFm hEm hFl hEl ?_ hacyc hfresh
+  · refine sgood_park_fix hs _ (Lv.dec c) _ _ _ _ _ hc _ hcov hcovE hFm
+      (fun v hv => Lvl.dec_of_mem hL hME c v (hR ▸ hv)) hFl hEl ?_ hacyc hfresh
     intro p w ψ
     cases hd : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)).foldl
         SState.takeLabel s).nextLoan) with
@@ -852,6 +892,7 @@ universe w
 
 /-- A call at level `Lv` (`callOfL`) keeps the invariant. -/
 theorem callOfLS_sgood {dm : DataModel} {Γ : List IndDecl} {φ : Future} (Lv : Lvl.{w}) (hE : Lv.EncMem)
+    (hL : Lv.Lawful) (hME : Lv.MemEnc)
     (hR : Lv.read = dm.read) {C : Type w} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
     {s s' : SState} {r : Res} (hs : SGood dm Γ φ s)
     (ht : ∀ (i l : Nat), (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label))[i]? = some (some l) →
@@ -864,7 +905,7 @@ theorem callOfLS_sgood {dm : DataModel} {Γ : List IndDecl} {φ : Future} (Lv : 
   | some res =>
     cases res with
     | data r' T' finals => exact callOfLS_sgood_data Lv hE hR t fv args hs ht hlive happ h
-    | ref U c fwd back => exact callOfLS_sgood_ref Lv hE hR t fv args hs ht hlive happ h
+    | ref U c fwd back => exact callOfLS_sgood_ref Lv hE hL hME hR t fv args hs ht hlive happ h
 
 /-- **A call keeps the invariant**, and its result's label (a returned borrow's, fresh) records the
 result's type. Beyond the stub's hypotheses: each borrow argument's label is live or read by no
@@ -887,15 +928,15 @@ theorem callOfS_sgood {K : RunCtx} {φ : Future} {fv : Res} {as : List Res}
   cases T with
   | t0 A c =>
     cases c with
-    | pi C t => exact callOfLS_sgood (lvl0 K.dm.read) (lvl0_encMem _) rfl t fv as hs ht' hlive h
+    | pi C t => exact callOfLS_sgood (lvl0 K.dm.read) (lvl0_encMem _) (lvl0_lawful _) (lvl0_memEnc _) rfl t fv as hs ht' hlive h
     | _ => cases h
   | t1 A c =>
     cases c with
-    | pi C t => exact callOfLS_sgood (lvl1 K.dm.read) (lvl1_encMem _) rfl t fv as hs ht' hlive h
+    | pi C t => exact callOfLS_sgood (lvl1 K.dm.read) (lvl1_encMem _) (lvl1_lawful _) (lvl1_memEnc _) rfl t fv as hs ht' hlive h
     | _ => cases h
   | t2 A c =>
     cases c with
-    | pi C t => exact callOfLS_sgood (lvl2 K.dm.read) (lvl2_encMem _) rfl t fv as hs ht' hlive h
+    | pi C t => exact callOfLS_sgood (lvl2 K.dm.read) (lvl2_encMem _) (lvl2_lawful _) (lvl2_memEnc _) rfl t fv as hs ht' hlive h
     | _ => cases h
 
 end Ochr.Meaning.Strict

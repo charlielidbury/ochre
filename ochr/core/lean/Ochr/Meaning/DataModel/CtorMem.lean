@@ -59,16 +59,18 @@ theorem mem_fitsOneM (s : Shape) (f : Sem) (h : f ∈ₛ[dm.read] dm.shapeTy s) 
       exact absurd h (by simp only [shapeTy, hs', Bool.false_eq_true, if_false]; exact err_mem_false dm.read f)
 
 /-- Fields each a member of its field type at the earlier ones fit the telescope. -/
-theorem fitsM_of_mem (d : IndDecl) (r : Rec) (c : Nat) :
-    ∀ (n i : Nat) (e : List Small) (fs : List Sem), fs.length = n →
+theorem fitsM_of_mem (d : IndDecl) (r : Rec) (c : Nat) (hc : c < d.ctors.length) :
+    ∀ (n i : Nat) (e : List Small) (fs : List Sem), fs.length = n → e.length = i →
+      i + n = DataLib.arity d c →
       (∀ (j : Nat) (f : Sem), fs[j]? = some f →
         f ∈ₛ[dm.read] dm.shapeTy (dm.sig.shape d r c (i + j) (e ++ (fs.take j).map Sem.small))) →
       dm.RecLeafOk d r → DataLib.FitsM dm.sig d r c i n e fs
-  | 0, _, _, fs, hl, _, _ => List.eq_nil_of_length_eq_zero hl
-  | n + 1, i, e, [], hl, _, _ => by simp at hl
-  | n + 1, i, e, f :: fs, hl, h, hok => by
-    refine ⟨f, fs, rfl, dm.mem_fitsOneM _ f (by simpa using h 0 f rfl) (hok _ _ _), ?_⟩
-    refine fitsM_of_mem d r c n (i + 1) (e ++ [f.small]) fs (by simpa using hl) (fun j g hg => ?_) hok
+  | 0, _, _, fs, hl, _, _, _, _ => List.eq_nil_of_length_eq_zero hl
+  | n + 1, i, e, [], hl, _, _, _, _ => by simp at hl
+  | n + 1, i, e, f :: fs, hl, he, ha, h, hok => by
+    refine ⟨f, fs, rfl, dm.mem_fitsOneM _ f (by simpa using h 0 f rfl) (hok _ _ _ hc (by omega) he), ?_⟩
+    refine fitsM_of_mem d r c hc n (i + 1) (e ++ [f.small]) fs (by simpa using hl) (by simp [he])
+      (by omega) (fun j g hg => ?_) hok
     have := h (j + 1) g (by simpa using hg)
     simpa [Nat.add_assoc, Nat.add_comm 1 j, List.take_succ_cons, List.append_assoc] using this
 
@@ -80,7 +82,7 @@ theorem ctorR_mem (d : IndDecl) (r : Rec) (c : Nat) (fs : List Sem) (hs : (d.sor
     DataModel.ctorR d r c fs ∈ₛ[dm.read] dm.tyR d r := by
   rw [dm.mem_tyR d r hs]
   refine (DataLib.mem_iff dm.sig d r _).2 ⟨⟨c, hc⟩, fs, rfl, ?_⟩
-  exact dm.fitsM_of_mem d r c _ 0 [] fs hl (fun j f hj => by simpa [fieldTyR] using hf j f hj) hok
+  exact dm.fitsM_of_mem d r c hc (DataLib.arity d c) 0 [] fs hl rfl (Nat.zero_add _) (fun j f hj => by simpa [fieldTyR] using hf j f hj) hok
 
 /-- A `Prop`-sorted declaration: such a value witnesses its type, so `•` is a member. -/
 theorem proof_mem_tyR (d : IndDecl) (r : Rec) (c : Nat) (fs : List Sem) (hs : (d.sort == 0) = true)
@@ -90,7 +92,7 @@ theorem proof_mem_tyR (d : IndDecl) (r : Rec) (c : Nat) (fs : List Sem) (hs : (d
     Sem.proof ∈ₛ[dm.read] dm.tyR d r := by
   rw [dm.tyR_prop d r hs]
   refine ⟨⟨⟨_, (DataLib.mem_iff dm.sig d r _).2 ⟨⟨c, hc⟩, fs, rfl, ?_⟩⟩⟩, rfl⟩
-  exact dm.fitsM_of_mem d r c _ 0 [] fs hl (fun j f hj => by simpa [fieldTyR] using hf j f hj) hok
+  exact dm.fitsM_of_mem d r c hc (DataLib.arity d c) 0 [] fs hl rfl (Nat.zero_add _) (fun j f hj => by simpa [fieldTyR] using hf j f hj) hok
 
 end DataModel
 
