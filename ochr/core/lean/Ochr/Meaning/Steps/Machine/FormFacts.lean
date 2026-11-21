@@ -1,7 +1,7 @@
 import Ochr.Meaning.Steps.FormMachine
 import Ochr.Meaning.Steps.DropOne
 import Ochr.Meaning.Steps.ColumnC
-import Ochr.Meaning.Steps.Machine.EvalInv
+import Ochr.Meaning.Steps.Machine.StepInv
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
@@ -97,5 +97,7 @@ theorem dropNoopInv : DropNoopInv := by
       exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 #print axioms decBack
 #print axioms dropNoopInv
+#print axioms evalInvR
+#print axioms succInvR
 
 end Ochr.Meaning.Steps.Machine
