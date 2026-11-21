@@ -16,6 +16,10 @@ globals, any Δ and assignment):
 * `recordsFaithful`, `fieldsFaithful`, `paramsFaithful`, hence `ctxFaithful`;
 * `dataFaithful`: `DataFaithful` at every program state declaring the library, under any decisions;
 * and each bundle at one concrete context, the checker's decisions included (`instance_*`).
+WHAT RESTS ON A NATIVE CHECK: that the library's program state is what `progMeaning` produces from
+the library's items needs the checker run in the kernel, which it cannot do; `prelude_inds` asserts
+natively that the checker's declarations after the library are `preludeDecls`, and every theorem
+here is about a state or context whose declarations are `preludeDecls`.
 This is the instance test the restated faithfulness (rulings (M-a), (S)) owes before it is used:
 `RecordsFaithful` had no instance at any non-empty `Γ` before them (`RecordsCE.lean`). The runs are
 read through piece 3's first lemmas (`RunLemmas.lean`): a variable reads its binding, `Sort l` is

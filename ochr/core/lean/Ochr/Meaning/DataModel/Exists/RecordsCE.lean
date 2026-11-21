@@ -1,3 +1,6 @@
+-- RECORD, outside the default build: the refutation this file was written for (`recordsFaithful_false`,
+-- `ctxFaithful_false`, `dataFaithful_false`) no longer typechecks against the bundle as restated by the
+-- rulings (M-a) and (S); its proof stands at 1765a998. What is left here still builds: the witness lemmas.
 import Ochr.Meaning.Consistency
 import Ochr.Meaning.DataModel.Canonical.Layout
 

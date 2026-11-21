@@ -69,26 +69,29 @@ theorem runT_var (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : T
             obtain ⟨⟨⟩, s₁⟩ := p
             simp only at h'
             split at h' <;> (cases h'; rfl)
+  -- the read is guarded (the STRICT END test, ruling (A)); the guard changes no value
+  have hg : ∀ copy r' s'', SM.guarded (ContentOk K φ (.var j)) (readPlace K φ (.var j) copy) s = some (r', s'') →
+      r'.1 = s.valAt pos φ := fun copy r' s'' h' => hrd copy r' s'' (SM.guarded_some h').2
   simp only [runT] at hr
   unfold SM.erasedIf at hr
   split at hr
   · split at hr
     · rename_i r₀ T₀ s₀ hx
       cases hr
-      exact (hrd _ _ _ hx).symm ▸ rfl
+      exact (hg _ _ _ hx).symm ▸ rfl
     · cases hr
     · cases hr
   · unfold SM.stmtIf at hr
     split at hr
     · revert hr
-      cases hx : readPlace K φ (.var j) _ s with
+      cases hx : SM.guarded (ContentOk K φ (.var j)) (readPlace K φ (.var j) _) s with
       | none => intro hr; cases hr
       | some x =>
         intro hr
         simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hr
         obtain ⟨rfl, -⟩ := hr
-        exact hrd _ x.1 x.2 hx
-    · exact hrd _ _ _ hr
+        exact hg _ x.1 x.2 hx
+    · exact hg _ _ _ hr
 
 /-- **`Sort l` runs to `Type_l`'s code.** -/
 theorem runT_sort (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (l : Nat) (s : SState) :
