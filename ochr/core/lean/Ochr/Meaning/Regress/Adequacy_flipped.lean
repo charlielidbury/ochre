@@ -71,7 +71,7 @@ and its record, which keeps `A`'s entry at `paramKey 0`) solves `A := Nat`. -/
 example (A : Type) : unifyTyS K.dm 1 (.tind "List" [.place (.var 0)])
     (.plain (.t0 A (.data { name := "List" } (fun _ => .leaf Nat .nat) A))) [none]
     = [some (.ty TyM.nat)] := by
-  simp [unifyTyS, fillParam, TyS.data, TyM.dataRec?, TyM.isErr, DataModel.entryTy]
+  simp [unifyTyS, fillParam, TyS.data, TyM.dataRec?, TyM.isErr, DataModel.paramTyOf]
   rfl
 
 /-- A9: a solved parameter is not overwritten, and a field with no type (`err`) solves nothing. -/

@@ -113,8 +113,8 @@ abbrev trueR : Rec := dm.recOf trueD []
 
 /-- **`refl` is true in the model**: `⋆` is a member of `True`'s meaning (its constructor `I` with no
 field: `CtorMem.proof_mem_tyR`). -/
-theorem proof_mem_trueD : Sem.proof ∈ₛ[dm.read] dm.tyR trueD (trueR dm) :=
-  dm.proof_mem_tyR trueD _ 0 [] rfl (by decide) rfl (fun _ _ h => by simp at h)
+theorem proof_mem_trueD (hok : dm.RecLeafOk trueD (trueR dm)) : Sem.proof ∈ₛ[dm.read] dm.tyR trueD (trueR dm) :=
+  dm.proof_mem_tyR trueD _ 0 [] rfl (by decide) rfl (fun _ _ h => by simp at h) hok
 
 theorem tyR_true_level : (dm.tyR trueD (trueR dm)).level = some 0 := by
   simp [DataModel.tyR, trueD, TyM.prop, TyM.level, Code0.level]
@@ -122,11 +122,11 @@ theorem tyR_true_level : (dm.tyR trueD (trueR dm)).level = some 0 := by
 /-- **`refl`, classed a proof, runs**: its constructor clause runs on a copy to `⋆` at `True`'s meaning,
 of which `⋆` is a member (the strict test, `proof_mem_trueD`), and the erased term is `⋆` at
 `prop True` (C1, decision 1). -/
-theorem refl_runs (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
+theorem refl_runs (hok : dm.RecLeafOk trueD (trueR dm)) (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
     runS (Kt dm Dpf) ρ φ tl h (.ctor "True" 0 x [] []) s = some ((.proof, .plain (TyM.prop True)), s) ∧
       Sem.proof ∈ₛ[dm.read] dm.tyR trueD (trueR dm) := by
-  refine ⟨?_, proof_mem_trueD dm⟩
-  have hm : Sem.proof ∈ₛ[dm.read] (TyS.plain (dm.tyR trueD (trueR dm))).m := proof_mem_trueD dm
+  refine ⟨?_, proof_mem_trueD dm hok⟩
+  have hm : Sem.proof ∈ₛ[dm.read] (TyS.plain (dm.tyR trueD (trueR dm))).m := proof_mem_trueD dm hok
   have hfind : [trueD].find? (·.name == "True") = some trueD := rfl
   have hsort : (trueD.sort == 0) = true := rfl
   have hpar : trueD.params.isEmpty = true := rfl
@@ -139,11 +139,11 @@ theorem proof_not_mem_false {R : DataRead} : ¬ (Sem.proof ∈ₛ[R] TyM.prop Fa
 
 /-- **`(refl : Eq(Nat, Z, Z))`, classed a proof, runs** to `⋆` at the meaning of `Eq(Nat, Z, Z)`,
 which it is a member of. -/
-theorem refl_eq_runs (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
+theorem refl_eq_runs (hok : dm.RecLeafOk trueD (trueR dm)) (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
     runS (Kt dm Dpf) ρ φ tl h (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero .zero)) s =
       some ((.proof, .plain (TyM.prop True)), s) := by
   have hr : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.ctor "True" 0 x [] []) s =
-      some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm false h x s).1
+      some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm hok false h x s).1
   have he : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.eq .nat .zero .zero) s =
       some ((.ty (TyM.prop True), .plain (TyM.univ 0)), s) := by
     intro h s; simp [runS, SM.onCopy, bind, pure]
@@ -156,10 +156,10 @@ theorem refl_eq_runs (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
 
 /-- **`(refl : Eq(Nat, Z, S(Z)))` has no successful strict run**: the ascription's test is the
 proposition `0 = 1`. -/
-theorem refl_neq_none (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
+theorem refl_neq_none (hok : dm.RecLeafOk trueD (trueR dm)) (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
     runS (Kt dm Dpf) ρ φ tl h (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero (.succ .zero))) s = none := by
   have hr : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.ctor "True" 0 x [] []) s =
-      some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm false h x s).1
+      some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm hok false h x s).1
   have h1 : Sem.el0 Nat 1 ∈ₛ[dm.read] (TyS.plain TyM.nat).m := one_mem_nat _
   have he : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.eq .nat .zero (.succ .zero)) s =
       some ((.ty (TyM.prop False), .plain (TyM.univ 0)), s) := by

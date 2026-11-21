@@ -33,7 +33,7 @@ the checker's inference there is outside the model, and the residual rule (docs/
 namespace Ochr.Meaning.DataModel.ParamSolve
 
 open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Regress.CodeRuns
-open Ochr.Meaning.DataModel.Program (constRec shapeOf propEntry tyEntry)
+open Ochr.Meaning.DataModel.Program (constRec propEntry tyEntry tyRec)
 
 def hn (n : String) : Hint := ⟨n⟩
 
@@ -53,39 +53,57 @@ def opt2D : IndDecl :=
 
 def ΓS : List IndDecl := [slD, cellD, tagD, wrapD, hlD, hwD, opt2D]
 
-/-! ## Their data model: canonical records -/
+/-! ## Their data model: canonical records (docs/34 §18: functions of paths)
 
-/-- A record keeping only a level-0 value parameter, read small, at its `paramKey` (`Tag(n)`,
-`Wrap(n)`: their fields read nothing of `n`). -/
-def valRec (sn : Small) : Rec
-  | [(0, 0, [.other])] => .small sn
+Each declaration's record keeps its fields' types at their keys (`kindKey`; a data field's record
+the continuation past it, `contStep`) and, at `paramKey`, a type parameter's entry (its record past
+`paramContStep`) or a level-0 value parameter read small. -/
+
+/-- `Sl(R)`: `R`'s entry and record, at `paramKey 0` and at the field `c`. -/
+def slRec (eR : Entry) (rR : Rec) : Rec
+  | [(0, 0, [.other])] => eR
+  | (0, 0, [.other, .other]) :: q => rR q
+  | [(0, 0, [])] => eR
+  | (0, 0, [.proof]) :: q => rR q
   | _ => .none
 
-/-- The small reading a record keeps at a value parameter's key. -/
-def smallOf : Entry → Small
-  | .small sn => sn
-  | _ => .other
+/-- `CellT(R)`: `R`'s entry and record; `h : Nat`; `t : Sl(R)`. -/
+def cellRec (eR : Entry) (rR : Rec) : Rec
+  | [(0, 0, [.other])] => eR
+  | (0, 0, [.other, .other]) :: q => rR q
+  | [(0, 0, [])] => .leaf Nat .nat
+  | [(0, 1, [_])] => .data slD
+  | (0, 1, [_, .proof]) :: q => slRec eR rR q
+  | _ => .none
 
-/-- The signature: `Sl`'s and `CellT`'s fields read `R`'s entry; `Tag`'s and `HL`'s read nothing of
-their parameters; `Wrap`'s and `Opt2`'s field `Tag(n)` is `Tag` at the record of `n` (read small off
-the record); `Opt2`'s `B2` reads the equation `n = 3`. -/
-def solveShape (d : IndDecl) (r : Rec) (c i : Nat) (_e : List Small) : Shape :=
-  match d.name, c, i with
-  | "Sl", 0, 0 => shapeOf (r (paramKey 0))
-  | "CellT", 0, 0 => .leaf Nat .nat
-  | "CellT", 0, 1 => .sub slD (constRec (r (paramKey 0)))
-  | "Tag", 0, 0 => .leaf Nat .nat
-  | "Wrap", 0, 0 => .sub tagD (valRec (smallOf (r (paramKey 0))))
-  | "HL", 0, 0 => .leaf Nat .nat
-  | "HW", 0, 0 => .sub hlD (constRec .none)
-  | "Opt2", 0, 0 => .sub tagD (valRec (smallOf (r (paramKey 0))))
-  | "Opt2", 1, 0 => shapeOf (r [(1, 0, [])])
-  | _, _, _ => .leaf PEmpty .err
-
-/-- `Opt2(n)`'s record: `B2`'s equation, `n` read small; `n` read small at its `paramKey`. -/
-def opt2Rec (sn : Small) : Rec
-  | [(1, 0, [])] => propEntry (sn = Small.el Nat 3)
+/-- `Tag(n)`: `n` read small at its `paramKey` (its field reads nothing of `n`); `x : Nat`. -/
+def tagRec (sn : Small) : Rec
   | [(0, 0, [.other])] => .small sn
+  | [(0, 0, [])] => .leaf Nat .nat
+  | _ => .none
+
+/-- `Wrap(n)`: `n` read small at its `paramKey`; `t : Tag(n)`, `Tag`'s record at `n`. -/
+def wrapRec (sn : Small) : Rec
+  | [(0, 0, [.other])] => .small sn
+  | [(0, 0, [])] => .data tagD
+  | (0, 0, [.proof]) :: q => tagRec sn q
+  | _ => .none
+
+/-- `HL(f)`, `HW(f)`: `f`, a function into `Type₀` (above level 0), is not kept. -/
+def hlRec : Rec
+  | [(0, 0, [])] => .leaf Nat .nat
+  | _ => .none
+def hwRec : Rec
+  | [(0, 0, [])] => .data hlD
+  | (0, 0, [.proof]) :: q => hlRec q
+  | _ => .none
+
+/-- `Opt2(n)`: `n` read small at its `paramKey`; `A2`'s `t : Tag(n)`; `B2`'s equation `n = 3`. -/
+def opt2Rec (sn : Small) : Rec
+  | [(0, 0, [.other])] => .small sn
+  | [(0, 0, [])] => .data tagD
+  | (0, 0, [.proof]) :: q => tagRec sn q
+  | [(1, 0, [])] => propEntry (sn = Small.el Nat 3)
   | _ => .none
 
 /-- The record at parameters: a type parameter's entry; a level-0 value parameter read small at
@@ -93,16 +111,17 @@ its `paramKey`; `Opt2`'s equation at `n`, read small. `HL`'s and `HW`'s paramete
 `Type₀` (above level 0), is not kept. -/
 def solveRecOf (d : IndDecl) (ps : List Sem) : Rec :=
   match d.name, ps with
-  | "Sl", [A] => constRec (tyEntry A)
-  | "CellT", [A] => constRec (tyEntry A)
-  | "Tag", [n] => valRec n.small
-  | "Wrap", [n] => valRec n.small
+  | "Sl", [A] => slRec (tyEntry A) (tyRec A)
+  | "CellT", [A] => cellRec (tyEntry A) (tyRec A)
+  | "Tag", [n] => tagRec n.small
+  | "Wrap", [n] => wrapRec n.small
+  | "HL", [_] => hlRec
+  | "HW", [_] => hwRec
   | "Opt2", [n] => opt2Rec n.small
   | _, _ => constRec .none
 
 def dmS : DataModel where
   covers d := d ∈ ΓS
-  sig := ⟨solveShape⟩
   recOf := solveRecOf
   paramTy _ _ _ := TyM.univ 1
 
@@ -136,8 +155,8 @@ theorem recOf_ofSmall (n : Sem) : ∀ d ∈ [tagD, wrapD, opt2D], dmS.recOf d [o
   intro d hd
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hd
   rcases hd with rfl | rfl | rfl
-  · show valRec (ofSmall n.small).small = valRec n.small; rw [small_ofSmall]
-  · show valRec (ofSmall n.small).small = valRec n.small; rw [small_ofSmall]
+  · show tagRec (ofSmall n.small).small = tagRec n.small; rw [small_ofSmall]
+  · show wrapRec (ofSmall n.small).small = wrapRec n.small; rw [small_ofSmall]
   · show opt2Rec (ofSmall n.small).small = opt2Rec n.small; rw [small_ofSmall]
 
 /-- `Tag(3)` and `Tag(4)` are now different types: `Tag` is injective in its value parameter. -/
@@ -146,7 +165,7 @@ theorem tag_injective : dmS.tyM tagD [.el0 Nat 3] ≠ dmS.tyM tagD [.el0 Nat 4] 
   have h1 : some (tagD.name, dmS.recOf tagD [.el0 Nat 3]) = some (tagD.name, dmS.recOf tagD [.el0 Nat 4]) :=
     congrArg TyM.dataRec? h
   have h2 := congrFun (Prod.mk.inj (Option.some.inj h1)).2 (paramKey 0)
-  simp [dmS, solveRecOf, tagD, valRec, paramKey, Sem.small] at h2
+  simp [dmS, solveRecOf, tagD, tagRec, paramKey, Sem.small] at h2
 
 /-! ## The runs -/
 

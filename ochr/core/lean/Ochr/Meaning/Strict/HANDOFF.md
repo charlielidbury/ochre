@@ -29,12 +29,28 @@ Lane `spine-model` (worktree `ochre-model`), opened 2026-11-20. The orchestrator
 
 1. Equality rules: premise proofs run on a copy, `⋆` at `prop True` (`fund_premises`). Generalised (this lane, to report): EVERY erased proof is `⋆` at `prop True` (`SM.erasedS`), since a field of `⋆` is read at `err` and would otherwise fail C1; the clause's own type is still checked by the lemma at the clause (`erasedS_clause_true`).
 2. Borrow invariance at calls: `BorrowArgsTyped`, extended (this lane) with "the argument's label is live", which discharges `callOfS_sgood`'s liveness need.
-3. Strict ends vs partly moved futures: evaluated (sent 2026-11-21): this lane recommends partly moved futures + `moved` in `callOfL`'s undecodable branch (one line in Run.lean, one literal in `Locality.callOfL_ref_inv`, measured on the probe); awaiting the orchestrator.
+3. Partly moved futures, with `moved` in `callOfL`'s undecodable branch (the orchestrator reversed its first ruling, strict ends, on this lane's measurement: one line in Run.lean and one literal in `Locality.callOfL_ref_inv`'s proof, against a dozen signatures the step statements consume; the relation's records clause never takes the changed branch). The checker's rule (no end over moved-out content) is carried as the named fact `EndWhole`, which the simulation may use and the lemma does not need.
 4. Reads at field paths: an invariant (`ReadOk`), not strict reads; the read case is proved from it.
 5. Embedded values: the precondition `Term.valsOk` (the lemma at each `.val`).
 6. Strict `.fix`: yes (`fund_fix`).
 7. Nothing new in the model state.
 Also adopted: whole membership at ascription/assignment; the assignment tested at the place's type at the write; constructor parameters' membership (`paramsOk`).
+
+## THE CONTEXT PREDICATE (what the simulation side must supply, besides `SGood` of the state)
+
+`FundCtx K` (`Comb.lean`), plus the term precondition `Term.valsOk`:
+1. `reads : MemReads K.dm K.Γ` — the data layer's read lemma: a whole read path of a partly moved member gives a member of the type the read gives it. From `ReadMember.follow_below_member` under `ReadCoherent` for every record a type can name (plus: a whole value below a member is that member, true of every value `Sem.succ` builds).
+2. `globals : ∀ n, GoodRes K.dm.read (K.C.global n) ∧ (K.C.global n).2.label = none` — each global is a member of the type it carries: `GlobalsOk.mem` for an earlier definition; for the definition being checked (`K.cur`), `MemBelow` says its meaning is the stage closure at the WEAKENED function type, of which it is a member (`ClosureStage.stage_mem`) — the connecting lemma is not written.
+3. `sorts : ∀ d ∈ K.Γ, d.sort ≠ 2` — no data declaration at `Type₁`.
+4. The model's read has whole fields: automatic (`DataModel.read_wholeFields`), not a hypothesis.
+5. Term precondition `t.valsOk (fun v => Fund K ρ φ (.val v))`, which is where the assignment's typing and the future's typing at free loans enter: an embedded unknown `σ` is good iff `ρ σ` is a member of `K.Δ σ` (`TypedAssignment` with `DeltaOk`); an embedded loan `ℓ` iff `φ ℓ` is a member of the type the `.val` clause gives it (the future typed at free loans); a closure, a sealed program, a global by their own runs. For values the `.val` clause types by the HINT (a type value, `⋆`, a loan whose declared type is not a function, a sealed program whose result is not a function) the precondition must hold at the hint the run passes, which is a typing fact about where the value sits in the code (the code invariant the simulation side owns).
+
+## Where `SGood` is established (the direction of the futures)
+
+`SGood` quantifies over futures whose live labels end at PARTLY MOVED members: more futures than the checker's invariant speaks of (whole members), so `SGood` implies the whole-member form but is HARDER to establish from the checker's side. Where it must be established, and how (a reading of the code, not proved):
+(i) From the checker's invariant only at the start of a definition's body (the generic run of [Def]) and at the empty state (the main theorem's start; a sealed program's re-run from `emptyState`). There no place of the state is lent: the parameters are unknowns, a borrow parameter's lender is the caller's and not in the callee's state, so no position reads a live label and the futures' shape does not matter: `bind`/`holder` hold at every future iff at one. The records of the borrow parameters' labels (`heldTy`, `heldMem`) must be set at that state (`MState.sstate` leaves them at their defaults, so the related state must carry them, as the relation's records clause has them).
+(ii) From then on the simulation carries `SGood` forward by this lemma, step by step: every reference state it relates is produced by a run of the strict run from the previous one. Statements and private copies return the state they started from; a split, an η-refinement, a generalisation, a [Repack] change the checker's state and leave the reference's (it does not split, refine or repack); [Close] is the reference's call clause (`callOfS_sgood`).
+(iii) Steps whose reference state is produced by a reference operation that is NOT a clause of the strict run, so the lemma does not cover them, but which need only MODEL-side lemmas, not the checker's invariant: the in-place call (`CallRef.runCallRef`: `callFrame`, then the body's run, then `popCallFrame` and `SState.endInto`), and a closure body's frame (`.fix`'s `bodyAt`, which today records a borrow parameter's `heldMem` but not its `heldTy`, so that frame is not `SGood` until it does). Each needs a lemma "this frame operation keeps `SGood`", from the caller's `SGood` and the call's strict tests (`BorrowArgsTyped` gives a borrow parameter's type = its label's record). None re-derives `SGood` from the checker's invariant at a later state. Not yet written.
 
 ## Open: the three field-path guesses (`OpsPlace.lean`, the dependent-values area)
 
@@ -66,6 +82,7 @@ What the read clause says at the empty path: a binding's whole value is a member
 
 ## Next
 
-1. When the data layer's commit is verified: merge it; port `runS` into `Run.lean` (the strict run replaces `runT`), carrying the measured repairs (RunPresInd, RunCongr, AssignCongr, RunSubst/RunSubstAbs with `FillOK` carrying the fill's membership, Regress), then move `Strict/*` onto `runT`.
+0. The frame lemmas of (iii) above (in-place call frame push/pop/renaming; `bodyAt` with `heldTy` set).
+1. The data layer's port is merged (spine be901e24). Port `runS` into `Run.lean` (the strict run replaces `runT`), carrying the measured repairs (RunPresInd, RunCongr, AssignCongr, RunSubst/RunSubstAbs with `FillOK` carrying the fill's membership, Regress), then move `Strict/*` onto `runT`.
 2. The field guesses: owned by the dependent-values attack; this lane supplies their exact statements.
 3. The strict type formers' "well typed inside" (brief item 2) is not started.

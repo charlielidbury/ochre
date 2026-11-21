@@ -1,4 +1,4 @@
-import Ochr.Meaning.DataLib.Members
+import Ochr.Meaning.DataLib.Universal
 
 /-!
 # The model of inductive types (docs/34 §8, §14)
@@ -28,16 +28,10 @@ namespace Ochr.Meaning
 
 open DataLib
 
-/-- The key at which a record keeps parameter `j`'s entry (docs/34 §14): a type parameter's type
-entry, a level-0 value parameter read small (`Entry.small`). No field lookup uses it: field `0`
-has no earlier fields. -/
-def paramKey (j : Nat) : List RStep := [(j, 0, [.other])]
 
 /-- **The model of the program's inductive declarations** (docs/34 §14). -/
 structure DataModel where
   covers : IndDecl → Prop
-  /-- Each field's shape at a record, after the earlier fields read small. -/
-  sig : Sig
   /-- The record of `D(ps)`: what `D`'s field types read of the parameters (along the whole
   unfolding), and at `paramKey` each type parameter's entry and each level-0 value parameter read
   small. -/
@@ -49,6 +43,10 @@ structure DataModel where
 namespace DataModel
 
 variable (dm : DataModel)
+
+/-- The signature: the universal one (docs/34 §18), the same for every model; what a model decides
+is its records. -/
+@[reducible] def sig (_ : DataModel) : Sig := uSig
 
 /-- The carrier of `D` at record `r`: a small copy of its members. -/
 def car (d : IndDecl) (r : Rec) : Type := DataLib.car dm.sig d r
@@ -98,13 +96,12 @@ def _root_.Ochr.Meaning.Code0.isData : {A : Type} → Code0 A → Bool
   | _, .data .. => true
   | _, _ => false
 
-/-- A shape's type. A non-canonical shape has the error type: a data code as a leaf (a data field
-is a `sub`), a `sub` of a `Prop`-sorted declaration or a `prf` of a data one. So faithfulness, which
-equates a field's type with the run's reading of the declared field type (never `err` for an
-accepted declaration), forces the signature's shapes to be canonical; on canonical shapes
-membership is fitting (`fitsOneM_mem`). -/
+/-- A shape's type. A leaf's is its code, whatever the code (docs/34 §18, task 2a): a data code over
+a foreign carrier (a junk code of `Type₀`'s carrier, `Exists/StatementCE`) is an ordinary leaf, its
+members the tagged elements the reading gives a foreign carrier. A `sub` of a `Prop`-sorted
+declaration or a `prf` of a data one has the error type. -/
 def shapeTy : Shape → TyM
-  | .leaf B c => if c.isData then TyM.err else .t0 B c
+  | .leaf B c => .t0 B c
   | .sub d r => if d.sort == 0 then TyM.err else dm.tyR d r
   | .prf d r => if d.sort == 0 then dm.tyR d r else TyM.err
 
@@ -117,12 +114,13 @@ the parameters and the earlier fields (the telescope, D64). -/
 def fieldTy (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : TyM :=
   dm.fieldTyR d (dm.recOf d ps) c i earlier
 
-/-- A type entry's type (`unifyTyS` reads a type parameter back off a record). -/
-def entryTy : Entry → TyM
+/-- Parameter `j`'s type as a record keeps it (`unifyTyS` reads a type parameter back off a record):
+its leaf's code, or its declaration at the record's continuation past the parameter. -/
+def paramTyOf (r : Rec) (j : Nat) : TyM :=
+  match r (paramKey j) with
   | .leaf B c => .t0 B c
-  | .data d r => dm.tyR d r
-  | .small _ => TyM.err
-  | .none => TyM.err
+  | .data d => dm.tyR d (contRec r (paramContStep j))
+  | _ => TyM.err
 
 /-- **A constructor value at a record**: the tree, whatever its fields hold. -/
 def ctorR (d : IndDecl) (r : Rec) (c : Nat) (fs : List Sem) : Sem := .dat d.name r c fs
@@ -163,15 +161,36 @@ theorem tyR_prop (d : IndDecl) (r : Rec) (hs : (d.sort == 0) = true) :
 
 theorem err_mem_false (R : DataRead) (s : Sem) : ¬ (s ∈ₛ[R] TyM.err) := fun ⟨a, _⟩ => nomatch a
 
+/-- The declaration and record of a data code. -/
+def _root_.Ochr.Meaning.Code0.dataCode? : {A : Type} → Code0 A → Option (IndDecl × Rec)
+  | _, .data d r _ => some (d, r)
+  | _, _ => none
+
+/-- A shape is not a leaf holding a data code over the model's own carrier (such a code's members
+are trees, a leaf's tagged elements). A canonical record never makes one: a data code at the
+model's carrier is a `.data` entry, so a `sub`. -/
+def LeafOk : Shape → Prop
+  | .leaf B c => ∀ d r, c.dataCode? = some (d, r) → B ≠ dm.car d r
+  | _ => True
+
+/-- Every field shape of `D` at the record satisfies `LeafOk` (a canonical record's do: it keeps a
+data code at the model's carrier as a `.data` entry, `RecordsFaithful.leafOk`). -/
+def RecLeafOk (d : IndDecl) (r : Rec) : Prop := ∀ c i e, dm.LeafOk (dm.sig.shape d r c i e)
+
 /-- **On a canonical shape, fitting is membership**: a field that fits its shape among the members
-is a member of the shape's type, unless that type is `err` (a non-canonical shape). -/
-theorem fitsOneM_mem (s : Shape) (f : Sem) (h : DataLib.FitsOneM dm.sig s f) (hne : dm.shapeTy s ≠ TyM.err) :
-    f ∈ₛ[dm.read] dm.shapeTy s := by
+is a member of the shape's type, unless that type is `err` (a non-canonical shape) or the shape is a
+leaf holding a data code over the model's own carrier. -/
+theorem fitsOneM_mem (s : Shape) (f : Sem) (h : DataLib.FitsOneM dm.sig s f) (hne : dm.shapeTy s ≠ TyM.err)
+    (hok : dm.LeafOk s) : f ∈ₛ[dm.read] dm.shapeTy s := by
   cases s with
   | leaf B c =>
     obtain ⟨b, rfl⟩ := h
     cases c with
-    | data d r A => exact absurd (by simp [shapeTy, Code0.isData]) hne
+    | data d r A =>
+      have hA : B ≠ dm.car d r := hok d r rfl
+      refine ⟨b, ?_⟩
+      show dm.readFn d r B b = _
+      simp only [readFn, dif_neg hA, encLeaf]
     | err => exact b.elim
     | prop P => exact ⟨b, rfl⟩
     | nat => exact ⟨b, rfl⟩

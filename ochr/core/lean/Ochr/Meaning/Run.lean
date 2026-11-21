@@ -263,7 +263,7 @@ def unifyArgsTyS (dm : DataModel) (np : Nat) (r : Rec) : Nat → List Term → L
       | .small sv => match a with
         | .place (.var j) => fillParam np j (ofSmall sv) sol
         | _ => sol
-      | e => unifyTyS dm np a (.plain (dm.entryTy e)) sol)
+      | _ => unifyTyS dm np a (.plain (dm.paramTyOf r k)) sol)
 termination_by structural _ as => as
 end
 

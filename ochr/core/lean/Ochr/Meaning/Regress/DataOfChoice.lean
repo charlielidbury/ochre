@@ -58,7 +58,6 @@ def B2 : IndDecl := { name := "B2", ctors := [("F2", []), ("T2", [])] }
 /-- A data model of `B1` and `B2`: no fields, the empty record. -/
 def dm : DataModel where
   covers d := d = B1 ∨ d = B2
-  sig := ⟨fun _ _ _ _ _ => .leaf PEmpty .err⟩
   recOf _ _ := natRec
   paramTy _ _ _ := .err
 
