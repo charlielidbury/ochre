@@ -6,9 +6,9 @@ import Ochr.Meaning.RunPresInd
 
 **The invariant** (`SGood dm Γ φ s`, in terms of `SState` alone), at every TYPED future `ψ` of the
 state (`TypedF`: `ψ` agrees with the run's future `φ` off the live labels, as the relation compares
-states, and gives each live label an open member (`DataModel.OMem`) of the content type recorded for
-it when it was made, `heldTy`; open, because a borrow may end with parts of its content moved out,
-D53 (h), and its lenders then read those parts moved):
+states, and gives each live label a WHOLE member (`WMem`) of the content type recorded for it when it
+was made, `heldTy`; ruling (A), docs/31 D106: a label's value in a future is its borrow's content when
+it ends, and every end is strict, `EndOkF`; a partly moved CURRENT content is the holder's, state):
 - `bind`: every binding holds an open member of its stored type, or is at the error type (`GoodRes`:
   no type known, nothing owed);
 - `holder`: every holder of a borrow holds an open member of its label's content type;
@@ -43,14 +43,14 @@ a field of `⋆`, which a read types `err`). -/
 def GoodRes (R : DataRead) (r : Res) : Prop :=
   r.1 ∈ₛ[R] r.2.m ∨ r.1 = .moved ∨ (r.2.m = TyM.err ∧ NoData r.1)
 
-/-- What a live label's final content and a holder's content are: an OPEN member (`DataModel.OMem`,
+/-- What a holder's content is: an OPEN member (`DataModel.OMem`,
 the dependent-values unit; it was a partly moved member, which reads wrong types once an index is
 moved, `ReadProto.not_memReads_dep`). -/
 def PMem (dm : DataModel) (Γ : List IndDecl) (v : Sem) (T : TyM) : Prop := dm.pmem Γ v T
 
 theorem PMem.pmem {dm : DataModel} {Γ : List IndDecl} {v : Sem} {T : TyM} (h : PMem dm Γ v T) : dm.pmem Γ v T := h
 
-/-- PROBE (A): a typed future's value for a live label, a whole MEMBER. -/
+/-- A typed future's value for a live label: a whole MEMBER (ruling (A), docs/31 D106). -/
 def WMem (dm : DataModel) (_Γ : List IndDecl) (v : Sem) (T : TyM) : Prop := v ∈ₛ[dm.read] T
 
 /-- A binding's value is good: an open member of its stored type, or a type value at `err`. -/
@@ -61,7 +61,7 @@ section
 variable (dm : DataModel) (Γ : List IndDecl) (φ : Future)
 
 /-- A future typed at a state: it agrees with the run's future off the live labels, and gives each
-live label an open member of its recorded content type. -/
+live label a whole member of its recorded content type (ruling (A), docs/31 D106). -/
 def TypedF (s : SState) (ψ : Future) : Prop :=
   (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, WMem dm Γ (ψ l) (s.heldTy l)
 

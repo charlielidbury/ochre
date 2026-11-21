@@ -164,6 +164,16 @@ theorem id1_inPlace_typed :
   let d := ((bindsOf (Kc dm) ρ φ S₂r.pushFrame [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
   have hpop := popCallFrame_two 2 (SPr2 (selfId1P dm ρ φ cd) d T₀.m (.el0 Nat 2) (.el0 Nat 2)) 0 2 1 1 (.temp 1 0)
     (liveLabels_SPr2 _ _ _ _) (holderOf_SPr2 _ _ _ _) rfl (by decide) (holderOf_end_SPr2 _ _ _ _)
+  -- the pop's strict end (ruling (A)): `x`'s label `0` ends over `x`'s content, which reads the
+  -- reborrow `2`'s final content, a number at every typed future
+  have hguard : EndsOk (Kc dm) φ (popEnds 2 (some 2) (SPr2 (selfId1P dm ρ φ cd) d T₀.m (.el0 Nat 2) (.el0 Nat 2)))
+      (SPr2 (selfId1P dm ρ φ cd) d T₀.m (.el0 Nat 2) (.el0 Nat 2)) := by
+    rw [popEnds_two 2 _ 0 2 1 1 (liveLabels_SPr2 _ _ _ _) (holderOf_SPr2 _ _ _ _) rfl (by decide)]
+    refine ⟨fun q hq ψ hψ => ?_, trivial⟩
+    rw [holderOf_SPr2] at hq
+    cases hq
+    have h2 := hψ.2 2 (by rw [liveLabels_SPr2]; simp)
+    simpa [SPr2, SState.valAt, xB, T₀, yB] using h2
   have hrun : runCallRef (Kc dm) ρ φ (fresId1 dm ρ φ) [] id1T [] [(.el0 Nat 2, { yB.ty with label := some 0 })]
       (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Nat 2, { T₀ with label := some 1 }),
         (popCallFrame 2 (some 2) (SPr2 (selfId1P dm ρ φ cd) d T₀.m (.el0 Nat 2) (.el0 Nat 2))).endInto 2 1) := by
@@ -173,8 +183,11 @@ theorem id1_inPlace_typed :
     unfold runBodyRef
     simp only [hs₀]
     rw [callFrame_id1r dm ρ φ _ _ rfl, run_id1_r]
-    simp [outId1, codOf_id1, S₂r, Attack.S₂, SState.freshLoan, SState.setLent]
-    rfl
+    dsimp only
+    rw [if_pos]
+    · simp [outId1, codOf_id1, S₂r, Attack.S₂, SState.freshLoan, SState.setLent]
+      rfl
+    · exact hguard
   refine ⟨_, _, hrun, rfl, ?_, ?_, ?_, ?_⟩
   · rw [hpop, endLabel_SPr2]
     simp [SState.endInto, SState.positions, SState.pushTempShaped, SState.pushTemp, SState.mapVals, SState.topIdx, SPr2,

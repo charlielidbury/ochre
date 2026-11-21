@@ -43,14 +43,17 @@ theorem grows_bodyTail (fuel d : Nat) (model : Bool) (B : Option Value) (v : Val
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
+open Classical in
 theorem runBodyRef_eq (fres : Res) (cs : List Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term)
     (dec : Option Nat) (body : Term) (rd : List (DeclInfo × Value)) (args : List Res) (s : SState) :
     runBodyRef K ρ φ fres cs (.fix self hs ds c dec body) rd args s =
       match runT K ρ φ true (.plain ((bodyFrame K ρ φ fres cs rd ds c args s).2.cod (args.map (·.1)))) body
           (bodyFrame K ρ φ fres cs rd ds c args s).1 with
       | some ((r, R), s₁) =>
+        if EndsOk K φ (popEnds s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none) s₁) s₁ then
         some ((r, { R with label := if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none }),
           popCallFrame s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none) s₁)
+        else none
       | none => none := rfl
 
 /-- The body's run succeeds where the run in place does. -/
@@ -105,6 +108,7 @@ theorem runBody_front (fuel : Nat) (st st' : MState) (fv : Value) (cs : List Val
       hintM K ρ hint = .plain ((bodyFrame K ρ φ fres cs rd ds c as s).2.cod (as.map (·.1))) := by
   sorry
 
+open Classical in
 /-- The run in place under an assignment extending the call's at new unknowns only is the same: the
 frame (captures, binders, codomain) and the body name only unknowns of the call's table
 (`CalleeBounded`), and a run reads the assignment only at the unknowns its term names
@@ -116,9 +120,12 @@ theorem runBodyRef_extend (st : MState) (cs : List Value) (self : Hint) (hs : Li
     (r : Res) (s₂ : SState)
     (hrun : runT K ρ₁ φ true (.plain ((bodyFrame K ρ φ fres cs rd ds c as s).2.cod (as.map (·.1)))) body
       (bodyFrame K ρ φ fres cs rd ds c as s).1 = some (r, s₂)) :
+    -- model3: the pop is guarded by its strict ends since ruling (A) (`CallRef.runBodyRef`)
     runBodyRef K ρ₂ φ fres cs (.fix self hs ds c dec body) rd as s =
+      if EndsOk K φ (popEnds s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂ then
       some ((r.1, { r.2 with label := if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none }),
-        popCallFrame s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) := by
+        popCallFrame s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂)
+      else none := by
   sorry
 
 /-- **[Call]'s back** (`bodyTail` against `popCallFrame`): from related states after the body's run (the
@@ -174,9 +181,19 @@ theorem runBody_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : runBody_step_st
     (hext₁ σ (Nat.lt_of_lt_of_le hσ habs₁)).1
   have hρ₂ : ∀ σ, σ < (st.withTemps (fv :: ws.toList)).absTy.size → ρ₂ σ = ρ σ := fun σ hσ =>
     ((hext₂ σ (Nat.lt_of_lt_of_le hσ (Nat.le_trans habs₁ habs₂))).1).trans (hρ₁ σ hσ)
+  -- the pop's strict ends hold: the run in place succeeds (`hok`), read under the extension
+  have hend := runBodyRef_extend K ρ φ _ cs self hs' ds c dec body rd hb fres as s ρ₁ ρ hρ₁ (fun _ _ => rfl) r s₂ hrun
+  replace hend : EndsOk K φ (popEnds s.nextLoan
+      (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂ := by
+    rw [hend] at hok
+    by_cases he : EndsOk K φ (popEnds s.nextLoan
+      (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂
+    · exact he
+    · rw [if_neg he] at hok; cases hok
   refine ⟨ρ₂, Δ₂, π₂, _, _, Nat.le_trans habs₁ (Nat.le_trans habs₂ habs₃),
     Nat.le_trans hnl₁ (Nat.le_trans hnl₂ hnl₃), fun σ hσ => ⟨hρ₂ σ hσ, ?_⟩, fun l hl => ?_,
-    runBodyRef_extend K ρ φ _ cs self hs' ds c dec body rd hb fres as s ρ₁ ρ₂ hρ₁ hρ₂ r s₂ hrun,
+    by show runBodyRef K ρ₂ φ fres cs _ rd as s = _
+       rw [runBodyRef_extend K ρ φ _ cs self hs' ds c dec body rd hb fres as s ρ₁ ρ₂ hρ₁ hρ₂ r s₂ hrun, if_pos hend],
     hmean', hctx₃, hs₃, hg₃⟩
   · have hlt₁ := Nat.lt_of_lt_of_le hσ habs₁
     exact ((hext₂ σ (Nat.lt_of_lt_of_le hlt₁ habs₂)).2).trans (hext₁ σ hlt₁).2

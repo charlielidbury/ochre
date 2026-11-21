@@ -54,13 +54,10 @@ theorem fixG_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
     (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (dec : Option Nat) :
     fixG K ρ φ fb l s ps out piT start dec body = fixG (KA K Δ') ρ' φ fb l s ps out piT start dec body := by
-  cases dec with
-  | none => exact funext fun args => fixBodyAt_congrA K Δ' ρ ρ' φ hb s ps out piT start _ args
-  | some j =>
-    funext args
-    show fixStage K ρ φ fb l s ps out (some j) start body (fixRank (some j) args + 1) args
-      = fixStage (KA K Δ') ρ' φ fb l s ps out (some j) start body (fixRank (some j) args + 1) args
-    rw [fixStage_congrA K Δ' ρ ρ' φ hb]
+  funext args
+  show fixStage K ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
+    = fixStage (KA K Δ') ρ' φ fb l s ps out dec start body (fixRank dec args + 1) args
+  rw [fixStage_congrA K Δ' ρ ρ' φ hb]
 
 end
 
