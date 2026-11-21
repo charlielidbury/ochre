@@ -209,6 +209,7 @@ import Ochr.Meaning.DataModel.Exists.FrameLocal.Setup
 import Ochr.Meaning.DataModel.Exists.FrameLocal.Agree
 import Ochr.Meaning.DataModel.Exists.FrameLocal.Fix
 import Ochr.Meaning.DataModel.Exists.FrameLocal.Run
+import Ochr.Meaning.DataModel.Exists.FrameLocal.DecAt
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE

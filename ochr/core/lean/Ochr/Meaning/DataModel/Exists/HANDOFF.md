@@ -6,7 +6,15 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 
 `FrameLocal/Run.lean`'s **`runT_qset`** is proved, in the default build, standard axioms; it assumes `DecLocal` (and the usual `hK`). Files, in dependency order: `Vars`, `Qset`, `Prims`, `Join`, `Setup` (exists3), `Agree` (descriptions that agree at the right arity: a Π's binders and a closure's stages differ between the two sides at argument lists of the wrong length, and every consumer reads them only at the right one), `Fix` (the closure's body frame one frame up: `fixBodyAt_qset`, `fixStage_qset`), `Run` (the mutual induction with companions `runArm_qset`, `runParams_qset`, `runFields_qset`, `runArgs_qset`, `runAll_qset`, `runBinds_qset`). `capOrder` is a structural insertion sort on this branch (`mem_capOrder`), commit 39c93c86: it touches `Meaning/Run.lean`, so the merge must take it.
 
-Next: `DecLocal` (step 3 of the lane: restate it at the class of terms that occur in field types; a `#guard` on `Step2.lean`'s declarations; the list of the checker's static analyses it concerns), then the plan below continues at step 2 (`globals_typed`).
+## DecLocal, node by node (exists4, partly done)
+
+`FrameLocal/DecAt.lean` (default build): `JoinLocal`, `CapsLocal`, `RepLocal`, `DecAt D t` (the obligation at one node: a match → join + caps at the match; `J` → join at the `J` term, caps at its transported term; `Id A t u` → rep at `t`; any other node → `True`), `DecLocal.decAt` (global ⇒ node-wise), `Term.hasDecNode`, `decAt_of_hasDecNode`, `chainDecisions_inv` (the chain's `invalidated` is the default `[]`, so `DecLocal.inv` holds outright), and a `#guard` that `Step2.step2Decls` has no match/`J`/`Id` in any field or parameter type.
+
+The checker's static analyses the obligation concerns, exactly: `Decide.jdMoves` (through `checkerDecisionsFF`'s `joinMoves`, `joinMovesD`), `BlockCaps.staticBlockCaps` (the chain's `blockCaps`), `Decide.typeState`'s `repointed` (`rePointed`, `typeStateD`); and `Decisions.invalidated` (empty in the chain). For the machine lane: `∀ d accepted, ∀ field/parameter type FT of d, ∀ node u of FT, DecAt (chainDecisions fuel st) u` (scopes: every `sc`).
+
+NOT done (do first): `runT_qset` still takes the global `DecLocal K.D`. Recipe to switch it to the node-wise form: define `DecAll D : Term → Prop` mutually with lists/arms (`DecAt D t ∧` `DecAll` of each immediate subterm, the shape of `Term.hasDecNode`) and `decAll_of_hasDecNode`; replace `hD : DecLocal K.D` in `runT_qset` and every companion by `hinv : ∀ sc p q, q ∈ K.D.invalidated sc p → q.root = p.root` plus `hDA : DecAll K.D t` (companions: `∀ a ∈ as, DecAll K.D a`); at each IH call pass the subterm's component of `hDA`; at the matches/`J`/`Id` clauses use `hDA.1` where `hD.join`/`hD.caps`/`hD.rep` are used now (`joinMoves_avoid` and `blockCaps_avoid` take `JoinLocal`/`CapsLocal` at the term instead of `DecLocal`); `matchEntry_qset`/`entryAccess_qset`/`Twin.invalidate` already take only the `inv` clause. Every IH call site is a `runT_qset hK hD …`/`run…_qset hK hD …` call: about sixty, all mechanical.
+
+Then the plan below continues at step 2 (`globals_typed`).
 
 ## State
 
