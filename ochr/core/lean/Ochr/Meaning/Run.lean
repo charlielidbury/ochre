@@ -972,11 +972,13 @@ def PiOk (R : DataRead) : List PiDom → List Sem → PiCod → Prop
   | p :: ps, acc, out => (p.dom acc).level.isSome = true ∧ ∀ a, a ∈ₛ[R] p.dom acc → PiOk R ps (acc ++ [a]) out
 
 /-- STRICT captures (the trial's clause 7): a closure's or Π-closure's captured values are members of
-their recorded types, one for each. -/
+their recorded types, one for each. The recorded readings may run on past the captures: a stuck
+block's closure keeps its PARAMETERS' readings there (`Syntax.lean`'s `Value.clo`; the checker reads
+them as `rd.drop caps.length`), which this test does not read (docs/31 D137, ruling (A)). -/
 def CapsOk (R : DataRead) : List Sem → List (DeclInfo × TyS) → Prop
-  | [], [] => True
+  | [], _ => True
   | v :: vs, (_, T) :: ts => v ∈ₛ[R] T.m ∧ CapsOk R vs ts
-  | _, _ => False
+  | _ :: _, [] => False
 
 /-- The borrow flags of a function type's parameters along the arguments (`telRefsL` at its level). -/
 noncomputable def refsOf (R : DataRead) (T : TyM) (as : List Sem) : List Bool :=

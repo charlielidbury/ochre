@@ -262,39 +262,53 @@ theorem callOf_A (hd : ParDecQ K.D) (a : Nat) (T : TyS) (hT : T.label = none) (s
   subst hss
   exact hs'
 
-/-- **FINDING (docs/31 D137): the model reads the checker's block value as `err`.** The checker's block is the closure
-value `.clo [] anonFix [(.other, Nat)]`: NO capture, and ONE entry in `rd`, the block's PARAMETER's declared reading and
-type (the checker's convention, `Syntax.lean`'s `Value.clo`: "for a stuck block, each parameter's, the place it takes";
-`Machine` reads them as `rd.drop cs.length`). The model's `meanV` reads `rd` as the captures' types only and asks
-`CapsOk` of the two lists, which is `False` when their lengths differ: so `anonQ` means `err`, and every closed-off block
-that takes a place means `err`. -/
-theorem meanV_anonQ_err (hint : TyS) : meanV K ρ φ hint anonQ = .err := by
+/-- **What the block's closure value means** (docs/31 D137, after ruling (A): `CapsOk` reads the captures against the
+first `caps.length` readings only; the block's parameter reading in `rd` is not a capture's): the closure of `gA`. Before
+the ruling this was `err` (`CapsOk [] [_]` was `False`): every closed-off block that took a place meant `err`. -/
+theorem meanV_anonQ (hd : ParDecQ K.D) (hint : TyS) :
+    meanV K ρ φ hint anonQ = closureAt K.dm.read 1 φ psI outI (gA K ρ φ) := by
   show meanV K ρ φ hint (.clo [] anonFix [(.other, .tNat)]) = _
-  rw [meanV, if_neg]
-  show ¬ CapsOk K.dm.read [] [(DeclInfo.other, _)]
-  exact fun h => h
+  rw [meanV, if_pos (by exact trivial)]
+  have hs0 : stateOf 0 (capsState (capsVals K ρ φ []) (capsTys K ρ φ [(.other, .tNat)])) = emptyState 0 := rfl
+  rw [hs0, runT_anonFix hd]
 
-/-- **So the sealed block means `err`** (its head, the closure value, is `err`, and the strict `.val` fails on it),
-where the reference's direct run of the match gives `ρ σ0 - 1` (`runMatchQ`): the value agreement `Out` asks fails at
-EVERY assignment. -/
-theorem mean_vQ_err (hd : ParDecQ K.D) (hint : TyS) : meanV K ρ φ hint vQ = .err := by
-  have h1 : runT K ρ φ false (TyS.plain TyM.err) (Term.val anonQ) (emptyState 0) = none := by
-    show runT K ρ φ false (TyS.plain TyM.err) (Term.val (.clo [] anonFix [(.other, .tNat)])) (emptyState 0) = none
+/-- **The sealed block's run**: the call of the closure `anonQ` means, at `ρ σ0`. -/
+theorem runT_sealQ (hd : ParDecQ K.D) (h : TyS) {m : Nat} (h0 : ρ 0 = .el0 Nat m) :
+    runT K ρ φ false h sealQ (emptyState 0) = some ((.el0 Nat (m - 1), .plain TyM.nat), emptyState 0) := by
+  have h1 : runT K ρ φ false (TyS.plain TyM.err) (Term.val anonQ) (emptyState 0) =
+      some ((closureAt K.dm.read 1 φ psI outI (gA K ρ φ), .plain (piTyAt K.dm.read 1 psI outI)), emptyState 0) := by
+    show runT K ρ φ false (TyS.plain TyM.err) (Term.val (.clo [] anonFix [(.other, .tNat)])) (emptyState 0) = _
     unfold runT
     show strictVal K.dm.read (.clo [] anonFix [(.other, .tNat)]) (meanV K ρ φ (.plain TyM.err) anonQ, _) (emptyState 0) = _
-    rw [meanV_anonQ_err]
-    simp [strictVal]
+    rw [meanV_anonQ hd]
+    have hs0 : stateOf 0 (capsState (capsVals K ρ φ []) (capsTys K ρ φ [(.other, .tNat)])) = emptyState 0 := rfl
+    simp only [strictVal, gA_ne_err hd, if_false, hs0, runT_anonFix hd]
+    rfl
+  have h2 : ∀ T, runArgs K ρ φ false T [] [Term.val (.abs 0)] (emptyState 0) =
+      some ([(ρ 0, { K.Δ 0 with label := none })], emptyState 0) := by
+    intro T
+    rw [runArgs]
+    simp only [Bool.false_and, SM.stmtIf, Bool.false_eq_true, if_false, Bind.bind]
+    rw [runT]; rfl
+  unfold sealQ
+  rw [runT]
+  simp only [show K.D.flags (scopeOf (emptyState 0)) (.call (.val anonQ) [.val (.abs 0)] true) = (false, false)
+    from hd.flSeal]
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
+  simp only [SM.headOf, Bind.bind, h1]
+  rw [h2]
+  dsimp only
+  rw [if_pos (ColumnJ.borrowArgsTyped_unlabelled _ _ _ _ (fun a ha => by simp at ha; subst ha; rfl)), h0]
+  exact callOf_A hd m _ rfl _
+
+/-- **What the checker's closed-off block means**: `⌈anonQ(σ0)⌉` means `ρ σ0 - 1` wherever `ρ σ0` is a number, at every
+hint: the reference's direct run of the match (`runMatchQ`) gives the same, at every assignment. -/
+theorem mean_vQ (hd : ParDecQ K.D) (hint : TyS) {m : Nat} (h0 : ρ 0 = .el0 Nat m) :
+    meanV K ρ φ hint vQ = .el0 Nat (m - 1) := by
   show (match runT K ρ φ false hint sealQ (emptyState 0) with
     | some ((v, _), _) => v
     | none => .err) = _
-  have hr : runT K ρ φ false hint sealQ (emptyState 0) = none := by
-    unfold sealQ
-    rw [runT]
-    simp only [show K.D.flags (scopeOf (emptyState 0)) (.call (.val anonQ) [.val (.abs 0)] true) = (false, false)
-      from hd.flSeal]
-    simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
-    simp only [SM.headOf, Bind.bind, h1]
-  rw [hr]
+  rw [runT_sealQ hd hint h0]
 
 end
 
