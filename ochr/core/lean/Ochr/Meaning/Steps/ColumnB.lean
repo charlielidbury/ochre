@@ -244,6 +244,17 @@ def stUnitX : MState :=
      { hint := ⟨"y"⟩, ty := some (.tRef .tNat), val := .borrow 0 .zero, decl := .other }] }] }
 #guard outVal (Ochr.evalCore 100 true (.place (.var 1)) none) stUnitX 1000 == (.zero, some .tUnit)
 
+-- `ModeEq` across a stretch (lead9; `AssignDerefInv`, `SeqInv`): entered in a mode other than the
+-- column's (inside `clone`/`peek`), the write and the sequence succeed and leave the mode as found
+def modeOf (st : MState) : Bool × Bool × Bool × Nat := (st.headEval, st.copying, st.inPlace, st.erasedDepth)
+#guard isOk (Ochr.evalCore 100 true (.assign (.deref (.var 0)) .zero) none) { stXY (.succ .zero) with copying := true } 1000
+#guard modeOf (outSt (Ochr.evalCore 100 true (.assign (.deref (.var 0)) .zero) none)
+  { stXY (.succ .zero) with copying := true } 1000) == (false, true, false, 0)
+#guard isOk (Ochr.evalCore 100 true (.seq (.assign (.deref (.var 0)) .zero) (.place (.var 1))) none)
+  { stXY (.succ .zero) with copying := true } 1000
+#guard modeOf (outSt (Ochr.evalCore 100 true (.seq (.assign (.deref (.var 0)) .zero) (.place (.var 1))) none)
+  { stXY (.succ .zero) with copying := true } 1000) == (false, true, false, 0)
+
 end ColumnB
 
 end Ochr.Meaning.Steps.Form

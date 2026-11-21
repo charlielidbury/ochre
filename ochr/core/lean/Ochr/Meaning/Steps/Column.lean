@@ -36,14 +36,14 @@ theorem Pre.withTempT_num {st : MState} (hp : Pre K ρ st) {v : Value} (hv : v.N
   ⟨hp.ctx.of_eq rfl rfl, hinv, asg_withTempT_num hp.asg hv T?⟩
 
 /-- **`Z`, at `evalCore`.** -/
-theorem zero_core (hZ : ZeroInv) (hIC : InvCore) {n : Nat} {typed : Bool} {hint : Option Value}
+theorem zero_core (hZ : ZeroInv) (hI : InvSteps) {n : Nat} {typed : Bool} {hint : Option Value}
     {st st' : MState} {bh : Nat} {v : Value} {T? : Option Value} (s : SState) (π : Nat → Nat)
     (hp : Pre K ρ st) (hr : Rel K ρ φ π st s) (hD : DecTab K.D st')
     (h : Runs (Ochr.evalCore (n + 1) typed .zero hint) st bh (v, T?) st') :
     Out K ρ φ π st st' s (runT K ρ φ st.curTail (hintM K ρ hint) .zero) v T? := by
   obtain ⟨rfl, rfl, hk, -⟩ := hZ n typed hint st st' bh v T? h
   have hinv : Inv K.D K.Γ (st'.withTempT .zero (some .tNat)).norm :=
-    hIC (n + 1) typed .zero hint st st' bh .zero (some .tNat) K.D K.Γ .zero hp.inv hD h
+    hI.pushInert K.D K.Γ st' .zero _ (.inl .zero) (by rw [← hk.norm]; exact hp.inv)
   refine ⟨ρ, K.Δ, π, (.el0 Nat 0, .plain TyM.nat), s, ⟨?_, ?_, fun _ _ => ⟨rfl, rfl⟩, fun _ _ => rfl⟩,
     runT_zero _ _ _, rfl, fun T hT => ?_, rfl, ?_, ?_⟩
   · rw [hk.absTy]; exact Nat.le_refl _
@@ -310,18 +310,20 @@ with none, the strict run at `Nat`), and its value is a number. The strict point
 `Nat`) passes because the argument's meaning is a number. `P` is a precondition of the entry state
 (the step for `u` gets `Pu` at the state it starts from, which has the entry's kernel); the
 classification of `u` is asked at the entry's readings only, where `P` holds. -/
-theorem succ_core (hS : SuccInv) (hIC : InvCore) {n : Nat} {u : Term} {P Pu : MState → Prop}
-    (hcu : ColTerm u) (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
+theorem succ_core (hS : SuccInv) (hI : InvSteps) {n : Nat} {u : Term} {P Pu : MState → Prop}
+    (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ s : SState, runT K ρ φ false (.plain TyM.nat) u s = runT K ρ φ false (.plain TyM.err) u s)
     (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
       Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ → v₀.Num) :
-    CoreSim K ρ φ (n + 1) (.succ u) P := by
-  intro st st' typed hint v T? s π hPst _ hm htn htd _ hp hr hSg hv hab hnh hfl hok hD bh h
-  obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, hDb, -⟩ :=
-    hS n typed u hint st st' bh v T? hcu hm htn htd h
-  have hv₀ : v₀.Num := hnum typed st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ (hDb K.D hD) hu₀
-  have hO := hu st₀ st₁ typed none v₀ T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
+    CoreSim K ρ φ (n + 1) (.succ u) P (· = true) := by
+  intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hSg hv hab hnh hfl hok hD bh h
+  subst hty
+  obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, -, hDb, hty⟩ :=
+    hS n true u hint st st' bh v T? hm htn htd h
+  obtain ⟨st₂, bh₂, hx₂, hk₂⟩ := hty rfl
+  have hv₀ : v₀.Num := hnum true st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ (hDb K.D hD) hu₀
+  have hO := hu st₀ st₁ true none v₀ T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hSg hv
     (by rw [← hk₀.absTy]; exact hab) hnh (by rw [scopeOf_rel hr]; exact hflu st hPst)
     (fun ht => by
@@ -361,7 +363,9 @@ theorem succ_core (hS : SuccInv) (hIC : InvCore) {n : Nat} {u : Term} {P Pu : MS
     rw [hm', Sem.succ, Sem.asNat_el0]
   · cases hT; exact strAgree_tNat
   · refine ⟨hp₁.ctx.of_eq (hq.inds.symm) (hq.globals.symm), ?_, ?_⟩
-    · exact hIC (n + 1) typed (.succ u) hint st st' bh (.succ v₀) (some .tNat) K.D K.Γ (.succ hcu) hp.inv hD h
+    · have h₁ : Inv K.D K.Γ st₁.norm := hI.popInert K.D K.Γ st₁ v₀ T₀ (.inl hv₀) hp₁.inv
+      have h₂ : Inv K.D K.Γ st'.norm := by rw [← hk₂.norm]; exact hI.expectTy n _ T₀ .tNat st₁ st₂ bh₂ hx₂ K.D K.Γ h₁
+      exact hI.pushInert K.D K.Γ st' _ _ (.inl hsucc) h₂
     · have ha : Asg { K with Δ := Δ₁ } ρ₁ (st'.withTempT v₀ T₀).norm := Asg.of_quiet hq' hp₁.asg hp₁.inv.wf6
       exact ha.of_refd rfl rfl rfl rfl rfl fun σ hσ =>
         refd_mono_withTempT v₀ T₀ σ (refd_withTempT_num hsucc (some .tNat) σ hσ)

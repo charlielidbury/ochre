@@ -385,18 +385,20 @@ number at `&Nat`, the only borrow live after `u` (`hbor`), and a binding that ho
 has no site when it is dropped (the borrow ended in `w`). As `let_core`, with the push of a borrow
 (`rel_pushBind_borrow`): the reference moves the label from the temporary that parks it to the
 binding. -/
-theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.FundCtx K)
-    {n : Nat} {x : Hint} {u w : Term} {Plet Pu Pw : MState → Prop} (hcu : ColTerm u) (hcw : ColTerm w)
+theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hc : Strict.FundCtx K)
+    {n : Nat} {x : Hint} {u w : Term} {Plet Pu Pw : MState → Prop}
     (htail : ∀ st stB, Plet st → Pw stB →
       K.D.declOf (DecideScope.topReadings st) (.letIn x u w) = K.D.declOf (DecideScope.topReadings stB) w)
-    (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → Plet a → Pu b)
+    (hu : EvalSim K ρ φ n u Pu (· = true)) (hPu : ∀ a b, Kern a b → Plet a → Pu b)
     (hw : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), EvalSim { K with Δ := Δ' } ρ' φ n w Pw (· = true))
     (hflu : ∀ st, Plet st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hflw : ∀ st, Pw st → K.D.flags (DecideScope.topReadings st) w = (false, false))
-    (hbor : ∀ st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
-      Runs (Ochr.eval n true u none) st₀ bh (v₀, some T₀) st₁ →
-      ∃ l w₀, v₀ = .borrow l w₀ ∧ w₀.Num ∧ T₀ = .tRef .tNat ∧
-        ∀ q l', q ∈ allPos st₁.env → (valAt st₁.env q).holdsBorrow l' = false)
+    (hdo : ∀ st, Plet st → K.D.declOf (DecideScope.topReadings st) u = .ref .other)
+    (hbor : ∀ st st₀ st₁ bh v₀ T₀, Plet st → Kern st st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
+      Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ →
+      ∃ l w₀, v₀ = .borrow l w₀ ∧ w₀.Num ∧ T₀ = some (.tRef .tNat) ∧
+        (∀ q l', q ∈ allPos st₁.env → (valAt st₁.env q).holdsBorrow l' = false) ∧ 0 < st₁.env.size ∧
+        DecideScope.topReadings st₁ = DecideScope.topReadings st ∧ Mode st₁)
     (hPw : ∀ (st st₀ st₁ : MState) (bh : Nat) (v₀ : Value) (p : Bool), Plet st → Kern st st₀ → Mode st₀ →
       st₀.tailDecl = none → DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, some (.tRef .tNat)) st₁ →
       Pw { st₁ with env := Env.pushBindE st₁.env x (some (.tRef .tNat)) v₀ p (K.D.declOf (DecideScope.topReadings st₁) u) })
@@ -413,13 +415,15 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict
     CoreSim K ρ φ (n + 1) (.letIn x u w) Plet (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
-  obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hne₁, hdu, hrd₁,
-    hkB, hmB, htnB, hrw, hrd, hk₃, hD₁, hD₂, hinvB⟩ := hL n x u w hint st st' bh v T? K.D K.Γ hcu hm htn htd hD h
-  obtain ⟨lb, wb, rfl, hwb, rfl, hnb₁⟩ := hbor st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ hD₁ hru
+  obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hdu,
+    hkB, hmeB, htnB, hrw, hrd, hk₃, -, hD₁, hD₂⟩ := hL n x u w hint st st' bh v T? K.D hm htn htd hD h
+  obtain ⟨lb, wb, rfl, hwb, rfl, hnb₁, hne₁, hrd₁, hm₁⟩ := hbor st st₀ st₁ bh₁ v₀ T₀ hPst hk₀ hm₀ htd₀ hD₁ hru
+  have hmB : Mode stB := hm₁.of_modeEq hmeB
+  have hduo : du = .ref .other := hdu.symm.trans (hdo st hPst)
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv.1
   have hvw : w.valsOk (Strict.ValsP K ρ φ) := hv.2
   -- the step for `u`
-  have hOu := hu st₀ st₁ true none (.borrow lb wb) (some (.tRef .tNat)) s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
+  have hOu := hu st₀ st₁ true none (.borrow lb wb) (some (.tRef .tNat)) s π (hPu st st₀ hk₀ hPst) rfl hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS hvu
     (fun σ hσ => by rw [← hk₀.absTy]; exact hab σ (by simp [Term.anyAtom, hσ])) (by simp [Term.hasHolePrim] at hnh; exact hnh.1)
     (by rw [scopeOf_rel hr]; exact hflu st hPst) (fun e => by cases e) hD₁ bh₁ hru
@@ -447,7 +451,8 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict
       (fun φ' hint' => by rw [hru1]; exact hmv _ _ _ _ _ _)).of_kern hkB
   have hpB : Pre { K with Δ := Δ₁ } ρ₁ stB :=
     ⟨hp₁.ctx.of_eq (by show stB.inds = st₁.inds; rw [← hkB.inds])
-      (by show stB.globals = st₁.globals; rw [← hkB.globals]), hinvB hcu hp.inv,
+      (by show stB.globals = st₁.globals; rw [← hkB.globals]),
+     by rw [← hkB.norm, hduo]; exact hI.bindBorrow K.D K.Γ st₁ x lb wb _ p hwb hne₁ hp₁.inv,
      by rw [← hkB.norm]; exact asg_pushBind_borrow hwb hp₁.asg hne₁ x p du⟩
   have hs₁ne : s₁.env ≠ [] := by
     have hfr₁' : (st₁.withTempT (.borrow lb wb) (some (.tRef .tNat))).env[
@@ -463,9 +468,7 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict
     have := hPw st st₀ st₁ bh₁ (.borrow lb wb) p hPst hk₀ hm₀ htd₀ hD₁ hru
     rw [hrd₁, hdu] at this; exact hPwk _ _ hkB this
   have htdB' : stB.tailDecl = none ∨ stB.tailDecl = some (K.D.declOf (DecideScope.topReadings stB) w) := by
-    rcases htdB with e | e
-    · exact .inl e
-    · exact .inr (by rw [e, hcd, htail st stB hPst hPB])
+    exact .inr (by rw [htdB, hcd, htail st stB hPst hPB])
   have hOw := hw Δ₁ ρ₁ stB st₂ true none r T? (pushBindShaped s₁ bB) π₁ hPB rfl hmB htdB' hpB hrB hSB (hwv Δ₁ ρ₁)
     (fun σ hσ => hwa _ σ hσ) hwn (by rw [scopeOf_rel hrB]; exact hflw stB hPB) (fun e => by cases e) hD₂ bh₂ hrw
   rw [htnB] at hOw
@@ -524,7 +527,7 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict
     (he₁.congr hk₀.absTy hk₀.nextLoan hkB.absTy hkB.nextLoan).trans (he₂.congr rfl rfl hk'.absTy hk'.nextLoan)
   refine ⟨ρ₂, Δ₂, π₂, rw', s₂.dropLast, hext, hxl, hmw, haw, hlw, ?_, ?_⟩
   · refine Pre.of_kern hk' ⟨hp₂.ctx.of_eq rfl rfl, ?_, asg_popBind hp₂.asg frW hfrW hn₂⟩
-    rw [hk'.norm]; exact hIC (n + 1) true (.letIn x u w) hint st st' bh v T? K.D K.Γ (.letIn x hcu hcw) hp.inv hD h
+    exact hI.popBind K.D K.Γ (st₂.withTempT v T?) frW bx hfrW hbW hbxv hp₂.inv
   · exact (rel_popBind_noSites hr₂ frW bx hfrW hbW (fun l => hns l _) hnb).of_kern hk'
 
 end
@@ -656,8 +659,8 @@ holding `borrow_l w`, `w` and `u`'s value numbers). The strict run's tests pass:
 at `[*]` ends nothing (nothing is lent inside `y`); the update through `*` is defined at every typed
 future (`*` is transparent to `Sem.updAt`); the write is at `[*]` (`lentOk`); the holder keeps its
 label (`rel_setBorrowNum`). -/
-theorem assignDeref_core (hA : AssignDerefInv) (hIC : InvCore) (hc : Strict.FundCtx K) {n i : Nat} {u : Term}
-    {P Pu : MState → Prop} (hcu : ColTerm u) (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
+theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n i : Nat} {u : Term}
+    {P Pu : MState → Prop} (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hP : ∀ st, P st → DerefVar i st)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ (T : TyS) (s : SState), runT K ρ φ false T u s = runT K ρ φ false (.plain TyM.err) u s)
@@ -675,7 +678,7 @@ theorem assignDeref_core (hA : AssignDerefInv) (hIC : InvCore) (hc : Strict.Fund
     obtain ⟨rfl, rfl⟩ := hpos
     rw [hb0, Option.some.injEq] at hb
     subst hb; exact ht0
-  obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, lb, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hpos₂, hlk₂, hbw,
+  obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, lb, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hki, -, hpos₂, hlk₂, hbw,
     hk'i, rfl, rfl⟩ := hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
   have hPu₀ := hPu st st₀ hk₀ hPst
   obtain ⟨hv₀, he₀₁⟩ := hnum st₀ st₁ bh₁ hu' v₀ T₀ hPu₀ hm₀ htd₀ hD₁ hru
@@ -796,7 +799,11 @@ theorem assignDeref_core (hA : AssignDerefInv) (hIC : InvCore) (hc : Strict.Fund
   · refine ⟨hp₁.ctx.of_eq ?_ ?_, ?_, ?_⟩
     · show st'.inds = st₁.inds; rw [← hk'.inds, ← hq.inds]
     · show st'.globals = st₁.globals; rw [← hk'.globals, ← hq.globals]
-    · exact hIC (n + 1) true _ hint st st' bh .unit (some .tUnit) K.D K.Γ (.assignDeref i hcu) hp.inv hD h
+    · have h₁ : Inv K.D K.Γ st₁.norm := hI.popInert K.D K.Γ st₁ v₀ T₀ (.inl hv₀) hp₁.inv
+      have h₂ : Inv K.D K.Γ st'.norm := by
+        rw [← hk'.norm]
+        exact hI.writeDeref K.D K.Γ st₂ f j lb w v₀ (by rw [hvb₂, hbw]) hwn hv₀ (hki K.D K.Γ h₁)
+      exact hI.pushInert K.D K.Γ st' _ _ (.inr rfl) h₂
     · have : Asg { K with Δ := Δ₁ } ρ₁ st'.norm := by rw [← hk'.norm]; exact hX
       exact asg_withTempT_inert this Value.inert_unit _
   · have hR := rel_setBorrowNum hr₂ hposA hposS (by rw [hvb₂, hbw]) hwn hv₀ hmv (fun ψ _ => hgv ψ)
@@ -825,16 +832,16 @@ theorem asg_of_withTempT {st : MState} {v : Value} {T? : Option Value} (h : Asg 
 /-- **A typed `u; w` at `evalCore`**, for a first part whose value is `()` (so its drop ends
 nothing on either side): the step for `u`, then the step for `w` from the state after it, the
 reference's discarded result holding no label. -/
-theorem seq_core (hSq : SeqInv) (hc : Strict.FundCtx K) {n : Nat} {u w : Term} {Pseq Pu Pw : MState → Prop}
-    (hcu : ColTerm u)
+theorem seq_core (hSq : SeqInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n : Nat} {u w : Term}
+    {Pseq Pu Pw : MState → Prop}
     (htail : ∀ st stW, Pseq st → Pw stW →
       K.D.declOf (DecideScope.topReadings st) (.seq u w) = K.D.declOf (DecideScope.topReadings stW) w)
-    (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → Pseq a → Pu b)
+    (hu : EvalSim K ρ φ n u Pu (· = true)) (hPu : ∀ a b, Kern a b → Pseq a → Pu b)
     (hw : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), EvalSim { K with Δ := Δ' } ρ' φ n w Pw (· = true))
     (hflu : ∀ st, Pseq st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hflw : ∀ st, Pw st → K.D.flags (DecideScope.topReadings st) w = (false, false))
     (hunit : ∀ st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
-      Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ → v₀ = .unit)
+      Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ → v₀ = .unit ∧ Mode st₁)
     (hPw : ∀ (st st₀ st₁ : MState) (bh : Nat) (v₀ : Value) (T₀ : Option Value), Pseq st → Kern st st₀ → Mode st₀ →
       st₀.tailDecl = none → DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ → Pw st₁)
     (hPwk : ∀ a b, Kern a b → Pw a → Pw b)
@@ -846,12 +853,13 @@ theorem seq_core (hSq : SeqInv) (hc : Strict.FundCtx K) {n : Nat} {u w : Term} {
     CoreSim K ρ φ (n + 1) (.seq u w) Pseq (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
-  obtain ⟨st₀, st₁, stW, v₀, T₀, bh₁, bh₂, hk₀, hm₀, htn₀, htd₀, htdW, hru, hD₁, hdrop, hmW, htnW, hrw, hinvW⟩ :=
-    hSq n u w hint st st' bh v T? K.D K.Γ hm htn htd hD h
-  obtain rfl := hunit st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ hD₁ hru
+  obtain ⟨st₀, st₁, stW, v₀, T₀, bh₁, bh₂, hk₀, hm₀, htn₀, htd₀, htdW, hru, hD₁, hdrop, hmeW, htnW, hrw⟩ :=
+    hSq n u w hint st st' bh v T? K.D hm htn htd hD h
+  obtain ⟨rfl, hm₁⟩ := hunit st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ hD₁ hru
+  have hmW : Mode stW := hm₁.of_modeEq hmeW
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv.1
   -- the step for `u`
-  have hOu := hu st₀ st₁ true none .unit T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
+  have hOu := hu st₀ st₁ true none .unit T₀ s π (hPu st st₀ hk₀ hPst) rfl hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS hvu
     (fun σ hσ => by rw [← hk₀.absTy]; exact hab σ (by simp [Term.anyAtom, hσ])) (by simp [Term.hasHolePrim] at hnh; exact hnh.1)
     (by rw [scopeOf_rel hr]; exact hflu st hPst) (fun e => by cases e) hD₁ bh₁ hru
@@ -865,7 +873,8 @@ theorem seq_core (hSq : SeqInv) (hc : Strict.FundCtx K) {n : Nat} {u w : Term} {
   have hrW : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stW s₁ := (rel_of_withTempT_inert Value.inert_unit hr₁).of_kern hkW
   have hpW : Pre { K with Δ := Δ₁ } ρ₁ stW :=
     ⟨hp₁.ctx.of_eq (by show stW.inds = st₁.inds; rw [← hkW.inds]) (by show stW.globals = st₁.globals; rw [← hkW.globals]),
-     hinvW hcu hp.inv, by rw [← hkW.norm]; exact asg_of_withTempT hp₁.asg⟩
+     by rw [← hkW.norm]; exact hI.popInert K.D K.Γ st₁ .unit T₀ (.inr rfl) hp₁.inv,
+     by rw [← hkW.norm]; exact asg_of_withTempT hp₁.asg⟩
   -- the step for `w`
   have hPW : Pw stW := hPwk _ _ hkW (hPw st st₀ st₁ bh₁ .unit T₀ hPst hk₀ hm₀ htd₀ hD₁ hru)
   have htdW' : stW.tailDecl = none ∨ stW.tailDecl = some (K.D.declOf (DecideScope.topReadings stW) w) := by
