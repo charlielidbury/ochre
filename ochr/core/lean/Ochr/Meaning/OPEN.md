@@ -30,7 +30,7 @@ Open statements added, none with `sorry` (all are named hypotheses):
 
 Proved (standard axioms): `ColumnPSplit.split_outP`/`split_simP` (`TailSim` for `P`'s body from every related reference state; checker: `SplitPInv`; model: none); `ColumnP.column_P_ff` (checker: `SplitPInv`; model: none); `column_P_def` (+ `FixRunP`); `CallJ2.rel_calleeJ2`, `pre_stCJ2`, `lazyNum_stCJ2`, `hint_nLazy`, `hpi_of_globals` (no assumption); `CallJ2.closureRun_J2` (checker: `BodyLazyInv`, `InvNumA`; model: none; without `FundCtx`/`SGood`/`FrameStart`).
 
-Open at `J2` (docs/31 D132, D133): `callOf` of `J2`'s own closure, `frameRelS_start`'s hypotheses, the `let` around the call. The table at the callee is closed (D133: `BodyLazyInv` takes only the read's copy decision, `CallBody.CopyDec`, which `CallJ2.copyDec_calleeJ2` gives at `J2`'s table by kernel evaluation; `parDecJ2`, `flags_bodyI_J2` likewise). The reference's run of `I(x)` is built (`runT_callJ2`, `caller_of_rel`).
+Open at `J2` (docs/31 D132, D133, D135, D136): the call's step in the form and the `let` around it. Closed: `callOf` of `J2`'s own closure and its membership at `J2`'s table (`CallJ2Fn.callOf_fJ_J2`, `fJ_mem_J2`; no assumption); `frameRelS_start`'s lent-site hypothesis (D135: held labels only, vacuous at `J2`). The table at the callee is closed (D133: `BodyLazyInv` takes only the read's copy decision, `CallBody.CopyDec`, which `CallJ2.copyDec_calleeJ2` gives at `J2`'s table by kernel evaluation; `parDecJ2`, `flags_bodyI_J2` likewise). The reference's run of `I(x)` is built (`runT_callJ2`, `caller_of_rel`).
 
 ## THE FRAME PROPERTY (model6, 2026-11-21, `spine-model6`; docs/31 D129, D130)
 
