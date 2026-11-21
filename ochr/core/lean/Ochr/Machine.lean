@@ -1083,7 +1083,7 @@ silent write below the frame. Inside a private copy (`privateDepth > 0`) F4 need
 checker's scaffolding binds copies of field or captured values in a frame of its own (a field's
 type computed at the value's fields, `fieldTele`), and a copy may hold a live loan whose borrower
 is below (`DepFields.CellGet`); whatever [Access] ends there is discarded with the copy. -/
-def endTopLoan (fuel : Nat) (l : Nat) (site : String := "") : M Unit := do
+def endTopLoan (fuel : Nat) (l : Nat) (site : String := "") (p? : Option Place := none) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let env := (← get).env
   match findBorrow env l with
@@ -1091,6 +1091,17 @@ def endTopLoan (fuel : Nat) (l : Nat) (site : String := "") : M Unit := do
     if f + 1 != env.size && (← get).privateDepth == 0 then
       err s!"internal: [Frame] {site}: the loan {l} lies in the top frame but is borrowed from frame {f} below it (F4)"
   | none => pure ()
+  -- D106: no access ends a borrow a value in flight holds (a temporary: a call's earlier argument,
+  -- an arm's result across the join, a result across a `let`'s drop or a frame's pop). The one
+  -- place every [Access] ends a borrow, so the rule is stated once. Outside private copies: a
+  -- statement's run on its copy reads the current content and ends a borrow on the copy only,
+  -- which is discarded (`SubM(&*x, 0, LeZero(*x))` is accepted)
+  if let some (.temp _ _) := findBorrow env l then
+    if (← get).privateDepth == 0 then
+      let what ← match p? with
+        | some p => pure s!"reading or writing {← ppPlace p}"
+        | none => pure "an access"
+      err s!"[Access] {what} ends a borrow that a value in flight holds (an earlier argument of a call, or a result on its way out): it would hold a borrow that has ended (D106)"
   endBorrow fuel' l
 termination_by structural fuel
 
@@ -1100,7 +1111,7 @@ def accessPath (fuel : Nat) (p : Place) : M Unit := do
   let (i, ss) := p.steps
   let env := (← get).env
   match firstLiveLoanOnPath env (valAt env (← varPos i)) ss with
-  | some l => endTopLoan fuel' l "accessPath"; accessPath fuel' p
+  | some l => endTopLoan fuel' l "accessPath" (some p); accessPath fuel' p
   | none => pure ()
 termination_by structural fuel
 
@@ -1113,7 +1124,7 @@ def accessInside (fuel : Nat) (p : Place) (owned : Bool := false) : M Unit := do
   unless ls.isEmpty do
     fire .Access fun _ => s!"loans {ls} inside {v}{if owned then " (the part the place owns: before an assignment, D67)" else ""}"
   match ls with
-  | l :: _ => endTopLoan fuel' l "accessInside"; accessInside fuel' p owned
+  | l :: _ => endTopLoan fuel' l "accessInside" (some p); accessInside fuel' p owned
   | [] => pure ()
 termination_by structural fuel
 
@@ -1126,7 +1137,7 @@ def accessNeutralHead (fuel : Nat) (p : Place) : M Unit := do
   match v with
   | .sealed _ | .abs _ =>
     match liveLoansIn (← get).env v with
-    | l :: _ => endTopLoan fuel' l "neutralHead"; accessNeutralHead fuel' p
+    | l :: _ => endTopLoan fuel' l "neutralHead" (some p); accessNeutralHead fuel' p
     | [] => pure ()
   | _ => pure ()
 termination_by structural fuel
@@ -1231,7 +1242,10 @@ termination_by structural fuel
 /-- [Drop] the most recent binding of the top frame: a borrow ends. An owned value holding
 a live loan ends that loan's borrower if the borrower is held in a binding (D65 amended: the
 non-lexical-lifetime reading, the borrower is not used again), and is an error if the borrower
-is a value in flight (a block or a function may not return a borrow of its own local). -/
+is a value in flight (a block or a function may not return a borrow of its own local). D106:
+the drop ends no borrow a value in flight holds; the borrows it ends with an access do so through
+`endTopLoan`, which rejects that, and the check in `endLoansOfTopBind` is the same condition,
+made before the access with the drop's own message. -/
 def dropTopBind (fuel : Nat) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let f ← topIdx

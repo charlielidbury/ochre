@@ -973,6 +973,53 @@ ochr StrongUpdate uses Nats {
   ("Ctl1", "a match with no arms on c.x : One, which has constructors"),
   ("OtherDataWhole", "[Repack] c is read whole, but it is open: field x of MkV3 holds a value of type One, but its type from the earlier fields is Nat")]
 
+/-! ## A path that ends early leaves no value open at its caller (D106's negative result)
+
+`StrongUpdate.ViaParam` reached `False` because its only path ended in a match with no arms, so the
+[Repack] at the borrow parameter's end never ran, on a field D110 now never lets read as empty. With
+D110 in place, every way of ending a path before its return was tried after opening the caller's
+value (writing its index through a borrow parameter): a zero-arm match on an empty value the
+function was given (`E1`), on a hypothesis false at every instance (`E2`), on a field made empty by
+a split (`E3`, whose closed call takes the other arm, `E3C`): accepted, and unreachable at any
+instance, since each needs an inhabitant of an empty type; on the opened field itself (`E4`, typed
+by its content), moved out (`E5`), or a proof field the index write invalidated (`E6`): rejected; a
+tail call passing the borrow on, whole or reborrowed (`E8`, `E9`), and a normal end after an opaque
+call or a proof (`E10`, `E11`, `E12`): [Repack]. Only a manufactured emptiness, an opened field read
+at its declared type, made the early end dangerous. -/
+
+ochr EarlyEnd uses Nats {
+  inductive Void : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  def Fin2 (n : Nat) : Type := match n { Z => Void, S(m) => Nat, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  inductive V2 := MkV2(n : Nat, x : Fin2(n))
+  inductive VP := MkVP(n : Nat, h : Eq(Nat, n, S(Z)))
+  def ReadX (v : V) : Nat := match v { MkV(n, x) => 0, }
+  def E1 (r : &V) (v : Void) : Unit := ((*r).0 := Z; match v {})
+  def E2 (r : &V) (h : Eq(Nat, Z, S(Z))) : Unit := ((*r).0 := Z; match h {})
+  def E3 (n : Nat) (x : Fin1(n)) (r : &V) : Unit := match n { Z => ((*r).0 := Z; match x {}), S(m) => (), }
+  def E3C : Nat := (let c = MkV(S(Z), O); E3(S(Z), O, &c); ReadX(c))
+  reject def E4 (r : &V) : Unit := ((*r).0 := Z; match (*r).1 {})
+  reject def E5 (r : &V2) : Unit := (let y = (*r).1; (*r).0 := Z; match (*r).1 {})
+  reject def E6 (r : &VP) : Unit := ((*r).0 := Z; match (*r).1 {})
+  reject def E8 (k : Nat) (r : &V) : Unit by k := match k { Z => (), S(j) => ((*r).0 := Z; E8(j, r)), }
+  reject def E9 (k : Nat) (r : &V) : Unit by k := match k { Z => (), S(j) => ((*r).0 := Z; E9(j, &*r)), }
+  reject def E10 (r : &V) (h : Eq(Nat, (*r).0, S(Z))) : Eq(Nat, S(Z), S(Z)) := ((*r).0 := Z; refl)
+  reject def E11 (f : Π(u : Unit). Void) (r : &V) : Void := ((*r).0 := Z; f(()))
+  reject def E12 (r : &V) : Unit := ((*r).0 := Z; ())
+}
+
+#guard (run "EarlyEnd" EarlyEnd).rejectedWith [
+  ("E4", "[Match] on (*r).1, whose type"),
+  ("E5", "[Match] on (*r).1, which was moved out"),
+  ("E6", "[Match] on (*r).1, which was moved out"),
+  ("E8", "[Repack] r is read whole, but it is open"),
+  ("E9", "[Repack] *r is borrowed whole, but it is open"),
+  ("E10", "[Repack] a borrow of it ends, but it is open"),
+  ("E11", "[Repack] a borrow of it ends, but it is open"),
+  ("E12", "[Repack] a borrow of it ends, but it is open")]
+
 /-! ## A growable vector (a case study)
 
 An array never changes its length, so a growable vector is user code over one (docs/09 §7).

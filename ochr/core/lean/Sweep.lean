@@ -622,9 +622,28 @@ def tempNoLoan : Clause where
     | some T => if T.anyAtom isLoanAtom then some ⟨s!"a temporary's stored type holds {loanForm T}", s!"{posName st.env p}: {clip T.pp}"⟩ else none
     | none => none
 
+/-- D106: no step ends a borrow a value in flight holds, so a temporary at a borrow type still holds
+its borrow, which is live (it is in Ω): it has not become `⊥` ([End] leaves `⊥` at the holder of a
+borrow it ends). Stated on typed temporaries (D104: a temporary holding a borrow has a borrow type),
+and on states outside private copies: a statement's run on its copy reads the current content,
+which ends a borrow on the copy only, and the copy is discarded (`SubM(&*x, 0, LeZero(*x))`, whose
+proof argument reads `*x` while the first argument borrows it, is ordinary accepted code); those
+states are counted by a premise. -/
+def tempLive : Clause where
+  name := "(D106) outside a private copy, no temporary at a borrow type has lost its borrow"
+  premises := [
+    ("a temporary has a borrow type", fun st => (tempsOf st.env).any fun (_, _, T) => T matches some (.tRef _)),
+    ("(not checked) inside a private copy, a temporary at a borrow type holds ⊥", fun st =>
+      st.privateDepth > 0 && (tempsOf st.env).any fun (_, v, T) => (T matches some (.tRef _)) && v == .bot)]
+  check st := if st.privateDepth > 0 then [] else (tempsOf st.env).filterMap fun (p, v, T) => match T, v with
+    | some (.tRef _), .borrow .. => none
+    | some (.tRef _), .bot => some ⟨"a temporary at a borrow type holds ⊥ (its borrow ended)", posName st.env p⟩
+    | some (.tRef _), _ => some ⟨"a temporary at a borrow type holds a value that is not a borrow", s!"{posName st.env p} = {clip v.pp}"⟩
+    | _, _ => none
+
 def clauses : List Clause :=
   [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, tempTyped, tempShape, tempNoLoan,
-   plantedFill, plantedAbs]
+   tempLive, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 
