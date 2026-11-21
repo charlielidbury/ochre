@@ -390,6 +390,61 @@ READ, NOT PROVED (lead14's statements in `Steps/ParFacts.lean` on `spine-lead14`
   which `push` gets from `NumAt` (`absTy[σ]? = some Nat`); `pop` and `setBot` only remove atoms
   (`fitsInd ⊥ = true` for (V); the `⊥` at a path-free binding holding no loan meets (WF14)).
 
+### machine8 (2026-11-21): main merged (D118, D119); the four facts read TRUE; `ConstRunJ` proved; `CallJInv` half-built
+
+Branch `spine-machine8` (worktree `ochre-machine5`). Merge of main 9c6ebe88 into the proof line done (7cb2cd800): no
+`machineGrows` repair needed (generator reproduces every Step file; no mutual-block signature changed); D119 flipped
+`Regress/TailJoin` (leaves now `n ↦ ⊥`; `[Join]` counts T1/T4/T7 = 2, T6 = 3, T5 = 6) and `Regress/JoinPrefixBorrow.TU`
+(still rejected, now by [Access] at the join in world Z, as main's own copy says). D118's `undeclaredCheck` only reads.
+
+READ (step 1, against the merged checker): `FixRunI`, `ConstRunJ`, `CallJInv`, `BodyLazyInv` all TRUE as stated (reasons
+in the 7cb2cd800..HEAD commit messages and the report). Points that matter for proofs: the read inside `S(#0)` is never
+"wanted" (the outer `evalAt` clears `wantTy`; `.succ` calls `eval` without `demand`), so the lazy type is never read;
+a PROOF reading of `#0` makes the read a statement (env restored) but then `declCopy` is `true`, so `BodyLazyInv`'s copy
+branch covers it; `.any` → no pre-pass, `leafProof` false.
+
+PROVED (standard axioms; NOT root-imported yet — add `ConstRunJ`, and the rest once `CallJInv` closes):
+- `ConstRunJ.lean`: `constRunJ : ColumnJ.ConstRunJ` (checkDef's guards via `rfl`-decided conditions; `keep_declared`,
+  `keep_fuelLeft`, `keep_undeclaredCheck`; `runs_evalType_nat` for the goal).
+- `CallJLeaves.lean`: `piNat`'s decisions at every fuel (`fnClass` 0, `isPropV`, `declKind`, `paramDecls`, `paramFlags`,
+  `typeDecl Nat`, the telescope) — reusable for `FixRunI`.
+- `CallJEval.lean`: `evalCall_J_inv` (I(Z) down to `callFn` from `stJ2` = stJ + head and argument temporaries),
+  `evalAt_inv_call`, `eval_const_I_inv`, `eval_zero_inv`, `eval_nat_inv`, `runs_evalType_nat`, `runs_callType_J`,
+  `Runs.privately_inv`, `Runs.withErased_inv`, `Runs.withLive_inv`, `runs_restoreKeep_same`, `Kern.size/temps/binds`,
+  `Kern.withTempT'`, `callTemps_J`. `EvalInv.evalAt_inv'` (= `evalAt_inv` + tailDecl kept).
+- `NoStuck.lean`: `NSAt x s` ("x from s never ends `Fail.stuck`"), `nsAt_bind` (over successful prefixes),
+  `nsAt_onFail`, `nsAt_privately`, `nsAt_withErased`, leaf `ns_*` lemmas and tactics `ns_go`/`ns_go2`/`ns_go3`,
+  `decideNS` (the whole Decide block never stuck, by the decideKeep induction), `nsAt_readPlace_num`,
+  `nsAt_evalAt` (evalAt stuck only where its evalCore is; hyps headEval false, tailDecl none, not a value).
+- `CallJBody.lean`: `nsAt_locateErrors`, `nsAt_atLoc`, `nsAt_noteStateAt_bind`, `nsAt_log_bind`, `nsAt_set_bind`,
+  `nsAt_noteValue`, `nsAt_evalCore_varNum` (untyped unwanted read of a numeral never stuck).
+
+FINDING: `CallJInv` needs a fact about FAILING runs. `callFn` runs `runBody` under `catchStuck`; a stuck body run would
+close the call off ([App-close]) and the call would return a sealed program, not `S(Z)` (all CallJInv's hypotheses
+still hold on that path). So the proof needs `NSAt (runBody …) sR`; `NoStuck.lean` is the infrastructure.
+
+NEXT for `CallJInv` (the plan, in order):
+1. `nsAt_located` (∀ LocsEq-states NSAt x → NSAt (located t x fl ot) s). Automation over `located`'s join points blew
+   up (dsimp zeta + repeat); do it by hand: `unfold located locatedCore; simp only [bind_assoc]; refine nsAt_get_bind`,
+   then split `deep`, `nsAt_log_bind`, split `table.isEmpty`, `nsAt_noteStateAt_bind`, `nsAt_set_bind`, `nsAt_atLoc`.
+   Then `nsAt_eval` = located + `nsAt_noteValue` + `nsAt_evalAt`.
+2. NSAt of the untyped `eval` of `S(#0)` from the callee state: `evalCore .succ` (tick, wanted, `placeOperand?` none,
+   `eval` of `#0`, pure) with `nsAt_evalCore_varNum` (NumAt transfers: it reads env only; `wantHere` false because
+   `nsAt_evalAt` hands `wantTy = false` on).
+3. Success side of the body: the lazy read (copy `varNumInv`'s `| false` branch with `want = false`; `ty = none`), then
+   `evalInvR`/`succInv` for `S(#0)` (reading `.other`, via `DecTab` back from the end of the whole run).
+4. `runBodyCore`/`runBody` from the callFn state: depth check; `paramFlags`/`paramDecls` (leaves exist); `paramTypes`
+   with need `[]` returns `#[none]`; `funType` of `.gfn I`; push frame; `takeCallTemps`; `pushBind` self and `n ↦ Z`
+   (ty none, lazyTy set); `fnClass` 0 (erasedFn false); `needsCtx bodyI` false (`runs_needsCtx_bodyI`); tailNext; body;
+   `wholeReturned`; `pushTempAt`; `popFrame` (two drops, no loans: `runs_endLoansOfTopBind_noop`); `popTemp`. Both the
+   Runs inversion and the NSAt walk.
+5. `callFn` inversion (plan in `CallJEval.lean`'s history: callTemps_J; findIdx none; funType; `runs_callType_J`;
+   setLater; `recCheck` writes only recStack or errors; `funType?`/`declKind`/`fnClass` leaves; lent []; fixOf;
+   `catchStuck` inversion with the NSAt; setFlags), then `CallJInv` from `evalAt_inv_call` + `evalCall_J_inv`.
+Then `FixRunI` (checkDef → checkFix → checkTail → locatedTail → checkTailAt's `_` case; leaves mostly exist: piNat,
+evalType Nat; new: `absAt`, `modelSignature`, `borrowParamCheck`, `markCapRec`, `markLastRec`, `popFrameRaw`, a
+`locatedTail` inversion), `VarNumAInv` and `InvNumA` (machine7's notes above), `BodyLazyInv` in full.
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed
@@ -554,6 +609,10 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21, `spine-machine8` (machine8): `OchrMeaning` green after merging main 9c6ebe88; the new files
+(`CallJLeaves`, `CallJEval`, `NoStuck`, `CallJBody`, `ConstRunJ`) build (`lake build Ochr.Meaning.Steps.Machine.<File>`),
+standard axioms, not root-imported.
 
 2026-11-21, `spine-machine7` (machine7; from `spine-machine6` 117a755e6): `OchrMeaning` green; `frag_run_free`,
 `fragOpen_ff`, `fragRun`, `fragRunF`: standard axioms (no fact assumed).
