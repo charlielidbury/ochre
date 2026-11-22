@@ -263,7 +263,7 @@ structure GuardHyp (K : RunCtx) (d : IndDecl) (n : Nat) (R R' : List Sem → Rec
   hR : RAgree (fun j => d.nestable.getD j false) n R R'
   hp : ParAgree (fun j => d.nestable.getD j false) n ps ps'
   hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M)
-  hpty : ParamTyLocal K.dm K.Γ
+  hpty : ParamTyLocalD K.dm d
 
 section
 variable {K : RunCtx} {ρ : Assignment} {d : IndDecl} {c : Nat}
@@ -386,7 +386,7 @@ variable {K : RunCtx} {ρ : Assignment} {d : IndDecl} {c : Nat}
 
 /-- **The canonical frames are equal** at parameters equal where they do not vary and at earlier
 canonical types equal where the fields are a non-varying index. -/
-theorem canFrame_eq (hpty : ParamTyLocal K.dm K.Γ) (hdΓ : d ∈ K.Γ) {ps ps' : List Sem} (hl : ps.length = ps'.length)
+theorem canFrame_eq (hpty : ParamTyLocalD K.dm d) (hdΓ : d ∈ K.Γ) {ps ps' : List Sem} (hl : ps.length = ps'.length)
     (hps : PsSteady d ps ps') {i : Nat} {es : List Small} {tyOf tyOf' : Nat → TyM}
     (hty : ∀ j < i, fieldVaries d c j = false → (d.indexFields c).contains j = true → tyOf j = tyOf' j) :
     canFrame K d ps c i es tyOf = canFrame K d ps' c i es tyOf' := by
@@ -410,13 +410,12 @@ theorem canFrame_eq (hpty : ParamTyLocal K.dm K.Γ) (hdΓ : d ∈ K.Γ) {ps ps' 
       by_cases hjl : j < ps.length
       · rw [if_pos hjl, if_pos (by rw [← hl]; exact hjl), e1]
         have hP : K.dm.paramTy d j (ps.take j) = K.dm.paramTy d j (ps'.take j) := by
-          apply hpty d hdΓ j _ _ (by simp; omega) (by simp; omega)
-          intro u hu hlt
-          have hu' := (paramVaries_false hv').2 u hu hlt
+          apply hpty j _ _ (by simp; omega) (by simp; omega) hv'
+          intro u hlt hu'
           have := hps _ hu'
-          have hk : j - 1 - u < ps.length := by omega
-          have hk' : j - 1 - u < ps'.length := by omega
-          rw [List.getElem?_take, List.getElem?_take, if_pos (by omega), if_pos (by omega),
+          have hk : u < ps.length := by omega
+          have hk' : u < ps'.length := by omega
+          rw [List.getElem?_take, List.getElem?_take, if_pos hlt, if_pos hlt,
             List.getElem?_eq_getElem hk, List.getElem?_eq_getElem hk']
           simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hk, List.getElem?_eq_getElem hk',
             Option.getD_some] at this
@@ -464,7 +463,7 @@ theorem itpT_quiet {R R' : List Sem → Rec} {ps ps' : List Sem} {s : SState} (h
 /-- **A field that does not vary has the same field type at every record**, and at parameters equal
 where they do not vary. -/
 theorem ftyK_quiet (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT)
-    (hpty : ParamTyLocal K.dm K.Γ) (hdΓ : d ∈ K.Γ) {R R' : List Sem → Rec} {ps ps' : List Sem}
+    (hpty : ParamTyLocalD K.dm d) (hdΓ : d ∈ K.Γ) {R R' : List Sem → Rec} {ps ps' : List Sem}
     (hl : ps.length = ps'.length) (hps : PsSteady d ps ps') :
     ∀ (i : Nat) (es : List Small), fieldVaries d c i = false →
       ftyK K ρ d R ps c i es = ftyK K ρ d R' ps' c i es := by
@@ -520,12 +519,12 @@ end
 noncomputable def knotK (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort ≠ 0) (hdΓ : d ∈ K.Γ)
     (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT)
     (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
-    (hpty : ParamTyLocal K.dm K.Γ) : KnotSpec where
+    (hpty : ParamTyLocalD K.dm d) : KnotSpec where
   d := d
   N := fun j => d.nestable.getD j false
   fty := fun R ps c i es => ftyK K ρ d R ps c i es
-  pEntry := pEntryTy
+  pEntry := pEntryV d
   guarded := fun _ _ _ hR _ _ hp c i es => ftyK_agree (c := c) hspine hdΓ ⟨hs, hR, hp, hpar, hpty⟩ i es
-  pEntry_agree := fun _ _ _ hp j => pEntryTy_agree hp j
+  pEntry_agree := fun _ _ _ hp j => pEntryV_agree hp j
 
 end Ochr.Meaning.DataModel.Exists.Knot

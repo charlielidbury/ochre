@@ -31,7 +31,7 @@ open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort ≠ 0)
     (hgram : GrammarOk K.Γ d)
     (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
-    (hpty : ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
+    (hpty : ParamTyLocalD K.dm d) (hD : FrameLocal.DecLocal K.D)
     (hK : ∀ g, (K.C.global g).2.label = none) :
     ∃ S : KnotSpec, S.d = d ∧ (∀ j, S.N j = d.nestable.getD j false) ∧
       ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (r : Res) (s' : SState),
