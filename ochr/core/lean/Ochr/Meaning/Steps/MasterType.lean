@@ -128,7 +128,13 @@ theorem stepNat (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepNat K φ :=
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .nat ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .nat).isProof = false :=
     fun st _ => by rw [hdz]; exact ⟨(fun e => by cases e), rfl⟩
-  exact outLK_of_outK (fun f as h e => by cases e) <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
+  -- it returns a type (so the promised type's clause is vacuous)
+  have hTs : TyWanted typed st → T?.isSome = true := fun _ => by
+    obtain ⟨st₀, st₁, bh', -, -, -, -, -, -, h₀, -, -⟩ := evalInvD (m + 1) typed .nat hint st st' bh v T? K.D hm hD
+      (fun w e => by cases e) (fun f as h e => by cases e) (hany st trivial).1 (hany st trivial).2 htd h
+    obtain ⟨-, rfl, -⟩ := natInvE m typed hint st₀ st₁ bh' v T? h₀
+    rfl
+  exact outLK_of_outK (fun f as h e => by cases e) hTs <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany (type_coreSimK hIT .tNat TyM.nat (.inl rfl) (natInvE m) (fun _ _ _ => by rw [runT]; rfl)
       (fun _ _ _ _ => rfl))
@@ -145,7 +151,13 @@ theorem stepUnit (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepUnit K φ 
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .unit ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .unit).isProof = false :=
     fun st _ => by rw [hdz]; exact ⟨(fun e => by cases e), rfl⟩
-  exact outLK_of_outK (fun f as h e => by cases e) <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
+  -- it returns a type (so the promised type's clause is vacuous)
+  have hTs : TyWanted typed st → T?.isSome = true := fun _ => by
+    obtain ⟨st₀, st₁, bh', -, -, -, -, -, -, h₀, -, -⟩ := evalInvD (m + 1) typed .unit hint st st' bh v T? K.D hm hD
+      (fun w e => by cases e) (fun f as h e => by cases e) (hany st trivial).1 (hany st trivial).2 htd h
+    obtain ⟨-, rfl, -⟩ := unitInvE m typed hint st₀ st₁ bh' v T? h₀
+    rfl
+  exact outLK_of_outK (fun f as h e => by cases e) hTs <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany (type_coreSimK hIT .tUnit TyM.unit (.inr rfl) (unitInvE m) (fun _ _ _ => by rw [runT]; rfl)
       (fun _ _ _ _ => rfl))

@@ -723,7 +723,7 @@ theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW)
     (by omega) (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu
     (fun _ => by rw [htn₀]; exact hoku) hD₁ bh₁ hru
   rw [htn₀] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, hlat⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, hlat, hwu⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) (.call f as hd) s = some (ru, s₁) := hxu
   obtain ⟨hgu, hlabu, hlouu, hS₁⟩ := Strict.fund_all hc _ hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
   have hm₁ : ModeR st₁ := (hm.of_modeEq hm₀).of_modeEq hK₁.mode

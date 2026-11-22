@@ -147,10 +147,17 @@ theorem laterOk_of_not_call {K : RunCtx} {ρ : Assignment} {t : Term} {st st' : 
     (ht : ∀ f as hd, t ≠ .call f as hd) : LaterOk K ρ t st st' R :=
   fun ⟨f, as, hd, e⟩ => absurd e (ht f as hd)
 
-/-- **`Out` with the deferred type** (the lead's ruling on D180; D183): `Out`, and inside its existential, at its
-extended context and assignment, `LaterOk` for the run of `t`. `EvalAt`'s conclusion. -/
+/-- **The run promises its type** (the lead's ruling (ii) on D185, built by lead28, docs/31 D190): a typed run, or an
+untyped one whose type is wanted (`wantTy`, what `evalAt` reads) and not deferred (`deferCallTy` clear; a deferred
+call's type is `LaterOk`'s). -/
+def TyWanted (typed : Bool) (st : MState) : Prop := typed = true ∨ (st.wantTy = true ∧ st.deferCallTy = false)
+
+/-- **`Out` with the deferred type and the promised type** (the lead's rulings on D180, D183 and (ii) on D185): `Out`,
+and inside its existential, at its extended context and assignment, `LaterOk` for the run of `t`, and, where the run
+promises its type (`w`, `TyWanted` in `EvalAt`), a missing type reads as the reference's: its result type is `err`
+(what `Rel.skel` compares a binding with no type to; `some T` is `StrAgree`). `EvalAt`'s conclusion. -/
 def OutL (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st st' : MState) (s : SState)
-    (x : SM Res) (v : Value) (T? : Option Value) (t : Term) : Prop :=
+    (x : SM Res) (v : Value) (T? : Option Value) (t : Term) (w : Prop) : Prop :=
   ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
     Ext K ρ π st st' ρ' Δ' π' ∧ x s = some (r, s') ∧
     meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
@@ -158,31 +165,36 @@ def OutL (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st st'
     r.2.label = (Value.heldLabel v).map π' ∧
     Pre { K with Δ := Δ' } ρ' (st'.withTempT v T?) ∧
     Rel { K with Δ := Δ' } ρ' φ π' (st'.withTempT v T?) s' ∧
-    LaterOk { K with Δ := Δ' } ρ' t st st' r.2
+    LaterOk { K with Δ := Δ' } ρ' t st st' r.2 ∧
+    (w → T? = none → r.2.m = TyM.err)
 
 theorem OutL.out {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
-    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} (h : OutL K ρ φ π st st' s x v T? t) :
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} {w : Prop} (h : OutL K ρ φ π st st' s x v T? t w) :
     Out K ρ φ π st st' s x v T? :=
   let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, _⟩ := h
   ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr⟩
 
+/-- The promised type's clause of a run that returns a type wherever it promises one is vacuous. -/
 theorem OutL.of_out {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
-    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} (ht : ∀ f as hd, t ≠ .call f as hd)
-    (h : Out K ρ φ π st st' s x v T?) : OutL K ρ φ π st st' s x v T? t :=
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} {w : Prop} (ht : ∀ f as hd, t ≠ .call f as hd)
+    (hT : w → T?.isSome = true) (h : Out K ρ φ π st st' s x v T?) : OutL K ρ φ π st st' s x v T? t w :=
   let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr⟩ := h
-  ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, laterOk_of_not_call ht⟩
+  ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, laterOk_of_not_call ht,
+    fun hw hn => by have := hT hw; rw [hn] at this; cases this⟩
 
 /-- `EvalAt`'s conclusion read as `Out`'s (every consumer but the `let` of a call). -/
 theorem outK_of_outLK {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
-    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} (h : OutL K ρ φ π st st' s x v T? t ∧ Kept st st') :
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} {w : Prop} (h : OutL K ρ φ π st st' s x v T? t w ∧ Kept st st') :
     Out K ρ φ π st st' s x v T? ∧ Kept st st' :=
   ⟨h.1.out, h.2⟩
 
-/-- A step for a term that is not a call concludes `EvalAt`'s form from `Out`'s. -/
+/-- A step for a term that is not a call, returning a type wherever it promises one, concludes `EvalAt`'s form from
+`Out`'s. -/
 theorem outLK_of_outK {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
-    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} (ht : ∀ f as hd, t ≠ .call f as hd)
-    (h : Out K ρ φ π st st' s x v T? ∧ Kept st st') : OutL K ρ φ π st st' s x v T? t ∧ Kept st st' :=
-  ⟨OutL.of_out ht h.1, h.2⟩
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} {w : Prop} (ht : ∀ f as hd, t ≠ .call f as hd)
+    (hT : w → T?.isSome = true)
+    (h : Out K ρ φ π st st' s x v T? ∧ Kept st st') : OutL K ρ φ π st st' s x v T? t w ∧ Kept st st' :=
+  ⟨OutL.of_out ht hT h.1, h.2⟩
 
 /-- **The evaluation step at fuel `n`, for one term**: from a state in the plain mode at any erased depth
 (`ModeR`) with a frame,
@@ -199,7 +211,7 @@ def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : P
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
     ∀ bh, Runs (Ochr.eval n typed t hint) st bh (v, T?) st' →
-    OutL K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T? t ∧ Kept st st'
+    OutL K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T? t (TyWanted typed st) ∧ Kept st st'
 
 /-- **A tail step's conclusion, with what the run keeps**: `TailOut` (some leaf `stl` where the continuation
 ran, `Out` there) with `Kept` from the start to the leaf. -/

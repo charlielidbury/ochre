@@ -131,7 +131,13 @@ theorem stepZero (K : RunCtx) (φ : Future) : StepZero K φ := by
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .zero ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .zero).isProof = false :=
     fun st _ => by rw [hdz]; exact ⟨(fun e => by cases e), rfl⟩
-  exact outLK_of_outK (fun f as h e => by cases e) <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
+  -- it returns a type (so the promised type's clause is vacuous)
+  have hTs : TyWanted typed st → T?.isSome = true := fun _ => by
+    obtain ⟨st₀, st₁, bh', -, -, -, -, -, -, h₀, -, -⟩ := evalInvD (m + 1) typed .zero hint st st' bh v T? K.D hm hD
+      (fun w e => by cases e) (fun f as h e => by cases e) (hany st trivial).1 (hany st trivial).2 htd h
+    obtain ⟨-, rfl, -⟩ := zeroInvE m typed hint st₀ st₁ bh' v T? h₀
+    rfl
+  exact outLK_of_outK (fun f as h e => by cases e) hTs <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany zero_coreSimK
     st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hfz _) hok hD bh h
@@ -146,7 +152,13 @@ theorem stepTt (K : RunCtx) (φ : Future) : StepTt K φ := by
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .tt ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .tt).isProof = false :=
     fun st _ => by rw [hdt]; exact ⟨(fun e => by cases e), rfl⟩
-  exact outLK_of_outK (fun f as h e => by cases e) <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
+  -- it returns a type (so the promised type's clause is vacuous)
+  have hTs : TyWanted typed st → T?.isSome = true := fun _ => by
+    obtain ⟨st₀, st₁, bh', -, -, -, -, -, -, h₀, -, -⟩ := evalInvD (m + 1) typed .tt hint st st' bh v T? K.D hm hD
+      (fun w e => by cases e) (fun f as h e => by cases e) (hany st trivial).1 (hany st trivial).2 htd h
+    obtain ⟨-, rfl, -⟩ := ttInvE m typed hint st₀ st₁ bh' v T? h₀
+    rfl
+  exact outLK_of_outK (fun f as h e => by cases e) hTs <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany tt_coreSimK
     st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hft _) hok hD bh h
