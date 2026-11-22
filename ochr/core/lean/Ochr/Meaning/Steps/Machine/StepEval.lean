@@ -37,6 +37,11 @@ theorem step_evalAt (ih : MachineGrows tb nf) :
   intro typed t hint
   unfold Ochr.evalAt; grows_go ih
 
+theorem step_jMotiveAt (ih : MachineGrows tb nf) :
+    ∀ (A : Term) (P : Term) (av : Value), GrowsIn tb (Ochr.jMotiveAt ((nf + 1)) A P av) := by
+  intro A P av
+  unfold Ochr.jMotiveAt; grows_go ih
+
 set_option maxHeartbeats 4000000 in
 theorem step_evalCore (ih : MachineGrows tb nf) :
     ∀ (typed : Bool) (t : Term) (hint : Option Value), GrowsIn tb (Ochr.evalCore ((nf + 1)) typed t hint) := by

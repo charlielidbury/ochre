@@ -304,6 +304,11 @@ theorem zero_evalAt :
   intro typed t hint
   unfold Ochr.evalAt; grows_go
 
+theorem zero_jMotiveAt :
+    ∀ (A : Term) (P : Term) (av : Value), GrowsIn tb (Ochr.jMotiveAt 0 A P av) := by
+  intro A P av
+  unfold Ochr.jMotiveAt; grows_go
+
 theorem zero_evalCore :
     ∀ (typed : Bool) (t : Term) (hint : Option Value), GrowsIn tb (Ochr.evalCore 0 typed t hint) := by
   intro typed t hint

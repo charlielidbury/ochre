@@ -70,26 +70,28 @@ theorem run_splitArms_fails (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : B
   rw [runT]
   all_goals first | rfl | (intros; simp_all)
 
-/-! ## What the checker's UNTYPED run does with a `split` (lead25; docs/31 D175)
+/-! ## What the checker's UNTYPED run does with a `split` (lead25; docs/31 D175; FLIPPED at main's D125/D126)
 
 The lead ruled (task 2(a), lead25's brief) that the reference runs a `split`'s term, and asked first what the
-checker's untyped run does. It does NOT run the term: `evalCore` rejects both forms at every tail flag, typed or
-untyped ("split: only in tail position"); only `checkTail` handles them. A data-valued function whose body ends in a
-split is accepted (`G`, `G2` below: the goal `V(IsZ(n))` is stuck on `IsZ(n)`), but a call of it is run by the
-checker's untyped run of the body (`runBody`), which fails there: every caller is rejected (`H`, `H2`, `H3`). -/
+checker's untyped run does. Before main's D125 it did NOT run the term: `evalCore` rejected both forms at every tail
+flag ("split: only in tail position"), so a data-valued function ending in a split was accepted (`G`, `G2`) and every
+call of it was rejected (`H`, `H2`, `H3`). Since D125 (merged by machine10) the untyped run of `split f in u` runs `u`
+(the hint only in tail position, D124), so every call below is accepted; a typed run still rejects a split outside
+the end of a body. Since D126 the braces form names its call, `split IsZ(n) { … }`, which resolves to
+`split IsZ in match IsZ(n) { … }`; the primitive `splitArms` is gone from the checker. -/
 
 ochr SplitData {
   inductive B := T | F
   def IsZ (n : Nat) : B := match n { Z => T, S(m) => F }
   def V (b : B) : Type := match b { T => Nat, F => Unit }
-  def G (n : Nat) : V(IsZ(n)) := split IsZ { T => Z, F => () }
+  def G (n : Nat) : V(IsZ(n)) := split IsZ(n) { T => Z, F => () }
   def G2 (n : Nat) : V(IsZ(n)) := split IsZ in match IsZ(n) { T => Z, F => () }
-  reject def H : Nat := G(Z)
-  reject def H2 (n : Nat) : V(IsZ(n)) := G(n)
-  reject def H3 : Unit := G(S(Z))
+  def H : Nat := G(Z)
+  def H2 (n : Nat) : V(IsZ(n)) := G(n)
+  def H3 : Unit := G(S(Z))
 }
 
--- `G` and `G2` (data-valued, ending in a split) are accepted; every call of `G` that the checker runs is rejected
+-- FLIPPED at main's D125: `G`, `G2` and every call of `G` (`H`, `H2`, `H3`) are accepted
 #guard (Ochr.Test.runWith (some Prelude) "SplitData" SplitData {} (located := false)).allAsExpected
 
 /-- The checker's error, or `""`. -/
@@ -98,14 +100,15 @@ def errMsg {α : Type} (f : M α) (st : MState) (fuel : Nat) : String :=
   | .fail (.error m _) => m
   | _ => ""
 
--- the untyped run of either form fails, with the tail-position error, at every tail flag
-#guard errMsg (Ochr.eval 100 false (.prim "split" [.const "IsZ", .zero]) none) {} 1000 ==
-  "split: only in tail position (where the goal is known)"
-#guard errMsg (Ochr.eval 100 false (.prim "splitArms" [.const "IsZ", .letIn ⟨"h"⟩ .zero .zero]) none) {} 1000 ==
-  "split: only in tail position (where the goal is known)"
-#guard errMsg (Ochr.eval 100 false (.prim "split" [.const "IsZ", .zero]) none) { tailNext := true } 1000 ==
-  "split: only in tail position (where the goal is known)"
-#guard errMsg (Ochr.eval 100 false (.prim "splitArms" [.const "IsZ", .letIn ⟨"h"⟩ .zero .zero]) none) { tailNext := true } 1000 ==
+-- FLIPPED at main's D125: the untyped run of `split IsZ in Z` runs `Z`, at both tail flags
+-- (succeeds, and with `Z`; a successor in its place gives `S(Z)`, so the pin does not read a default)
+#guard isOk (Ochr.eval 100 false (.prim "split" [.const "IsZ", .zero]) none) {} 1000
+#guard (outVal (Ochr.eval 100 false (.prim "split" [.const "IsZ", .zero]) none) {} 1000).1 == .zero
+#guard isOk (Ochr.eval 100 false (.prim "split" [.const "IsZ", .zero]) none) { tailNext := true } 1000
+#guard (outVal (Ochr.eval 100 false (.prim "split" [.const "IsZ", .zero]) none) { tailNext := true } 1000).1 == .zero
+#guard (outVal (Ochr.eval 100 false (.prim "split" [.const "IsZ", .succ .zero]) none) {} 1000).1 == .succ .zero
+-- the typed run still rejects it (no goal to split outside the end of a body)
+#guard errMsg (Ochr.eval 100 true (.prim "split" [.const "IsZ", .zero]) none) {} 1000 ==
   "split: only in tail position (where the goal is known)"
 
 /-! ## The untyped tail (main's D124) -/
@@ -219,11 +222,12 @@ then, whichever hint they agree on. -/
 ochr JHint {
   inductive L (A : Type) := N | C(h : A, t : L(A))
   def JL (a : Nat) (b : Nat) (h : Eq(Nat, a, b)) : L(Nat) := J(Nat, a, b, λ(z : Nat) : Type => L(Nat), h, N)
-  reject def JL2 : L(Nat) := J(Nat, 0, 0, λ(z : Nat) : Type => L(Nat), refl, N)
+  def JL2 : L(Nat) := J(Nat, 0, 0, λ(z : Nat) : Type => L(Nat), refl, N)
   def JL3 : L(Nat) := J(Nat, 0, 0, λ(z : Nat) : Type => L(Nat), refl, N[Nat])
 }
 
--- TODAY: the stuck path hands `P(a)` (JL accepted), the computing path none (JL2 rejected)
+-- FLIPPED at main's D124 for `J` (merged by machine10): both typed paths hand the transported term `P(a)`, so `JL`
+-- (stuck) and `JL2` (computing) are both accepted; before, the computing path handed none and `JL2` was rejected
 #guard (Ochr.Test.runWith (some Prelude) "JHint" JHint {} (located := false)).allAsExpected
 
 /-! ## `clone`/`peek` of a place (the lead's (e); main's D122, merged into this line by machine9) -/

@@ -115,6 +115,7 @@ theorem machineGrows_zero : MachineGrows tb 0 where
   expectTy := zero_expectTy
   eval := zero_eval
   evalAt := zero_evalAt
+  jMotiveAt := zero_jMotiveAt
   evalCore := zero_evalCore
   unknownLent := zero_unknownLent
   lentProofAssign := zero_lentProofAssign
@@ -235,6 +236,7 @@ theorem machineGrows_succ (nf : Nat) (ih : MachineGrows tb nf) : MachineGrows tb
   expectTy := step_expectTy ih
   eval := step_eval ih
   evalAt := step_evalAt ih
+  jMotiveAt := step_jMotiveAt ih
   evalCore := step_evalCore ih
   unknownLent := step_unknownLent ih
   lentProofAssign := step_lentProofAssign ih

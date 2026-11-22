@@ -102,6 +102,7 @@ structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
   expectTy : ∀ (what : String) (T : Option Value) (A : Value), GrowsIn tb (Ochr.expectTy nf what T A)
   eval : ∀ (typed : Bool) (t : Term) (hint : Option Value), GrowsIn tb (Ochr.eval nf typed t hint)
   evalAt : ∀ (typed : Bool) (t : Term) (hint : Option Value), GrowsIn tb (Ochr.evalAt nf typed t hint)
+  jMotiveAt : ∀ (A : Term) (P : Term) (av : Value), GrowsIn tb (Ochr.jMotiveAt nf A P av)
   evalCore : ∀ (typed : Bool) (t : Term) (hint : Option Value), GrowsIn tb (Ochr.evalCore nf typed t hint)
   unknownLent : ∀ (what : String) (ls : List Nat), GrowsIn tb (Ochr.unknownLent nf what ls)
   lentProofAssign : ∀ (p : Place) (u : Term), GrowsIn tb (Ochr.lentProofAssign nf p u)
