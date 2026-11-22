@@ -1,4 +1,4 @@
-import Ochr.Meaning.Consistency
+import Ochr.Meaning.Program
 import Ochr.Meaning.DataModel.Exists.Knot.Exists
 import Ochr.Meaning.DataModel.Exists.Knot.TruthExists
 import Ochr.Meaning.DataModel.Exists.Knot.FromChecks
@@ -119,6 +119,11 @@ theorem defMeaning_congrN (K : RunCtx) (dm' : DataModel) (N : Knot.NameOk) (hA :
   rw [hT]
   dsimp only
   rw [Knot.run_congrN K dm' K.C N ρ noFuture hA _ _ _ h1, Knot.run_congrN K dm' K.C N ρ noFuture hA _ _ _ h2]
+
+/-- `Assembly.DataFaithful` (`Consistency.lean`), unfolded: this file sits below `Consistency.lean`,
+which proves `exists_dataModel` from `exists_dataModel'` (docs/31 D174's one-list statement). -/
+def DataFaithfulU (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (P : ProgState) : Prop :=
+  ∀ st : MState, st.inds = P.inds → P.globals <+: st.globals → DeclsFaithful (P.ctx dm D Γ st) P.inds
 
 /-! ## Stages, and the contexts that extend one -/
 
@@ -259,7 +264,7 @@ checker, `Assembly.inds_prefix` for an accepted program). -/
 theorem exists_of_inv {dm : DataModel} (h : Inv D fuel items items.length dm)
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
     (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
-      ∀ k, k ≤ items.length → Ochr.Meaning.Assembly.DataFaithful dm D (indsOf {} fuel items)
+      ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
   refine ⟨fun d _ => h.covers d, fun k hk st hst hgl d hd => ?_⟩
   have hd' : d ∈ indsOf {} fuel (items.take k) := by rw [← stage_inds D fuel items dm k]; exact hd
@@ -351,6 +356,16 @@ def FieldLevels : Prop :=
     ∀ (dm'' : DataModel) (ρ : Assignment),
       ParamsFaithfulAt ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d' →
       FieldLevel0 ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d'
+
+/-- **The facts the existence of the data model rests on**, together (`exists_dataModel_facts`): about
+the checker, not derived from its code, `ItemFacts`, `NamesFact`, `FieldLevels`; obligations on the
+checker's decisions, `DecLocal` at every state and `DecStable`. -/
+structure DataFacts : Prop where
+  item : ItemFacts
+  names : NamesFact D fuel items
+  levels : FieldLevels D fuel items
+  decLocal : ∀ st, FrameLocal.DecLocal (D st)
+  decStable : DecStable D
 
 /-! ## The step's bookkeeping (exists10) -/
 
@@ -844,10 +859,20 @@ theorem exists_dataModel' (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL :
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
-      ∀ k, k ≤ items.length → Ochr.Meaning.Assembly.DataFaithful dm D (indsOf {} fuel items)
+      ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
   obtain ⟨dm, h⟩ := inv_all D fuel items hIF hN hFL hDL hDS hpre items.length (Nat.le_refl _)
   exact ⟨dm, exists_of_inv D fuel items h hpre⟩
+
+/-- **The data model exists**, from the facts it rests on (`DataFacts`, five) and the stage prefix fact
+`hpre` (`Consistency.inds_prefix`): six facts in all. -/
+theorem exists_dataModel_facts (hF : DataFacts D fuel items)
+    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
+    ∃ dm : DataModel,
+      (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
+      ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
+        (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
+  exists_dataModel' D fuel items hF.item hF.names hF.levels hF.decLocal hF.decStable hpre
 
 end
 
