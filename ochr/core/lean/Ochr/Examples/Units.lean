@@ -208,3 +208,49 @@ def cmpLeaves (x : M Bool) : Option (Bool × Nat × Nat) :=
 #guard cmpLeaves (conv 100000 (.gfn "F3") (.gfn "G3")) == some (true, 3, 0)
 
 end Ochr.Units
+
+/-! ## The call-deferral flag is consumed when an evaluation starts (D130)
+
+An untyped `let` of a call sets `deferCallTy`, so that the call records its callee's type and
+arguments (`callTyLater`) and the binding's type is computed only if it is read. `evalAt` reads the
+flag into the state the evaluation starts from (`deferHere`, which `evalCall` reads) and clears it,
+as it does the other one-shot flags, and clears the record. Before D130 only `evalCall` cleared the
+flag, so a flag left set was read by the next call the run made, whichever it was:
+`let y = (Z; Add(x, 0)); y` from a state with the flag set bound `y` with no type. No run of a
+program leaves the flag set; these runs start from a state that has it set. -/
+
+namespace Ochr.Units
+
+/-- An untyped run of `t` from the state after `Nats`, with `x ↦ 0 : Nat` bound and the type wanted
+(as at a `let`'s right-hand side), the deferral flag and a stale record set as `stale` says: the
+type it gives, and whether the flag and the record are set after it. -/
+def deferRun (t : Term) (stale : Bool) : Option (Option Value × Bool × Bool) :=
+  let fr : Frame := { binds := #[{ hint := ⟨"x"⟩, ty := some .tNat, val := .zero, decl := .other }] }
+  let rec0 : Option (Value × List Value) := if stale then some (.tUnit, []) else none
+  let s0 : MState := { st Nats 0 with env := #[fr], wantTy := true, deferCallTy := stale, callTyLater := rec0 }
+  match (runMachine (Ochr.eval 1000 false t) s0 1000000).1 with
+  | .ok (_, T) s => some (T, s.deferCallTy, s.callTyLater.isSome)
+  | _ => none
+
+/-- `Add(x, 0)`. -/
+def addX : Term := .call (.const "Add") [.place (.var 0), .zero] false
+
+-- a run consumes the flag; one with no call leaves no record (before D130 it left both set,
+-- `some (some Nat, true, true)`)
+#guard deferRun .zero true == some (some .tNat, false, false)
+-- a call whose evaluation starts with the flag set is the deferred call: it gives no type and leaves
+-- its record, for its `let` to read
+#guard deferRun addX true == some (none, false, true)
+-- the binding of `let y = (Z; Add(x, 0)); y` has its type (before D130 the call in the `;`'s tail read
+-- the flag and deferred its type, and the `let`, not bound to a call, read no record: `y` was bound
+-- with no type, and the run gave none though its type was wanted, `some (none, false, false)`)
+#guard deferRun (.letIn ⟨"y"⟩ (.seq .zero addX) (.place (.var 0))) true == some (some .tNat, false, false)
+-- a `let`'s tail never reads a flag its right-hand side's evaluation could have left: `let y = Z;
+-- Add(y, 0)` from a state with the flag set (before D130 this held because the `let` cleared the flag
+-- after its right-hand side; since D130 because the `let`'s own evaluation consumed it on entry)
+#guard deferRun (.letIn ⟨"y"⟩ .zero addX) true == some (some .tNat, false, false)
+-- a `let` of a call still defers its type to the binding, which gives it when read
+#guard deferRun (.letIn ⟨"y"⟩ addX (.place (.var 0))) false == some (some .tNat, false, false)
+#guard deferRun (.letIn ⟨"y"⟩ addX (.place (.var 0))) true == some (some .tNat, false, false)
+
+end Ochr.Units
