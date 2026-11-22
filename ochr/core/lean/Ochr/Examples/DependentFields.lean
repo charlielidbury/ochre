@@ -911,6 +911,56 @@ ochr LentIndex uses DepFields {
   ("BoomBPf", "[Match] on c.x, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
   ("BoomIB", "unknown constant BoomBPf")]
 
+/-! ## The frame that types a dependent field binds what a loan stands for (D117)
+
+To type a field whose type mentions an earlier field (`x : Fin1(n)`), the checker binds the earlier
+fields in a frame of its own and evaluates the type there (`fieldTypesOf`). It bound each earlier
+field's stored value, so an index lent out (`let r = &n`) was bound as its loan: a second
+occurrence of the loan, whose read there ended `r`'s borrow on the type's private copy, with
+[End]'s side checks. Inside a side of `Id` that ending is [Id-typestate]'s, so `SId`, whose side
+only reads `x`, was rejected. The frame now binds what each field stands for: a live loan its
+borrow's content, a mark the content it marks, as `valType?` reads them. A side that reads the lent
+index itself still ends the borrow (`SIdReadN`). The other frames the checker builds from stored
+values, each reached here with the index lent (an equation's field types, a constructor's hint, a
+closure's captures, a call's parameter types, a stuck block's captures, a second match), bind no
+loan: each was accepted before and after, and no state of any of them holds a loan twice
+(`sweep --deep-private`). -/
+
+ochr ScaffoldLoans uses Logic, WordType, Options, DepFields {
+  def TakeX (m : Word) (y : Fin1(m)) : Unit := ()
+  -- depFieldType: the field's type read in a side of `Id`, the index lent outside it (the finding)
+  def SId (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let r = &n; let h : Id(Unit, (let y = clone(x); ()), ()) = refl; ()), })
+  def SIdRun : Unit := SId(MkV(Succ(Zero), O))
+  def SIdFree (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let h : Id(Unit, (let y = clone(x); ()), ()) = refl; ()), })
+  -- a side that reads the lent index itself ends the borrow: rejected
+  reject def SIdReadN (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let r = &n; let h : Id(Unit, (let m = clone(n); ()), ()) = refl; ()), })
+  -- the same read outside `Id`, owned and through a borrow parameter
+  def SRead (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let r = &n; let y = clone(x); ()), })
+  def SReadB (v : &V) : Unit := match *v { MkV(n, x) => (let r = &n; let y = clone(x); ()), }
+  -- the index written through the borrow after the read, and the field then read again
+  def SReadW (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let r = &n; let y = clone(x); *r := clone(*r); let z = clone(x); ()), })
+  -- mkEqM: an equation on the whole value while its index is lent
+  def SEq (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let r = &n; let h : Eq(Fin1(clone(*r)), clone(x), clone(x)) = refl; ()), })
+  -- evalCtor: a constructor built from the lent index's content and the field
+  def SCtor (c0 : V) : V := (let c = c0; match c { MkV(n, x) => (let r = &n; MkV(clone(*r), clone(x))), })
+  -- a closure capturing the field whose type reads the lent index
+  def SClo (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let r = &n; let f = (λ(u : Unit) : Unit => (let y = clone(x); ())); f(())), })
+  -- a call whose parameter type reads an earlier argument, the index lent
+  def SCall (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let r = &n; TakeX(clone(*r), clone(x))), })
+  -- a stuck block (closed off at an unknown) capturing the field
+  def SClose (c0 : V) (k : Word) : Unit := (let c = c0; match c { MkV(n, x) => (let r = &n; let y = match k { Zero => clone(x), Succ(j) => clone(x) }; ()), })
+  -- the value matched again while its index is lent
+  def SRematch (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => (let r = &n; match c { MkV(n2, x2) => (let y = clone(x2); ()), }), })
+  -- closed instances
+  def SReadRun : Unit := SRead(MkV(Succ(Zero), O))
+  def SReadBRun : Unit := (let c = MkV(Succ(Zero), O); SReadB(&c))
+  def SCloRun : Unit := SClo(MkV(Succ(Zero), O))
+  def SCloseRun : Unit := SClose(MkV(Succ(Zero), O), Zero)
+}
+
+#guard (run "ScaffoldLoans" ScaffoldLoans).rejectedWith [
+  ("SIdReadN", "[Id-typestate] a side of Id ends the borrow r, which a binding outside the Id holds")]
+
 /-! ## What a strong update may store (D110)
 
 A strong update stores its value unchecked and types the field by what it holds ([Open]). That

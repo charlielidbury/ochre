@@ -518,6 +518,308 @@ def paramsRecorded : List (String × Nat) :=
   ("ST", "cannot infer the parameter T of MkWT: it stands in its fields' types only at positions of a universe above Type₀"),
   ("SV", "cannot infer the parameter U of MkWV: it stands in its fields' types only at positions of a universe above Type₀")]
 
+/-! ## The untyped run hands a hint exactly where the typed check does (D124)
+
+A constructor whose parameters are not written takes them from its hint, the type its position
+expects, before its fields (D46, D89). The typed check hands a hint only at some positions: a call's
+argument, a field and an assigned value when the term is a constructor (or an embedded value, a
+`rewrite`, a hole), an ascription's term, and in tail position the goal. The untyped run, an
+instance's run of checked code, handed hints by another test (D89's `needsCtx`: wherever the term
+needed its context), and the tail of a `let` or a `;` and a match's arms got the hint whatever their
+position. So a run of checked code could read a hint its check never had. Now the untyped run hands
+a hint exactly where the typed check does. `UntypedHints` is the differential table: a bare
+constructor `X` (`N`, which needs its hint; `C(n, N)`, whose fields determine it; `C[Nat](n, N[Nat])`,
+written) under a wrapper (bare `b`, a `let`'s tail `l`, a `;`'s tail `s`, a match's arms `m`) at a
+position (`T` the end of a body, `F` a field of a constructor with no parameter, `G` a field of
+`C`, `A` a call's argument, `D` a `let` with a declared type, `S` an assigned value, `K` an
+ascription as an argument, `U` a dropped argument), each a generic definition `G…` (the typed
+check) and its closed instance `I…` (the untyped run of the body at a call) with its value by
+`refl`; then a match on a proof in tail position, a body that needs no hint, and `J`. Every generic
+definition and its instance have the same verdict, before and after. -/
+
+ochr UntypedHints uses Logic, Nats {
+  reject def Ctl : False := ()
+  inductive L (A : Type) := N | C(h : A, t : L(A))
+  inductive W := MkW(l : L(Nat))
+  def IdL (l : L(Nat)) : L(Nat) := l
+  def Len (l : L(Nat)) : Nat := 0
+  def GTbN (n : Nat) : L(Nat) := N
+  def ITbN : Eq(L(Nat), GTbN(3), N[Nat]) := refl
+  def GTbC (n : Nat) : L(Nat) := C(clone(n), N)
+  def ITbC : Eq(L(Nat), GTbC(3), C[Nat](3, N[Nat])) := refl
+  def GTbW (n : Nat) : L(Nat) := C[Nat](clone(n), N[Nat])
+  def ITbW : Eq(L(Nat), GTbW(3), C[Nat](3, N[Nat])) := refl
+  def GTlN (n : Nat) : L(Nat) := (let y = Z; N)
+  def ITlN : Eq(L(Nat), GTlN(3), N[Nat]) := refl
+  def GTlC (n : Nat) : L(Nat) := (let y = Z; C(clone(n), N))
+  def ITlC : Eq(L(Nat), GTlC(3), C[Nat](3, N[Nat])) := refl
+  def GTlW (n : Nat) : L(Nat) := (let y = Z; C[Nat](clone(n), N[Nat]))
+  def ITlW : Eq(L(Nat), GTlW(3), C[Nat](3, N[Nat])) := refl
+  def GTsN (n : Nat) : L(Nat) := (Z; N)
+  def ITsN : Eq(L(Nat), GTsN(3), N[Nat]) := refl
+  def GTsC (n : Nat) : L(Nat) := (Z; C(clone(n), N))
+  def ITsC : Eq(L(Nat), GTsC(3), C[Nat](3, N[Nat])) := refl
+  def GTsW (n : Nat) : L(Nat) := (Z; C[Nat](clone(n), N[Nat]))
+  def ITsW : Eq(L(Nat), GTsW(3), C[Nat](3, N[Nat])) := refl
+  def GTmN (n : Nat) : L(Nat) := match clone(n) { Z => N, S k => N }
+  def ITmN : Eq(L(Nat), GTmN(3), N[Nat]) := refl
+  def GTmC (n : Nat) : L(Nat) := match clone(n) { Z => C(clone(n), N), S k => C(clone(n), N) }
+  def ITmC : Eq(L(Nat), GTmC(3), C[Nat](3, N[Nat])) := refl
+  def GTmW (n : Nat) : L(Nat) := match clone(n) { Z => C[Nat](clone(n), N[Nat]), S k => C[Nat](clone(n), N[Nat]) }
+  def ITmW : Eq(L(Nat), GTmW(3), C[Nat](3, N[Nat])) := refl
+  reject def GFbN (n : Nat) : W := MkW(N)
+  reject def IFbN : Eq(W, GFbN(3), MkW(N[Nat])) := refl
+  def GFbC (n : Nat) : W := MkW(C(clone(n), N))
+  def IFbC : Eq(W, GFbC(3), MkW(C[Nat](3, N[Nat]))) := refl
+  def GFbW (n : Nat) : W := MkW(C[Nat](clone(n), N[Nat]))
+  def IFbW : Eq(W, GFbW(3), MkW(C[Nat](3, N[Nat]))) := refl
+  reject def GFlN (n : Nat) : W := MkW((let y = Z; N))
+  reject def IFlN : Eq(W, GFlN(3), MkW(N[Nat])) := refl
+  def GFlC (n : Nat) : W := MkW((let y = Z; C(clone(n), N)))
+  def IFlC : Eq(W, GFlC(3), MkW(C[Nat](3, N[Nat]))) := refl
+  def GFlW (n : Nat) : W := MkW((let y = Z; C[Nat](clone(n), N[Nat])))
+  def IFlW : Eq(W, GFlW(3), MkW(C[Nat](3, N[Nat]))) := refl
+  reject def GFsN (n : Nat) : W := MkW((Z; N))
+  reject def IFsN : Eq(W, GFsN(3), MkW(N[Nat])) := refl
+  def GFsC (n : Nat) : W := MkW((Z; C(clone(n), N)))
+  def IFsC : Eq(W, GFsC(3), MkW(C[Nat](3, N[Nat]))) := refl
+  def GFsW (n : Nat) : W := MkW((Z; C[Nat](clone(n), N[Nat])))
+  def IFsW : Eq(W, GFsW(3), MkW(C[Nat](3, N[Nat]))) := refl
+  reject def GFmN (n : Nat) : W := MkW(match clone(n) { Z => N, S k => N })
+  reject def IFmN : Eq(W, GFmN(3), MkW(N[Nat])) := refl
+  def GFmC (n : Nat) : W := MkW(match clone(n) { Z => C(clone(n), N), S k => C(clone(n), N) })
+  def IFmC : Eq(W, GFmC(3), MkW(C[Nat](3, N[Nat]))) := refl
+  def GFmW (n : Nat) : W := MkW(match clone(n) { Z => C[Nat](clone(n), N[Nat]), S k => C[Nat](clone(n), N[Nat]) })
+  def IFmW : Eq(W, GFmW(3), MkW(C[Nat](3, N[Nat]))) := refl
+  def GGbN (n : Nat) : L(Nat) := C(0, N)
+  def IGbN : Eq(L(Nat), GGbN(3), C[Nat](0, N[Nat])) := refl
+  def GGbC (n : Nat) : L(Nat) := C(0, C(clone(n), N))
+  def IGbC : Eq(L(Nat), GGbC(3), C[Nat](0, C[Nat](3, N[Nat]))) := refl
+  def GGbW (n : Nat) : L(Nat) := C(0, C[Nat](clone(n), N[Nat]))
+  def IGbW : Eq(L(Nat), GGbW(3), C[Nat](0, C[Nat](3, N[Nat]))) := refl
+  reject def GGlN (n : Nat) : L(Nat) := C(0, (let y = Z; N))
+  reject def IGlN : Eq(L(Nat), GGlN(3), C[Nat](0, N[Nat])) := refl
+  def GGlC (n : Nat) : L(Nat) := C(0, (let y = Z; C(clone(n), N)))
+  def IGlC : Eq(L(Nat), GGlC(3), C[Nat](0, C[Nat](3, N[Nat]))) := refl
+  def GGlW (n : Nat) : L(Nat) := C(0, (let y = Z; C[Nat](clone(n), N[Nat])))
+  def IGlW : Eq(L(Nat), GGlW(3), C[Nat](0, C[Nat](3, N[Nat]))) := refl
+  reject def GGsN (n : Nat) : L(Nat) := C(0, (Z; N))
+  reject def IGsN : Eq(L(Nat), GGsN(3), C[Nat](0, N[Nat])) := refl
+  def GGsC (n : Nat) : L(Nat) := C(0, (Z; C(clone(n), N)))
+  def IGsC : Eq(L(Nat), GGsC(3), C[Nat](0, C[Nat](3, N[Nat]))) := refl
+  def GGsW (n : Nat) : L(Nat) := C(0, (Z; C[Nat](clone(n), N[Nat])))
+  def IGsW : Eq(L(Nat), GGsW(3), C[Nat](0, C[Nat](3, N[Nat]))) := refl
+  reject def GGmN (n : Nat) : L(Nat) := C(0, match clone(n) { Z => N, S k => N })
+  reject def IGmN : Eq(L(Nat), GGmN(3), C[Nat](0, N[Nat])) := refl
+  def GGmC (n : Nat) : L(Nat) := C(0, match clone(n) { Z => C(clone(n), N), S k => C(clone(n), N) })
+  def IGmC : Eq(L(Nat), GGmC(3), C[Nat](0, C[Nat](3, N[Nat]))) := refl
+  def GGmW (n : Nat) : L(Nat) := C(0, match clone(n) { Z => C[Nat](clone(n), N[Nat]), S k => C[Nat](clone(n), N[Nat]) })
+  def IGmW : Eq(L(Nat), GGmW(3), C[Nat](0, C[Nat](3, N[Nat]))) := refl
+  def GAbN (n : Nat) : L(Nat) := IdL(N)
+  def IAbN : Eq(L(Nat), GAbN(3), N[Nat]) := refl
+  def GAbC (n : Nat) : L(Nat) := IdL(C(clone(n), N))
+  def IAbC : Eq(L(Nat), GAbC(3), C[Nat](3, N[Nat])) := refl
+  def GAbW (n : Nat) : L(Nat) := IdL(C[Nat](clone(n), N[Nat]))
+  def IAbW : Eq(L(Nat), GAbW(3), C[Nat](3, N[Nat])) := refl
+  reject def GAlN (n : Nat) : L(Nat) := IdL((let y = Z; N))
+  reject def IAlN : Eq(L(Nat), GAlN(3), N[Nat]) := refl
+  def GAlC (n : Nat) : L(Nat) := IdL((let y = Z; C(clone(n), N)))
+  def IAlC : Eq(L(Nat), GAlC(3), C[Nat](3, N[Nat])) := refl
+  def GAlW (n : Nat) : L(Nat) := IdL((let y = Z; C[Nat](clone(n), N[Nat])))
+  def IAlW : Eq(L(Nat), GAlW(3), C[Nat](3, N[Nat])) := refl
+  reject def GAsN (n : Nat) : L(Nat) := IdL((Z; N))
+  reject def IAsN : Eq(L(Nat), GAsN(3), N[Nat]) := refl
+  def GAsC (n : Nat) : L(Nat) := IdL((Z; C(clone(n), N)))
+  def IAsC : Eq(L(Nat), GAsC(3), C[Nat](3, N[Nat])) := refl
+  def GAsW (n : Nat) : L(Nat) := IdL((Z; C[Nat](clone(n), N[Nat])))
+  def IAsW : Eq(L(Nat), GAsW(3), C[Nat](3, N[Nat])) := refl
+  reject def GAmN (n : Nat) : L(Nat) := IdL(match clone(n) { Z => N, S k => N })
+  reject def IAmN : Eq(L(Nat), GAmN(3), N[Nat]) := refl
+  def GAmC (n : Nat) : L(Nat) := IdL(match clone(n) { Z => C(clone(n), N), S k => C(clone(n), N) })
+  def IAmC : Eq(L(Nat), GAmC(3), C[Nat](3, N[Nat])) := refl
+  def GAmW (n : Nat) : L(Nat) := IdL(match clone(n) { Z => C[Nat](clone(n), N[Nat]), S k => C[Nat](clone(n), N[Nat]) })
+  def IAmW : Eq(L(Nat), GAmW(3), C[Nat](3, N[Nat])) := refl
+  def GDbN (n : Nat) : L(Nat) := (let v : L(Nat) = N; v)
+  def IDbN : Eq(L(Nat), GDbN(3), N[Nat]) := refl
+  def GDbC (n : Nat) : L(Nat) := (let v : L(Nat) = C(clone(n), N); v)
+  def IDbC : Eq(L(Nat), GDbC(3), C[Nat](3, N[Nat])) := refl
+  def GDbW (n : Nat) : L(Nat) := (let v : L(Nat) = C[Nat](clone(n), N[Nat]); v)
+  def IDbW : Eq(L(Nat), GDbW(3), C[Nat](3, N[Nat])) := refl
+  reject def GDlN (n : Nat) : L(Nat) := (let v : L(Nat) = (let y = Z; N); v)
+  reject def IDlN : Eq(L(Nat), GDlN(3), N[Nat]) := refl
+  def GDlC (n : Nat) : L(Nat) := (let v : L(Nat) = (let y = Z; C(clone(n), N)); v)
+  def IDlC : Eq(L(Nat), GDlC(3), C[Nat](3, N[Nat])) := refl
+  def GDlW (n : Nat) : L(Nat) := (let v : L(Nat) = (let y = Z; C[Nat](clone(n), N[Nat])); v)
+  def IDlW : Eq(L(Nat), GDlW(3), C[Nat](3, N[Nat])) := refl
+  reject def GDsN (n : Nat) : L(Nat) := (let v : L(Nat) = (Z; N); v)
+  reject def IDsN : Eq(L(Nat), GDsN(3), N[Nat]) := refl
+  def GDsC (n : Nat) : L(Nat) := (let v : L(Nat) = (Z; C(clone(n), N)); v)
+  def IDsC : Eq(L(Nat), GDsC(3), C[Nat](3, N[Nat])) := refl
+  def GDsW (n : Nat) : L(Nat) := (let v : L(Nat) = (Z; C[Nat](clone(n), N[Nat])); v)
+  def IDsW : Eq(L(Nat), GDsW(3), C[Nat](3, N[Nat])) := refl
+  reject def GDmN (n : Nat) : L(Nat) := (let v : L(Nat) = match clone(n) { Z => N, S k => N }; v)
+  reject def IDmN : Eq(L(Nat), GDmN(3), N[Nat]) := refl
+  def GDmC (n : Nat) : L(Nat) := (let v : L(Nat) = match clone(n) { Z => C(clone(n), N), S k => C(clone(n), N) }; v)
+  def IDmC : Eq(L(Nat), GDmC(3), C[Nat](3, N[Nat])) := refl
+  def GDmW (n : Nat) : L(Nat) := (let v : L(Nat) = match clone(n) { Z => C[Nat](clone(n), N[Nat]), S k => C[Nat](clone(n), N[Nat]) }; v)
+  def IDmW : Eq(L(Nat), GDmW(3), C[Nat](3, N[Nat])) := refl
+  def GSbN (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := N; v)
+  def ISbN : Eq(L(Nat), GSbN(3), N[Nat]) := refl
+  def GSbC (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := C(clone(n), N); v)
+  def ISbC : Eq(L(Nat), GSbC(3), C[Nat](3, N[Nat])) := refl
+  def GSbW (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := C[Nat](clone(n), N[Nat]); v)
+  def ISbW : Eq(L(Nat), GSbW(3), C[Nat](3, N[Nat])) := refl
+  reject def GSlN (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := (let y = Z; N); v)
+  reject def ISlN : Eq(L(Nat), GSlN(3), N[Nat]) := refl
+  def GSlC (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := (let y = Z; C(clone(n), N)); v)
+  def ISlC : Eq(L(Nat), GSlC(3), C[Nat](3, N[Nat])) := refl
+  def GSlW (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := (let y = Z; C[Nat](clone(n), N[Nat])); v)
+  def ISlW : Eq(L(Nat), GSlW(3), C[Nat](3, N[Nat])) := refl
+  reject def GSsN (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := (Z; N); v)
+  reject def ISsN : Eq(L(Nat), GSsN(3), N[Nat]) := refl
+  def GSsC (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := (Z; C(clone(n), N)); v)
+  def ISsC : Eq(L(Nat), GSsC(3), C[Nat](3, N[Nat])) := refl
+  def GSsW (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := (Z; C[Nat](clone(n), N[Nat])); v)
+  def ISsW : Eq(L(Nat), GSsW(3), C[Nat](3, N[Nat])) := refl
+  reject def GSmN (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := match clone(n) { Z => N, S k => N }; v)
+  reject def ISmN : Eq(L(Nat), GSmN(3), N[Nat]) := refl
+  def GSmC (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := match clone(n) { Z => C(clone(n), N), S k => C(clone(n), N) }; v)
+  def ISmC : Eq(L(Nat), GSmC(3), C[Nat](3, N[Nat])) := refl
+  def GSmW (n : Nat) : L(Nat) := (let v = C[Nat](5, N[Nat]); v := match clone(n) { Z => C[Nat](clone(n), N[Nat]), S k => C[Nat](clone(n), N[Nat]) }; v)
+  def ISmW : Eq(L(Nat), GSmW(3), C[Nat](3, N[Nat])) := refl
+  def GKbN (n : Nat) : L(Nat) := IdL((N : L(Nat)))
+  def IKbN : Eq(L(Nat), GKbN(3), N[Nat]) := refl
+  def GKbC (n : Nat) : L(Nat) := IdL((C(clone(n), N) : L(Nat)))
+  def IKbC : Eq(L(Nat), GKbC(3), C[Nat](3, N[Nat])) := refl
+  def GKbW (n : Nat) : L(Nat) := IdL((C[Nat](clone(n), N[Nat]) : L(Nat)))
+  def IKbW : Eq(L(Nat), GKbW(3), C[Nat](3, N[Nat])) := refl
+  reject def GKlN (n : Nat) : L(Nat) := IdL(((let y = Z; N) : L(Nat)))
+  reject def IKlN : Eq(L(Nat), GKlN(3), N[Nat]) := refl
+  def GKlC (n : Nat) : L(Nat) := IdL(((let y = Z; C(clone(n), N)) : L(Nat)))
+  def IKlC : Eq(L(Nat), GKlC(3), C[Nat](3, N[Nat])) := refl
+  def GKlW (n : Nat) : L(Nat) := IdL(((let y = Z; C[Nat](clone(n), N[Nat])) : L(Nat)))
+  def IKlW : Eq(L(Nat), GKlW(3), C[Nat](3, N[Nat])) := refl
+  reject def GKsN (n : Nat) : L(Nat) := IdL(((Z; N) : L(Nat)))
+  reject def IKsN : Eq(L(Nat), GKsN(3), N[Nat]) := refl
+  def GKsC (n : Nat) : L(Nat) := IdL(((Z; C(clone(n), N)) : L(Nat)))
+  def IKsC : Eq(L(Nat), GKsC(3), C[Nat](3, N[Nat])) := refl
+  def GKsW (n : Nat) : L(Nat) := IdL(((Z; C[Nat](clone(n), N[Nat])) : L(Nat)))
+  def IKsW : Eq(L(Nat), GKsW(3), C[Nat](3, N[Nat])) := refl
+  reject def GKmN (n : Nat) : L(Nat) := IdL((match clone(n) { Z => N, S k => N } : L(Nat)))
+  reject def IKmN : Eq(L(Nat), GKmN(3), N[Nat]) := refl
+  def GKmC (n : Nat) : L(Nat) := IdL((match clone(n) { Z => C(clone(n), N), S k => C(clone(n), N) } : L(Nat)))
+  def IKmC : Eq(L(Nat), GKmC(3), C[Nat](3, N[Nat])) := refl
+  def GKmW (n : Nat) : L(Nat) := IdL((match clone(n) { Z => C[Nat](clone(n), N[Nat]), S k => C[Nat](clone(n), N[Nat]) } : L(Nat)))
+  def IKmW : Eq(L(Nat), GKmW(3), C[Nat](3, N[Nat])) := refl
+  def GUbN (n : Nat) : L(Nat) := (let u = Len(N); N[Nat])
+  def IUbN : Eq(L(Nat), GUbN(3), N[Nat]) := refl
+  def GUbC (n : Nat) : L(Nat) := (let u = Len(C(clone(n), N)); N[Nat])
+  def IUbC : Eq(L(Nat), GUbC(3), N[Nat]) := refl
+  def GUbW (n : Nat) : L(Nat) := (let u = Len(C[Nat](clone(n), N[Nat])); N[Nat])
+  def IUbW : Eq(L(Nat), GUbW(3), N[Nat]) := refl
+  reject def GUlN (n : Nat) : L(Nat) := (let u = Len((let y = Z; N)); N[Nat])
+  reject def IUlN : Eq(L(Nat), GUlN(3), N[Nat]) := refl
+  def GUlC (n : Nat) : L(Nat) := (let u = Len((let y = Z; C(clone(n), N))); N[Nat])
+  def IUlC : Eq(L(Nat), GUlC(3), N[Nat]) := refl
+  def GUlW (n : Nat) : L(Nat) := (let u = Len((let y = Z; C[Nat](clone(n), N[Nat]))); N[Nat])
+  def IUlW : Eq(L(Nat), GUlW(3), N[Nat]) := refl
+  reject def GUsN (n : Nat) : L(Nat) := (let u = Len((Z; N)); N[Nat])
+  reject def IUsN : Eq(L(Nat), GUsN(3), N[Nat]) := refl
+  def GUsC (n : Nat) : L(Nat) := (let u = Len((Z; C(clone(n), N))); N[Nat])
+  def IUsC : Eq(L(Nat), GUsC(3), N[Nat]) := refl
+  def GUsW (n : Nat) : L(Nat) := (let u = Len((Z; C[Nat](clone(n), N[Nat]))); N[Nat])
+  def IUsW : Eq(L(Nat), GUsW(3), N[Nat]) := refl
+  reject def GUmN (n : Nat) : L(Nat) := (let u = Len(match clone(n) { Z => N, S k => N }); N[Nat])
+  reject def IUmN : Eq(L(Nat), GUmN(3), N[Nat]) := refl
+  def GUmC (n : Nat) : L(Nat) := (let u = Len(match clone(n) { Z => C(clone(n), N), S k => C(clone(n), N) }); N[Nat])
+  def IUmC : Eq(L(Nat), GUmC(3), N[Nat]) := refl
+  def GUmW (n : Nat) : L(Nat) := (let u = Len(match clone(n) { Z => C[Nat](clone(n), N[Nat]), S k => C[Nat](clone(n), N[Nat]) }); N[Nat])
+  def IUmW : Eq(L(Nat), GUmW(3), N[Nat]) := refl
+  -- a match on a proof (by type) in tail position, its arm a bare constructor
+  def GPb (h : ⊤ ∧ ⊤) : L(Nat) := match h { Intro(a, b) => N }
+  def IPb : Eq(L(Nat), GPb(⟨refl, refl⟩), N[Nat]) := refl
+  def GPc (n : Nat) (h : ⊤ ∧ ⊤) : L(Nat) := match h { Intro(a, b) => C(clone(n), N) }
+  def IPc : Eq(L(Nat), GPc(3, ⟨refl, refl⟩), C[Nat](3, N[Nat])) := refl
+  -- a body that needs no context (runBody hands no hint), its tail a constructor its fields determine
+  def GBc (n : Nat) : L(Nat) := C(clone(n), N[Nat])
+  def IBc : Eq(L(Nat), GBc(3), C[Nat](3, N[Nat])) := refl
+  -- J's transported term, a bare constructor: stuck (h unknown) and computing (refl)
+  def GJs (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, N)
+  def IJs : Eq(L(Nat), GJs(0, refl), N[Nat]) := refl
+  reject def GJr (n : Nat) : L(Nat) := J(Nat, n, n, λ(z : Nat) : Type => L(Nat), refl, N)
+  reject def IJr : Eq(L(Nat), GJr(3), N[Nat]) := refl
+  def GJc (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, C(clone(n), N))
+  def IJc : Eq(L(Nat), GJc(0, refl), C[Nat](0, N[Nat])) := refl
+  def GJw (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, N[Nat])
+  def IJw : Eq(L(Nat), GJw(0, refl), N[Nat]) := refl
+}
+
+#guard (run "UntypedHints" UntypedHints).rejectedWith [
+  ("Ctl", "the body of Ctl has type Unit"),
+  ("GFbN", "cannot infer the parameter A of N"),
+  ("GFlN", "cannot infer the parameter A of N"),
+  ("GFsN", "cannot infer the parameter A of N"),
+  ("GFmN", "cannot infer the parameter A of N"),
+  ("GGlN", "cannot infer the parameter A of N"),
+  ("GGsN", "cannot infer the parameter A of N"),
+  ("GGmN", "cannot infer the parameter A of N"),
+  ("GAlN", "cannot infer the parameter A of N"),
+  ("GAsN", "cannot infer the parameter A of N"),
+  ("GAmN", "cannot infer the parameter A of N"),
+  ("GDlN", "cannot infer the parameter A of N"),
+  ("GDsN", "cannot infer the parameter A of N"),
+  ("GDmN", "cannot infer the parameter A of N"),
+  ("GSlN", "cannot infer the parameter A of N"),
+  ("GSsN", "cannot infer the parameter A of N"),
+  ("GSmN", "cannot infer the parameter A of N"),
+  ("GKlN", "cannot infer the parameter A of N"),
+  ("GKsN", "cannot infer the parameter A of N"),
+  ("GKmN", "cannot infer the parameter A of N"),
+  ("GUlN", "cannot infer the parameter A of N"),
+  ("GUsN", "cannot infer the parameter A of N"),
+  ("GUmN", "cannot infer the parameter A of N"),
+  ("GJr", "cannot infer the parameter A of N")]
+
+namespace Ochr.Examples.UntypedHints
+open Ochr
+
+/-- `inductive L (A : Type) := N`. -/
+def declL : IndDecl := { name := "L", params := [(⟨"A"⟩, .sort 1)], ctors := [("N", [])] }
+
+/-- The parameters a constructor value records (`==` does not compare them). -/
+def recorded : Except String (Value × Option Value) → Option (List Value)
+  | .ok (.ind _ _ _ ps _, _) => some ps
+  | _ => none
+
+/-- An untyped run of `t` at the hint `L(Nat)`, from a frame binding `x ↦ 0 : Nat` and `l ↦ N[Nat] : L(Nat)`,
+in tail position or not. -/
+def runAt (t : Term) (tail : Bool) : Except String (Value × Option Value) :=
+  let fr : Frame := { binds := #[
+    { hint := ⟨"x"⟩, ty := some .tNat, val := .zero, decl := .other },
+    { hint := ⟨"l"⟩, ty := some (.tInd "L" [.tNat]), val := .ind "L" 0 ⟨"N"⟩ [.tNat] [], decl := .other }] }
+  runM (Ochr.eval 100 false t (some (.tInd "L" [.tNat]))) { env := #[fr], inds := [declL], tailNext := tail }
+
+/-- `N`, bare. -/
+def tN : Term := .ctor "L" 0 ⟨"N"⟩ [] []
+
+-- a `let`'s tail, a `;`'s tail and a match's arms: out of tail position the bare `N` records no
+-- parameter (before D124 it took `Nat` from the hint); in tail position it records `Nat`
+#guard recorded (runAt (.letIn ⟨"y"⟩ .zero tN) false) == some []
+#guard recorded (runAt (.letIn ⟨"y"⟩ .zero tN) true) == some [.tNat]
+#guard recorded (runAt (.seq .zero tN) false) == some []
+#guard recorded (runAt (.seq .zero tN) true) == some [.tNat]
+#guard recorded (runAt (.matchNat (.var 1) tN tN) false) == some []
+#guard recorded (runAt (.matchNat (.var 1) tN tN) true) == some [.tNat]
+-- an assigned constructor takes the place's type, as in the typed check (before D124: none), and the
+-- value assigned records it
+#guard match runM (do discard (Ochr.eval 100 false (.assign (.var 0) tN) none); content? (.var 0))
+    { env := #[{ binds := #[{ hint := ⟨"l"⟩, ty := some (.tInd "L" [.tNat]), val := .ind "L" 0 ⟨"N"⟩ [.tNat] [], decl := .other }] }],
+      inds := [declL] } with
+  | .ok (some (.ind _ _ _ ps _)) => ps.length == 1
+  | _ => false
+
+end Ochr.Examples.UntypedHints
+
 
 /-! ## What goes wrong without strict positivity
 

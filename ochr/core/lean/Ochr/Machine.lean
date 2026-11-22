@@ -785,8 +785,9 @@ def ctorNeedsCtx (fuel : Nat) (d : IndDecl) (c : Nat) : M Bool := do
 /-- D89: does a tail of `t` (through `let`, `;` and match arms) build a constructor whose
 parameters are not written and that its fields do not determine (`ctorNeedsCtx`), or one of
 whose fields is such a constructor (`Some(None)`)? Read from
-syntax and declarations; an untyped run then gives `t` the type its context declares, as
-typing does. -/
+syntax and declarations; an untyped run then gave `t` the type its context declares. D124: no
+longer read by the machine, which hands a hint exactly where typing does (`readsHint`); kept, with
+`ctorNeedsCtx`, because the proof line's files name them. -/
 def needsCtx (fuel : Nat) (t : Term) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match t with
@@ -798,6 +799,52 @@ def needsCtx (fuel : Nat) (t : Term) : M Bool := do
   | .matchNat _ z s => pure ((← needsCtx fuel' z) || (← needsCtx fuel' s))
   | .matchInd _ _ arms => arms.anyM fun (_, a) => needsCtx fuel' a
   | _ => pure false
+
+/-- D124: does the run of `t` read the hint it is handed? `evalCore` reads it at a constructor whose
+parameters are not written, of an inductive that has some (the hint gives them, before the fields);
+at an embedded value, `rewrite` and `rewriteR` as their type (the untyped run returns the hint as
+their type), which is read only where the context reads the term's type (`typeRead`: a borrow
+argument, whose type is its cell's at [Close]; nowhere else the untyped run hands a hint); through
+`clone`, `peek` and `inplace` (which hand it to their operand); and, in tail position (`tail`),
+through a `let`'s or a `;`'s tail and a match's arms. Nothing else reads it (a hole is stuck in an
+untyped run). Read from syntax and declarations. The untyped run hands a hint exactly where the
+typed check does; where the term would not read it, it is not computed, which no run can tell from
+computing it. -/
+def readsHint (fuel : Nat) (tail typeRead : Bool) (t : Term) : M Bool := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match t with
+  | .ctor ty _ _ ps _ => pure (ps.isEmpty && !(← lookupInd ty).params.isEmpty)
+  | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ => pure typeRead
+  | .prim "clone" [u] | .prim "peek" [u] | .prim "inplace" [u] => readsHint fuel' false typeRead u
+  | .letIn _ _ w | .seq _ w => if tail then readsHint fuel' true typeRead w else pure false
+  | .matchNat _ z s =>
+    if tail then pure ((← readsHint fuel' true typeRead z) || (← readsHint fuel' true typeRead s)) else pure false
+  | .matchInd _ _ arms => if tail then arms.anyM fun (_, a) => readsHint fuel' true typeRead a else pure false
+  | _ => pure false
+termination_by structural fuel
+
+/-- D124: the declared codomain of `piTy` at `ws`, not yet evaluated: a hint `forceHint` evaluates
+where it is read. A sealed program whose head is no call, so nothing but `forceHint` reads it. -/
+def hintLater (piTy : Value) (ws : Array Value) : Value :=
+  .sealed (.prim "⋄hint" (.val piTy :: ws.toList.map Term.val))
+
+/-- D117: what a field's value stands for in the frame that types a later field (`fieldTypesOf`):
+each live loan resolved to its borrow's content, recursively, and each mark to the content it marks,
+as `valType?` reads a loan and a mark for typing. So that frame binds no second occurrence of a
+loan, and a later field's type is computed at the index's current content; a read of the index
+there ends no borrow. A loan whose borrow is not in Ω stays as it is. -/
+def resolveLoans (fuel : Nat) (v : Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match v with
+  | .loan l =>
+    let env := (← get).env
+    match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
+    | some (c, _) => resolveLoans fuel' c
+    | none => pure v
+  | .gloan _ w => resolveLoans fuel' w
+  | .succ w => pure (.succ (← resolveLoans fuel' w))
+  | .ind t c h ps fs => pure (.ind t c h ps (← fs.mapM (resolveLoans fuel')))
+  | _ => pure v
 termination_by structural fuel
 
 -- the machine is one `mutual` block, and compiling it (LCNF) outgrew the default heartbeats
@@ -1081,9 +1128,12 @@ borrower of the top frame, and the frame property's one channel downward stays t
 frame holds (their [End] writes the lender's place). This is the single place they end such a
 borrow, and it asserts F4 rather than trusting it: a violation is an internal error, never a
 silent write below the frame. Inside a private copy (`privateDepth > 0`) F4 need not hold: the
-checker's scaffolding binds copies of field or captured values in a frame of its own (a field's
-type computed at the value's fields, `fieldTele`), and a copy may hold a live loan whose borrower
-is below (`DepFields.CellGet`); whatever [Access] ends there is discarded with the copy. -/
+checker's scaffolding binds copies of stored values in frames of its own, and a copy may hold a
+live loan whose borrower is below; whatever [Access] ends there is discarded with the copy. D117
+removed the commonest such copy (the frame that types a dependent field binds what a lent field
+stands for, `resolveLoans`, so `DepFields.CellGet` no longer copies a loan), but not all: with F4
+made strict inside private copies too, rejected rows of `OpenAttacks` and `DepVec` are rejected by
+this internal error instead of their reasons (checked 2026-11-22). -/
 def endTopLoan (fuel : Nat) (l : Nat) (site : String := "") (p? : Option Place := none) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let env := (← get).env
@@ -1672,11 +1722,13 @@ def fieldTypes (fuel : Nat) (d : IndDecl) (ps : List Value) (c : Nat) : M (List 
 termination_by structural fuel
 
 /-- D64: the field types of constructor `c` at the parameters `ps` and the field values
-`fs` (rule 2: a field's type is computed from the earlier fields' contents). -/
+`fs` (rule 2: a field's type is computed from the earlier fields' contents). D117: the frame that
+types a later field binds what each earlier field stands for (`resolveLoans`), not a lent field's
+loan, which would be a second occurrence of it whose read there ends the index's borrow. -/
 def fieldTypesOf (fuel : Nat) (d : IndDecl) (ps : List Value) (c : Nat) (fs : List Value)
     (upto : Option Nat := none) : M (List (String × Value)) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  pure ((← fieldTele fuel' d ps c (fun j _ => pure (fs.getD j .bot)) upto).map fun (f, T, _) => (f, T))
+  pure ((← fieldTele fuel' d ps c (fun j _ => resolveLoans fuel' (fs.getD j .bot)) upto).map fun (f, T, _) => (f, T))
 termination_by structural fuel
 
 /-- D64: fresh generic values for the fields of constructor `c`, each of its type computed
@@ -2318,7 +2370,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       if let some r ← lentProofAssign fuel' p u then return r
     -- the place's type is the type the context requires of a constructor's parameters and of an
     -- embedded value with no type of its own (an inert loan in a sealed program's `*r := loan`)
-    let hint ← if typed && (u matches .ctor .. | .val _) then
+    -- D124: in the untyped run too, at the same forms (the typed check's decision, from syntax)
+    let hint ← if (u matches .ctor .. | .val _) && (typed || (← readsHint fuel' false false u)) then
         placeType? fuel' p
       else pure none
     -- the place's type, read before the value is evaluated: evaluating it may move the place's
@@ -2370,7 +2423,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     if du' == du then modify fun s => { s with tailDecl := myD }
     demand want
     modify fun s => { s with tailNext := tail }     -- static ends: the body is the let's tail
-    let (r, R) ← eval fuel' typed w (if typed then none else hint)     -- D89: the tail's hint
+    -- D89: the tail's hint; D124: only in tail position, where the typed check hands it the goal
+    let (r, R) ← eval fuel' typed w (if typed || !tail then none else hint)
     let fl ← getFlags     -- the body's erasure flags (dropping may normalise)
     pushTemp r R "letIn"
     dropTopBind fuel'
@@ -2383,9 +2437,10 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     modify fun s => { s with tailDecl := myD }     -- the tail's reading is this sequence's
     demand want
     modify fun s => { s with tailNext := tail }     -- static ends: the tail is the sequence's
-    eval fuel' typed w (if typed then none else hint)
-  | .matchNat p z s => evalMatch fuel' typed p z s (if typed then none else hint) (tail := tail)
-  | .matchInd p ty arms => evalMatchInd fuel' typed p ty arms (if typed then none else hint) (tail := tail)
+    eval fuel' typed w (if typed || !tail then none else hint)     -- D124: as a `let`'s tail
+  -- D124: an untyped match hands its arms the hint only in tail position, as the typed check does
+  | .matchNat p z s => evalMatch fuel' typed p z s (if typed || !tail then none else hint) (tail := tail)
+  | .matchInd p ty arms => evalMatchInd fuel' typed p ty arms (if typed || !tail then none else hint) (tail := tail)
   | .tind n as => evalTInd fuel' typed n as
   | .ctor ty c h ps as => evalCtor fuel' typed ty c h ps as hint
   | .const n =>
@@ -2394,6 +2449,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     pure (v, some g.ty)
   | .val v =>
     -- an embedded value is typed by the position it was embedded at (the hint), as below
+    let hint ← forceHint fuel' hint
     if !typed then return (v, hint)
     -- an embedded value with no type of its own (a proof, an inert loan) has the type of the
     -- position it was embedded at: a parameter's or a field's declared type (the hint)
@@ -2570,6 +2626,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     | _, _ => if typed then err "trans: not equations" else pure (.proof, none)
   | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
     -- D60 [Rewrite]: checked against the type the context requires (`hint`)
+    let hint ← forceHint fuel' hint
     if !typed then return (.proof, hint)
     let some G := hint
       | err "rewrite: the goal is not known here (use it in tail position, as a call's argument, or under an annotation `let x : T = …`)"
@@ -2590,13 +2647,18 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     setFlags (p, p)
     pure (← if p then pure Value.proof else absOf fuel' G, some G)
   -- D53: `clone(p)` copies `p` (an erased read); `peek` is an observation's final read
+  -- D122: both take a place, in the core as in the surface ("clone takes a place"): only a read of
+  -- a place is run in copying mode. The checker builds neither of anything else (`capture`
+  -- inlines `clone` of a captured proof as the proof itself, `Term.inlineReads`)
   | .prim "clone" [u] =>
+    let .place p := u | err s!"[D122] clone takes a place: clone({u.pp []})"
     -- K2: cloning a view at runtime copies it
-    if let .place p := u then
-      if let some v ← content? p then unsizedCheck p v "cloned"
+    if let some v ← content? p then unsizedCheck p v "cloned"
     demand want
     withCopying (withErased (eval fuel' typed u hint))
-  | .prim "peek" [u] => do demand want; withCopying (withErased (eval fuel' typed u hint))
+  | .prim "peek" [u] => do
+    unless u matches .place _ do err s!"[D122] peek takes a place: peek({u.pp []})"
+    demand want; withCopying (withErased (eval fuel' typed u hint))
   | .prim "inplace" [t] =>
     if t matches .place _ then modify fun s => { s with inPlace := true }
     demand want
@@ -2610,8 +2672,9 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .ascribe u A =>
     -- D82: an annotation is the term's declared type; the machine does not re-check it
     if !typed && !want then
-      -- D89: the annotation is the hint of a constructor its fields do not determine
-      let h ← if ← needsCtx fuel' u then some <$> evalType fuel' A else pure none
+      -- D89: the annotation is the hint of a constructor its fields do not determine; D124: it is
+      -- the term's hint wherever the typed check hands it, which is always
+      let h ← if ← readsHint fuel' false false u then some <$> evalType fuel' A else pure none
       return ((← eval fuel' false u h).1, none)
     let A' ← evalType fuel' A
     if !typed then return ((← eval fuel' false u (some A')).1, some A')
@@ -2754,6 +2817,7 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
   if !pts.isEmpty && pts.length != np then err s!"{h.name} takes {np} parameters, given {pts.length}"
   let (evs, etys) ← evalParams fuel' ty pts typed
   if typed && !pts.isEmpty then checkParams fuel' d ty evs etys
+  let hint ← if pts.isEmpty then forceHint fuel' hint else pure hint
   let mut sol : Array (Option Value) := if !pts.isEmpty then evs.map some else match hint with
     | some (.tInd m ps) => if m == ty && ps.length == np then (ps.map some).toArray else Array.replicate np none
     | _ => Array.replicate np none
@@ -2771,8 +2835,10 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
   let want ← wanted
   let wantFields := typed || (pts.isEmpty && np > 0)
   for ((a, (_, FT)), i) in (as.zip fields).zipIdx do
-    let fh ← if (typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _)
-        || (dep && d.fieldDependent c i))) || (!typed && sol.all (·.isSome) && (← needsCtx fuel' a))     -- D89
+    -- D124: the untyped run hands a field its type exactly where the typed check does (it used to
+    -- hand it where the field needed its context, D89, whether or not typing handed it)
+    let fh ← if ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _)
+        || (dep && d.fieldDependent c i)) && (typed || (← readsHint fuel' false false a))
       then fieldTypeAt fuel' d sol c i ws0.toList else pure none
     demand wantFields
     let (w, T) ← stmtArgIf fuel' stmtC a (eval fuel' typed a fh)
@@ -2870,8 +2936,11 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
   let mut ender := #[]     -- the editor: which argument ended each argument's borrow
   for ((a, ad), i) in (as.zip argDecls.toList).zipIdx do
     -- v2.0: a constructor argument's parameters may come from the parameter's type
-    let hint ← if (typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _))
-        || (!typed && (← needsCtx fuel' a)) then argHint fuel' fv fT ws0 else pure none     -- D89
+    -- D124: the untyped run hands it exactly where the typed check does (it used to hand it where
+    -- the argument needed its context, D89, whether or not typing handed it)
+    let hint ← if (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _)
+        && (typed || (← readsHint fuel' false (ad matches .ref _) a))
+      then argHint fuel' fv fT ws0 else pure none
     -- D82: a borrow argument's type is a cell's if the call closes off ([Close]); an argument is a
     -- borrow exactly when its declared type is (D48)
     demand (ad matches .ref _)
@@ -2972,6 +3041,17 @@ def declCallType (fuel : Nat) (piTy : Value) (ws : Array Value) : M Value := do
       takeArgBorrow ws[i]!
       pushBind h (some A) (etaUnit pd ws[i]!) (pf.getD i false) (← refineDecl pd)
     evalType fuel' c
+termination_by structural fuel
+
+/-- D124: a hint handed down unevaluated (`hintLater`, a called body's declared codomain at its
+arguments) is evaluated where it is read: a constructor with its parameters not written, an
+embedded value, `rewrite`. Any other hint is itself. -/
+def forceHint (fuel : Nat) (hint : Option Value) : M (Option Value) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match hint with
+  | some (.sealed (.prim "⋄hint" (.val P :: as))) =>
+    some <$> declCallType fuel' P (as.filterMap fun | .val v => some v | _ => none).toArray
+  | h => pure h
 termination_by structural fuel
 
 /-- D82: the declared types of the parameters `need` of the Π-type `piTy` at the arguments `ws`
@@ -3085,8 +3165,14 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
   let erasedFn := (← fnClass fuel' (← funType fuel' fv none)) != 0
   -- D89: a tail constructor whose fields do not determine its parameters gets the declared
-  -- codomain at the arguments, as typing's tail check gives it
-  let hint ← if ← needsCtx fuel' body then some <$> declCallType fuel' piTy ws else pure none
+  -- codomain at the arguments, as typing's tail check gives it; D124: the body gets it always, as
+  -- `checkFix` checks the body at its goal always
+  -- D124: computed where it is read (`forceHint`), from the arguments as they are now: deferred
+  -- unless an argument is a borrow, whose content [Access] may move before the read
+  let hint ← if ← readsHint fuel' true false body then do
+      if ws.all (fun w => !(w matches .borrow ..)) then pure (some (hintLater piTy ws))
+      else some <$> declCallType fuel' piTy ws
+    else pure none
   -- static ends: the body is in tail position, as `checkTail` checks it at the generic call
   modify fun s => { s with tailNext := true }
   let (v, _) ← withErasedIf erasedFn (eval fuel' false body hint)
@@ -3559,7 +3645,8 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
     demand (← wanted)
     -- static ends: its one arm is in tail position where the match is (`checkTail` checks it so)
     modify fun s => { s with tailNext := tail }
-    let r ← eval fuel' typed a
+    -- D124: in tail position the untyped run hands the arm the hint, as `checkTail` hands it the goal
+    let r ← eval fuel' typed a (if typed || !tail then none else expected)
     if needProof && !(← getFlags).2 then subErr
     return r
   if !typed then
