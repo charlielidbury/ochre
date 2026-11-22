@@ -50,11 +50,18 @@ def _root_.Ochr.MState.norm (st : MState) : MState :=
 
 /-- What the run context owes the checker state and a check does not change: its declarations, a
 data model covering and faithful to them, globals with no label, and Σ (`CtxOk` without the
-per-state parts). -/
+per-state parts).
+
+**One declaration list** (the lead's ruling, docs/31 D174, docs/34 §18.13): the context's list `K.Γ`
+is the whole program's at every stage, and the checker's declarations at this stage are a PREFIX of
+it (`inds`): a name the checker finds is found identically in the context (`Exists.find_of_prefix`),
+and a term at this stage names only declared things (main's D118). The model covers the whole list;
+faithfulness is asked for the checker's declarations only (`faithful`, `DeclsFaithful`): a later
+declaration's field types may call globals not yet defined at this stage. -/
 structure CtxS (K : RunCtx) (st : MState) : Prop where
-  inds : K.Γ = st.inds
+  inds : st.inds <+: K.Γ
   covers : ∀ d ∈ K.Γ, K.dm.covers d
-  faithful : CtxFaithful K
+  faithful : DeclsFaithful K st.inds
   noLabel : ∀ n, (K.C.global n).2.label = none
   globals : GlobalsOk K st
 

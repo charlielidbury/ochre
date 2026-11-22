@@ -200,11 +200,9 @@ theorem find_gW {n : String} {g : GDef} (h : stW.globals.find? (·.name == n) = 
 theorem decRank_gW (K : RunCtx) : decRank K gW = fixRank none := rfl
 
 theorem ctxS_stW : CtxS (KB "W" outW dm D φ) stW where
-  inds := rfl
+  inds := List.prefix_refl _
   covers := fun _ h => absurd h List.not_mem_nil
-  faithful := fun _ _ => ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-    ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-     fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil⟩⟩
+  faithful := fun _ h => absurd h List.not_mem_nil
   noLabel := fun n => by simp only [KB, CB]; split <;> rfl
   globals := {
     ty := fun n g hf hc => absurd (by rw [(find_gW hf).1]; rfl) hc

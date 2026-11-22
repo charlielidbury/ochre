@@ -616,6 +616,8 @@ Ruling asked.
 - `Program.lean`'s `ProgState.ctx` (list `st.inds`), used by `defMeaning` in `ProgState.step` and by `DataFaithful`, takes the full list, so the program meaning runs at the one list too.
 - `Inv`'s `WF10`, `WF16` and `ShapeFacts` take `K.Γ`; check that they hold at the longer list or restate them at `st.inds`.
 
+**Built by the lead lane (docs/31 D174, `spine-lead25`).** All four, with `Inv` kept at `K.Γ` (each clause reads the list only by `find?` at a name the state carries, and every name a checker state carries is declared). `DeclsFaithful` and the per-declaration faithfulness moved to `DataModel/Faithful.lean`; `Assembly.DataFaithful` is now the one-list statement and `DataFaithfulOne`/`ExistsDataModelOne` are deleted; the whole program's list is `indsOf {} fuel items`; `Assembly.lean` builds, its `Extends.dec` asks the checker's state over a prefix of the context's list and `exists_of_inv` assumes the prefix fact (`Consistency.inds_prefix`).
+
 ## Appendix: the probe programs
 
 In `Meaning/DataModel/Probes.lean`, checked when the file is elaborated, every verdict and every rejection's reason asserted by the build: `DMProbeAdv` (§13: the stuck type equations, `RE`, `RoseL`, `FP`, `H`, `LB`, `MM`), `DMProbeNest` (`Rose`, `CountF`, `F3`/`F2`, `Single`, `S1`, `S2`, `BW`, `BH`, the rejected W-type shapes `WT`, `WT2`) and `DMProbeLarge` (`TEq`, `te`, `te2`, `te3` rejected, `te4`, `LP`, `HL3`, `h3`, `h3bad` rejected, `H`, `RV`, `rv0`, `rv1`). `TEq`, `te`, `HL`, `hl`, `G`, `EqF`, `ef`, `NL` are also in `Examples/Fording.lean` (`InductiveModel`).

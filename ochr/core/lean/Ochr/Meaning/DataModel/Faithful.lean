@@ -161,4 +161,97 @@ theorem CtxFaithful.withΔ {K : RunCtx} (h : CtxFaithful K) (Δ : Nat → TyS) :
     let ⟨h1, h2, h3⟩ := h Δ' ρ
     ⟨h1, h2, ⟨h3.types, h3.values, h3.smallOnly, h3.leafOk⟩⟩
 
+/-! ## Faithfulness, one declaration at a time -/
+
+/-- `FieldsFaithful` at one declaration. -/
+def FieldsFaithfulAt (K : RunCtx) (ρ : Assignment) (d : IndDecl) : Prop :=
+  ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term),
+    ps.length = d.params.length → ParamsTyped K.dm d ps → FieldsTyped K.dm d ps c e → e.length = i →
+    fieldTerm d c i = some FT →
+    ∀ r s', run K ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm K.D d ps c e) = some (r, s') →
+      r.1.asTy = K.dm.fieldTy d ps c i e
+
+/-- `ParamsFaithful` at one declaration. -/
+def ParamsFaithfulAt (K : RunCtx) (ρ : Assignment) (d : IndDecl) : Prop :=
+  ∀ (ps : List Sem) (j : Nat) (hn : Hint) (PT : Term),
+    ParamsTyped K.dm d ps → ps.length = j → d.params[j]? = some (hn, PT) →
+    ∀ r s', run K ρ noFuture (.plain (TyM.univ 2)) PT (paramFrame K.dm K.D d ps) = some (r, s') →
+      r.1.asTy = K.dm.paramTy d j ps
+
+/-- `RecordsFaithful` at one declaration. -/
+structure RecordsFaithfulAt (K : RunCtx) (d : IndDecl) : Prop where
+  types : ∀ (ps : List Sem) (j : Nat) (A : Type) (c : Code0 A),
+    ps.length = d.params.length → d.paramIsType j = true →
+    ParamsTyped K.dm d ps → ps[j]? = some (.ty (.t0 A c)) →
+    K.dm.paramTyOf (K.dm.recOf d ps) j = .t0 A c
+  values : ∀ (ps : List Sem) (j : Nat) (v : Sem) (A : Type) (c : Code0 A),
+    ParamsTyped K.dm d ps → ps[j]? = some v → K.dm.paramTy d j (ps.take j) = .t0 A c →
+    v ∈ₛ[K.dm.read] .t0 A c → K.dm.recOf d ps (paramKey j) = .small v.small
+  smallOnly : ∀ (ps ps' : List Sem), ParamsTyped K.dm d ps → ps'.length = ps.length →
+    (∀ (j : Nat) (v v' : Sem), ps[j]? = some v → ps'[j]? = some v' →
+      v' = v ∨ ((∃ (A : Type) (c : Code0 A), K.dm.paramTy d j (ps.take j) = .t0 A c ∧ v ∈ₛ[K.dm.read] .t0 A c) ∧
+        v'.small = v.small)) →
+    K.dm.recOf d ps' = K.dm.recOf d ps
+  leafOk : ∀ (ps : List Sem), ps.length = d.params.length → ParamsTyped K.dm d ps →
+    K.dm.RecLeafOk d (K.dm.recOf d ps)
+
+/-- **One declaration is faithful at a context**, at every Δ and assignment. -/
+def DeclFaithful (K : RunCtx) (d : IndDecl) : Prop :=
+  ∀ (Δ : Nat → TyS) (ρ : Assignment),
+    FieldsFaithfulAt { K with Δ := Δ } ρ d ∧ ParamsFaithfulAt { K with Δ := Δ } ρ d ∧ RecordsFaithfulAt K d
+
+/-- **A context is faithful when each of its declarations is.** -/
+theorem ctxFaithful_of_decls {K : RunCtx} (h : ∀ d ∈ K.Γ, DeclFaithful K d) : CtxFaithful K := by
+  intro Δ ρ
+  refine ⟨fun d hd => (h d hd Δ ρ).1, fun d hd => (h d hd Δ ρ).2.1, ⟨?_, ?_, ?_, ?_⟩⟩
+  · exact fun d hd => (h d hd Δ ρ).2.2.types
+  · exact fun d hd => (h d hd Δ ρ).2.2.values
+  · exact fun d hd => (h d hd Δ ρ).2.2.smallOnly
+  · exact fun d hd => (h d hd Δ ρ).2.2.leafOk
+
+
+/-- **Faithfulness at the declarations `ds` only, the runs at the context's whole list** (the one-list
+ruling, docs/31 D174, docs/34 §18.13). The reference's declaration list `K.Γ` is the whole program's at
+every stage; the checker's state at stage `k` holds a prefix of it, and faithfulness is asked for the
+declarations OF THAT PREFIX: a later declaration's field types may call globals the stage does not
+have yet, which the stage's context means as `err`. What `CtxS` and `CtxOk` carry at `st.inds`. -/
+def DeclsFaithful (K : RunCtx) (ds : List IndDecl) : Prop := ∀ d ∈ ds, DeclFaithful K d
+
+/-- Faithfulness at every declaration of the list gives faithfulness at any of its declarations. -/
+theorem CtxFaithful.decls {K : RunCtx} (h : CtxFaithful K) {ds : List IndDecl} (hds : ∀ d ∈ ds, d ∈ K.Γ) :
+    DeclsFaithful K ds := fun d hd Δ ρ =>
+  let ⟨h1, h2, h3⟩ := h Δ ρ
+  ⟨h1 d (hds d hd), h2 d (hds d hd), ⟨h3.types d (hds d hd), h3.values d (hds d hd), h3.smallOnly d (hds d hd),
+    h3.leafOk d (hds d hd)⟩⟩
+
+/-- A prefix's declarations are the list's. -/
+theorem CtxFaithful.prefix {K : RunCtx} (h : CtxFaithful K) {ds : List IndDecl} (hds : ds <+: K.Γ) :
+    DeclsFaithful K ds :=
+  h.decls fun _ hd => hds.subset hd
+
+/-- Faithfulness at the declarations `ds` does not read Δ. -/
+theorem DeclsFaithful.withΔ {K : RunCtx} {ds : List IndDecl} (h : DeclsFaithful K ds) (Δ : Nat → TyS) :
+    DeclsFaithful { K with Δ := Δ } ds :=
+  fun d hd Δ' ρ =>
+    let ⟨h1, h2, h3⟩ := h d hd Δ' ρ
+    ⟨h1, h2, ⟨h3.types, h3.values, h3.smallOnly, h3.leafOk⟩⟩
+
+/-- Faithfulness at a sub-list. -/
+theorem DeclsFaithful.mono {K : RunCtx} {ds ds' : List IndDecl} (h : DeclsFaithful K ds) (hs : ∀ d ∈ ds', d ∈ ds) :
+    DeclsFaithful K ds' := fun d hd => h d (hs d hd)
+
+/-- The field-type clause of faithfulness at one declaration of `ds`. -/
+theorem DeclsFaithful.fields {K : RunCtx} {ds : List IndDecl} (h : DeclsFaithful K ds) (ρ : Assignment)
+    {d : IndDecl} (hd : d ∈ ds) : FieldsFaithfulAt K ρ d :=
+  (h d hd K.Δ ρ).1
+
+
+/-- **An element a prefix finds is found identically in the longer list** (any predicate; the
+one-list ruling's link, docs/31 D174: a declaration the checker's state finds by name is the one the
+context's whole-program list finds). `Exists.find_of_prefix` is its instance at declaration names. -/
+theorem find?_of_prefix {α : Type _} {l₀ l : List α} (h : l₀ <+: l) {p : α → Bool} {a : α}
+    (hd : l₀.find? p = some a) : l.find? p = some a := by
+  obtain ⟨t, rfl⟩ := h
+  rw [List.find?_append, hd]; rfl
+
 end Ochr.Meaning

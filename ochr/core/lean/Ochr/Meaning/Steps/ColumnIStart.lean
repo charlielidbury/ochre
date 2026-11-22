@@ -220,11 +220,9 @@ theorem find_gI {n : String} {g : GDef} (h : stI.globals.find? (·.name == n) = 
 theorem decRank_gI (K : RunCtx) : decRank K gI = fixRank none := rfl
 
 theorem ctxS_stI : CtxS (KI dm D φ) stI where
-  inds := rfl
+  inds := List.prefix_refl _
   covers := fun _ h => absurd h List.not_mem_nil
-  faithful := fun _ _ => ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-    ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-     fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil⟩⟩
+  faithful := fun _ h => absurd h List.not_mem_nil
   noLabel := fun n => by simp only [KI, CI]; split <;> rfl
   globals := {
     ty := fun n g hf hc => absurd (by rw [(find_gI hf).1]; rfl) hc

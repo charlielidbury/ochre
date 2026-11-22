@@ -443,9 +443,11 @@ unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), Σ (`GlobalsOk
 the checker's (`DecAligned`), and the checker's typing of places (`ShapeFacts`). A hypothesis of
 every statement. -/
 structure CtxOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop where
-  inds : K.Γ = st.inds
+  /-- the checker's declarations are a prefix of the context's one list (docs/31 D174) -/
+  inds : st.inds <+: K.Γ
   covers : ∀ d ∈ K.Γ, K.dm.covers d
-  faithful : CtxFaithful K
+  /-- faithfulness at the checker's declarations only (docs/31 D174) -/
+  faithful : DeclsFaithful K st.inds
   delta : DeltaOk K ρ st
   noLabel : ∀ n, (K.C.global n).2.label = none
   globals : GlobalsOk K st

@@ -622,11 +622,9 @@ theorem find_gR {n : String} {g : GDef} (h : [gR].find? (·.name == n) = some g)
 closure, the function being checked. -/
 theorem ctxS_R (Δ : Nat → TyS) (hGl : G.2.label = none) (hMB : ∀ Δ, MemBelow (KR dm D Δ G b) G gR b) {st : MState}
     (hg : st.globals = [gR]) (hi : st.inds = []) : CtxS (KR dm D Δ G b) st where
-  inds := hi.symm
+  inds := hi ▸ List.nil_prefix
   covers := fun _ h => absurd h List.not_mem_nil
-  faithful := fun _ _ => ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-    ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-     fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil⟩⟩
+  faithful := fun _ h => by rw [hi] at h; exact absurd h List.not_mem_nil
   noLabel := fun n => by simp only [KR, CR]; split; exact hGl; rfl
   globals := {
     ty := fun n g hf hc => by rw [hg] at hf; exact absurd (by rw [(find_gR hf).1]; rfl) hc

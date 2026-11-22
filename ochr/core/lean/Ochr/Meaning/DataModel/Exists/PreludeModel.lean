@@ -389,10 +389,11 @@ theorem ctxFaithful (K : RunCtx) (hdm : K.dm = dmPre) (hΓ : K.Γ = preludeDecls
   fun Δ ρ => ⟨fieldsFaithful { K with Δ := Δ } hdm hΓ ρ, paramsFaithful { K with Δ := Δ } hdm hΓ ρ,
     recordsFaithful K hdm hΓ⟩
 
-/-- **`DataFaithful` at every program state declaring the library**, under any decisions. -/
+/-- **`DataFaithful` at every program state declaring the library**, under any decisions, at the
+library's own list (the whole program being the library; docs/31 D174). -/
 theorem dataFaithful (D : MState → Decisions) (P : ProgState) (hP : P.inds = preludeDecls) :
-    Assembly.DataFaithful dmPre D P :=
-  fun st hst _ => ctxFaithful (P.ctx dmPre D st) rfl (by show st.inds = _; rw [hst, hP])
+    Assembly.DataFaithful dmPre D preludeDecls P :=
+  fun st _ _ => (ctxFaithful (P.ctx dmPre D preludeDecls st) rfl rfl).prefix (by rw [hP]; exact List.prefix_refl _)
 
 /-- The model covers every declaration. -/
 theorem covered (P : ProgState) : P.Covered dmPre := fun _ _ => trivial
@@ -402,7 +403,7 @@ def preludeState : ProgState := { inds := preludeDecls }
 
 /-- A concrete run context: the library's state, under the checker's decisions (the chain's). -/
 noncomputable def instK (fuel : Nat) : RunCtx :=
-  preludeState.ctx dmPre (chainDecisions fuel) { inds := preludeDecls }
+  preludeState.ctx dmPre (chainDecisions fuel) preludeDecls { inds := preludeDecls }
 
 theorem instance_records (fuel : Nat) : RecordsFaithful (instK fuel) := recordsFaithful _ rfl rfl
 theorem instance_fields (fuel : Nat) (ρ : Assignment) : FieldsFaithful (instK fuel) ρ := fieldsFaithful _ rfl rfl ρ
@@ -414,7 +415,7 @@ faithful to it under the checker's decisions. (That this state is the program me
 library's items needs the checker run in the kernel, which it cannot do; `prelude_inds` asserts
 natively that the checker's declarations after the library are `preludeDecls`.) -/
 theorem instance_data (fuel : Nat) :
-    ∃ dm : DataModel, preludeState.Covered dm ∧ Assembly.DataFaithful dm (chainDecisions fuel) preludeState :=
+    ∃ dm : DataModel, preludeState.Covered dm ∧ Assembly.DataFaithful dm (chainDecisions fuel) preludeDecls preludeState :=
   ⟨dmPre, covered _, dataFaithful _ _ rfl⟩
 
 end Ochr.Meaning.DataModel.Exists.PreludeModel

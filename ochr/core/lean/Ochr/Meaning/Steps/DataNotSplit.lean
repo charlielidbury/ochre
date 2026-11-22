@@ -65,9 +65,9 @@ theorem find_gNot {n : String} {g : GDef} (h : [gNot].find? (·.name == n) = som
 /-- **The context's part at every state of `Not`'s body** (any `Δ`), under `DataModelB`. -/
 theorem ctxS_Not (hdm : DataModelB dm D) (Δ : Nat → TyS) {st : MState} (hg : st.globals = [gNot])
     (hi : st.inds = [declB]) : CtxS (KNot dm D φ Δ) st where
-  inds := hi.symm
+  inds := hi ▸ List.prefix_refl _
   covers := fun d h => by simp only [KNot, List.mem_singleton] at h; subst h; exact hdm.1
-  faithful := hdm.2 φ Δ
+  faithful := (hdm.2 φ Δ).prefix (hi ▸ List.prefix_refl _)
   noLabel := fun n => by simp only [KNot, CN]; split <;> rfl
   globals := {
     ty := fun n g hf hc => by rw [hg] at hf; exact absurd (by rw [(find_gNot hf).1]; rfl) hc

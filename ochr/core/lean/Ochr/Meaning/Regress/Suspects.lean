@@ -231,8 +231,10 @@ open Ochr.Meaning.Regress.GenNeutralContent (outSt outVal isOk runs_out) in
 /-- **`proof_step_stmt` is false** (fuel 60, any context admitting the empty frame with `0` in flight,
 reading `(⋆ : Eq(Nat, 0, 1))` as a proof, its decisions aligned after): the checker returns `⋆` at
 `False`, which has no member (in this context no declaration is named `False`, so its meaning is the
-error type; with the library's `False` it is the empty proposition). -/
-theorem proof_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
+error type; with the library's `False` it is the empty proposition). Since the one-list ruling (docs/31
+D174) the context's list is the whole program's and the state's a prefix of it, so the empty list is
+asked of the context (`hΓ`). -/
+theorem proof_step_false (K : RunCtx) (ρ : Assignment) (φ : Future) (hΓ : K.Γ = [])
     (hctx : CtxOk K ρ (Regress.EvalMemGap.S0.withTemp .zero))
     (hfl : (K.D.flags (scopeOf (SM' K ρ (Regress.EvalMemGap.S0.withTemp .zero))) pf).2 = true)
     (hD : DecTab K.D (outSt ep (Regress.EvalMemGap.S0.withTemp .zero) 60)) :
@@ -249,7 +251,6 @@ theorem proof_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
     rwa [isPF_eq pfP] at this
   obtain ⟨-, ρ', Δ', -, -, hmem⟩ :=
     hs _ _ true pf none (.tInd "False" []) (Regress.EvalMemGap.good_S0T K ρ) hctx _ id hrel hfl hD 60 hr
-  have hΓ : K.Γ = [] := hctx.inds
   have e : (meanV { K with Δ := Δ' } ρ' φ (.plain .err) (.tInd "False" [])).asTy = TyM.err := by
     simp [meanV, hΓ, Sem.asTy]
   rw [e] at hmem

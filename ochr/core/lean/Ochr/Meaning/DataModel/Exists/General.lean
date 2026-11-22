@@ -74,7 +74,7 @@ a member of its codomain (`app_mem'`); and the stored type the call reads (`glob
 stored `tPi`) is that function type's code (`Consistency.fix_split`'s first claim, open, the lead's).
 A meaning whose run failed is `err`, at which no call runs. -/
 theorem globals_typed (dm : DataModel) (D : MState → Decisions) (fuel : Nat) (items : List Item) :
-    GlobalsTyped dm (progMeaning dm D (fun _ => .err) {} fuel items) := by
+    GlobalsTyped dm (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items) := by
   sorry
 
 /-! ## Pieces 3 and 4: a data-sorted declaration's knot -/

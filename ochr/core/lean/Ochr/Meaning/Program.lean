@@ -128,9 +128,13 @@ def baseC (P : ProgState) : CodeMeaning where
   paramTy _ _ _ _ := .plain .err
 
 /-- The run context of code checked from the checker state `st` after the items of `P`: the data
-model, `st`'s inductive declarations, the meanings of `P`'s globals, and the decisions at `st`. -/
-def ctx (dm : DataModel) (D : MState → Decisions) (P : ProgState) (st : MState) : RunCtx :=
-  { dm, Γ := st.inds, C := P.baseC, D := D st }
+model, the WHOLE PROGRAM'S inductive declarations `Γ`, the meanings of `P`'s globals, and the
+decisions at `st`. The list is the whole program's at every stage (the lead's ruling, docs/31 D174,
+docs/34 §18.13); `st`'s declarations are a prefix of it. Until D174 it was `st.inds`, which grew
+stage by stage, and faithfulness of an earlier declaration could not be carried to a frame holding
+a value of a type declared later (`DataModel/Exists/ScopeCE.lean`). -/
+def ctx (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (P : ProgState) (st : MState) : RunCtx :=
+  { dm, Γ := Γ, C := P.baseC, D := D st }
 
 /-- The data model speaks for every inductive declaration of Σ (`DataModel.covers`): the
 hypothesis under which its laws hold for the program. -/
@@ -139,7 +143,7 @@ def Covered (dm : DataModel) (P : ProgState) : Prop := ∀ d ∈ P.inds, dm.cove
 end ProgState
 
 section
-variable (dm : DataModel) (D : MState → Decisions) (ρ : Assignment)
+variable (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (ρ : Assignment)
 
 /-- The meaning of an accepted constant at its type: `•` at a proposition, as the checker
 stores `⋆` for a constant whose goal is a proposition (`checkDef`: `isPropV goal`); otherwise
@@ -192,7 +196,7 @@ noncomputable def ProgState.step (cfg : Config) (fuel : Nat) (P : ProgState) (it
     let means := match it with
       | .defn d =>
         let T := ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot
-        P.means ++ [(d.name, (defMeaning ρ (P.ctx dm D st') d T).getD (.err, .plain .err))]
+        P.means ++ [(d.name, (defMeaning ρ (P.ctx dm D Γ st') d T).getD (.err, .plain .err))]
       | .ind _ => P.means
     { globals := st'.globals, inds := st'.inds, means }
   | _ => P
@@ -200,23 +204,23 @@ noncomputable def ProgState.step (cfg : Config) (fuel : Nat) (P : ProgState) (it
 /-- The meaning of a list of items from a start: the items in program order (`ProgState.step`). -/
 noncomputable def progMeaningFrom (cfg : Config) (fuel : Nat) (start : ProgState) (items : List Item) :
     ProgState :=
-  items.foldl (ProgState.step dm D ρ cfg fuel) start
+  items.foldl (ProgState.step dm D Γ ρ cfg fuel) start
 
 /-- The meaning of a program: its items from empty Σ, the library's among them, first, as in
 `checkDefs` and `globalsAfter`. -/
 noncomputable def progMeaning (cfg : Config) (fuel : Nat) (items : List Item) : ProgState :=
-  progMeaningFrom dm D ρ cfg fuel {} items
+  progMeaningFrom dm D Γ ρ cfg fuel {} items
 
 /-- The code meaning of the program's globals for a state the checker reaches at `st` after the
 items of `P` (`Run.lean`'s `codeMeaning`, read at the assignment and future it is asked at): what
 `Value.mean` reads for globals, sealed programs, closures, Π-closures and deferred types. -/
 noncomputable def ProgState.codeMeaning (P : ProgState) (st : MState) : CodeMeaning :=
-  Ochr.Meaning.codeMeaning (P.ctx dm D st)
+  Ochr.Meaning.codeMeaning (P.ctx dm D Γ st)
 
 /-- The Σ the program meaning carries is the checker's: from any start, it is
 `globalsAfterFrom` at the same items (at the fuel `globalsAfterFrom` fixes). -/
 theorem progMeaningFrom_sig (cfg : Config) (P : ProgState) (items : List Item) :
-    let P' := progMeaningFrom dm D ρ cfg 2000000 P items
+    let P' := progMeaningFrom dm D Γ ρ cfg 2000000 P items
     (P'.globals, P'.inds) = globalsAfterFrom cfg (P.globals, P.inds) items := by
   induction items generalizing P with
   | nil => simp [progMeaningFrom, globalsAfterFrom]
@@ -229,11 +233,49 @@ theorem progMeaningFrom_sig (cfg : Config) (P : ProgState) (items : List Item) :
 
 /-- The Σ of a program's meaning is `globalsAfter`'s. -/
 theorem progMeaning_sig (cfg : Config) (items : List Item) :
-    let P := progMeaning dm D ρ cfg 2000000 items
+    let P := progMeaning dm D Γ ρ cfg 2000000 items
     (P.globals, P.inds) = globalsAfter cfg items :=
-  progMeaningFrom_sig dm D ρ cfg {} items
+  progMeaningFrom_sig dm D Γ ρ cfg {} items
 
 end
+
+/-- Σ after the items, the checker alone (no meanings), at any fuel: `globalsAfterFrom`'s loop. -/
+def sigAfterFrom (cfg : Config) (fuel : Nat) (start : List GDef × List IndDecl) (items : List Item) :
+    List GDef × List IndDecl :=
+  items.foldl (fun P it =>
+    match (runMachine (checkItem it) { globals := P.1, inds := P.2, cfg := cfg } fuel).1 with
+    | .ok () st' => (st'.globals, st'.inds)
+    | _ => P) start
+
+/-- **The whole program's inductive declarations**: the reference's ONE declaration list for the
+items (the lead's ruling, docs/31 D174). Every stage's context carries it; the checker's state at
+each stage holds a prefix of it. A function of the checker alone, so the program meaning, which
+takes it as a parameter, is not defined in terms of itself. -/
+def indsOf (cfg : Config) (fuel : Nat) (items : List Item) : List IndDecl :=
+  (sigAfterFrom cfg fuel ([], []) items).2
+
+/-- The Σ the program meaning carries does not depend on the model, the decisions, the declaration
+list or the assignment: it is the checker's, at the same fuel. -/
+theorem progMeaningFrom_sigAfter (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (ρ : Assignment)
+    (cfg : Config) (fuel : Nat) (P : ProgState) (items : List Item) :
+    let P' := progMeaningFrom dm D Γ ρ cfg fuel P items
+    (P'.globals, P'.inds) = sigAfterFrom cfg fuel (P.globals, P.inds) items := by
+  induction items generalizing P with
+  | nil => simp [progMeaningFrom, sigAfterFrom]
+  | cons it rest ih =>
+    simp only [progMeaningFrom, List.foldl_cons] at ih ⊢
+    rw [ih]
+    simp only [sigAfterFrom, List.foldl_cons, ProgState.step]
+    generalize (runMachine (checkItem it) _ fuel).fst = o
+    cases o <;> rfl
+
+/-- The program meaning's declarations are `indsOf`'s. -/
+theorem progMeaning_inds (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (ρ : Assignment)
+    (cfg : Config) (fuel : Nat) (items : List Item) :
+    (progMeaning dm D Γ ρ cfg fuel items).inds = indsOf cfg fuel items := by
+  have h := progMeaningFrom_sigAfter dm D Γ ρ cfg fuel {} items
+  simp only at h
+  exact (congrArg Prod.snd h).trans rfl
 
 /-! ## Sanity: a constant's meaning, through the checker's verdict, to later code -/
 
@@ -297,9 +339,9 @@ theorem one_accepted :
 
 /-- The program `def one : Nat := S(Z)` records `one` with the meaning `1` at type `Nat`, whatever
 the data model, decisions and assignment: the checker accepts it, so its meaning is recorded. -/
-theorem progMeaning_one (dm : DataModel) (D : MState → Decisions) (ρ : Assignment)
+theorem progMeaning_one (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (ρ : Assignment)
     (hD : ∀ st sc, ((D st).flags sc (.succ .zero)).2 = false) :
-    (progMeaning dm D ρ {} 2000000 [.defn oneDef]).means = [("one", .el0 Nat 1, .plain TyM.nat)] := by
+    (progMeaning dm D Γ ρ {} 2000000 [.defn oneDef]).means = [("one", .el0 Nat 1, .plain TyM.nat)] := by
   obtain ⟨st', h, hT⟩ := one_accepted
   simp only [progMeaning, progMeaningFrom, List.foldl_cons, List.foldl_nil, ProgState.step]
   rw [show ({ globals := ({} : ProgState).globals, inds := ({} : ProgState).inds, cfg := {} } : MState)
@@ -311,9 +353,9 @@ theorem progMeaning_one (dm : DataModel) (D : MState → Decisions) (ρ : Assign
   rfl
 
 /-- ... and a later term reads it: the run of `one` in any state of the program's context. -/
-theorem run_const_one (dm : DataModel) (D : MState → Decisions) (ρ : Assignment) (st : MState)
+theorem run_const_one (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (ρ : Assignment) (st : MState)
     (φ : Future) (h : TyS) (s : SState) (hD : ∀ st sc, ((D st).flags sc (.succ .zero)).2 = false) :
-    run ((progMeaning dm D ρ {} 2000000 [.defn oneDef]).ctx dm D st) ρ φ h (.const "one") s =
+    run ((progMeaning dm D Γ ρ {} 2000000 [.defn oneDef]).ctx dm D Γ st) ρ φ h (.const "one") s =
       some ((.el0 Nat 1, .plain TyM.nat), s) := by
   rw [run_const]
   simp only [ProgState.ctx, ProgState.baseC, ProgState.globalMean, ProgState.globalTy, progMeaning_one (hD := hD)]

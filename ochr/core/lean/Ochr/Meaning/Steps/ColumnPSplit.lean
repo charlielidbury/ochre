@@ -522,11 +522,9 @@ theorem find_gP {n : String} {g : GDef} (h : [gP].find? (·.name == n) = some g)
 /-- **The context's part at every state of `P`'s body** (any `Δ`): no declarations, `P`'s global its stage-0
 closure, the function being checked. -/
 theorem ctxS_P (Δ : Nat → TyS) {st : MState} (hg : st.globals = [gP]) (hi : st.inds = []) : CtxS (KP dm D φ Δ) st where
-  inds := hi.symm
+  inds := hi ▸ List.nil_prefix
   covers := fun _ h => absurd h List.not_mem_nil
-  faithful := fun _ _ => ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-    ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-     fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil⟩⟩
+  faithful := fun _ h => by rw [hi] at h; exact absurd h List.not_mem_nil
   noLabel := fun n => by simp only [KP, CP]; split <;> rfl
   globals := {
     ty := fun n g hf hc => by rw [hg] at hf; exact absurd (by rw [(find_gP hf).1]; rfl) hc

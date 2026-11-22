@@ -997,10 +997,12 @@ theorem ctxFaithful (K : RunCtx) (hdm : K.dm = (dmS fv)) (hΓ : K.Γ = step2Decl
     recordsFaithful K hdm hΓ hfv⟩
 
 /-- **`DataFaithful` at every program state declaring step 2's program**, under any decisions,
-whose global `EvT` means `fv`, at a meaning of `EvT` that gives a type of `Type₀` at either `Bool`. -/
+whose global `EvT` means `fv`, at a meaning of `EvT` that gives a type of `Type₀` at either `Bool`;
+at step 2's own list (the whole program being step 2's; docs/31 D174). -/
 theorem dataFaithful (D : MState → Decisions) (P : ProgState) (hP : P.inds = step2Decls)
-    (hC : P.baseC.global "EvT" = fv) (hfv : EvTGood fv) : Assembly.DataFaithful (dmS fv) D P :=
-  fun st hst _ => ctxFaithful (P.ctx (dmS fv) D st) rfl (by show st.inds = _; rw [hst, hP]) hC hfv
+    (hC : P.baseC.global "EvT" = fv) (hfv : EvTGood fv) : Assembly.DataFaithful (dmS fv) D step2Decls P :=
+  fun st _ _ => (ctxFaithful (P.ctx (dmS fv) D step2Decls st) rfl rfl hC hfv).prefix
+    (by rw [hP]; exact List.prefix_refl _)
 
 /-- The program state after step 2's declarations, with no global meaning recorded. -/
 def step2State : ProgState := { inds := step2Decls }
@@ -1016,7 +1018,7 @@ theorem evTGood_err : EvTGood (.err, .plain TyM.err) := by
 decisions, at the state whose `EvT` has no recorded meaning. At the state the checker reaches (its
 `EvT` the program meaning's), `dataFaithful` gives the same from `EvTGood` of that meaning. -/
 theorem instance_data (fuel : Nat) :
-    ∃ dm : DataModel, step2State.Covered dm ∧ Assembly.DataFaithful dm (chainDecisions fuel) step2State :=
+    ∃ dm : DataModel, step2State.Covered dm ∧ Assembly.DataFaithful dm (chainDecisions fuel) step2Decls step2State :=
   ⟨dmS (.err, .plain TyM.err), fun _ _ => trivial, dataFaithful _ _ rfl rfl evTGood_err⟩
 
 /-! ## A meaning of `EvT` that runs: the field `x` of `TF` exercised -/
@@ -1089,7 +1091,7 @@ noncomputable def step2StateEvT : ProgState := { inds := step2Decls, means := [(
 /-- **The existence statement's conclusion at step 2's program, `EvT` meaning a closure whose call
 runs** (so `TF`'s second field is faithful at a defined run: `List(Nat)` at `true`, `Nat` at `false`). -/
 theorem instance_data_evt (fuel : Nat) :
-    ∃ dm : DataModel, step2StateEvT.Covered dm ∧ Assembly.DataFaithful dm (chainDecisions fuel) step2StateEvT :=
+    ∃ dm : DataModel, step2StateEvT.Covered dm ∧ Assembly.DataFaithful dm (chainDecisions fuel) step2Decls step2StateEvT :=
   ⟨dmS evtFv, fun _ _ => trivial, dataFaithful _ _ rfl rfl evTGood_evt⟩
 
 end Ochr.Meaning.DataModel.Exists.Step2

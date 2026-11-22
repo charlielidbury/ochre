@@ -37,7 +37,7 @@ namespace Ochr.Meaning.Assembly
 open Ochr.Meaning Ochr.Surface Ochr.Consistency
 
 section
-variable (dm : DataModel) (D : MState → Decisions)
+variable (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl)
 
 /-- **The data model is faithful to the program** (a named hypothesis of the chain, docs/31 D72,
 docs/34 §9): at every checker state over the program's declarations whose globals extend the
@@ -46,9 +46,14 @@ declared field types, parameter types and records as the run does (`CtxFaithful`
 carries). Before docs/34's port the existence statement asked only `covers`, and a model ignoring
 the program met it (`DataModel/Counterexamples.degenerate_meets`, against the frozen copy); that
 model is not faithful (`DataModel/Degenerate.lean`). The globals are restricted because the
-decisions read them: a field type calling a global is run under the decisions at the state. -/
+decisions read them: a field type calling a global is run under the decisions at the state.
+
+At ONE declaration list (the lead's ruling, docs/31 D174, docs/34 §18.13): the context's list `Γ` is
+the whole program's at every stage, and faithfulness is asked only for the stage's declarations
+(`DeclsFaithful`; a later declaration's field types may call globals the stage does not have yet).
+This is `DataModel/Exists/Assembly.lean`'s `DataFaithfulOne`, which it replaces. -/
 def DataFaithful (P : ProgState) : Prop :=
-  ∀ st : MState, st.inds = P.inds → P.globals <+: st.globals → CtxFaithful (P.ctx dm D st)
+  ∀ st : MState, st.inds = P.inds → P.globals <+: st.globals → DeclsFaithful (P.ctx dm D Γ st) P.inds
 
 /-- Every accepted definition so far means a member of its type. -/
 def MeansMember (P : ProgState) : Prop := ∀ n s T, (n, s, T) ∈ P.means → s ∈ₛ[dm.read] T.m
@@ -64,14 +69,14 @@ the context's conditions under the program's context so far (Σ's globals are me
 induction, `hP`; the data model covering and faithful), and it is related to the empty state at its
 counter (`Steps.Rel.start`: it holds no borrow), out of tail position. -/
 theorem const_split (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms = [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P) (hDec : ∀ st, Steps.DecAligned (D st) st)
+    (hP : MeansMember dm P) (hΓ : st'.inds <+: Γ) (hcov : ∀ d' ∈ Γ, dm.covers d') (hfaith : DataFaithful dm D Γ P) (hDec : ∀ st, Steps.DecAligned (D st) st)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ (f : Nat) (st₁ st₂ st₃ : MState) (b₁ b₂ : Nat) (goal v : Value) (T? : Option Value),
-      Good dm (P.ctx dm D st').M (P.ctx dm D st').Γ (fun _ => .err) st₁ ∧ Steps.CtxOk (P.ctx dm D st') (fun _ => .err) st₁ ∧
-      Steps.Rel (P.ctx dm D st') (fun _ => .err) noFuture id st₁ (emptyState st₁.nextLoan) ∧ st₁.tailNext = false ∧
+      Good dm (P.ctx dm D Γ st').M (P.ctx dm D Γ st').Γ (fun _ => .err) st₁ ∧ Steps.CtxOk (P.ctx dm D Γ st') (fun _ => .err) st₁ ∧
+      Steps.Rel (P.ctx dm D Γ st') (fun _ => .err) noFuture id st₁ (emptyState st₁.nextLoan) ∧ st₁.tailNext = false ∧
       Steps.Runs (Ochr.eval f true d.body (some goal)) st₁ b₁ (v, T?) st₂ ∧
       -- the item's final decisions are aligned after the body (the tables only grow to the end)
-      Steps.DecTab (P.ctx dm D st').D st₂ ∧
+      Steps.DecTab (P.ctx dm D Γ st').D st₂ ∧
       Steps.Runs (Ochr.bodyReturns f s!"{d.name} is defined as it" v goal [] "") st₂ b₂ () st₃ ∧
       ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot = goal := by
   sorry
@@ -110,13 +115,13 @@ definition's. -/
 theorem const_value (fuel : Nat) (P : ProgState) (d : Def) (st' st₁ : MState) (goal v : Value) (hd : d.doms = [])
     (hgoal : ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot = goal)
     (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s₂ : SState)
-    (hrun : runT (P.ctx dm D st') ρ' noFuture false (Steps.hintM (P.ctx dm D st') (fun _ => .err) (some goal)) d.body
+    (hrun : runT (P.ctx dm D Γ st') ρ' noFuture false (Steps.hintM (P.ctx dm D Γ st') (fun _ => .err) (some goal)) d.body
       (emptyState st₁.nextLoan) = some (r, s₂))
-    (hmean : meanV { P.ctx dm D st' with Δ := Δ' } ρ' (fun l => noFuture (π' l)) r.2 v = r.1) (ψ : Future)
-    (hmem : meanV { P.ctx dm D st' with Δ := Δ' } ρ' ψ (Value.tyS dm ({ P.ctx dm D st' with Δ := Δ' } : RunCtx).M
-        (P.ctx dm D st').Γ ρ' goal) v ∈ₛ[dm.read]
-      (meanV { P.ctx dm D st' with Δ := Δ' } ρ' noFuture (.plain .err) goal).asTy) :
-    ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d goal = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
+    (hmean : meanV { P.ctx dm D Γ st' with Δ := Δ' } ρ' (fun l => noFuture (π' l)) r.2 v = r.1) (ψ : Future)
+    (hmem : meanV { P.ctx dm D Γ st' with Δ := Δ' } ρ' ψ (Value.tyS dm ({ P.ctx dm D Γ st' with Δ := Δ' } : RunCtx).M
+        (P.ctx dm D Γ st').Γ ρ' goal) v ∈ₛ[dm.read]
+      (meanV { P.ctx dm D Γ st' with Δ := Δ' } ρ' noFuture (.plain .err) goal).asTy) :
+    ∃ m, defMeaning (fun _ => .err) (P.ctx dm D Γ st') d goal = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
   sorry
 
 /-- **An accepted constant means a member of its type** (assembled): the check taken apart
@@ -124,22 +129,22 @@ theorem const_value (fuel : Nat) (P : ProgState) (d : Def) (st' st₁ : MState) 
 [Return]'s membership (`bodyReturns_sound`, in the extended context, the value in flight), the
 constant's meaning that value's (`const_value`). -/
 theorem step_member_const (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms = [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P) (hDec : ∀ st, Steps.DecAligned (D st) st)
+    (hP : MeansMember dm P) (hΓ : st'.inds <+: Γ) (hcov : ∀ d' ∈ Γ, dm.covers d') (hfaith : DataFaithful dm D Γ P) (hDec : ∀ st, Steps.DecAligned (D st) st)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
-    ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d
+    ∃ m, defMeaning (fun _ => .err) (P.ctx dm D Γ st') d
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
   obtain ⟨f, st₁, st₂, st₃, b₁, b₂, goal, v, T?, hg₁, hctx₁, hs₁, htl, hev, hD₂, hbr, hgoal⟩ :=
-    const_split dm D fuel P d st' hd hP hcov hfaith hDec hrun
+    const_split dm D Γ fuel P d st' hd hP hΓ hcov hfaith hDec hrun
   obtain ⟨ρ', Δ', π', -, -, -, -, r, s₂, hrunr, hmean, -, hctx₂, hs₂, hg₂⟩ :=
-    (Steps.stepsIH f (P.ctx dm D st') (fun _ => .err) noFuture).eval_step st₁ st₂ true d.body (some goal) v T? hg₁
+    (Steps.stepsIH f (P.ctx dm D Γ st') (fun _ => .err) noFuture).eval_step st₁ st₂ true d.body (some goal) v T? hg₁
       hctx₁ _ id hs₁ (fun h => absurd h (by decide)) hD₂ b₁ hev
   rw [htl] at hrunr
-  obtain ⟨ψ, hψ⟩ := typedFutureF_exists { P.ctx dm D st' with Δ := Δ' } ρ' _ _
+  obtain ⟨ψ, hψ⟩ := typedFutureF_exists { P.ctx dm D Γ st' with Δ := Δ' } ρ' _ _
     (labelsInhabited_of_rel _ ρ' noFuture π' _ s₂ _ hs₂ hg₂)
-  have hmem := ((Steps.stepsIH f { P.ctx dm D st' with Δ := Δ' } ρ' ψ).bodyReturns_sound st₂ st₃ _ v goal [] ""
+  have hmem := ((Steps.stepsIH f { P.ctx dm D Γ st' with Δ := Δ' } ρ' ψ).bodyReturns_sound st₂ st₃ _ v goal [] ""
     (Steps.flightOf r.2) hg₂ hctx₂ b₂ hbr hψ).1
   rw [hgoal]
-  exact const_value dm D fuel P d st' st₁ goal v hd hgoal ρ' Δ' π' r s₂ hrunr hmean ψ hmem
+  exact const_value dm D Γ fuel P d st' st₁ goal v hd hgoal ρ' Δ' π' r s₂ hrunr hmean ψ hmem
 
 /-- (leaf, OPEN; to be routed: the function-type case of sort soundness) **An accepted definition's
 function type obeys the sort rule, as the model reads its parts** (`Steps.SortRule`), at the decided
@@ -161,12 +166,12 @@ not a borrow type (`Machine.piSort`: `if lb == 0 then 0 else max l lb`, a borrow
 `1`). One point to check when routing: a borrow parameter `&A` counts at `sortOf (&A) = 1`, while the
 model reads its content `A`, so the rule needs `A` of level at most `1` ((WF7)). -/
 theorem fix_sortRule (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P) (hDec : ∀ st, Steps.DecAligned (D st) st)
+    (hP : MeansMember dm P) (hΓ : st'.inds <+: Γ) (hcov : ∀ d' ∈ Γ, dm.covers d') (hfaith : DataFaithful dm D Γ P) (hDec : ∀ st, Steps.DecAligned (D st) st)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
-    Steps.SortRule dm.read ((P.ctx dm D st').D.piSort (scopeOf (emptyState 0)) (.pi d.hs d.doms d.cod))
-      (runDoms (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms)
-      (codOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0)
-        (bindsOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
+    Steps.SortRule dm.read ((P.ctx dm D Γ st').D.piSort (scopeOf (emptyState 0)) (.pi d.hs d.doms d.cod))
+      (runDoms (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms)
+      (codOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0)
+        (bindsOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
   sorry
 
 /-- (leaf, OPEN) **The parts of an accepted definition's function type are canonical codes**
@@ -176,11 +181,11 @@ constructors are; a member of a universe is, `mem_univ_canon`, which covers the 
 parameter is read at; a call's type result is encoded at its universe's code). Not small: it is an
 induction over the run, as `RunPresInd` is. -/
 theorem fix_canon (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P) (hDec : ∀ st, Steps.DecAligned (D st) st)
+    (hP : MeansMember dm P) (hΓ : st'.inds <+: Γ) (hcov : ∀ d' ∈ Γ, dm.covers d') (hfaith : DataFaithful dm D Γ P) (hDec : ∀ st, Steps.DecAligned (D st) st)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
-    Steps.CanonRule dm.read (runDoms (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms)
-      (codOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0)
-        (bindsOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
+    Steps.CanonRule dm.read (runDoms (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms)
+      (codOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0)
+        (bindsOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
   sorry
 
 /-- **`checkDef`'s function branch, taken apart** (leaf; docs/31 D73, D79). Two halves.
@@ -213,14 +218,14 @@ restated: the membership of a body's value is to come from the evaluation step; 
 knot's one reader of it.) The one place the context's meaning of a global differs from
 `defMeaning`'s: inside this step, the global means the stage-`b` closure at the weakened type (D79). -/
 theorem fix_split (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P) (hDec : ∀ st, Steps.DecAligned (D st) st)
+    (hP : MeansMember dm P) (hΓ : st'.inds <+: Γ) (hcov : ∀ d' ∈ Γ, dm.covers d') (hfaith : DataFaithful dm D Γ P) (hDec : ∀ st, Steps.DecAligned (D st) st)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ (l : Nat) (ds : List PiDom) (out : PiCod) (stage : Nat → List Sem → Option BodyOut) (rank : List Sem → Nat),
       Steps.PiFits dm.read l ds out (fun _ => True) ∧
-      defMeaning (fun _ => .err) (P.ctx dm D st') d (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)
+      defMeaning (fun _ => .err) (P.ctx dm D Γ st') d (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)
         = some (closureAt dm.read l noFuture ds out (fun args => stage (rank args + 1) args),
-            globalTyS (fun _ => .err) (P.ctx dm D st') (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)) ∧
-      (globalTyS (fun _ => .err) (P.ctx dm D st') (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)).m
+            globalTyS (fun _ => .err) (P.ctx dm D Γ st') (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)) ∧
+      (globalTyS (fun _ => .err) (P.ctx dm D Γ st') (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)).m
         = piTyAt dm.read l ds out ∧
       (∀ b, (∀ a, Steps.DomMembers dm.read ds a → rank a < b →
           ∃ o, stage b a = some o ∧ Steps.OutGood' dm.read ds out a o) →
@@ -237,11 +242,11 @@ argument, and a closure whose function is total and good is a member of its code
 (`Regress/DefKnot.ctx_contains_fix_member`); it now asks only membership below the bound
 (`RunCtx.cur`, `MemBelow`). -/
 theorem step_member_fix (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P) (hDec : ∀ st, Steps.DecAligned (D st) st)
+    (hP : MeansMember dm P) (hΓ : st'.inds <+: Γ) (hcov : ∀ d' ∈ Γ, dm.covers d') (hfaith : DataFaithful dm D Γ P) (hDec : ∀ st, Steps.DecAligned (D st) st)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
-    ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d
+    ∃ m, defMeaning (fun _ => .err) (P.ctx dm D Γ st') d
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
-  obtain ⟨l, ds, out, stage, rank, hfit, hdm, hA, hstep⟩ := fix_split dm D fuel P d st' hd hP hcov hfaith hDec hrun
+  obtain ⟨l, ds, out, stage, rank, hfit, hdm, hA, hstep⟩ := fix_split dm D Γ fuel P d st' hd hP hΓ hcov hfaith hDec hrun
   refine ⟨_, hdm, ?_⟩
   show closureAt dm.read l noFuture ds out (fun args => stage (rank args + 1) args) ∈ₛ[dm.read] _
   rw [hA]
@@ -251,25 +256,25 @@ theorem step_member_fix (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (h
 definition; a definition's meaning is a member by `step_member_const` or `step_member_fix`. -/
 theorem step_member (fuel : Nat) (P : ProgState) (it : Item) (hP : MeansMember dm P)
     (hacc : ItemAccepted fuel P it)
-    (hcov : ∀ d' ∈ (ProgState.step dm D (fun _ => .err) {} fuel P it).inds, dm.covers d')
-    (hfaith : DataFaithful dm D P) (hDec : ∀ st, Steps.DecAligned (D st) st) :
-    MeansMember dm (ProgState.step dm D (fun _ => .err) {} fuel P it) := by
+    (hcov : ∀ d' ∈ Γ, dm.covers d') (hΓ : (ProgState.step dm D Γ (fun _ => .err) {} fuel P it).inds <+: Γ)
+    (hfaith : DataFaithful dm D Γ P) (hDec : ∀ st, Steps.DecAligned (D st) st) :
+    MeansMember dm (ProgState.step dm D Γ (fun _ => .err) {} fuel P it) := by
   unfold ItemAccepted at hacc
   rcases hr : (runMachine (checkItem it) { globals := P.globals, inds := P.inds } fuel).1 with ⟨u, st'⟩ | f | e
   · cases u
     intro n s T hmem
-    simp only [ProgState.step, hr] at hmem hcov
+    simp only [ProgState.step, hr] at hmem hΓ
     cases it with
     | ind d' => exact hP n s T hmem
     | defn d =>
       simp only [List.mem_append, List.mem_singleton] at hmem
       rcases hmem with hmem | hmem
       · exact hP n s T hmem
-      · have hm : ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d
+      · have hm : ∃ m, defMeaning (fun _ => .err) (P.ctx dm D Γ st') d
             (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
           by_cases hd : d.doms = []
-          · exact step_member_const dm D fuel P d st' hd hP hcov hfaith hDec hr
-          · exact step_member_fix dm D fuel P d st' hd hP hcov hfaith hDec hr
+          · exact step_member_const dm D Γ fuel P d st' hd hP hΓ hcov hfaith hDec hr
+          · exact step_member_fix dm D Γ fuel P d st' hd hP hΓ hcov hfaith hDec hr
         obtain ⟨m, hdm, hmm⟩ := hm
         rw [hdm] at hmem
         simp only [Option.getD_some, Prod.mk.injEq] at hmem
@@ -290,31 +295,23 @@ each item is checked from is the Σ of the items before it. -/
 theorem accepted_resolves (p : Program) (fuel : Nat) (acc : Accepted p fuel) :
     ∃ items, ResolvesTo p fuel items ∧
       ∀ (i : Nat) (it : Item), items[i]? = some it →
-        let P := progMeaning dm D (fun _ => .err) {} fuel (items.take i)
+        let P := progMeaning dm D Γ (fun _ => .err) {} fuel (items.take i)
         (runMachine (checkItem it) { globals := P.globals, inds := P.inds } fuel).1 matches .ok () _ := by
   sorry
 
-/-- (leaf, checker) Along accepted items Σ's inductive declarations only grow (a definition adds
-none, a declaration adds itself: `checkDef`, `checkInd`), so a data model covering the whole program
-covers every prefix. -/
-theorem covered_prefix (items : List Item) (fuel : Nat)
-    (hacc : ∀ (i : Nat) (it : Item), items[i]? = some it →
-      ItemAccepted fuel (progMeaning dm D (fun _ => .err) {} fuel (items.take i)) it)
-    (hcov : (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm) :
-    ∀ k, k ≤ items.length → (progMeaning dm D (fun _ => .err) {} fuel (items.take k)).Covered dm := by
-  sorry
 
 /-- (2) Every accepted definition's meaning is a member of its type, at the empty assignment
 (assembled): by induction on the items, one item at a time (`step_member`), the data model
 covering and faithful at each prefix. -/
 theorem defn_member (items : List Item) (fuel : Nat)
     (hacc : ∀ (i : Nat) (it : Item), items[i]? = some it →
-      ItemAccepted fuel (progMeaning dm D (fun _ => .err) {} fuel (items.take i)) it)
-    (hcov : ∀ k, k ≤ items.length → (progMeaning dm D (fun _ => .err) {} fuel (items.take k)).Covered dm)
-    (hfaith : ∀ k, k ≤ items.length → DataFaithful dm D (progMeaning dm D (fun _ => .err) {} fuel (items.take k)))
+      ItemAccepted fuel (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take i)) it)
+    (hcov : ∀ d' ∈ Γ, dm.covers d')
+    (hΓ : ∀ k, k ≤ items.length → (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take k)).inds <+: Γ)
+    (hfaith : ∀ k, k ≤ items.length → DataFaithful dm D Γ (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take k)))
     (hDec : ∀ st, Steps.DecAligned (D st) st) :
-    MeansMember dm (progMeaning dm D (fun _ => .err) {} fuel items) := by
-  have key : ∀ k, k ≤ items.length → MeansMember dm (progMeaning dm D (fun _ => .err) {} fuel (items.take k)) := by
+    MeansMember dm (progMeaning dm D Γ (fun _ => .err) {} fuel items) := by
+  have key : ∀ k, k ≤ items.length → MeansMember dm (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take k)) := by
     intro k
     induction k with
     | zero => intro _ n s T h; simp [progMeaning, progMeaningFrom] at h
@@ -322,12 +319,12 @@ theorem defn_member (items : List Item) (fuel : Nat)
       intro hk
       have hk' : k < items.length := hk
       have htake : items.take (k + 1) = items.take k ++ [items[k]] := List.take_succ_eq_append_getElem hk'
-      have hfold : progMeaning dm D (fun _ => .err) {} fuel (items.take k ++ [items[k]]) =
-          ProgState.step dm D (fun _ => .err) {} fuel (progMeaning dm D (fun _ => .err) {} fuel (items.take k)) items[k] := by
+      have hfold : progMeaning dm D Γ (fun _ => .err) {} fuel (items.take k ++ [items[k]]) =
+          ProgState.step dm D Γ (fun _ => .err) {} fuel (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take k)) items[k] := by
         unfold progMeaning progMeaningFrom; rw [List.foldl_append]; rfl
-      have hc := hcov (k + 1) hk
+      have hc := hΓ (k + 1) hk
       rw [htake, hfold] at hc ⊢
-      exact step_member dm D fuel _ _ (ih (Nat.le_of_lt hk')) (hacc k items[k] (List.getElem?_eq_getElem hk')) hc
+      exact step_member dm D Γ fuel _ _ (ih (Nat.le_of_lt hk')) (hacc k items[k] (List.getElem?_eq_getElem hk')) hcov hc
         (hfaith k (Nat.le_of_lt hk')) hDec
   have := key items.length (Nat.le_refl _)
   rwa [List.take_length] at this
@@ -352,7 +349,7 @@ theorem false_means_empty (d : IndDecl) (hd : d.name = "False" ∧ d.ctors = [] 
 applied to nothing, once the library is in front (names are distinct: `Check.declared`). -/
 theorem falseConst_ty (q : Program) (fuel : Nat) (items : List Item) (d : SDecl)
     (hres : ResolvesTo (Prelude.decls ++ q) fuel items) (hd : d ∈ q) (hf : d.IsFalseConst) :
-    let P := progMeaning dm D (fun _ => .err) {} fuel items
+    let P := progMeaning dm D Γ (fun _ => .err) {} fuel items
     ∃ s T, (d.name, s, T) ∈ P.means ∧ T.m = .prop False := by
   sorry
 
@@ -362,19 +359,19 @@ definition of type `False`. Its meaning would be a member of `prop False`, a pro
 theorem consistency_rel (q : Program) (fuel : Nat)
     (holes : NoHoles q) (levels : LevelsBelow 2 q)
     (acc : Accepted (Prelude.decls ++ q) fuel)
-    (hcov : ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items →
-      (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm)
+    (hcov : ∀ d' ∈ Γ, dm.covers d')
+    (hΓ : ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items →
+      ∀ k, k ≤ items.length → (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take k)).inds <+: Γ)
     (hfaith : ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items →
-      ∀ k, k ≤ items.length → DataFaithful dm D (progMeaning dm D (fun _ => .err) {} fuel (items.take k)))
+      ∀ k, k ≤ items.length → DataFaithful dm D Γ (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take k)))
     (hDec : ∀ st, Steps.DecAligned (D st) st) :
     ∀ d ∈ q, ¬ d.IsFalseConst := by
   intro d hd hf
-  obtain ⟨items, hres, hacc⟩ := accepted_resolves dm D (Prelude.decls ++ q) fuel acc
+  obtain ⟨items, hres, hacc⟩ := accepted_resolves dm D Γ (Prelude.decls ++ q) fuel acc
   have hacc' : ∀ (i : Nat) (it : Item), items[i]? = some it →
-      ItemAccepted fuel (progMeaning dm D (fun _ => .err) {} fuel (items.take i)) it := hacc
-  have hmem := defn_member dm D items fuel hacc' (covered_prefix dm D items fuel hacc' (hcov items hres))
-    (hfaith items hres) hDec
-  obtain ⟨s, T, hin, hT⟩ := falseConst_ty dm D q fuel items d hres hd hf
+      ItemAccepted fuel (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take i)) it := hacc
+  have hmem := defn_member dm D Γ items fuel hacc' hcov (hΓ items hres) (hfaith items hres) hDec
+  obtain ⟨s, T, hin, hT⟩ := falseConst_ty dm D Γ q fuel items d hres hd hf
   have h := hmem _ s T hin
   rw [hT] at h
   obtain ⟨⟨a⟩, -⟩ := h
@@ -398,9 +395,18 @@ decides that two applications of a type former to different arguments are differ
 keeps what field types read of the parameters, not the parameters; docs/34 §8, §13). -/
 theorem exists_dataModel (items : List Item) (fuel : Nat) :
     ∃ dm : DataModel,
-      (progMeaning dm (chainDecisions fuel) (fun _ => .err) {} fuel items).Covered dm ∧
-      ∀ k, k ≤ items.length → DataFaithful dm (chainDecisions fuel)
-        (progMeaning dm (chainDecisions fuel) (fun _ => .err) {} fuel (items.take k)) := by
+      (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
+      ∀ k, k ≤ items.length → DataFaithful dm (chainDecisions fuel) (indsOf {} fuel items)
+        (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
+  sorry
+
+/-- (leaf, checker) **Every stage's declarations are a prefix of the whole program's** (docs/31 D174):
+along accepted items Σ's inductive declarations only grow at the end (a definition adds none; a
+declaration appends a placeholder and, accepted, replaces the entry of its own name, which names
+being distinct is its own: `checkInd`, `Check.declared`). -/
+theorem inds_prefix (p : Program) (fuel : Nat) (acc : Accepted p fuel) (items : List Item)
+    (hres : ResolvesTo p fuel items) :
+    ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items := by
   sorry
 
 /-- (leaf, checker) An accepted program resolves: `checkProgram`'s first loop gives every
@@ -421,9 +427,13 @@ theorem consistencyBounded_assembled (q : Program) (fuel : Nat)
     ∀ d ∈ q, ¬ d.IsFalseConst := by
   obtain ⟨items, hres⟩ := resolves_of_accepted (Prelude.decls ++ q) fuel acc
   obtain ⟨dm, hcov, hfaith⟩ := exists_dataModel items fuel
-  refine consistency_rel dm (chainDecisions fuel) q fuel holes levels acc
-    (fun items' h' => ?_) (fun items' h' => ?_) (chainDecisions_aligned fuel)
-  · rw [resolvesTo_unique _ _ _ _ h' hres]; exact hcov
+  refine consistency_rel dm (chainDecisions fuel) (indsOf {} fuel items) q fuel holes levels acc
+    (fun d' hd' => hcov d' (by rw [progMeaning_inds]; exact hd')) (fun items' h' => ?_) (fun items' h' => ?_)
+    (chainDecisions_aligned fuel)
+  · rw [resolvesTo_unique _ _ _ _ h' hres]
+    intro k hk
+    rw [progMeaning_inds]
+    exact inds_prefix _ fuel acc items hres k hk
   · rw [resolvesTo_unique _ _ _ _ h' hres]; exact hfaith
 
 end Ochr.Meaning.Assembly

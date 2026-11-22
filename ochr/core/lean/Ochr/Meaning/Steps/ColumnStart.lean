@@ -80,16 +80,16 @@ theorem occurs_stC (l : Nat) : ¬ stC.Occurs l := by
   rintro ⟨v, hv, -⟩; simp [values_stC] at hv
 
 theorem ctxS_stC : CtxS (KC dm D) stC where
-  inds := rfl
+  inds := List.prefix_refl _
   covers := fun _ h => absurd h List.not_mem_nil
-  faithful := fun _ _ => ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-    ⟨fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil,
-     fun _ h => absurd h List.not_mem_nil, fun _ h => absurd h List.not_mem_nil⟩⟩
+  faithful := fun _ h => absurd h List.not_mem_nil
   noLabel := fun _ => rfl
   globals := ⟨fun _ _ h => by simp [stC] at h, fun _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h,
     fun _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h⟩
 
-theorem inv_stC : Inv D [] stC := by
+/-- At every declaration list (the one-list ruling, docs/31 D174: the context's list is the whole
+program's; `stC` holds no value, so no clause reads it). -/
+theorem inv_stC {Γ : List IndDecl} : Inv D Γ stC := by
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
     ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
   -- (WF1)

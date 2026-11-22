@@ -42,12 +42,22 @@ theorem degenerate_not_faithful (K : RunCtx) (hdm : K.dm = degenerate) (hΓ : nb
   rw [hdm] at hT
   exact nat_ne_err hT
 
+/-- The same at the one declaration `NB` (`FieldsFaithfulAt`, what `DeclsFaithful` asks). -/
+theorem degenerate_not_faithfulAt (K : RunCtx) (hdm : K.dm = degenerate) (ρ : Assignment) :
+    ¬ FieldsFaithfulAt K ρ nbD := by
+  intro h
+  have hT := h [] 0 0 [] .nat rfl (fun j hj => absurd hj (by simp))
+    (fun i hi => absurd hi (by simp)) rfl rfl _ _ rfl
+  rw [hdm] at hT
+  exact nat_ne_err hT
+
 /-- **No program declaring `NB` has the degenerate model as a faithful model**: `DataFaithful`, the
-existence statement's obligation, fails at the program's own state. -/
-theorem degenerate_not_dataFaithful (D : MState → Decisions) (P : ProgState) (hΓ : nbD ∈ P.inds) :
-    ¬ DataFaithful degenerate D P := by
+existence statement's obligation, fails at the program's own state, at every whole-program list `Γ`
+(docs/31 D174). -/
+theorem degenerate_not_dataFaithful (D : MState → Decisions) (Γ : List IndDecl) (P : ProgState) (hΓ : nbD ∈ P.inds) :
+    ¬ DataFaithful degenerate D Γ P := by
   intro h
   have hf := h { globals := P.globals, inds := P.inds } rfl (List.prefix_refl _)
-  exact degenerate_not_faithful _ rfl hΓ (fun _ => .err) (hf (fun _ => .plain TyM.err) (fun _ => .err)).1
+  exact degenerate_not_faithfulAt _ rfl (fun _ => .err) (hf nbD hΓ (fun _ => .plain TyM.err) (fun _ => .err)).1
 
 end Ochr.Meaning.DataModel.Degenerate

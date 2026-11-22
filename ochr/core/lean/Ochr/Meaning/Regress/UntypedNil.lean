@@ -138,10 +138,11 @@ theorem good_SL (K : RunCtx) (ρ : Assignment) : Good K.dm K.M K.Γ ρ SL := by
 /-- **The reference cannot run `Nil` with no parameter written and no hint**: the `.ctor` clause
 solves `List`'s parameter from neither the fields (there are none) nor the hint, and fails. -/
 theorem run_nil_none (K : RunCtx) (ρ : Assignment) (φ : Future) (s : SState)
-    (hΓ : K.Γ = [listD]) (hfl : K.D.flags (scopeOf s) nil0 = (false, false)) :
+    (hΓ : SL.inds <+: K.Γ) (hfl : K.D.flags (scopeOf s) nil0 = (false, false)) :
     run K ρ φ (.plain .err) nil0 s = none := by
   have hfl' : K.D.flags (scopeOf s) (Term.ctor "List" 0 ⟨"Nil"⟩ [] []) = (false, false) := hfl
-  simp [run, runT, nil0, SM.erasedIf, hfl', hΓ, listD, runParams, runFields, SM.stmtIf, TyS.plain,
+  have hf : K.Γ.find? (·.name == "List") = some listD := find?_of_prefix hΓ (by simp [SL, listD])
+  simp [run, runT, nil0, SM.erasedIf, hfl', hf, listD, runParams, runFields, SM.stmtIf, TyS.plain,
     TyM.err, bind, pure, TyS.data, TyM.dataRec?, ctorOut, SM.fail, SM.strictS]
 
 /-! ## The statements as they stood (spine 6f434832), with no restriction of untyped runs -/

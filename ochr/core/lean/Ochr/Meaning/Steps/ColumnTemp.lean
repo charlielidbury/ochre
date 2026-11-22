@@ -329,7 +329,7 @@ theorem rel_withTempT_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat
 /-- The context's part a step does not change reads only Σ and the declarations. -/
 theorem CtxS.of_eq {K : RunCtx} {st st' : MState} (h : CtxS K st) (hi : st'.inds = st.inds)
     (hg : st'.globals = st.globals) : CtxS K st' :=
-  ⟨h.inds.trans hi.symm, h.covers, h.faithful, h.noLabel, h.globals.of_globals hg⟩
+  ⟨hi ▸ h.inds, h.covers, hi ▸ h.faithful, h.noLabel, h.globals.of_globals hg⟩
 
 /-- The assignment's facts carry to a state with the same Δ, records and goal that names no more
 unknowns. -/

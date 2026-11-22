@@ -30,71 +30,29 @@ namespace Ochr.Meaning.DataModel.Exists.Assembly
 
 open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical Ochr.Meaning.DataModel.Exists.Knot
 
-/-! ## Faithfulness, one declaration at a time -/
-
-/-- `FieldsFaithful` at one declaration. -/
-def FieldsFaithfulAt (K : RunCtx) (ρ : Assignment) (d : IndDecl) : Prop :=
-  ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term),
-    ps.length = d.params.length → ParamsTyped K.dm d ps → FieldsTyped K.dm d ps c e → e.length = i →
-    fieldTerm d c i = some FT →
-    ∀ r s', run K ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm K.D d ps c e) = some (r, s') →
-      r.1.asTy = K.dm.fieldTy d ps c i e
-
-/-- `ParamsFaithful` at one declaration. -/
-def ParamsFaithfulAt (K : RunCtx) (ρ : Assignment) (d : IndDecl) : Prop :=
-  ∀ (ps : List Sem) (j : Nat) (hn : Hint) (PT : Term),
-    ParamsTyped K.dm d ps → ps.length = j → d.params[j]? = some (hn, PT) →
-    ∀ r s', run K ρ noFuture (.plain (TyM.univ 2)) PT (paramFrame K.dm K.D d ps) = some (r, s') →
-      r.1.asTy = K.dm.paramTy d j ps
-
-/-- `RecordsFaithful` at one declaration. -/
-structure RecordsFaithfulAt (K : RunCtx) (d : IndDecl) : Prop where
-  types : ∀ (ps : List Sem) (j : Nat) (A : Type) (c : Code0 A),
-    ps.length = d.params.length → d.paramIsType j = true →
-    ParamsTyped K.dm d ps → ps[j]? = some (.ty (.t0 A c)) →
-    K.dm.paramTyOf (K.dm.recOf d ps) j = .t0 A c
-  values : ∀ (ps : List Sem) (j : Nat) (v : Sem) (A : Type) (c : Code0 A),
-    ParamsTyped K.dm d ps → ps[j]? = some v → K.dm.paramTy d j (ps.take j) = .t0 A c →
-    v ∈ₛ[K.dm.read] .t0 A c → K.dm.recOf d ps (paramKey j) = .small v.small
-  smallOnly : ∀ (ps ps' : List Sem), ParamsTyped K.dm d ps → ps'.length = ps.length →
-    (∀ (j : Nat) (v v' : Sem), ps[j]? = some v → ps'[j]? = some v' →
-      v' = v ∨ ((∃ (A : Type) (c : Code0 A), K.dm.paramTy d j (ps.take j) = .t0 A c ∧ v ∈ₛ[K.dm.read] .t0 A c) ∧
-        v'.small = v.small)) →
-    K.dm.recOf d ps' = K.dm.recOf d ps
-  leafOk : ∀ (ps : List Sem), ps.length = d.params.length → ParamsTyped K.dm d ps →
-    K.dm.RecLeafOk d (K.dm.recOf d ps)
-
-/-- **One declaration is faithful at a context**, at every Δ and assignment. -/
-def DeclFaithful (K : RunCtx) (d : IndDecl) : Prop :=
-  ∀ (Δ : Nat → TyS) (ρ : Assignment),
-    FieldsFaithfulAt { K with Δ := Δ } ρ d ∧ ParamsFaithfulAt { K with Δ := Δ } ρ d ∧ RecordsFaithfulAt K d
-
-/-- **A context is faithful when each of its declarations is.** -/
-theorem ctxFaithful_of_decls {K : RunCtx} (h : ∀ d ∈ K.Γ, DeclFaithful K d) : CtxFaithful K := by
-  intro Δ ρ
-  refine ⟨fun d hd => (h d hd Δ ρ).1, fun d hd => (h d hd Δ ρ).2.1, ⟨?_, ?_, ?_, ?_⟩⟩
-  · exact fun d hd => (h d hd Δ ρ).2.2.types
-  · exact fun d hd => (h d hd Δ ρ).2.2.values
-  · exact fun d hd => (h d hd Δ ρ).2.2.smallOnly
-  · exact fun d hd => (h d hd Δ ρ).2.2.leafOk
+/-! Faithfulness one declaration at a time (`FieldsFaithfulAt`, `ParamsFaithfulAt`, `RecordsFaithfulAt`,
+`DeclFaithful`, `ctxFaithful_of_decls`, `DeclsFaithful`) moved to `DataModel/Faithful.lean` (docs/31 D174),
+where the simulation's context reads it. -/
 
 /-! ## Stages, and the contexts that extend one -/
 
 section
 variable (D : MState → Decisions) (fuel : Nat) (items : List Item)
 
-/-- The program meaning of the first `k` items under the model `dm`, as `exists_dataModel` reads it. -/
+/-- The program meaning of the first `k` items under the model `dm`, as `exists_dataModel` reads it:
+at the whole program's declaration list (`indsOf`, the one-list ruling, docs/31 D174). -/
 noncomputable abbrev stage (dm : DataModel) (k : Nat) : ProgState :=
-  progMeaning dm D (fun _ => .err) {} fuel (items.take k)
+  progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)
 
 /-- **A run context extends a stage** (for the model `dm`): the same records and parameter types at
 the stage's declarations, a declaration list with them as a prefix, the stage's globals meaning the
-same, and the checker's decisions at a state over that list extending the stage's globals. -/
+same, and the checker's decisions at a state over a prefix of that list (docs/31 D174: the checker's
+state at a stage holds a prefix of the one list) extending the stage's globals. -/
 structure Extends (dm : DataModel) (P : ProgState) (K : RunCtx) : Prop where
   agree : ∀ d ∈ P.inds, K.dm.recOf d = dm.recOf d ∧ K.dm.paramTy d = dm.paramTy d
   gamma : P.inds <+: K.Γ
   globals : ∀ n, (P.means.find? (·.1 == n)).isSome → K.C.global n = P.baseC.global n
-  dec : ∃ st : MState, st.inds = K.Γ ∧ P.globals <+: st.globals ∧ K.D = D st
+  dec : ∃ st : MState, st.inds <+: K.Γ ∧ P.globals <+: st.globals ∧ K.D = D st
 
 /-- **The induction's invariant at stage `k`** (see the module docstring). -/
 structure Inv (k : Nat) (dm : DataModel) : Prop where
@@ -111,17 +69,22 @@ structure Inv (k : Nat) (dm : DataModel) : Prop where
   pty : ParamTyLocal dm (stage D fuel items dm k).inds
   val : ∀ M ∈ (stage D fuel items dm k).inds, ∀ j, nestOf M j = true → M.paramIsType j = true
 
-/-- **The invariant at the last stage gives the existence statement** (no assumed fact). -/
-theorem exists_of_inv {dm : DataModel} (h : Inv D fuel items items.length dm) :
-    (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm ∧
-      ∀ k, k ≤ items.length → Ochr.Meaning.Assembly.DataFaithful dm D (progMeaning dm D (fun _ => .err) {} fuel (items.take k)) := by
-  refine ⟨fun d _ => h.covers d, fun k hk st hst hgl => ctxFaithful_of_decls fun d hd => ?_⟩
-  have hd' : d ∈ (stage D fuel items dm k).inds := by
-    show d ∈ (progMeaning dm D (fun _ => .err) {} fuel (items.take k)).inds
-    simp only [ProgState.ctx] at hd; rw [← hst]; exact hd
-  refine h.faithful k hk d hd' _ ⟨fun _ _ => ⟨rfl, rfl⟩, ?_, fun _ _ => rfl, ⟨st, rfl, hgl, rfl⟩⟩
-  show (stage D fuel items dm k).inds <+: st.inds
-  rw [hst]; exact List.prefix_refl _
+/-- **The invariant at the last stage gives the existence statement**, at the one list (docs/31 D174),
+assuming that every stage's declarations are a prefix of the whole program's (`hpre`: a fact of the
+checker, `Assembly.inds_prefix` for an accepted program). -/
+theorem exists_of_inv {dm : DataModel} (h : Inv D fuel items items.length dm)
+    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
+    (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
+      ∀ k, k ≤ items.length → Ochr.Meaning.Assembly.DataFaithful dm D (indsOf {} fuel items)
+        (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
+  refine ⟨fun d _ => h.covers d, fun k hk st hst hgl d hd => ?_⟩
+  have hd' : d ∈ (stage D fuel items dm k).inds := hd
+  have hp : (stage D fuel items dm k).inds <+: indsOf {} fuel items := by
+    show (progMeaning _ _ _ _ _ _ _).inds <+: _
+    rw [progMeaning_inds]; exact hpre k hk
+  refine h.faithful k hk d hd' _ ⟨fun _ _ => ⟨rfl, rfl⟩, hp, fun _ _ => rfl, ⟨st, ?_, hgl, rfl⟩⟩
+  show st.inds <+: indsOf {} fuel items
+  rw [hst]; exact hp
 
 /-- **The invariant holds at stage 0**, for the model that covers everything and keeps nothing. -/
 theorem inv_zero : Inv D fuel items 0 { covers := fun _ => True, recOf := fun _ _ _ => .none, paramTy := fun _ _ _ => TyM.err } := by
@@ -165,42 +128,22 @@ theorem inv_all : ∀ k, k ≤ items.length → ∃ dm, Inv D fuel items k dm
     obtain ⟨dm', h', -⟩ := inv_step D fuel items k (by omega) dm h
     exact ⟨dm', h'⟩
 
-/-- `exists_dataModel`, from the step. -/
-theorem exists_dataModel' :
+/-- `exists_dataModel`, from the step (and the prefix fact `hpre`). -/
+theorem exists_dataModel' (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
     ∃ dm : DataModel,
-      (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm ∧
-      ∀ k, k ≤ items.length → Ochr.Meaning.Assembly.DataFaithful dm D (progMeaning dm D (fun _ => .err) {} fuel (items.take k)) := by
+      (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
+      ∀ k, k ≤ items.length → Ochr.Meaning.Assembly.DataFaithful dm D (indsOf {} fuel items)
+        (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
   obtain ⟨dm, h⟩ := inv_all D fuel items items.length (Nat.le_refl _)
-  exact ⟨dm, exists_of_inv D fuel items h⟩
+  exact ⟨dm, exists_of_inv D fuel items h hpre⟩
 
 end
 
 /-! ## The statement at ONE declaration list (the lead's ruling, 2026-11-22)
 
-The reference's declaration list is the whole program's at every stage. `exists_dataModel` as it
-stands asks faithfulness at each prefix's own list (`DataFaithful` reads `ProgState.ctx`, whose list is
-the checker state's). Restated: at the whole program's list `Γ`, with the stage's globals and the
-checker's decisions at a state of the stage; and only for the declarations the stage has declared
-(`DeclsFaithful`): a later declaration's field types may call globals the stage does not have yet,
-which its context means as `err`, and a step at stage `k` names only declarations of the stage (D118).
--/
-
-/-- Faithfulness at one context for the declarations `ds` only. -/
-def DeclsFaithful (K : RunCtx) (ds : List IndDecl) : Prop := ∀ d ∈ ds, DeclFaithful K d
-
-/-- **The data model is faithful at stage `P`, at the one list `Γ`.** -/
-def DataFaithfulOne (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (P : ProgState) : Prop :=
-  ∀ st : MState, st.inds = P.inds → P.globals <+: st.globals →
-    DeclsFaithful { dm, Γ := Γ, C := P.baseC, D := D st } P.inds
-
-/-- **`exists_dataModel` at the one list** (the restatement the lead approved; to replace
-`Assembly.exists_dataModel` once the program meaning and the simulation's link carry the one list:
-docs/34 §18.13). -/
-def ExistsDataModelOne (D : MState → Decisions) (fuel : Nat) (items : List Item) : Prop :=
-  ∃ dm : DataModel,
-    (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm ∧
-    ∀ k, k ≤ items.length →
-      DataFaithfulOne dm D (progMeaning dm D (fun _ => .err) {} fuel items).inds
-        (progMeaning dm D (fun _ => .err) {} fuel (items.take k))
+Built (docs/31 D174): `Assembly.DataFaithful` (`Consistency.lean`) IS the one-list statement that stood
+here as `DataFaithfulOne` (at the whole program's list `Γ`, faithfulness for the stage's declarations
+only, `DeclsFaithful`), and `Assembly.exists_dataModel` is stated at `indsOf {} fuel items`, the list
+`ExistsDataModelOne` named; both definitions are deleted. -/
 
 end Ochr.Meaning.DataModel.Exists.Assembly
