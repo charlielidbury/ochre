@@ -14,7 +14,8 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `Knot/Grammar.lean`: `paramVaries`, `fieldVaries`, `varVaries`, `Steady`, `Spine`/`SpineArgs`, `ParamTyLocal` (definitions).
 - `Knot/Interp.lean`: the interpreter `semT`/`itpArgs`/`argSem`/`itpT`, the canonical frame `canFrame`, `ftyK`.
 - `Knot/Guard.lean`: `knotK` (a `KnotSpec`), guardedness PROVED (`ftyK_agree`), resting on `Spine`, `hpar`, `ParamTyLocal` as hypotheses.
-- `General.knot_exists` RESTATED (outside the build, `sorry`): `S := knotK …` is the witness.
+- `Knot/Agree.lean`: `knotK_agree` (assumes `SteadyAt`), `uShape_recK`, `fieldTy_knot`, `rebuild_eq`, `semT_run`/`itpArgs_run`.
+- `General.knot_exists` RESTATED (outside the build, `sorry`): `S := knotK …` is the witness; it also assumes `GlobalsTyped` (for `Good`).
 
 ## Earlier pieces (exists2–4), still current
 
@@ -23,14 +24,13 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `FrameLocal/`: frame locality `runT_qset` (assumes `DecLocal`). `Decomposition.lean`: the nine pieces; `runT_congrDM` (piece 1) stated, unproved.
 - `General.lean` (outside the build): `globals_typed`, `mono_prop`, `truth_exists` (sorry), `runT_frameLocal` (false, kept), `knot_exists` (restated, sorry).
 
-## Next: the agreement half of `knot_exists` (the plan, worked out)
+## Next: `SteadyAt`, the one fact `knotK_agree` assumes
 
-`S := knotK K ρ d …`, `R* := recK S`, `K* := {K with dm := setRec K.dm d R*}`, `es := projIdx d c (e.map small)`, `A` the actual frame (repaired `teleFrame`), `F*` the canonical one (`canFrame K d ps c i es tyOf*`, `tyOf* j := shapeTyP (shapeOf (ftyK … R* ps c j (es.take j)))`). Claim, by induction on `Spine` (subterms of the field type): `runT K* ρ noFuture false h t A = some (r, _) → r.1 = semT K ρ d R* ps F* h t`; then `r.1.asTy = (ftyK …).mean` (for `.tind`: `.ty (uTyR M rec)`; else `.asTy` of `semT`).
-1. Frames (`A = stateOf 0 bsA`, `F* = stateOf 0 bsF`) equal off `X` = {fields `j < i` that vary or are no index} ∪ {parameters that vary}. At a non-varying index field: the actual type `K*.dm.fieldTy d ps c j (e.take j)` is `tyOf* j` (unfold `uShape`, `projIdx_take`, `recK_kind`, `recK_contRec`: `uShape` from a record holding `F.kind`/`F.cont` is `shapeOf F`); the rebuilt member is `e[j]` (`es[j] = e[j].small` at an index field, `Piece3.memTy_small_inj`). Moved fields: equal after the `teleFrame` repair. Non-varying parameters: the same expression.
-2. `Good` at `X` (under `K*`): `e[j]` and `ps[j]` are whole members (need: `FitsOneM` gives membership of `shapeTyP`; members are whole); the dummies `0 : Nat` are.
-3. A steady node's free variables avoid `X` (they do not vary; the fields a field type mentions are index fields, `IndDecl.indexFields`). Then `runT_stateOf_swap` gives `runT K* t A`'s value = `runT K* t F*`'s.
-4. **Model congruence** (piece 1/2, not yet stated in this form): a term avoiding `d.name` (`Knot.Avoids`: `mentionsType` and embedded values) runs the same under `K` and `K*` (models differing only at `d`'s records). The run reads `recOf` only at a name it finds (`.tind`, `.ctor`, matches, `meanV` of `.val`); `read`/`car`/`tyR` are the universal signature's. Template: `AssignCongr.runT_congrA` (516 lines).
-5. Spine cases: parameter (`runT_var` at `A`'s binding), `.tind` (`runT_tind`, `runParams_spec`: argument `j` runs at hint `paramTy M j (psM.take j)`; `itpArgs` uses the same with `pre = psM.take j`; `K*.dm.tyM M psM = uTyR M (recFor K d R* M psM)`), steady (1–4).
+`Knot/Agree.knotK_agree` (default build, standard axioms) is `knot_exists`'s conclusion for the witness `knotK`, assuming `SteadyAt K ρ d R*` (`R* := recK (knotK …)`): the run of a steady node `t` of a field type `FT` (free variables among `FT`'s) in the actual frame `A := teleFrame (setRec K.dm d R*) K.D d ps c e` gives `valOf K ρ F* h t`, its value under `K` at the canonical frame `F* := canFrame K d ps c i es tyOf*`. So `knot_exists` = `knotK` + `knotK_agree` + a proof of `SteadyAt`. The plan for `SteadyAt` (`K* := {K with dm := setRec K.dm d R*}`):
+1. Frames `A = stateOf 0 bsA`, `F* = stateOf 0 bsF` equal off `X` = {fields `j < i` that vary or are no index} ∪ {parameters that vary}. Done: `fieldTy_knot` (the actual type at an earlier field is `tyOf* j`), `rebuild_eq` (the rebuilt member is `e[j]`; `es[j] = e[j].small` at an index field by `Piece3.projIdx_get`). Moved fields `j ≥ i`: equal only after the `teleFrame` repair (ruling 2). Non-varying parameters: the same expression (`canFrame`'s `if j < ps.length`).
+2. `Good` at `X` under `K*`: `e[j]` via `Data.fitsOneM_mem` (needs `LeafOk` at the knot's leaves: a leaf comes from a steady node's `.ty T`, and `GlobalsTyped` gives a call's result a code of level 0 or 1, so never a `Prop`-sorted data code over its own carrier; a data-sorted one over its own carrier is not a leaf, `dataView`) and `Strict.mem_whole K.dm.read_wholeFields`; `ps[j]` the same; the dummies `0 : Nat`. `pmem_of_mem`.
+3. `runT_stateOf_swap` (needs `DecLocal`, label-free globals) with `X`; free variables of `t` avoid `X`: they do not vary (`Steady`), and a field `FT` mentions is an index field (`IndDecl.indexFields`, `fieldRefs`).
+4. **Model congruence** for `t` avoiding `d.name` (`Knot.Avoids`): `runT K* t F* = runT K t F*`. The run reads `recOf` only at a name it finds (`.tind`, `.ctor`, matches, `meanV` of `.val`); `read`/`car`/`tyR` are the universal signature's. Template `AssignCongr.runT_congrA` (516 lines). This is piece 1/2 of `Decomposition.lean` in a narrowed form.
 
 Then: `mono_prop`, `truth_exists` (piece 5; attack first, especially the monotonicity induction), `globals_typed`, `DecAt` threading (when a consumer needs it; recipe below), pieces 6, 7, assembly. The knot's `pEntry` is `pEntryTy` (what `Step2` used); piece 6 (records' parameter clauses) may need value parameters' entries read small instead.
 
