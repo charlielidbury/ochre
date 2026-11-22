@@ -79,7 +79,7 @@ theorem globals_typed (dm : DataModel) (D : MState → Decisions) (fuel : Nat) (
 /-! ## Pieces 3 and 4: a data-sorted declaration's knot -/
 
 /-- **A data-sorted declaration's canonical knot** (restated by exists5, 2026-11-22; BELIEVED TRUE
-under the two checker rules for which a ruling is requested, docs/34 §18.6).
+under the two checker rules the lead adopted, subject to measurement, docs/34 §18.6).
 
 As first written it was FALSE (`KnotCE.knotOld_false`, kernel-checked): it had no hypothesis that
 `d` is accepted, and `hpar` compares value parameters by equality, while a value argument may carry
@@ -102,10 +102,9 @@ parametricity, `SemAgree`); the non-spine nodes are record-free by construction.
 actual run by induction on the term: along the spine `RunLemmas.runT_tind`/`runT_teleFrame_param`;
 at a non-spine node `Knot.runT_stateOf_swap` (the actual frame and the canonical one differ only at
 bindings it does not read; rebuilt index fields equal the actual ones, `Piece3.memTy_small_inj`) and a
-model congruence (a term avoiding `d` runs the same under `K.dm` and under the knot's model). Open
-obstacle (ruling requested): `teleFrame` types the field being typed by its own type, which makes the
-canonical frame self-referential; the repair types the not-yet-bound fields `err`, as the checker's
-`fieldTele` binds them. -/
+model congruence (a term avoiding `d` runs the same under `K.dm` and under the knot's model). The
+obstacle that `teleFrame` typed the field being typed by its own type is repaired (docs/31 D160: the
+fields not yet bound are typed `err`, as the checker's `fieldTele` binds them). -/
 theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort ≠ 0)
     (hfind : K.Γ.find? (·.name == d.name) = some d)
     (hspine : ∀ c i FT, fieldTerm d c i = some FT → Knot.Spine K.Γ d c FT)
