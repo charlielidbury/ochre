@@ -2357,6 +2357,14 @@ What remains of (II) for `eval` and `checkTail` is the 32 step statements of `St
 
 **Counts.** Of the 32: proved in general, 2 assuming nothing (`zero`, `tt`) and 1 assuming one checker fact (tail: every other term); `let`'s typed unerased part proved assuming 5 facts; 29 open. Known false as the model stands: `prim` at `clone`/`peek` of a non-place (D150), and the four tail shapes `let`, `;`, the two matches at a tail whose term reads its hint (D151). Every other step is untouched in general; the columns and the fragment are instances, not general steps. Facts needed across many steps: `EvalTop` (every step with two sub-runs), `ValsCongrA` (every step whose later sub-run runs at an extension), the erased mode (every step whose term the table can erase: D150's ruling).
 
+### D160. The frame a field type is evaluated in types the fields not yet bound `err` (existence lane `exists6`, 2026-11-22; `spine-exists6`; RULED by the lead)
+
+**The change.** `teleFrame` (`DataModel/Faithful.lean`), the meaning of the frame the checker's `fieldTele` evaluates field `i`'s type in, typed every field binding by the model's field type, the field being typed and the later ones included (at the value `moved`). The field binding's type is now `if j < e.length then dm.fieldTy d ps c j (e.take j) else TyM.err`. Reason: the checker binds every field first with no type and value `⊥`, and fills a field's type in only after it has evaluated it; a frame in which the field being typed already carries its own type is a circularity the checker does not have. It also made the knot's canonical frame (docs/34 §18.6) self-referential, and frame locality cannot swap a `moved` binding.
+
+**Pinned** (`DataModel/Exists/TeleFrameGuard.lean`, every `#guard` runs the checker's own `fieldTele`, stopped after it evaluated field `i`'s type and before it binds it, rendering the whole frame). On `V := MkV(n : Nat, x : Fin1(n))` and `Three (A : Type) := MkThree(a : A, e : Eq(Nat, 0, 0), b : Nat)`: the field being typed and every later one are `none = ⊥ [other]`; the earlier ones are at their computed types and values, read `prop` exactly at the proof field; the parameters at their types and declared readings. This is `teleFrame` binding for binding. The one other difference the record shows predates this change and is not altered by it: the checker's frame sits above the one `checkInd` binds the parameters in, while `teleFrame` is a single frame.
+
+**What it touched.** Nothing else had to change: the two kernel-checked instances of the existence statement's bundles (`PreludeModel.lean`, `Step2.lean`), the knot counterexample, `Strict.fund_all`, the column theorems and `Steps/DataBoxModel.lean` build unchanged (no proof read a later field's type).
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass

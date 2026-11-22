@@ -53,15 +53,22 @@ def paramDecls (D : Decisions) (d : IndDecl) (k : Nat) : List DeclInfo :=
   d.params.foldl (fun acc hp => acc ++ [D.typeDecl (acc.reverse ++ List.replicate k .other) hp.2]) []
 
 /-- **The frame `Machine.fieldTele` evaluates field `e.length` of constructor `c` in**, as meanings
-(docs/34 §18, task 2c): the fields (the earlier ones `e`, each read `prop` if the checker reads it as
-a proof and `other` else; the rest `moved`, read `other`, as the checker binds `⊥`), then the
-parameters, each at its type and at its declared reading. -/
+(docs/34 §18, task 2c): the fields (the earlier ones `e`, each at its field type and read `prop` if
+the checker reads it as a proof and `other` else; the rest, the field being typed among them,
+`moved` at the error type and read `other`, as the checker binds them `⊥` with no type), then the
+parameters, each at its type and at its declared reading.
+
+The fields not yet bound are typed `err` (docs/31 D160, docs/34 §18.6): until then the field being
+typed carried its own type, read from the model, which the checker's frame does not have (it fills
+a field's type in only after evaluating it) and which made the knot's canonical frame
+self-referential. `Exists/TeleFrameGuard.lean` pins the checker's frame. -/
 noncomputable def teleFrame (dm : DataModel) (D : Decisions) (d : IndDecl) (ps : List Sem) (c : Nat)
     (e : List Sem) : SState :=
   let k := ((d.ctors[c]?).map (·.2.length)).getD 0
   let fs := e ++ List.replicate (k - e.length) Sem.moved
   let pds := paramDecls D d k
-  stateOf 0 (fs.zipIdx.map (fun vi => faithBind (dm.fieldTy d ps c vi.2 (e.take vi.2)) vi.1
+  stateOf 0 (fs.zipIdx.map (fun vi =>
+      faithBind (if vi.2 < e.length then dm.fieldTy d ps c vi.2 (e.take vi.2) else TyM.err) vi.1
       (if vi.2 < e.length && fieldProof D d c vi.2 then .prop else .other)) ++
     ps.zipIdx.map (fun vj => faithBind (dm.paramTy d vj.2 (ps.take vj.2)) vj.1 (pds.getD vj.2 .other)))
 
