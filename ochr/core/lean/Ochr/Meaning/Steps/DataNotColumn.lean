@@ -34,6 +34,16 @@ theorem isPiB_eq {d : DeclInfo} (h : isPiB d = true) : d = .pi (.ind "B" []) := 
   · rfl
   · cases h
 
+/-- `.ind B []`, recognised. -/
+def isIndB : DeclInfo → Bool
+  | .ind "B" [] => true
+  | _ => false
+
+theorem isIndB_eq {d : DeclInfo} (h : isIndB d = true) : d = .ind "B" [] := by
+  unfold isIndB at h; split at h
+  · rfl
+  · cases h
+
 theorem ok_flags_body : isOk (flagsRun bodyNot) (scopeState stNot RN) 1000 = true := by decide +kernel
 theorem val_flags_body : outVal (flagsRun bodyNot) (scopeState stNot RN) 1000 = (false, false) := by decide +kernel
 theorem ok_flags_F : isOk (flagsRun ctorF) (scopeState stNot RN) 1000 = true := by decide +kernel
@@ -45,14 +55,16 @@ theorem val_jm0 : (outVal (jmRun bodyNot) (scopeState stNot RN) 1000).isEmpty = 
 theorem val_jm : outVal (jmRun bodyNot) (scopeState stNot RN) 1000 = [] := List.isEmpty_iff.mp val_jm0
 theorem ok_pd_self : isOk (pdRun (.var 1)) (scopeState stNot RN) 1000 = true := by decide +kernel
 theorem val_pd_self : isPiB (outVal (pdRun (.var 1)) (scopeState stNot RN) 1000) = true := by decide +kernel
+theorem ok_pd_b : isOk (pdRun (.var 0)) (scopeState stNot RN) 1000 = true := by decide +kernel
+theorem val_pd_b : isIndB (outVal (pdRun (.var 0)) (scopeState stNot RN) 1000) = true := by decide +kernel
 
 end Aux
 
 /-- **The decisions `split_simNot` reads, at every table aligned with the checker at `stNot`.** -/
 theorem parDecNot {D : Decisions} (hd : DecTab D stNot) :
-    ParDecNot D ∧ D.placeDecl RN (.var 1) = .pi (.ind "B" []) := by
+    ParDecNot D ∧ DecNot D := by
   open Ochr.Meaning.Regress.GenNeutralContent in
-  refine ⟨⟨?_, ?_, ?_, ?_⟩, ?_⟩
+  refine ⟨⟨?_, ?_, ?_, ?_⟩, ?_, ?_⟩
   · rw [hd.flags 100 RN bodyNot _ 1000 _ (runs_out (Ochr.Meaning.Steps.Form.ColumnC.Aux.flagsRun bodyNot) _ 1000
       Aux.ok_flags_body), Aux.val_flags_body]
   · rw [hd.flags 100 RN ctorF _ 1000 _ (runs_out (Ochr.Meaning.Steps.Form.ColumnC.Aux.flagsRun ctorF) _ 1000
@@ -63,6 +75,8 @@ theorem parDecNot {D : Decisions} (hd : DecTab D stNot) :
       Aux.ok_jm), Aux.val_jm]
   · exact (hd.placeDecl 100 RN (.var 1) _ 1000 _ (runs_out (Ochr.Meaning.Steps.Form.ColumnP.Aux.pdRun (.var 1)) _ 1000
       Aux.ok_pd_self)).trans (Aux.isPiB_eq Aux.val_pd_self)
+  · exact (hd.placeDecl 100 RN (.var 0) _ 1000 _ (runs_out (Ochr.Meaning.Steps.Form.ColumnP.Aux.pdRun (.var 0)) _ 1000
+      Aux.ok_pd_b)).trans (Aux.isIndB_eq Aux.val_pd_b)
 
 /-! ## An instance of `DataModelB` -/
 
@@ -73,22 +87,21 @@ theorem fieldTerm_B (c i : Nat) : fieldTerm declB c i = none := by
   unfold fieldTerm
   rcases c with _ | _ | c <;> simp [declB]
 
-/-- **`DataModelB` has an instance**: `dmTriv`, at every table. -/
-theorem dataModelB_triv (D : Decisions) : DataModelB dmTriv D := by
-  refine ⟨trivial, fun φ Δ Δ' ρ => ⟨?_, ?_, ⟨?_, ?_, ?_, ?_⟩⟩⟩
-  · intro d hd ps c i e FT _ _ _ _ hft
-    simp only [KNot, List.mem_singleton] at hd; subst hd
+/-- **`DataModelB` has an instance**: `dmTriv`, at every table and every list after `B`. -/
+theorem dataModelB_triv (D : Decisions) (rest : List IndDecl := []) : DataModelB dmTriv D rest := by
+  refine ⟨trivial, fun _ _ => trivial, fun φ Δ d hd Δ' ρ => ?_⟩
+  simp only [List.mem_singleton] at hd; subst hd
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_⟩⟩
+  · intro ps c i e FT _ _ _ _ hft
     rw [fieldTerm_B] at hft; cases hft
-  · intro d hd ps j hn PT _ _ hp
-    simp only [KNot, List.mem_singleton] at hd; subst hd
+  · intro ps j hn PT _ _ hp
     simp [declB] at hp
-  · intro d hd ps j A c hl _ _ hps
-    simp only [KNot, List.mem_singleton] at hd; subst hd
+  · intro ps j A c hl _ _ hps
     have : ps = [] := List.eq_nil_of_length_eq_zero (by rw [hl]; rfl)
     subst this; simp at hps
-  · intro d hd ps j v A c _ _ hpt hmem
+  · intro ps j v A c _ _ hpt hmem
     exact absurd (hpt ▸ hmem) (DataModel.err_mem_false _ _)
-  · intro d hd ps ps' hpt hl _
+  · intro ps ps' hpt hl _
     have hps : ps = [] := by
       rcases ps with _ | ⟨a, ps⟩
       · rfl
@@ -96,8 +109,7 @@ theorem dataModelB_triv (D : Decisions) : DataModelB dmTriv D := by
     subst hps
     have : ps' = [] := List.eq_nil_of_length_eq_zero hl
     subst this; rfl
-  · intro d hd ps _ _ c i e hc hi _
-    simp only [KNot, List.mem_singleton] at hd; subst hd
+  · intro ps _ _ c i e hc hi _
     rcases c with _ | _ | c
     · exact absurd hi (by simp [DataLib.arity, declB])
     · exact absurd hi (by simp [DataLib.arity, declB])
@@ -162,7 +174,7 @@ theorem refd_stNot {σ : Nat} (h : stNot.Refd σ) : σ < 1 := by
     · simp [stNot] at h
 
 /-- **`Inv` at `Not`'s start**, at a table reading the function's own binding as the checker does. -/
-theorem inv_stNot {D : Decisions} (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B" [])) : Inv D [declB] stNot := by
+theorem inv_stNot {D : Decisions} {rest : List IndDecl} (hdec : DecNot D) : Inv D (declB :: rest) stNot := by
   have ha : Value.abs 0 ∈ BVals := by simp [BVals]
   have hvals : ∀ v ∈ Env.values stNot.env, v = .gfn "Not" ∨ v = .abs 0 := fun v hv => by
     rw [stNot_env, values_envB] at hv; simpa using hv
@@ -201,7 +213,7 @@ theorem inv_stNot {D : Decisions} (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B
   · intro v hv; rcases hvals v hv with rfl | rfl <;> rfl
   · intro p w n args hc hpd hfind
     rcases ckContent_stNot hc with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-    · rw [show DecideScope.topReadings stNot = RN from rfl, hdec] at hpd; cases hpd
+    · rw [show DecideScope.topReadings stNot = RN from rfl, hdec.1] at hpd; cases hpd
     · rfl
   · intro v hv l hl; rcases hvals v hv with rfl | rfl <;> cases hl
   · intro v hv; rcases hvals v hv with rfl | rfl <;> rfl
@@ -212,14 +224,14 @@ theorem inv_stNot {D : Decisions} (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B
   · intro l h; exact absurd h (occurs_envB ha stNot stNot_env l)
 
 section
-variable {dm : DataModel} {D : Decisions} {φ : Future}
+variable {dm : DataModel} {D : Decisions} {φ : Future} {rest : List IndDecl}
 
 theorem absTyM_stNot (ρ : Assignment) :
-    MState.absTyM (KNot dm D φ (ΔN dm)).dm (KNot dm D φ (ΔN dm)).M (KNot dm D φ (ΔN dm)).Γ ρ stNot 0 = tyBM dm := by
-  show (meanV (KNot dm D φ (ΔN dm)) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = _
+    MState.absTyM (KNot dm D φ (ΔN dm) rest).dm (KNot dm D φ (ΔN dm) rest).M (KNot dm D φ (ΔN dm) rest).Γ ρ stNot 0 = tyBM dm := by
+  show (meanV (KNot dm D φ (ΔN dm) rest) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = _
   rw [meanV_tyB _ rfl]; rfl
 
-theorem asg_stNot (ρ : Assignment) (hρ : ρ 0 ∈ₛ[dm.read] tyBM dm) : Asg (KNot dm D φ (ΔN dm)) ρ stNot := by
+theorem asg_stNot (ρ : Assignment) (hρ : ρ 0 ∈ₛ[dm.read] tyBM dm) : Asg (KNot dm D φ (ΔN dm) rest) ρ stNot := by
   refine ⟨⟨?_, ?_, ?_, ?_⟩, ?_, ?_, ?_⟩
   · intro σ h _
     obtain rfl : σ = 0 := by have := refd_stNot h; omega
@@ -231,31 +243,31 @@ theorem asg_stNot (ρ : Assignment) (hρ : ρ 0 ∈ₛ[dm.read] tyBM dm) : Asg (
     obtain rfl : σ = 0 := by have := refd_stNot h; omega
     rw [absTyM_stNot]; exact tyBM_level dm
   · intro G h; simp only [MState.goalM, stNot, Option.map_some, Option.some.injEq] at h; subst h
-    show (meanV (KNot dm D φ (ΔN dm)) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy.level.isSome = true
+    show (meanV (KNot dm D φ (ΔN dm) rest) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy.level.isSome = true
     rw [meanV_tyB _ rfl]; exact tyBM_level dm
   · intro σ h _
     obtain rfl : σ = 0 := by have := refd_stNot h; omega
     show ΔN dm 0 = Value.tyS _ _ _ ρ tyB
-    show _ = TyS.plain (meanV (KNot dm D φ (ΔN dm)) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy
+    show _ = TyS.plain (meanV (KNot dm D φ (ΔN dm) rest) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy
     rw [meanV_tyB _ rfl]; rfl
 
 /-- **`Pre` at `Not`'s start**, under `DataModelB`, at an assignment giving `σ0` a member of `B`. -/
-theorem pre_stNot (hdm : DataModelB dm D) (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B" [])) (ρ : Assignment)
-    (hρ : ρ 0 ∈ₛ[dm.read] tyBM dm) : Pre (KNot dm D φ (ΔN dm)) ρ stNot := by
+theorem pre_stNot (hdm : DataModelB dm D rest) (hdec : DecNot D) (ρ : Assignment)
+    (hρ : ρ 0 ∈ₛ[dm.read] tyBM dm) : Pre (KNot dm D φ (ΔN dm) rest) ρ stNot := by
   refine ⟨?_, ?_, ?_⟩ <;> rw [norm_stNot]
   · exact ctxS_Not hdm (ΔN dm) rfl rfl
   · exact inv_stNot hdec
   · exact asg_stNot ρ hρ
 
-theorem shape_SMNot (ρ : Assignment) (p : Pos) : (SM' (KNot dm D φ (ΔN dm)) ρ stNot).shape p = none := by
+theorem shape_SMNot (ρ : Assignment) (p : Pos) : (SM' (KNot dm D φ (ΔN dm) rest) ρ stNot).shape p = none := by
   unfold SM'; rw [sstate_shape]; exact shape_envB (by simp [BVals]) p
 
-theorem liveLabels_SMNot (ρ : Assignment) : (SM' (KNot dm D φ (ΔN dm)) ρ stNot).liveLabels = [] := by
+theorem liveLabels_SMNot (ρ : Assignment) : (SM' (KNot dm D φ (ΔN dm) rest) ρ stNot).liveLabels = [] := by
   unfold SState.liveLabels
   rw [List.filterMap_eq_nil_iff.mpr (fun p _ => shape_SMNot ρ p), List.mergeSort_nil]
 
 theorem rel_stNot (ρ : Assignment) (φ' : Future) :
-    Rel (KNot dm D φ (ΔN dm)) ρ φ' id stNot (SM' (KNot dm D φ (ΔN dm)) ρ stNot) :=
+    Rel (KNot dm D φ (ΔN dm) rest) ρ φ' id stNot (SM' (KNot dm D φ (ΔN dm) rest) ρ stNot) :=
   Rel.start_noLive _ _ _ _ fun l h => by simp [SState.Live, liveLabels_SMNot] at h
 
 /-- **The split's step applied at the column's own start**: the checker's start state for `Not`'s body (any state
@@ -264,12 +276,12 @@ giving `σ0` a member of `B`, at the checker's table there. From the checker's s
 with a continuation keeping the counters in world `T`, the reference's run of the body succeeds with the other
 constructor, and `Out` holds at that world's leaf. Assumes the checker fact `SplitNotInv`; of the data model,
 `DataModelB` (an instance: `dataModelB_triv`). -/
-theorem body_outNot (hSp : SplitNotInv) (hdm : DataModelB dm D) (hD : DecTab D stNot) {fuel : Nat}
+theorem body_outNot (hSp : SplitNotInv) (hdm : DataModelB dm D rest) (hD : DecTab D stNot) {fuel : Nat}
     {k : Value → Value → M Unit} (hk : KeepsAtT k) {st st' : MState} {bh : Nat} (hkern : Kern stNot st) (hm : Mode st)
     (htd : st.tailDecl = none) (hrun : Runs (Ochr.checkTail fuel bodyNot k) st bh () st') (ρ : Assignment)
     (hρ : ρ 0 ∈ₛ[dm.read] tyBM dm) (hint : TyS) :
-    TailOut (KNot dm D φ (ΔN dm)) ρ φ id st (SM' (KNot dm D φ (ΔN dm)) ρ stNot)
-      (runT (KNot dm D φ (ΔN dm)) ρ φ true hint bodyNot) k :=
+    TailOut (KNot dm D φ (ΔN dm) rest) ρ φ id st (SM' (KNot dm D φ (ΔN dm) rest) ρ stNot)
+      (runT (KNot dm D φ (ΔN dm) rest) ρ φ true hint bodyNot) k :=
   have hd := parDecNot hD
   split_outNot hSp hdm hd.1 hd.2 hk hkern hm htd hrun ((pre_stNot hdm hd.2 ρ hρ).of_kern hkern)
     ((rel_stNot ρ φ).of_kern hkern) hint
@@ -284,6 +296,26 @@ theorem body_outNot_triv (hSp : SplitNotInv) {D : Decisions} (hD : DecTab D stNo
     TailOut (KNot dmTriv D φ (ΔN dmTriv)) ρ φ id st (SM' (KNot dmTriv D φ (ΔN dmTriv)) ρ stNot)
       (runT (KNot dmTriv D φ (ΔN dmTriv)) ρ φ true hint bodyNot) k :=
   body_outNot hSp (dataModelB_triv D) hD hk hkern hm htd hrun ρ hρ hint
+
+/-- One declaration, `inductive X := MkX`, declared AFTER `B`. -/
+def declX : IndDecl := { name := "X", ctors := [("MkX", [])] }
+
+/-- **The regression of the one-list ruling with a declared type** (docs/31 D177): the split's step for `Not`,
+applied at the column's own start, at a context whose declaration list is `[B, X]` while the checker's state declares
+`[B]`. The same step as `body_outNot_triv` (proved from it: `body_outNot` at `rest := [X]`), with `Pre`'s invariant
+discharged at the longer list at the start (`inv_stNot`) and at both leaves (`DataNotSplit.inv_envBT`): its clause
+(V) (`ShapeFacts.fits`) reads the scrutinee's declared reading from the table (`DecNot`), no longer from the list
+having one name. Assumes the checker fact `SplitNotInv`. -/
+theorem body_outNot_oneMore (hSp : SplitNotInv) {D : Decisions} (hD : DecTab D stNot) (φ : Future) {fuel : Nat}
+    {k : Value → Value → M Unit} (hk : KeepsAtT k) {st st' : MState} {bh : Nat} (hkern : Kern stNot st) (hm : Mode st)
+    (htd : st.tailDecl = none) (hrun : Runs (Ochr.checkTail fuel bodyNot k) st bh () st') (ρ : Assignment)
+    (hρ : ρ 0 ∈ₛ[dmTriv.read] tyBM dmTriv) (hint : TyS) :
+    TailOut (KNot dmTriv D φ (ΔN dmTriv) [declX]) ρ φ id st (SM' (KNot dmTriv D φ (ΔN dmTriv) [declX]) ρ stNot)
+      (runT (KNot dmTriv D φ (ΔN dmTriv) [declX]) ρ φ true hint bodyNot) k :=
+  body_outNot hSp (dataModelB_triv D [declX]) hD hk hkern hm htd hrun ρ hρ hint
+
+/-- The checker's state at `Not`'s start declares `[B]`, a strict prefix of the context's `[B, X]`. -/
+example (D : Decisions) : stNot.inds <+: (KNot dmTriv D (fun _ => .err) (ΔN dmTriv) [declX]).Γ := ⟨[declX], rfl⟩
 
 /-- `B`'s constructor `T` is a member at `dmTriv`, so the assignment `σ0 ↦ T` is one the theorem above speaks of. -/
 example : datB dmTriv 0 ∈ₛ[dmTriv.read] tyBM dmTriv := datB_mem dmTriv (by decide)

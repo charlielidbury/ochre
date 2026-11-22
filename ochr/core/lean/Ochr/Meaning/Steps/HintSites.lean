@@ -108,9 +108,11 @@ def tLetN : Term := .letIn ⟨"y"⟩ .zero (.ctor "L" 0 ⟨"N"⟩ [] [])
 -- not in tail position
 #guard stL.curTail == false && stL.tailNext == false
 -- TODAY (flips after main's D124): the untyped run at the hint `L(Nat)` hands the tail the hint, and `N` records `Nat`
-#guard (outVal (Ochr.eval 100 false tLetN (some (.tInd "L" [.tNat]))) stL 100000).1 == .ind "L" 0 ⟨"N"⟩ [.tNat] []
+#guard Value.exact (outVal (Ochr.eval 100 false tLetN (some (.tInd "L" [.tNat]))) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [.tNat] [])
+#guard !Value.exact (outVal (Ochr.eval 100 false tLetN (some (.tInd "L" [.tNat]))) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [] [])
 -- at no hint it records nothing
-#guard (outVal (Ochr.eval 100 false tLetN none) stL 100000).1 == .ind "L" 0 ⟨"N"⟩ [] []
+#guard Value.exact (outVal (Ochr.eval 100 false tLetN none) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [] [])
+#guard !Value.exact (outVal (Ochr.eval 100 false tLetN none) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [.tNat] [])
 -- the typed run hands the tail no hint: rejected
 #guard !isOk (Ochr.eval 100 true tLetN (some (.tInd "L" [.tNat]))) stL 100000
 
@@ -134,13 +136,20 @@ def nNil : Value := .ind "L" 0 ⟨"N"⟩ [] []
 
 #guard stLx.curTail == false && stLx.tailNext == false
 -- TODAY (each flips after main's D124 at its site): the untyped run at the hint `L(Nat)` hands the tail or arm the hint
-#guard (outVal (Ochr.eval 100 false tSeqN (some (.tInd "L" [.tNat]))) stL 100000).1 == nNat
-#guard (outVal (Ochr.eval 100 false tMatchNatN (some (.tInd "L" [.tNat]))) stLx 100000).1 == nNat
-#guard (outVal (Ochr.eval 100 false tMatchIndN (some (.tInd "L" [.tNat]))) stLx 100000).1 == nNat
+-- (`Value.exact` reads the recorded parameters; `==` (`Value.beq`) ignores them; each pin is beside its negation)
+#guard Value.exact (outVal (Ochr.eval 100 false tSeqN (some (.tInd "L" [.tNat]))) stL 100000).1 nNat
+#guard !Value.exact (outVal (Ochr.eval 100 false tSeqN (some (.tInd "L" [.tNat]))) stL 100000).1 nNil
+#guard Value.exact (outVal (Ochr.eval 100 false tMatchNatN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNat
+#guard !Value.exact (outVal (Ochr.eval 100 false tMatchNatN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNil
+#guard Value.exact (outVal (Ochr.eval 100 false tMatchIndN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNat
+#guard !Value.exact (outVal (Ochr.eval 100 false tMatchIndN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNil
 -- at no hint each records nothing
-#guard (outVal (Ochr.eval 100 false tSeqN none) stL 100000).1 == nNil
-#guard (outVal (Ochr.eval 100 false tMatchNatN none) stLx 100000).1 == nNil
-#guard (outVal (Ochr.eval 100 false tMatchIndN none) stLx 100000).1 == nNil
+#guard Value.exact (outVal (Ochr.eval 100 false tSeqN none) stL 100000).1 nNil
+#guard !Value.exact (outVal (Ochr.eval 100 false tSeqN none) stL 100000).1 nNat
+#guard Value.exact (outVal (Ochr.eval 100 false tMatchNatN none) stLx 100000).1 nNil
+#guard !Value.exact (outVal (Ochr.eval 100 false tMatchNatN none) stLx 100000).1 nNat
+#guard Value.exact (outVal (Ochr.eval 100 false tMatchIndN none) stLx 100000).1 nNil
+#guard !Value.exact (outVal (Ochr.eval 100 false tMatchIndN none) stLx 100000).1 nNat
 
 /-! The four sites of main's D124, ONE named fact each (the lead's ruling (b), lead25's brief: kept separate so
 each is discharged when its change lands). Each is FALSE today (the pins above; `tLetN` for the `let`), true after: out of tail position (`curTail = false`) the untyped `evalCore` of the former at any hint runs

@@ -32,6 +32,12 @@ def ParDecNot (D : Decisions) : Prop :=
   D.flags RN bodyNot = (false, false) ∧ D.flags RN ctorF = (false, false) ∧ D.flags RN ctorT = (false, false) ∧
     D.joinMoves RN [] bodyNot = []
 
+/-- **The table's declared readings of `Not`'s two places** at the body's scope: the function's own binding `Π(b : B). B`,
+the scrutinee `b : B`. The first is what `ShapeFacts`' (V) needs where the place is not a declaration; the second
+where it is, at a declaration list longer than `[B]` (docs/31 D177: with `[B]` alone the name was forced by the list). -/
+def DecNot (D : Decisions) : Prop :=
+  D.placeDecl RN (.var 1) = .pi (.ind "B" []) ∧ D.placeDecl RN (.var 0) = .ind "B" []
+
 /-- The record of `B` (no parameter). -/
 def recB (dm : DataModel) : Rec := dm.recOf declB []
 
@@ -131,13 +137,13 @@ theorem RefNot.movedPlaces {g : Sem} (h : RefNot ρ φ g s) {c : Nat} (h0 : ρ 0
 
 /-- **The match, at both tags**: on `T` the arm `F`, on `F` the arm `T`; nothing is dropped and the state is kept.
 In tail position, at any hint. -/
-theorem runNot (hd : ParDecNot K.D) (hΓ : K.Γ = [declB]) {g : Sem} (h : RefNot ρ φ g s)
+theorem runNot (hd : ParDecNot K.D) (hΓ : K.Γ.find? (·.name == "B") = some declB) {g : Sem} (h : RefNot ρ φ g s)
     (hg : ∀ q, Sem.movedIn g q = []) (hint : TyS) {c : Nat} (hc : c < 2) (h0 : ρ 0 = datB K.dm c) :
     runT K ρ φ true hint bodyNot s = some ((datB K.dm (1 - c), .plain (tyBM K.dm)), s) := by
-  have hfind : K.Γ.find? (·.name == "B") = some declB := by rw [hΓ]; rfl
+  have hfind : K.Γ.find? (·.name == "B") = some declB := hΓ
   have hfl : K.D.flags (scopeOf s) bodyNot = (false, false) := by rw [h.scope]; exact hd.1
   have htag : TagOk K φ (.var 0) s := by unfold TagOk; rw [h.resolve0]; exact h.accessOk _ _
-  have hone : oneCtor K.Γ "B" = false := by rw [hΓ]; rfl
+  have hone : oneCtor K.Γ "B" = false := by unfold oneCtor; rw [hΓ]; rfl
   have hmv := h.movedPlaces h0 hg
   have hjm : K.D.joinMoves (scopeOf s) [] bodyNot = [] := by rw [h.scope]; exact hd.2.2.2
   have htg : SM.guarded (TagOk K φ (.var 0)) (tagOf K φ (.var 0) indTag) s = some (.el0 Nat c, s) := by

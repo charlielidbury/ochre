@@ -42,19 +42,22 @@ noncomputable def CN (dm : DataModel) (φ : Future) : CodeMeaning :=
     sealed := fun _ _ _ _ => .err, clo := fun _ _ _ _ _ => .err,
     pi := fun _ _ _ _ _ => TyM.err, paramTy := fun _ _ _ _ => .plain TyM.err }
 
-/-- The run's context while `Not`'s body is checked, at the unknowns' types `Δ`: the declarations `[B]`. -/
-noncomputable def KNot (dm : DataModel) (D : Decisions) (φ : Future) (Δ : Nat → TyS) : RunCtx :=
-  { dm := dm, Γ := [declB], C := CN dm φ, D := D, Δ := Δ, cur := some ("Not", 0) }
+/-- The run's context while `Not`'s body is checked, at the unknowns' types `Δ`: the declarations `B :: rest`, the
+whole program's list of which the checker's `[B]` is a prefix (docs/31 D174; `rest = []` is the column as first
+built, D147). -/
+noncomputable def KNot (dm : DataModel) (D : Decisions) (φ : Future) (Δ : Nat → TyS) (rest : List IndDecl := []) :
+    RunCtx :=
+  { dm := dm, Γ := declB :: rest, C := CN dm φ, D := D, Δ := Δ, cur := some ("Not", 0) }
 
 /-- **What the column assumes of the data model** (one named hypothesis): it covers `B` and is faithful to the
 declarations `[B]` (`CtxFaithful`: `B`'s field and parameter types, of which there are none, and the records at
 parameter lists, which for a declaration without parameters constrain only junk lists). An instance:
 `dataModelB_triv`. -/
-def DataModelB (dm : DataModel) (D : Decisions) : Prop :=
-  dm.covers declB ∧ ∀ φ Δ, CtxFaithful (KNot dm D φ Δ)
+def DataModelB (dm : DataModel) (D : Decisions) (rest : List IndDecl := []) : Prop :=
+  dm.covers declB ∧ (∀ d ∈ rest, dm.covers d) ∧ ∀ φ Δ, DeclsFaithful (KNot dm D φ Δ rest) [declB]
 
 section
-variable {dm : DataModel} {D : Decisions} {φ : Future}
+variable {dm : DataModel} {D : Decisions} {φ : Future} {rest : List IndDecl}
 
 theorem find_gNot {n : String} {g : GDef} (h : [gNot].find? (·.name == n) = some g) : n = "Not" ∧ g = gNot := by
   simp only [List.find?_cons, List.find?_nil] at h
@@ -63,11 +66,15 @@ theorem find_gNot {n : String} {g : GDef} (h : [gNot].find? (·.name == n) = som
   · cases h
 
 /-- **The context's part at every state of `Not`'s body** (any `Δ`), under `DataModelB`. -/
-theorem ctxS_Not (hdm : DataModelB dm D) (Δ : Nat → TyS) {st : MState} (hg : st.globals = [gNot])
-    (hi : st.inds = [declB]) : CtxS (KNot dm D φ Δ) st where
-  inds := hi ▸ List.prefix_refl _
-  covers := fun d h => by simp only [KNot, List.mem_singleton] at h; subst h; exact hdm.1
-  faithful := (hdm.2 φ Δ).prefix (hi ▸ List.prefix_refl _)
+theorem ctxS_Not (hdm : DataModelB dm D rest) (Δ : Nat → TyS) {st : MState} (hg : st.globals = [gNot])
+    (hi : st.inds = [declB]) : CtxS (KNot dm D φ Δ rest) st where
+  inds := hi ▸ ⟨rest, rfl⟩
+  covers := fun d h => by
+    simp only [KNot, List.mem_cons] at h
+    rcases h with rfl | h
+    · exact hdm.1
+    · exact hdm.2.1 d h
+  faithful := hi ▸ hdm.2.2 φ Δ
   noLabel := fun n => by simp only [KNot, CN]; split <;> rfl
   globals := {
     ty := fun n g hf hc => by rw [hg] at hf; exact absurd (by rw [(find_gNot hf).1]; rfl) hc
@@ -86,19 +93,17 @@ theorem ctxS_Not (hdm : DataModelB dm D) (Δ : Nat → TyS) {st : MState} (hg : 
       · simp only [KNot, CN]; rfl }
 
 /-- The meaning of `B` as the checker's type value. -/
-theorem meanV_tyB (K : RunCtx) (hΓ : K.Γ = [declB]) (ρ : Assignment) (ψ : Future) (h : TyS) :
-    meanV K ρ ψ h tyB = .ty (tyBM K.dm) := by
+theorem meanV_tyB (K : RunCtx) (hΓ : K.Γ.find? (·.name == "B") = some declB) (ρ : Assignment) (ψ : Future)
+    (h : TyS) : meanV K ρ ψ h tyB = .ty (tyBM K.dm) := by
   simp only [meanV, tyB, hΓ]
-  rw [show List.find? (fun x => x.name == "B") [declB] = some declB from rfl]
-  dsimp only
+  try dsimp only
   rw [if_pos (by simp [meanParams])]
   simp [meanParams, tyBM, recB, DataModel.tyM]
 
 /-- The meaning of a constructor value of `B`. -/
-theorem meanV_ctorB (K : RunCtx) (hΓ : K.Γ = [declB]) (ρ : Assignment) (ψ : Future) (h : TyS) (c : Nat) (x : Hint) :
-    meanV K ρ ψ h (.ind "B" c x [] []) = datB K.dm c := by
+theorem meanV_ctorB (K : RunCtx) (hΓ : K.Γ.find? (·.name == "B") = some declB) (ρ : Assignment) (ψ : Future)
+    (h : TyS) (c : Nat) (x : Hint) : meanV K ρ ψ h (.ind "B" c x [] []) = datB K.dm c := by
   simp only [meanV, hΓ]
-  rw [show List.find? (fun x => x.name == "B") [declB] = some declB from rfl]
   simp [meanParams, meanFields, declB, datB, recB, DataModel.ctorR]
 
 end
@@ -149,21 +154,21 @@ theorem occurs_envB {v : Value} (hv : v ∈ BVals) (st : MState) (he : st.env = 
   · rcases hv with rfl | rfl | rfl <;> exact Bool.false_ne_true h
 
 section
-variable {dm : DataModel} {D : Decisions} {φ : Future}
+variable {dm : DataModel} {D : Decisions} {φ : Future} {rest : List IndDecl}
 
 /-- The skeleton of a state with `envB v`'s frames: the function's own binding at `selfTyN`, `b` at `B`. -/
 theorem skel_envB (Δ : Nat → TyS) (ρ : Assignment) (st : MState) (v : Value) (he : st.env = envB v) :
-    (SM' (KNot dm D φ Δ) ρ st).env.map (fun fr => fr.binds.map bindSkel) =
+    (SM' (KNot dm D φ Δ rest) ρ st).env.map (fun fr => fr.binds.map bindSkel) =
       [[], [(selfTyN dm, .pi (.ind "B" [])), (tyBM dm, .ind "B" [])]] := by
   unfold SM' MState.sstate; rw [he]
-  have h0 : Binding.refTy (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ (envB v) 1 0 selfNot =
+  have h0 : Binding.refTy (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ (envB v) 1 0 selfNot =
       .plain (selfTyN dm) := by
     rw [Binding.refTy_marked _ _ _ _ _ _ _ _ 0 rfl rfl]
     simp [KNot, CN, selfNot, RunCtx.M, codeMeaning]
-  have h1 : Binding.refTy (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ (envB v) 1 1 (bB v) =
+  have h1 : Binding.refTy (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ (envB v) 1 1 (bB v) =
       .plain (tyBM dm) := by
     rw [Binding.refTy_unmarked _ _ _ _ _ _ _ _ rfl]
-    show TyS.plain (meanV (KNot dm D φ Δ) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = _
+    show TyS.plain (meanV (KNot dm D φ Δ rest) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = _
     rw [meanV_tyB _ rfl]; rfl
   simp only [envB, List.zipIdx, List.map, Nat.zero_add]
   simp only [bindSkel]; erw [h0, h1]; rfl
@@ -171,8 +176,8 @@ theorem skel_envB (Δ : Nat → TyS) (ρ : Assignment) (st : MState) (v : Value)
 /-- A position of `envB v` other than `b` means what it means in any other such state. -/
 theorem mean_envB_other (Δ Δ' : Nat → TyS) (ρ ρ' : Assignment) (ψ ψ' : Future) (v v' : Value) {p : Pos}
     (hp : p ≠ .bind 1 1) :
-    Env.mean (KNot dm D φ Δ').dm (KNot dm D φ Δ').M (KNot dm D φ Δ').Γ ρ' ψ' (envB v') p =
-      Env.mean (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ ψ (envB v) p := by
+    Env.mean (KNot dm D φ Δ' rest).dm (KNot dm D φ Δ' rest).M (KNot dm D φ Δ' rest).Γ ρ' ψ' (envB v') p =
+      Env.mean (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ ψ (envB v) p := by
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
   · rcases f with _ | _ | f
     · rfl
@@ -184,22 +189,22 @@ theorem mean_envB_other (Δ Δ' : Nat → TyS) (ρ ρ' : Assignment) (ψ ψ' : F
   · rcases f with _ | _ | f <;> rfl
 
 theorem mean_envB_b (Δ : Nat → TyS) (ρ : Assignment) (ψ : Future) (v : Value) :
-    Env.mean (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ ψ (envB v) (.bind 1 1) =
-      Value.mean (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ ψ
-        (Value.tyS (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ tyB) v := rfl
+    Env.mean (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ ψ (envB v) (.bind 1 1) =
+      Value.mean (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ ψ
+        (Value.tyS (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ tyB) v := rfl
 
 theorem mean_stNot_self (Δ : Nat → TyS) (ρ : Assignment) (ψ : Future) :
-    Env.mean (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ ψ stNot.env (.bind 1 0) = selfSemN dm φ := by
-  show ((KNot dm D φ Δ).C.global "Not").1 = _
+    Env.mean (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ ψ stNot.env (.bind 1 0) = selfSemN dm φ := by
+  show ((KNot dm D φ Δ rest).C.global "Not").1 = _
   simp [KNot, CN]
 
 /-- Two states with `envB`'s frames whose `b` means the same are read alike (`MState.mean`). -/
 theorem mean_envB_eq (Δ Δ' : Nat → TyS) (ρ ρ' : Assignment) {st st' : MState} {v v' : Value}
     (he : st.env = envB v) (he' : st'.env = envB v') (hv : v ∈ BVals) (hv' : v' ∈ BVals)
-    (hn : ∀ ψ, Env.mean (KNot dm D φ Δ').dm (KNot dm D φ Δ').M (KNot dm D φ Δ').Γ ρ' ψ (envB v') (.bind 1 1) =
-      Env.mean (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ ψ (envB v) (.bind 1 1)) :
-    MState.mean (KNot dm D φ Δ').dm (KNot dm D φ Δ').M (KNot dm D φ Δ').Γ ρ' st' =
-      MState.mean (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ st := by
+    (hn : ∀ ψ, Env.mean (KNot dm D φ Δ' rest).dm (KNot dm D φ Δ' rest).M (KNot dm D φ Δ' rest).Γ ρ' ψ (envB v') (.bind 1 1) =
+      Env.mean (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ ψ (envB v) (.bind 1 1)) :
+    MState.mean (KNot dm D φ Δ' rest).dm (KNot dm D φ Δ' rest).M (KNot dm D φ Δ' rest).Γ ρ' st' =
+      MState.mean (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ st := by
   unfold MState.mean
   rw [he, he', allPos_envB, allPos_envB]
   congr 1
@@ -211,10 +216,10 @@ theorem mean_envB_eq (Δ Δ' : Nat → TyS) (ρ ρ' : Assignment) {st st' : MSta
 
 /-- **A reference state related to `Not`'s start state reads as `RefNot`.** -/
 theorem refNot_of_rel {Δ : Nat → TyS} {ρ : Assignment} {π : Nat → Nat} {s : SState}
-    (hr : Rel (KNot dm D φ Δ) ρ φ π stNot s) : RefNot ρ φ (selfSemN dm φ) s := by
+    (hr : Rel (KNot dm D φ Δ rest) ρ φ π stNot s) : RefNot ρ φ (selfSemN dm φ) s := by
   have hab : Value.abs 0 ∈ BVals := by simp [BVals]
   have hlive : s.liveLabels = [] := liveLabels_of_rel hr (shape_envB hab)
-  have hF : RelF φ s φ ∧ TypedLive (KNot dm D φ Δ) s φ :=
+  have hF : RelF φ s φ ∧ TypedLive (KNot dm D φ Δ rest) s φ :=
     ⟨fun _ _ => rfl, fun l hl => absurd hl (by show l ∉ s.liveLabels; rw [hlive]; simp)⟩
   have hshape : ∀ p, s.shape p = none := by
     intro p
@@ -228,7 +233,7 @@ theorem refNot_of_rel {Δ : Nat → TyS} {ρ : Assignment} {π : Nat → Nat} {s
       rw [hlive] at this; cases this
   have hsk := congrArg (fun L => L.map List.length) hr.skel
   have hlen : s.env.map (fun fr => fr.binds.length) = [0, 2] := by
-    have : (SM' (KNot dm D φ Δ) ρ stNot).env.map (fun fr => (fr.binds.map bindSkel).length) = [0, 2] := by
+    have : (SM' (KNot dm D φ Δ rest) ρ stNot).env.map (fun fr => (fr.binds.map bindSkel).length) = [0, 2] := by
       simp [SM', MState.sstate, stNot, envB]
     simpa [List.map_map, Function.comp_def, ← this] using hsk.symm
   obtain ⟨fr0, fr1, hen, h1⟩ : ∃ fr0 fr1, s.env = [fr0, fr1] ∧ fr1.binds.length = 2 := by
@@ -241,16 +246,16 @@ theorem refNot_of_rel {Δ : Nat → TyS} {ρ : Assignment} {π : Nat → Nat} {s
   · unfold SState.topIdx; rw [hen]; rfl
   · rw [← hr.sim.1 φ hF (.bind 1 1) (by simp [IsTemp])]; rfl
   · rw [← hr.sim.1 φ hF (.bind 1 0) (by simp [IsTemp])]
-    exact mean_stNot_self (dm := dm) (D := D) (φ := φ) Δ ρ (fun l => φ (π l))
+    exact mean_stNot_self (dm := dm) (D := D) (φ := φ) (rest := rest) Δ ρ (fun l => φ (π l))
 
 /-- **The relation across a refinement that changes no meaning** (`rel_transfer` at `envB`'s frames). -/
 theorem rel_refineB {Δ : Nat → TyS} {ρ : Assignment} {π : Nat → Nat} {st' : MState} {s : SState} {v' : Value}
-    (hr : Rel (KNot dm D φ Δ) ρ φ π stNot s) (he' : st'.env = envB v') (hv' : v' ∈ BVals) (hl : st'.nextLoan = 0)
-    (hn : ∀ ψ, Env.mean (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ ψ (envB v') (.bind 1 1) = ρ 0) :
-    Rel (KNot dm D φ Δ) ρ φ π st' s :=
+    (hr : Rel (KNot dm D φ Δ rest) ρ φ π stNot s) (he' : st'.env = envB v') (hv' : v' ∈ BVals) (hl : st'.nextLoan = 0)
+    (hn : ∀ ψ, Env.mean (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ ψ (envB v') (.bind 1 1) = ρ 0) :
+    Rel (KNot dm D φ Δ rest) ρ φ π st' s :=
   have hv : Value.abs 0 ∈ BVals := by simp [BVals]
   rel_transfer (Δ' := Δ) hr (by
-      show (SM' (KNot dm D φ Δ) ρ st').env.map (fun fr => fr.binds.map bindSkel) = _
+      show (SM' (KNot dm D φ Δ rest) ρ st').env.map (fun fr => fr.binds.map bindSkel) = _
       rw [skel_envB _ _ _ _ he', skel_envB _ _ _ _ stNot_env])
     (mean_envB_eq Δ Δ ρ ρ stNot_env he' hv hv' hn) hl
     (fun l => ⟨fun h => absurd h (occurs_envB hv' st' he' l), fun h => absurd h (occurs_envB hv stNot stNot_env l)⟩)
@@ -259,19 +264,19 @@ theorem rel_refineB {Δ : Nat → TyS} {ρ : Assignment} {π : Nat → Nat} {st'
 
 /-- `b` holding a constructor of `B` means it. -/
 theorem mean_envB_ctor (Δ : Nat → TyS) (ρ : Assignment) (ψ : Future) (c : Nat) (x : Hint) :
-    Env.mean (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ ψ (envB (.ind "B" c x [] [])) (.bind 1 1) =
+    Env.mean (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ ψ (envB (.ind "B" c x [] [])) (.bind 1 1) =
       datB dm c :=
-  meanV_ctorB (KNot dm D φ Δ) rfl ρ ψ (Value.tyS (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ tyB) c x
+  meanV_ctorB (KNot dm D φ Δ rest) rfl ρ ψ (Value.tyS (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ tyB) c x
 
 /-- **World `T`'s leaf is related to the reference's state after the match** (the refinement; the arm and the join
 change nothing). -/
 theorem rel_leafT {Δ : Nat → TyS} {ρ : Assignment} {π : Nat → Nat} {s : SState}
-    (hr : Rel (KNot dm D φ Δ) ρ φ π stNot s) (h0 : ρ 0 = datB dm 0) : Rel (KNot dm D φ Δ) ρ φ π leafT s :=
+    (hr : Rel (KNot dm D φ Δ rest) ρ φ π stNot s) (h0 : ρ 0 = datB dm 0) : Rel (KNot dm D φ Δ rest) ρ φ π leafT s :=
   rel_refineB hr rfl (by simp [BVals]) rfl (fun ψ => by rw [h0]; exact mean_envB_ctor Δ ρ ψ 0 _)
 
 /-- **World `F`'s leaf is related to the reference's state after the match.** -/
 theorem rel_leafF {Δ : Nat → TyS} {ρ : Assignment} {π : Nat → Nat} {s : SState}
-    (hr : Rel (KNot dm D φ Δ) ρ φ π stNot s) (h0 : ρ 0 = datB dm 1) : Rel (KNot dm D φ Δ) ρ φ π leafF s :=
+    (hr : Rel (KNot dm D φ Δ rest) ρ φ π stNot s) (h0 : ρ 0 = datB dm 1) : Rel (KNot dm D φ Δ rest) ρ φ π leafF s :=
   rel_refineB hr rfl (by simp [BVals]) rfl (fun ψ => by rw [h0]; exact mean_envB_ctor Δ ρ ψ 1 _)
 
 end
@@ -359,10 +364,10 @@ theorem ckContent_envBT {v t : Value} (hv : v ∈ CVals) {p : Place} {w : Value}
 
 /-- **`Inv` at a leaf with its value in flight**, at a table reading the function's own binding as the checker does
 (not as a declaration of `B`: `ShapeFacts`' (V) reads the place's declared reading). -/
-theorem inv_envBT {D : Decisions} (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B" [])) {st : MState} {v t : Value}
+theorem inv_envBT {D : Decisions} {rest : List IndDecl} (hdec : DecNot D) {st : MState} {v t : Value}
     (hv : v ∈ CVals) (ht : t ∈ CVals) (he : st.env = envBT v t) (hA : st.absTy = #[tyB]) (hn : st.nextAbs = 1)
     (hrefs : st.refs = [(0, v)]) (hg : st.goal = some tyB) (hneu : st.neutrals = []) (heta : st.etaRefs = [])
-    (hd : st.absDecl = #[.other]) : Inv D [declB] st := by
+    (hd : st.absDecl = #[.other]) : Inv D (declB :: rest) st := by
   have hv' := hv; have ht' := ht
   simp only [CVals, List.mem_cons, List.not_mem_nil, or_false] at hv' ht'
   have hvals : ∀ w ∈ Env.values st.env, w = .gfn "Not" ∨ w = vT ∨ w = vF := fun w hw => by
@@ -455,13 +460,11 @@ theorem inv_envBT {D : Decisions} (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B
       unfold DecideScope.topReadings; rw [he]; rfl
     rw [he] at hc
     rcases ckContent_envBT hv hc with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-    · rw [htop, hdec] at hpd; cases hpd
-    · have hn : n = "B" := by
-        simp only [List.find?_cons, List.find?_nil] at hfind
-        split at hfind
-        · rename_i h; exact (beq_iff_eq.mp h).symm
-        · cases hfind
-      subst hn; rcases hv' with rfl | rfl <;> rfl
+    · rw [htop, hdec.1] at hpd; cases hpd
+    · -- at the whole program's list `B :: rest` the place's name is not forced by the list: it is the table's
+      -- declared reading of `b` (`DecNot`, from the table aligned with the checker; docs/31 D177)
+      rw [htop, hdec.2] at hpd; cases hpd
+      rcases hv' with rfl | rfl <;> rfl
   · intro w hw l hl; rcases hvals w hw with rfl | rfl | rfl <;> cases hl
   · intro w hw; rcases hvals w hw with rfl | rfl | rfl <;> rfl
   · intro p _ h; rw [he] at h
@@ -493,19 +496,19 @@ theorem kern_lfT : Kern lfT (leafF.withTempT vT (some tyB)) :=
     rfl, rfl, rfl, rfl, rfl⟩
 
 section
-variable {dm : DataModel} {D : Decisions} {φ : Future}
+variable {dm : DataModel} {D : Decisions} {φ : Future} {rest : List IndDecl}
 
 /-- `B`'s type has a level. -/
 theorem tyBM_level (dm : DataModel) : (tyBM dm).level.isSome = true := by
   simp [tyBM, DataModel.tyR, declB, TyM.level]; rfl
 
 /-- **`Pre` at a leaf with its value in flight**, under `ρ` with `σ0` the leaf's constructor. -/
-theorem pre_leafB (hdm : DataModelB dm D) (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B" [])) (Δ : Nat → TyS)
+theorem pre_leafB (hdm : DataModelB dm D rest) (hdec : DecNot D) (Δ : Nat → TyS)
     (ρ : Assignment) {st : MState} {v t : Value} {c : Nat} {x : Hint} (hvc : v = .ind "B" c x [] [])
     (hv : v ∈ CVals) (ht : t ∈ CVals) (h0 : ρ 0 = datB dm c) (he : st.env = envBT v t) (hA : st.absTy = #[tyB])
     (hn : st.nextAbs = 1) (hrefs : st.refs = [(0, v)]) (hg : st.goal = some tyB) (hneu : st.neutrals = [])
     (heta : st.etaRefs = []) (hd : st.absDecl = #[.other]) (hgl : st.globals = [gNot]) (hi : st.inds = [declB])
-    (hnorm : st.norm = st) : Pre (KNot dm D φ Δ) ρ st := by
+    (hnorm : st.norm = st) : Pre (KNot dm D φ Δ rest) ρ st := by
   have hv' := hv; have ht' := ht
   simp only [CVals, List.mem_cons, List.not_mem_nil, or_false] at hv' ht'
   have hnr : ∀ σ, ¬ st.Refd σ := fun σ h => by
@@ -538,18 +541,18 @@ theorem pre_leafB (hdm : DataModelB dm D) (hdec : D.placeDecl RN (.var 1) = .pi 
     · intro σ w h; rw [heta] at h; cases h
     · intro σ r h; rw [hrefs] at h; simp only [List.mem_singleton, Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h
       rw [h0, hvc]
-      exact (meanV_ctorB (KNot dm D φ Δ) rfl ρ (fun _ => .err)
-        (.plain (MState.absTyM (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ st 0)) c x).symm
+      exact (meanV_ctorB (KNot dm D φ Δ rest) rfl ρ (fun _ => .err)
+        (.plain (MState.absTyM (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ st 0)) c x).symm
     · intro G h; rw [MState.goalM, hg] at h; simp only [Option.map_some, Option.some.injEq] at h; subst h
-      show (meanV (KNot dm D φ Δ) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy.level.isSome = true
+      show (meanV (KNot dm D φ Δ rest) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy.level.isSome = true
       rw [meanV_tyB _ rfl]; exact tyBM_level dm
 
-theorem pre_ltT (hdm : DataModelB dm D) (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B" [])) (Δ : Nat → TyS)
-    (ρ : Assignment) (h0 : ρ 0 = datB dm 0) : Pre (KNot dm D φ Δ) ρ ltT :=
+theorem pre_ltT (hdm : DataModelB dm D rest) (hdec : DecNot D) (Δ : Nat → TyS)
+    (ρ : Assignment) (h0 : ρ 0 = datB dm 0) : Pre (KNot dm D φ Δ rest) ρ ltT :=
   pre_leafB hdm hdec Δ ρ rfl (by simp only [CVals, List.mem_cons]; exact .inl rfl) (by simp [CVals]) h0 rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl norm_ltT
 
-theorem pre_lfT (hdm : DataModelB dm D) (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B" [])) (Δ : Nat → TyS)
-    (ρ : Assignment) (h0 : ρ 0 = datB dm 1) : Pre (KNot dm D φ Δ) ρ lfT :=
+theorem pre_lfT (hdm : DataModelB dm D rest) (hdec : DecNot D) (Δ : Nat → TyS)
+    (ρ : Assignment) (h0 : ρ 0 = datB dm 1) : Pre (KNot dm D φ Δ rest) ρ lfT :=
   pre_leafB hdm hdec Δ ρ rfl (by simp only [CVals, List.mem_cons]; exact .inr (.inl rfl)) (by simp [CVals]) h0 rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl
     norm_lfT
 
@@ -572,7 +575,7 @@ theorem inertO_ctorB (c : Nat) (x : Hint) : (Value.ind "B" c x [] []).InertO :=
   ⟨fun _ => rfl, fun _ => rfl, fun _ _ _ => by simp [Value.sitesOf, Value.sitesOfFields], rfl⟩
 
 section
-variable {dm : DataModel} {D : Decisions} {φ : Future}
+variable {dm : DataModel} {D : Decisions} {φ : Future} {rest : List IndDecl}
 
 /-- **The split's step, in the tail form** (`TailOut` at every hint): from a checker state with `stNot`'s kernel in
 the plain mode with no handed-down reading, every successful `checkTail` of `Not`'s body with a continuation that
@@ -580,27 +583,27 @@ keeps the counters in world `T`, every assignment meeting `Pre` and every refere
 reference's run of the body in tail position succeeds, and at the leaf of the world the assignment selects `k` ran
 on the checker's value and `Out` holds. Assumes the checker fact `SplitNotInv` and the decisions `ParDecNot` and the
 function's own binding's reading (`hdec`), which the table aligned with the checker at `stNot` gives. -/
-theorem split_outNot (hSp : SplitNotInv) (hdm : DataModelB dm D) {Δ : Nat → TyS} (hd : ParDecNot D)
-    (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B" [])) {fuel : Nat} {k : Value → Value → M Unit}
+theorem split_outNot (hSp : SplitNotInv) (hdm : DataModelB dm D rest) {Δ : Nat → TyS} (hd : ParDecNot D)
+    (hdec : DecNot D) {fuel : Nat} {k : Value → Value → M Unit}
     (hk : KeepsAtT k) {st st' : MState} {bh : Nat} (hkern : Kern stNot st) (hm : Mode st) (htd : st.tailDecl = none)
     (hrun : Runs (Ochr.checkTail fuel bodyNot k) st bh () st') {ρ : Assignment} {π : Nat → Nat} {s : SState}
-    (hpre : Pre (KNot dm D φ Δ) ρ st) (hr : Rel (KNot dm D φ Δ) ρ φ π st s) (hint : TyS) :
-    TailOut (KNot dm D φ Δ) ρ φ π st s (runT (KNot dm D φ Δ) ρ φ true hint bodyNot) k := by
+    (hpre : Pre (KNot dm D φ Δ rest) ρ st) (hr : Rel (KNot dm D φ Δ rest) ρ φ π st s) (hint : TyS) :
+    TailOut (KNot dm D φ Δ rest) ρ φ π st s (runT (KNot dm D φ Δ rest) ρ φ true hint bodyNot) k := by
   obtain ⟨⟨stlT, bkT, stkT, hkT, hrT⟩, ⟨stlF, bkF, stkF, hkF, hrF⟩⟩ := hSp fuel k st st' bh hkern hm htd hk hrun
-  have hr0 : Rel (KNot dm D φ Δ) ρ φ π stNot s := hr.of_kern hkern.symm
-  have hp0 : Pre (KNot dm D φ Δ) ρ stNot := hpre.of_kern hkern.symm
+  have hr0 : Rel (KNot dm D φ Δ rest) ρ φ π stNot s := hr.of_kern hkern.symm
+  have hp0 : Pre (KNot dm D φ Δ rest) ρ stNot := hpre.of_kern hkern.symm
   have hrefd : stNot.norm.Refd 0 := by
     rw [norm_stNot]; exact .val (.abs 0) (by rw [stNot_env, values_envB]; simp) rfl
   obtain ⟨c, hc, h0⟩ : ∃ c, c < 2 ∧ ρ 0 = datB dm c := by
     have h := hp0.asg.asg.mem 0 hrefd (by rw [norm_stNot]; decide)
     rw [norm_stNot] at h
-    have e : MState.absTyM (KNot dm D φ Δ).dm (KNot dm D φ Δ).M (KNot dm D φ Δ).Γ ρ stNot 0 = tyBM dm := by
-      show (meanV (KNot dm D φ Δ) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = _
+    have e : MState.absTyM (KNot dm D φ Δ rest).dm (KNot dm D φ Δ rest).M (KNot dm D φ Δ rest).Γ ρ stNot 0 = tyBM dm := by
+      show (meanV (KNot dm D φ Δ rest) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = _
       rw [meanV_tyB _ rfl]; rfl
     rw [e] at h
     exact mem_B dm h
   have hP := refNot_of_rel hr0
-  have hrun' := runNot (K := KNot dm D φ Δ) hd rfl hP (movedIn_selfSemN dm φ) hint hc h0
+  have hrun' := runNot (K := KNot dm D φ Δ rest) hd rfl hP (movedIn_selfSemN dm φ) hint hc h0
   have hsz : st.absTy.size = 1 := by rw [← hkern.absTy]; rfl
   rcases c with _ | _ | c
   · refine ⟨stlT, vF, tyB, ⟨bkT, stkT, hrT⟩, ρ, Δ, π, (datB dm 1, .plain (tyBM dm)), s,
@@ -608,7 +611,7 @@ theorem split_outNot (hSp : SplitNotInv) (hdm : DataModelB dm D) {Δ : Nat → T
     · rw [hsz, ← hkT.absTy]; decide
     · rw [← hkT.nextLoan, ← hkern.nextLoan]; exact Nat.le_refl _
     · intro T e; cases e
-      show (meanV (KNot dm D φ Δ) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = tyBM dm
+      show (meanV (KNot dm D φ Δ rest) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = tyBM dm
       rw [meanV_tyB _ rfl]; rfl
     · exact (pre_ltT hdm hdec Δ ρ h0).of_kern (kern_ltT.trans (hkT.withTempT _ _))
     · exact rel_withTempT_inertO ((rel_leafT hr0 h0).of_kern hkT) (inertO_ctorB 1 _) _
@@ -617,7 +620,7 @@ theorem split_outNot (hSp : SplitNotInv) (hdm : DataModelB dm D) {Δ : Nat → T
     · rw [hsz, ← hkF.absTy]; decide
     · rw [← hkF.nextLoan, ← hkern.nextLoan]; exact Nat.le_refl _
     · intro T e; cases e
-      show (meanV (KNot dm D φ Δ) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = tyBM dm
+      show (meanV (KNot dm D φ Δ rest) ρ (fun _ => .err) (.plain TyM.err) tyB).asTy = tyBM dm
       rw [meanV_tyB _ rfl]; rfl
     · exact (pre_lfT hdm hdec Δ ρ h0).of_kern (kern_lfT.trans (hkF.withTempT _ _))
     · exact rel_withTempT_inertO ((rel_leafF hr0 h0).of_kern hkF) (inertO_ctorB 0 _) _
@@ -625,10 +628,10 @@ theorem split_outNot (hSp : SplitNotInv) (hdm : DataModelB dm D) {Δ : Nat → T
 
 /-- **`Not`'s body, simulated in the tail form** (`TailSim`): assumes the checker fact `SplitNotInv`; of the data
 model, `DataModelB`. -/
-theorem split_simNot (hSp : SplitNotInv) (hdm : DataModelB dm D) {Δ : Nat → TyS} (hd : ParDecNot D)
-    (hdec : D.placeDecl RN (.var 1) = .pi (.ind "B" [])) {fuel : Nat} {k : Value → Value → M Unit} (hk : KeepsAtT k)
+theorem split_simNot (hSp : SplitNotInv) (hdm : DataModelB dm D rest) {Δ : Nat → TyS} (hd : ParDecNot D)
+    (hdec : DecNot D) {fuel : Nat} {k : Value → Value → M Unit} (hk : KeepsAtT k)
     {st : MState} (hkern : Kern stNot st) (hm : Mode st) (htd : st.tailDecl = none) (ρ : Assignment) :
-    TailSim (KNot dm D φ Δ) ρ φ fuel st bodyNot k :=
+    TailSim (KNot dm D φ Δ rest) ρ φ fuel st bodyNot k :=
   fun _ _ _ _ hpre hr _ hrun => split_outNot hSp hdm hd hdec hk hkern hm htd hrun hpre hr _
 
 end
