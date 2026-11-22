@@ -323,4 +323,116 @@ def NestSortB (Γ : List IndDecl) (M : IndDecl) : Bool :=
 def AStarOk (Γ : List IndDecl) (d : IndDecl) : Bool :=
   (d.ctors.all fun cs => cs.2.all fun f => occSortB Γ d f.2) && NestSortB Γ d
 
+/-! ## The grammar for a `Prop`-sorted declaration (truth first)
+
+`PSpine` is `Spine` with (A) read for `Prop`: a varying type argument (one that mentions `d` or a
+varying variable) stands at a `Prop` parameter of a `Prop`-sorted declaration (rule (A*)(i) and the
+universe: a proposition is no `Type` argument). (B) and (B2) as for `Spine`. `PGrammarOk` is its
+decidable check at every field, the grammar fact `General.truth_exists` is to assume. -/
+
+/-- A parameter type term that is `Prop` (`.sort 0`). -/
+def isType0 : Term → Bool
+  | .sort 0 => true
+  | _ => false
+
+mutual
+/-- The first-order field types of an accepted `Prop`-sorted declaration. -/
+inductive PSpine (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Prop
+  | nat : PSpine Γ d c .nat
+  | unit : PSpine Γ d c .unit
+  | param (v : Nat) (hv : v < d.params.length) : PSpine Γ d c (.place (.var v))
+  | tind (n : String) (as : List Term) (M : IndDecl) (hM : Γ.find? (·.name == n) = some M)
+      (hargs : PSpineArgs Γ d c M 0 [] as) : PSpine Γ d c (.tind n as)
+  | call (f : String) (as : List Term) (hd : Bool) (h : Steady d c (.call (.const f) as hd)) :
+      PSpine Γ d c (.call (.const f) as hd)
+  | eq (A a b : Term) (h : Steady d c (.eq A a b)) : PSpine Γ d c (.eq A a b)
+
+inductive PSpineArgs (Γ : List IndDecl) (d : IndDecl) (c : Nat) : IndDecl → Nat → List Term → List Term → Prop
+  | nil (M : IndDecl) (j : Nat) (pre : List Term) : PSpineArgs Γ d c M j pre []
+  | type (M : IndDecl) (j : Nat) (pre : List Term) (a : Term) (as : List Term) (hty : M.paramIsType j = true)
+      (ha : PSpine Γ d c a) (hn : ¬ Steady d c a → nestOf M j = true)
+      (hA : ¬ Steady d c a → paramTerm M j = .sort 0 ∧ M.sort = 0)
+      (hrest : PSpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : PSpineArgs Γ d c M j pre (a :: as)
+  | value (M : IndDecl) (j : Nat) (pre : List Term) (a : Term) (as : List Term) (hty : M.paramIsType j = false)
+      (ha : Steady d c a) (hh : HintSteady d c M j pre)
+      (hrest : PSpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : PSpineArgs Γ d c M j pre (a :: as)
+end
+
+mutual
+/-- `PSpine`, decided. -/
+def pspineB (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Bool
+  | .nat => true
+  | .unit => true
+  | .place (.var v) => decide (v < d.params.length)
+  | .tind n as => match Γ.find? (·.name == n) with
+    | some M => pspineArgsB Γ d c M 0 [] as
+    | none => false
+  | .call (.const f) as hd => steadyB d c (.call (.const f) as hd)
+  | .eq A a b => steadyB d c (.eq A a b)
+  | _ => false
+termination_by structural t => t
+
+/-- `PSpineArgs`, decided. -/
+def pspineArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat → List Term → List Term → Bool
+  | _, _, [] => true
+  | j, pre, a :: as =>
+    (if M.paramIsType j then
+      pspineB Γ d c a && (steadyB d c a || (nestOf M j && isType0 (paramTerm M j) && M.sort == 0))
+    else steadyB d c a && hintSteadyB d c M j pre) && pspineArgsB Γ d c M (j + 1) (pre ++ [a]) as
+termination_by structural _ _ as => as
+end
+
+/-- **The grammar fact for a `Prop`-sorted declaration**: every field type passes `pspineB`. -/
+def PGrammarOk (Γ : List IndDecl) (d : IndDecl) : Prop :=
+  ∀ c i FT, fieldTerm d c i = some FT → pspineB Γ d c FT = true
+
+mutual
+theorem pspineB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} : ∀ {t : Term}, pspineB Γ d c t = true → PSpine Γ d c t
+  | .nat, _ => .nat
+  | .unit, _ => .unit
+  | .place p, h => by
+    cases p with
+    | var v => exact .param v (by simpa [pspineB] using h)
+    | _ => simp [pspineB] at h
+  | .tind n as, h => by
+    simp only [pspineB] at h
+    split at h
+    · rename_i M hM; exact .tind n as M hM (pspineArgsB_sound h)
+    · cases h
+  | .call f as hd, h => by
+    cases f with
+    | const g => exact .call g as hd (steadyB_sound (by simpa [pspineB] using h))
+    | _ => simp [pspineB] at h
+  | .eq A a b, h => .eq A a b (steadyB_sound (by simpa [pspineB] using h))
+  | .borrow _, h | .assign _ _, h | .letIn _ _ _, h | .seq _ _, h | .matchNat _ _ _, h | .const _, h
+  | .val _, h | .sort _, h | .pi _ _ _, h | .fix _ _ _ _ _ _, h | .zero, h | .succ _, h | .tt, h
+  | .cong _ _, h | .ref _, h | .id _ _ _, h | .ascribe _ _, h | .prim _ _, h | .ctor _ _ _ _ _, h
+  | .matchInd _ _ _, h => by simp [pspineB] at h
+
+theorem pspineArgsB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDecl} :
+    ∀ {j : Nat} {pre as : List Term}, pspineArgsB Γ d c M j pre as = true → PSpineArgs Γ d c M j pre as
+  | j, pre, [], _ => .nil M j pre
+  | j, pre, a :: as, h => by
+    simp only [pspineArgsB, Bool.and_eq_true] at h
+    obtain ⟨h1, h2⟩ := h
+    by_cases hty : M.paramIsType j = true
+    · rw [if_pos hty] at h1
+      simp only [Bool.and_eq_true, Bool.or_eq_true] at h1
+      obtain ⟨ha, hs⟩ := h1
+      refine .type M j pre a as hty (pspineB_sound ha) ?_ ?_ (pspineArgsB_sound h2)
+      · intro hn
+        rcases hs with hs | ⟨⟨hn', -⟩, -⟩
+        · exact absurd (steadyB_sound hs) hn
+        · exact hn'
+      · intro hn
+        rcases hs with hs | ⟨⟨-, h0⟩, hsort⟩
+        · exact absurd (steadyB_sound hs) hn
+        · refine ⟨?_, by simpa using hsort⟩
+          unfold isType0 at h0; split at h0 <;> simp_all
+    · rw [if_neg hty] at h1
+      simp only [Bool.and_eq_true] at h1
+      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1.1) (hintSteadyB_sound h1.2)
+        (pspineArgsB_sound h2)
+end
+
 end Ochr.Meaning.DataModel.Exists.Knot

@@ -102,8 +102,8 @@ when it is not. Restated: the earlier records are monotone in their nestable `Pr
 construction must return for `d` too, the second conclusion, so the induction over declarations goes
 on); rule (A*) at every declaration (`hstar`; the lead's ruling); frame locality's two facts and local
 parameter types (as for the knot); the earlier fields members of their field types (as `knot_exists`).
-STILL MISSING from the hypotheses: the grammar fact for a `Prop`-sorted `d` (`Spine` with (A) read for
-`Prop`: a varying argument stands at a `Prop` parameter of a `Prop`-sorted declaration; (B) as is).
+The grammar fact for a `Prop`-sorted `d` is `hgram` (`Knot.PGrammarOk`: `PSpine`, which is `Spine`
+with (A) read for `Prop`, decidable).
 
 Plan (HANDOFF): `T := lfpP Φ` (`Truth.lean`), `Φ T ps` = some constructor has fields fitting the shapes
 of the record `R_T ps`, which is the knot's record built from an interpreter that reads `d`'s own
@@ -114,7 +114,7 @@ sub-record); then `T = Φ T` (`lfpP_fixed`) is `uTyR d (R_T ps) = TyM.prop (T ps
 `knotK_agree`'s argument with a self-occurrence's run `tyM d ā = prop (Nonempty (car d (R_T ā)))` =
 `prop (T ā)` by the fixed point, and `steadyAt_knotK`'s at the steady nodes. -/
 theorem truth_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort = 0)
-    (hstar : ∀ M ∈ K.Γ, Knot.AStarOk K.Γ M = true)
+    (hgram : Knot.PGrammarOk K.Γ d) (hstar : ∀ M ∈ K.Γ, Knot.AStarOk K.Γ M = true)
     (hmono : ∀ M ∈ K.Γ, M ≠ d → ∀ ps ps', PropLe M ps ps' → ∀ c i es,
       ShapeLe (uShape M (K.dm.recOf M ps) c i es) (uShape M (K.dm.recOf M ps') c i es))
     (hpty : Knot.ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
