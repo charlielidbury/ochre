@@ -101,7 +101,7 @@ theorem run_one_at (T : TyS) (s : SState) :
   rw [runT]
   show SM.erasedIf (false, false) _ _ = _
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, SM.strictS]
-  have h0 : (runT (Kp dm [] G) ρ φ false (TyS.plain TyM.nat) Term.zero >>= fun x => pure (x.fst.succ, TyS.plain TyM.nat)) s
+  have h0 : (runT (Kp dm [] G) ρ φ false (TyS.plain TyM.err) Term.zero >>= fun x => pure (x.fst.succ, TyS.plain TyM.nat)) s
       = some (((Sem.el0 Nat 0).succ, TyS.plain TyM.nat), s) := rfl
   rw [h0]
   dsimp only
@@ -114,16 +114,16 @@ theorem run_one (T : TyS) :
 
 /-- The reference's `Eq(Nat, S(Z), b)`: the proposition that the two sides' meanings are equal,
 the state untouched. -/
-theorem ref_eq (b : Term) (vb : Sem) (hb : run (Kp dm [] G) ρ φ (.plain TyM.nat) b (emptyState 0) = some ((vb, .plain TyM.nat), emptyState 0))
+theorem ref_eq (b : Term) (vb : Sem) (hb : run (Kp dm [] G) ρ φ (.plain TyM.err) b (emptyState 0) = some ((vb, .plain TyM.nat), emptyState 0))
     -- the strict `Eq`: the right side is a number (the left, `1`, is)
     (hvb : vb ∈ₛ[dm.read] TyM.nat) (hint : TyS) :
     run (Kp dm [] G) ρ φ hint (.eq .nat (.succ .zero) b) (emptyState 0)
       = some ((.ty (TyM.prop (one = vb)), .plain (TyM.univ 0)), emptyState 0) := by
   have hn : runT (Kp dm [] G) ρ φ false (TyS.plain TyM.err) Term.nat (emptyState 0) =
       some ((.ty TyM.nat, .plain (TyM.univ 1)), emptyState 0) := rfl
-  have hs : runT (Kp dm [] G) ρ φ false (.plain (Sem.ty TyM.nat).asTy) (Term.zero.succ) (emptyState 0) =
+  have hs : runT (Kp dm [] G) ρ φ false (.plain TyM.err) (Term.zero.succ) (emptyState 0) =
       some ((one, .plain TyM.nat), emptyState 0) := run_one dm G ρ φ _
-  have hb' : runT (Kp dm [] G) ρ φ false (.plain (Sem.ty TyM.nat).asTy) b (emptyState 0) =
+  have hb' : runT (Kp dm [] G) ρ φ false (.plain TyM.err) b (emptyState 0) =
       some ((vb, .plain TyM.nat), emptyState 0) := hb
   rw [run, runT]
   show SM.onCopy _ _ = _

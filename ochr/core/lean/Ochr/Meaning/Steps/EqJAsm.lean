@@ -117,8 +117,8 @@ def eqChecks (fuel : Nat) (typed : Bool) (Ta Tb : Option Value) (A' : Value) : M
 the type's code, the proposition that the sides' meanings are equal; the state untouched. -/
 theorem runT_eq_some (tl : Bool) (hint : TyS) (A a b : Term) (s : SState) (rA ra rb : Res) (sa sb : SState)
     (hA : runT K ρ φ false (.plain .err) A s = some (rA, s))
-    (ha : runT K ρ φ false (.plain rA.1.asTy) a s = some (ra, sa))
-    (hb : runT K ρ φ false (.plain rA.1.asTy) b s = some (rb, sb))
+    (ha : runT K ρ φ false (.plain .err) a s = some (ra, sa))
+    (hb : runT K ρ φ false (.plain .err) b s = some (rb, sb))
     -- the strict `Eq` (model lane, "well typed inside"): its type is a type, its sides `⊥` or members
     (hok : EqOk K.dm.read rA.1 ra.1 rb.1) :
     runT K ρ φ tl hint (.eq A a b) s = some ((.ty (TyM.prop (ra.1 = rb.1)), .plain (TyM.univ 0)), s) := by
@@ -186,8 +186,8 @@ theorem eq_sides_ok {A a b : Term} {s : SState} {tl : Bool} {hint : TyS} (n : Na
       (runT { K with Δ := Δ' } ρ' φ false hint' b s).isSome := by
   sorry
 
-/-- **The sides at the type** (leaf): the reference's `.eq` reads each side at the code its run of the
-type gives, the checker's `mkEqM` at `⟦A'⟧`. Under the final assignment the type's run is the one
+/-- **The sides** (leaf): the reference's `.eq` runs each side with no hint, as the checker's `evalCore` does
+(docs/31 D172; it ran them at the code its run of the type gives), the checker's `mkEqM` at `⟦A'⟧`. Under the final assignment the type's run is the one
 `evalType` related (it names old unknowns), and each side's run at the type's code gives the
 meaning the checker's value has there at the outer renaming (the sides' own renamings differ only at
 labels issued inside their copies, which an `Eq`'s value does not hold, D48; a typed side was checked
@@ -208,8 +208,8 @@ theorem eq_sides {st st₁ st₂ st₃ st₄ cur : MState} {A a b : Term} {A' va
     (k₄ : KeptAfter st₃ st₄) (e₄ : ExtOk { K with Δ := Δ₃ } ρ₃ st₃ st₄ ρ₄ Δ₄)
     (k₅ : KeptAfter st₄ cur) (e₅ : ExtOk { K with Δ := Δ₄ } ρ₄ st₄ cur ρ₅ Δ₅) :
     ∃ (rA' ra' rb' : Res) (sa' sb' : SState), runT K ρ₅ φ false (.plain .err) A s = some (rA', s) ∧
-      runT K ρ₅ φ false (.plain rA'.1.asTy) a s = some (ra', sa') ∧
-      runT K ρ₅ φ false (.plain rA'.1.asTy) b s = some (rb', sb') ∧
+      runT K ρ₅ φ false (.plain .err) a s = some (ra', sa') ∧
+      runT K ρ₅ φ false (.plain .err) b s = some (rb', sb') ∧
       ra'.1 = meanV { K with Δ := Δ₄ } ρ₄ (fun l => φ (π l))
         (.plain (meanV { K with Δ := Δ₄ } ρ₄ noFuture (.plain .err) A').asTy) va ∧
       rb'.1 = meanV { K with Δ := Δ₄ } ρ₄ (fun l => φ (π l))

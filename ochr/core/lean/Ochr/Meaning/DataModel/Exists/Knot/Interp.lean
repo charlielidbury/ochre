@@ -73,8 +73,8 @@ noncomputable def itpArgs (R : List Sem → Rec) (ps : List Sem) (s : SState) (M
 /-- One argument's value: a type argument read by `semT`, a value argument as its run (it is steady). -/
 noncomputable def argSem (R : List Sem → Rec) (ps : List Sem) (s : SState) (M : IndDecl) (j : Nat)
     (pre : List Sem) : Term → Sem
-  | a => if M.paramIsType j then semT R ps s (.plain (K.dm.paramTy M j pre)) a
-    else valOf K ρ s (.plain (K.dm.paramTy M j pre)) a
+  | a => if M.paramIsType j then semT R ps s (.plain TyM.err) a
+    else valOf K ρ s (.plain TyM.err) a
 end
 
 /-- A term's field type at the canonical frame `s` and the hint `h`. -/

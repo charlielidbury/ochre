@@ -42,7 +42,7 @@ theorem runT_bodyI_ref (hfl : K.D.flags [.other, .pi .other] bodyI = (false, fal
     unfold setContent; rw [if_pos (fun _ _ => by rw [Sem.updAt.eq_def]; rfl)]; rfl
   have hwhole : (Sem.el0 Nat a).whole := by simp [Sem.whole]
   have hrg : ReadGood K.dm.read (s.tyAt (.bind 1 1)).m (.el0 Nat a) := .inl (by rw [h.tyN]; exact ⟨a, rfl⟩)
-  have hrd : runT K ρ φ false (.plain TyM.nat) (.place (.var 0)) s =
+  have hrd : runT K ρ φ false (.plain TyM.err) (.place (.var 0)) s =
       some ((.el0 Nat a, { s.tyAt (.bind 1 1) with label := none }), dropN K s) := by
     rw [runT]
     show SM.erasedIf (K.D.flags (scopeOf s) (.place (.var 0)))
@@ -57,7 +57,7 @@ theorem runT_bodyI_ref (hfl : K.D.flags [.other, .pi .other] bodyI = (false, fal
   unfold bodyI
   rw [runT_succ _ _ _ s hfl']
   unfold SM.strictS
-  have hb : (runT K ρ φ false (.plain TyM.nat) (.place (.var 0)) >>= fun x : Res => match x with
+  have hb : (runT K ρ φ false (.plain TyM.err) (.place (.var 0)) >>= fun x : Res => match x with
       | (v, _) => (pure (v.succ, TyS.plain TyM.nat) : SM Res)) s = some (((Sem.el0 Nat a).succ, .plain TyM.nat), dropN K s) := by
     simp only [Bind.bind]; rw [hrd]; rfl
   rw [hb]

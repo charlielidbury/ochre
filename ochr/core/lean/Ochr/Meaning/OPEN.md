@@ -14,6 +14,13 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE MASTER INDUCTION OF (II), CONTINUED (lead24, 2026-11-22, `spine-lead24`; docs/31 D170 to D173)
+- PROVED: `stepSucc` (typed and untyped), assuming 3 NEW facts: `SuccStrictG` (mixed, typed only), `SuccMeanG` (model), `SuccFlightG` (mixed); `Machine.succInvD` (PROVED). The model change it needed (the reference runs `S`'s argument with no hint) is built (D171).
+- NEW, open: `HintSites.UntypedTailNoHint` (checker; FALSE today, true after main's D124: the untyped `let`, `;`, match hand their tail no hint out of tail position), the one fact the untyped steps for those formers will state; its pin flips at D124.
+- KNOWN FALSE as the model stands: the tail shape `split f in u` / `split f {…}` (`TStepPrim`): no reference clause (`HintSites.run_split_fails`, an accepted program guarded); ruling asked (D172).
+- The erased depth is tested on the reference's side (D170): `DepthRef.column_CapE` (nothing assumed), `column_CtorE` (`CtxFaithful` only); `NestE`, `MatchE`, `ReadE` argued, not run.
+- The hint audit (D172): the model's remaining drifts fixed (`Eq`'s sides, every parameter); eleven sites where the checker's typed and untyped runs differ, and three where the reference differs from the typed check (`J` stuck: open; `rewrite`, `lentProofAssign`: proofs on copies), listed for rulings.
+
 ## THE MASTER INDUCTION OF (II) (lead22, lead23, 2026-11-22, `spine-lead23`; docs/31 D150 to D159)
 
 `Steps/Master.master`: (II) for `eval` and `checkTail` at every fuel, `Δ`, assignment, term and erased depth, ASSUMING the 32 step statements of `AllSteps` (no `sorry`); each statement concludes `Kept` (mode, frames, top readings) beside `Out`, and says a typed run is not in tail position. The table of the 32 is docs/31 D153. Proved in general: `stepZero`, `stepTt` (nothing assumed); `stepNat`, `stepUnit` (`InvPushType`); `tStepOther` (`TailOtherInv`); `stepLetIn_typed` (typed, unerased `let`: `LetTailDecl`, `ValsCongrA`, `LetPushG`, `LetDropG`, `FundCtx`); `stepSeq_typed` (typed, unerased `;`: `SeqTailDecl`, `DropValueG`, `ValsCongrA`, `FundCtx`). Proved facts at any depth: `Machine.evalInvD`, `letInvD`, `seqInvD`.

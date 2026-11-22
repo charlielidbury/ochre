@@ -61,7 +61,7 @@ theorem itpArgsP_quiet {T T' : List Sem → Prop} {ps ps' : List Sem} {s : SStat
       exact semP_quiet hps ha (hq a (List.mem_cons_self ..)) _
     rw [itpArgsP_cons, itpArgsP_cons, e,
       itpArgsP_quiet hps hrest (fun b hb => hq b (List.mem_cons_of_mem _ hb)) _]
-  | _, _, _, _, .value M j pre a as hty _ _ hrest, hq, vpre => by
+  | _, _, _, _, .value M j pre a as hty _ hrest, hq, vpre => by
     have e : argSemP K ρ d T ps s M j vpre a = argSemP K ρ d T' ps' s M j vpre a := by
       rw [argSemP_eq, argSemP_eq, if_neg (by simp [hty]), if_neg (by simp [hty])]
     rw [itpArgsP_cons, itpArgsP_cons, e,
@@ -267,22 +267,21 @@ theorem itpArgsP_le (H : MonoHyp K d T T' ps ps') {M : IndDecl} (hMΓ : M ∈ K.
       ArgLe d c M (pre ++ as) (vs ++ itpArgsP K ρ d T ps s M j vs as) (vs' ++ itpArgsP K ρ d T' ps' s M j vs' as)
   | _, _, _, .nil _ _ _, vs, vs', h, _ => by simpa [itpArgsP_nil] using h
   | _, _, _, .type _ j pre a as hty ha hn hA hrest, vs, vs', h, hj => by
-    have hhint : K.dm.paramTy M j vs = K.dm.paramTy M j vs' :=
-      hint_eqP H.hpty hMΓ h hj (fun u hu => by rw [paramTerm_type hty] at hu; cases hu)
-    rw [itpArgsP_cons, itpArgsP_cons, argSemP_eq, argSemP_eq, if_pos hty, if_pos hty, hhint]
+    -- the argument runs with no hint (docs/31 D172), so the two sides' hints agree outright
+    rw [itpArgsP_cons, itpArgsP_cons, argSemP_eq, argSemP_eq, if_pos hty, if_pos hty]
     have hpl : pre.length = j := by rw [← h.2.1, hj]
-    have e : SemLe (semP K ρ d T ps s (.plain (K.dm.paramTy M j vs')) a) (semP K ρ d T' ps' s (.plain (K.dm.paramTy M j vs')) a) ∧
-        (Steady d c a → semP K ρ d T ps s (.plain (K.dm.paramTy M j vs')) a = semP K ρ d T' ps' s (.plain (K.dm.paramTy M j vs')) a) :=
+    have e : SemLe (semP K ρ d T ps s (.plain TyM.err) a) (semP K ρ d T' ps' s (.plain TyM.err) a) ∧
+        (Steady d c a → semP K ρ d T ps s (.plain TyM.err) a = semP K ρ d T' ps' s (.plain TyM.err) a) :=
       semP_le H ha _
     have h1 : if nestOf M pre.length then
-        SemLe (semP K ρ d T ps s (.plain (K.dm.paramTy M j vs')) a) (semP K ρ d T' ps' s (.plain (K.dm.paramTy M j vs')) a)
-        else semP K ρ d T ps s (.plain (K.dm.paramTy M j vs')) a = semP K ρ d T' ps' s (.plain (K.dm.paramTy M j vs')) a := by
+        SemLe (semP K ρ d T ps s (.plain TyM.err) a) (semP K ρ d T' ps' s (.plain TyM.err) a)
+        else semP K ρ d T ps s (.plain TyM.err) a = semP K ρ d T' ps' s (.plain TyM.err) a := by
       by_cases hst : Steady d c a
       · have := e.2 hst; split
         · exact .inl this
         · exact this
       · rw [hpl, if_pos (hn hst)]; exact e.1
-    have h3 : semP K ρ d T ps s (.plain (K.dm.paramTy M j vs')) a = semP K ρ d T' ps' s (.plain (K.dm.paramTy M j vs')) a ∨
+    have h3 : semP K ρ d T ps s (.plain TyM.err) a = semP K ρ d T' ps' s (.plain TyM.err) a ∨
         M.sort = 0 := by
       by_cases hst : Steady d c a
       · exact .inl (e.2 hst)
@@ -290,14 +289,10 @@ theorem itpArgsP_le (H : MonoHyp K d T T' ps ps') {M : IndDecl} (hMΓ : M ∈ K.
     have h' := h.snoc a _ _ h1 e.2 h3
     have := itpArgsP_le H hMΓ hrest _ _ h' (by simp [hj])
     simpa [List.append_assoc] using this
-  | _, _, _, .value _ j pre a as hty ha hh hrest, vs, vs', h, hj => by
-    have hval : valOf K ρ s (.plain (K.dm.paramTy M j vs)) a = valOf K ρ s (.plain (K.dm.paramTy M j vs')) a := by
-      rcases hh with hh | hf
-      · rw [hint_eqP H.hpty hMΓ h hj (fun u hu hlt a' ha' => hh u hu hlt a' ha')]
-      · unfold valOf
-        rw [runT_hintFree K ρ noFuture (.plain (K.dm.paramTy M j vs)) (.plain (K.dm.paramTy M j vs')) a hf]
-    rw [itpArgsP_cons, itpArgsP_cons, argSemP_eq, argSemP_eq, if_neg (by simp [hty]), if_neg (by simp [hty]), hval]
-    have h' := h.snoc a (valOf K ρ s (.plain (K.dm.paramTy M j vs')) a) (valOf K ρ s (.plain (K.dm.paramTy M j vs')) a)
+  | _, _, _, .value _ j pre a as hty ha hrest, vs, vs', h, hj => by
+    -- the argument runs with no hint (docs/31 D172), so the two sides' values agree outright
+    rw [itpArgsP_cons, itpArgsP_cons, argSemP_eq, argSemP_eq, if_neg (by simp [hty]), if_neg (by simp [hty])]
+    have h' := h.snoc a (valOf K ρ s (.plain TyM.err) a) (valOf K ρ s (.plain TyM.err) a)
       (by split <;> first | exact .inl rfl | rfl) (fun _ => rfl) (.inl rfl)
     have := itpArgsP_le H hMΓ hrest _ _ h' (by simp [hj])
     simpa [List.append_assoc] using this

@@ -112,15 +112,15 @@ theorem runBodyQ (hd : ParDecQ K.D) (h : RefP ρ φ g s) (hg : ∀ q, Sem.movedI
     {m : Nat} (h0 : ρ 0 = .el0 Nat m) :
     runT K ρ φ tl hint bodyQ s = some ((.el0 Nat (m - 1 + 1), .plain TyM.nat), dropN K s) := by
   have hfl : K.D.flags (scopeOf s) (.succ matchQ) = (false, false) := by rw [h.scope]; exact hd.flBody
-  have hm : runT K ρ φ false (.plain TyM.nat) matchQ s = some ((.el0 Nat (m - 1), .plain TyM.nat), dropN K s) := by
-    obtain ⟨hZ, hS⟩ := runMatchQ (K := K) hd h hg (.plain TyM.nat)
+  have hm : runT K ρ φ false (.plain TyM.err) matchQ s = some ((.el0 Nat (m - 1), .plain TyM.nat), dropN K s) := by
+    obtain ⟨hZ, hS⟩ := runMatchQ (K := K) hd h hg (.plain TyM.err)
     cases m with
     | zero => exact hZ h0
     | succ a => exact hS a h0
   show runT K ρ φ tl hint (.succ matchQ) s = _
   rw [runT_succ _ _ _ s hfl]
   unfold SM.strictS
-  have hb : (runT K ρ φ false (.plain TyM.nat) matchQ >>= fun x : Res => match x with
+  have hb : (runT K ρ φ false (.plain TyM.err) matchQ >>= fun x : Res => match x with
       | (v, _) => (pure (v.succ, TyS.plain TyM.nat) : SM Res)) s = some (((Sem.el0 Nat (m - 1)).succ, .plain TyM.nat), dropN K s) := by
     simp only [Bind.bind]; rw [hm]; rfl
   rw [hb]

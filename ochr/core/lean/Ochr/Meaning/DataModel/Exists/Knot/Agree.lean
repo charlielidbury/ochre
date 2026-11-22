@@ -78,11 +78,11 @@ theorem steady_unit (d : IndDecl) (c : Nat) : Steady d c .unit :=
 theorem runParams_cons (K : RunCtx) (ρ : Assignment) (φ : Future) (M : IndDecl) (j : Nat) (vs : List Sem)
     (a : Term) (as : List Term) (s : SState) {psM : List Sem} {s' : SState}
     (h : runParams K ρ φ M j vs (a :: as) s = some (psM, s')) :
-    ∃ v T s₁ rest, runT K ρ φ false (.plain (K.dm.paramTy M j vs)) a s = some ((v, T), s₁) ∧
+    ∃ v T s₁ rest, runT K ρ φ false (.plain TyM.err) a s = some ((v, T), s₁) ∧
       runParams K ρ φ M (j + 1) (vs ++ [v]) as s = some (rest, s') ∧ psM = v :: rest := by
   simp only [runParams, bind, SM.onCopy] at h
   revert h
-  cases ha : runT K ρ φ false (.plain (K.dm.paramTy M j vs)) a s with
+  cases ha : runT K ρ φ false (.plain TyM.err) a s with
   | none => intro h; simp at h
   | some p =>
     obtain ⟨⟨v, T⟩, s₁⟩ := p
@@ -146,7 +146,7 @@ theorem itpArgs_run (hR : (setRec K.dm d R).recOf = fun M => recFor K d R M)
       rw [argSem_eq, if_pos hty]
       exact semT_run hR hAs hpar hst ha (hP a (List.mem_cons_self ..)) _ _ _ hv
     rw [itpArgs_cons, ← e1, itpArgs_run hR hAs hpar hst hrest (fun b hb => hP b (List.mem_cons_of_mem _ hb)) _ _ _ hrest']
-  | _, _, _, _, .value M j pre a as hty ha _ hrest, hP, vs, psM, s', h => by
+  | _, _, _, _, .value M j pre a as hty ha hrest, hP, vs, psM, s', h => by
     obtain ⟨v, T, s₁, rest, hv, hrest', rfl⟩ := runParams_cons _ _ _ _ _ _ _ _ _ h
     have e1 : v = argSem K ρ d R ps F M j vs a := by
       rw [argSem_eq, if_neg (by simp [hty])]

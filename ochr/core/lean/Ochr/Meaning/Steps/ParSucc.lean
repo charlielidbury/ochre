@@ -85,10 +85,9 @@ theorem succA_core (hS : SuccInv) (hI : InvSteps) (hN : InvNumA) {n : Nat} {u : 
       rw [runT_succ _ _ u s hfl] at hs
       rw [htn₀]
       show (runT K ρ φ false (.plain TyM.err) u s).isSome
-      rw [← hhint]
       unfold SM.strictS at hs
       simp only [Bind.bind] at hs
-      cases e : runT K ρ φ false (.plain TyM.nat) u s with
+      cases e : runT K ρ φ false (.plain TyM.err) u s with
       | none => rw [e] at hs; simp at hs
       | some _ => rfl)
     (hDb K.D hD) bh₁ hu₀
@@ -98,10 +97,10 @@ theorem succA_core (hS : SuccInv) (hI : InvSteps) (hN : InvNumA) {n : Nat} {u : 
     asg_abs_nat (st := st₁.withTempT v₀ T₀) hp₁.asg (.val v₀ (mem_values_withTempT st₁ v₀ T₀ hne₁) hσ) (hσ₀ σ hσ)
   obtain ⟨m, hm'⟩ := hv₀.mean hρ₁
   have hr1 : r.1 = .el0 Nat m := by rw [← hmean, hm']
-  have hx' : runT K ρ φ false (.plain TyM.nat) u s = some (r, s₁) := by rw [hhint]; exact hx
+  have hx' : runT K ρ φ false (.plain TyM.err) u s = some (r, s₁) := hx
   have hrun : runT K ρ φ st.curTail (hintM K ρ hint) (.succ u) s = some ((.el0 Nat (m + 1), .plain TyM.nat), s₁) := by
     rw [runT_succ _ _ u s hfl]
-    have hb : (runT K ρ φ false (.plain TyM.nat) u >>= fun x : Res => match x with
+    have hb : (runT K ρ φ false (.plain TyM.err) u >>= fun x : Res => match x with
         | (v, _) => (pure (v.succ, TyS.plain TyM.nat) : SM Res)) s = some ((r.1.succ, .plain TyM.nat), s₁) := by
       simp only [Bind.bind]; rw [hx']; rfl
     unfold SM.strictS

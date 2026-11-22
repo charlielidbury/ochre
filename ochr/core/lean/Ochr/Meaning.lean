@@ -175,8 +175,11 @@ import Ochr.Meaning.Steps.MasterLeaf
 import Ochr.Meaning.Steps.MasterTail
 import Ochr.Meaning.Steps.MasterLet
 import Ochr.Meaning.Steps.TailHintRegress
+import Ochr.Meaning.Steps.DepthRef
+import Ochr.Meaning.Steps.HintSites
 import Ochr.Meaning.Steps.MasterSeq
 import Ochr.Meaning.Steps.MasterType
+import Ochr.Meaning.Steps.MasterSucc
 import Ochr.Meaning.Steps.SplitP
 import Ochr.Meaning.Steps.SplitGuards
 import Ochr.Meaning.Steps.ColumnPRun

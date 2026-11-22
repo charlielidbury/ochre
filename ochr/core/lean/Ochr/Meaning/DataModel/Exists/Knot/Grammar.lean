@@ -1,5 +1,4 @@
 import Ochr.Meaning.DataModel.Exists.Defs
-import Ochr.Meaning.DataModel.Exists.Knot.HintFree
 import Ochr.Check
 
 /-!
@@ -17,19 +16,16 @@ a ruling has been requested:
   a varying type argument that is an applied declaration is data-sorted (`SemAgree` compares data
   codes only). (exists5 also asked the parameter to be declared `Type`; the knot never used it, and
   exists7 dropped it: a varying `Prop` parameter of `d` passed on, `Q(P)`, is compared by equality.)
-And one condition on value arguments: **(B2)** a value argument either stands at a parameter whose
-declared type mentions no earlier parameter whose argument varies (its hint, the parameter's type, is
-then the same between the knot's comparisons), or does not read its hint (`hintFreeB`: its head is not
-a constructor with its parameters left to the hint, an embedded value, or `clone`/`peek`/`inplace`;
-`HintFree.runT_hintFree`). The second disjunct is exists7's (docs/34 §18.10): it admits `NF(DF, 0, ())`
-with `NF (A : Type) (n : Nat) (f : NegF(A, n))`, which the checker and Lean accept. What it still
-excludes, a constructor with an unwritten parameter at a hint computed from `d`'s code, is
-`HintShapes.lean`'s `DK`.
+There is no condition on a value argument's hint. There was one, (B2) (exists5, weakened by exists7):
+the reference ran a parameter's argument at the parameter's type, which for a value argument of a
+nested occurrence can vary with the knot's records, and (B2) asked that it not vary or not be read.
+Since docs/31 D172 the reference runs every parameter with no hint, as the typed checker does, so a
+value argument's run is the same between the knot's comparisons outright and (B2) is gone
+(`HintShapes.lean`: `DK` and `DT3`, once outside the grammar, are in it; docs/34 §18.10).
 
 `Spine Γ d c t`: `t` is `Nat`, `Unit`, a parameter, an applied declaration `M(ā)` whose type
 arguments are again spines (varying ones only at `M`'s nestable parameters, and at `Type`
-parameters when they mention `d`) and whose value arguments are steady (and (B2) at each), or a
-steady call or equation.
+parameters when they mention `d`) and whose value arguments are steady, or a steady call or equation.
 -/
 
 namespace Ochr.Meaning.DataModel.Exists.Knot
@@ -87,13 +83,8 @@ def Steady (d : IndDecl) (c : Nat) (t : Term) : Prop :=
 /-- Whether `M`'s parameter `j` is nestable (as stored; `d`'s own read from `d`, which its name finds). -/
 def nestOf (M : IndDecl) (j : Nat) : Bool := M.nestable.getD j false
 
-/-- (B2)'s first disjunct at a value argument: no earlier argument that `M`'s parameter `j`'s type
-mentions varies. -/
-def HintSteady (d : IndDecl) (c : Nat) (M : IndDecl) (j : Nat) (pre : List Term) : Prop :=
-  ∀ u ∈ (paramTerm M j).freeVars, u < j → ∀ a, pre[j - 1 - u]? = some a → Steady d c a
-
 mutual
-/-- **The first-order field types of an accepted data-sorted declaration**, under (A), (B), (B2). -/
+/-- **The first-order field types of an accepted data-sorted declaration**, under (A) and (B). -/
 inductive Spine (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Prop
   | nat : Spine Γ d c .nat
   | unit : Spine Γ d c .unit
@@ -112,7 +103,7 @@ inductive SpineArgs (Γ : List IndDecl) (d : IndDecl) (c : Nat) : IndDecl → Na
       (hA : ¬ Steady d c a → ∀ n' as' M', a = .tind n' as' → Γ.find? (·.name == n') = some M' → M'.sort ≠ 0)
       (hrest : SpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : SpineArgs Γ d c M j pre (a :: as)
   | value (M : IndDecl) (j : Nat) (pre : List Term) (a : Term) (as : List Term) (hty : M.paramIsType j = false)
-      (ha : Steady d c a) (hh : HintSteady d c M j pre ∨ hintFreeB Γ a = true)
+      (ha : Steady d c a)
       (hrest : SpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : SpineArgs Γ d c M j pre (a :: as)
 end
 
@@ -128,18 +119,12 @@ def ParamTyLocal (dm : DataModel) (Γ : List IndDecl) : Prop :=
 
 `spineB` decides `Spine` from syntax, the declarations `Γ` and the declared parameter type terms
 (`spineB_sound`). `GrammarOk Γ d`, the check at every field of every constructor of `d`, is the ONE
-fact about the checker that the knot assumes ((A), (B), (B2) and the first-order grammar), until the
-checker enforces it (docs/34 §18.6). -/
+fact about the checker that the knot assumes ((A), (B) and the first-order grammar; enforced by the
+checker since main's D120/D121, its derivation from the checker's checks is `FromChecker.lean`). -/
 
 /-- `Steady`, decided. -/
 def steadyB (d : IndDecl) (c : Nat) (t : Term) : Bool :=
   !t.mentionsType d.name && !t.anyAtom (fun _ => true) && t.freeVars.all fun v => !varVaries d c v
-
-/-- `HintSteady`, decided. -/
-def hintSteadyB (d : IndDecl) (c : Nat) (M : IndDecl) (j : Nat) (pre : List Term) : Bool :=
-  (paramTerm M j).freeVars.all fun u => if u < j then (match pre[j - 1 - u]? with
-    | some a => steadyB d c a
-    | none => true) else true
 
 /-- An applied declaration found in `Γ` is not `Prop`-sorted (anything else passes). -/
 def notPropDecl (Γ : List IndDecl) : Term → Bool
@@ -168,7 +153,7 @@ def spineArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat �
   | j, pre, a :: as =>
     (if M.paramIsType j then
       spineB Γ d c a && (steadyB d c a || (nestOf M j && notPropDecl Γ a))
-    else steadyB d c a && (hintSteadyB d c M j pre || hintFreeB Γ a)) && spineArgsB Γ d c M (j + 1) (pre ++ [a]) as
+    else steadyB d c a) && spineArgsB Γ d c M (j + 1) (pre ++ [a]) as
 termination_by structural _ _ as => as
 end
 
@@ -209,14 +194,6 @@ instance (Γ : List IndDecl) (d : IndDecl) : Decidable (GrammarOk Γ d) :=
 theorem steadyB_sound {d : IndDecl} {c : Nat} {t : Term} (h : steadyB d c t = true) : Steady d c t := by
   simp only [steadyB, Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true] at h
   exact ⟨⟨h.1.1, h.1.2⟩, fun v hv => by simpa using h.2 v hv⟩
-
-theorem hintSteadyB_sound {d : IndDecl} {c : Nat} {M : IndDecl} {j : Nat} {pre : List Term}
-    (h : hintSteadyB d c M j pre = true) : HintSteady d c M j pre := by
-  intro u hu hlt a ha
-  simp only [hintSteadyB, List.all_eq_true] at h
-  have := h u hu
-  rw [if_pos hlt, ha] at this
-  exact steadyB_sound this
 
 mutual
 /-- **The check decides the grammar** (soundness, the direction the knot uses). -/
@@ -264,9 +241,7 @@ theorem spineArgsB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDec
           simp [notPropDecl, hM'] at hnp
           exact hnp
     · rw [if_neg hty] at h1
-      simp only [Bool.and_eq_true, Bool.or_eq_true] at h1
-      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1.1) (h1.2.imp hintSteadyB_sound id)
-        (spineArgsB_sound h2)
+      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1) (spineArgsB_sound h2)
 end
 
 /-! ## Rule (A*), Lean's: a nested occurrence passes only through declarations of its own sort
@@ -333,7 +308,7 @@ def AStarPropOk (Γ : List IndDecl) (d : IndDecl) : Bool := d.sort != 0 || AStar
 
 `PSpine` is `Spine` with (A) read for `Prop`: a varying type argument (one that mentions `d` or a
 varying variable) stands at a `Prop` parameter of a `Prop`-sorted declaration (rule (A*)(i) and the
-universe: a proposition is no `Type` argument). (B) and (B2) as for `Spine`. `PGrammarOk` is its
+universe: a proposition is no `Type` argument). (B) as for `Spine`. `PGrammarOk` is its
 decidable check at every field, the grammar fact `General.truth_exists` is to assume. -/
 
 /-- A parameter type term that is `Prop` (`.sort 0`). -/
@@ -360,7 +335,7 @@ inductive PSpineArgs (Γ : List IndDecl) (d : IndDecl) (c : Nat) : IndDecl → N
       (hA : ¬ Steady d c a → paramTerm M j = .sort 0 ∧ M.sort = 0)
       (hrest : PSpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : PSpineArgs Γ d c M j pre (a :: as)
   | value (M : IndDecl) (j : Nat) (pre : List Term) (a : Term) (as : List Term) (hty : M.paramIsType j = false)
-      (ha : Steady d c a) (hh : HintSteady d c M j pre ∨ hintFreeB Γ a = true)
+      (ha : Steady d c a)
       (hrest : PSpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : PSpineArgs Γ d c M j pre (a :: as)
 end
 
@@ -384,7 +359,7 @@ def pspineArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat 
   | j, pre, a :: as =>
     (if M.paramIsType j then
       pspineB Γ d c a && (steadyB d c a || (nestOf M j && isType0 (paramTerm M j) && M.sort == 0))
-    else steadyB d c a && (hintSteadyB d c M j pre || hintFreeB Γ a)) && pspineArgsB Γ d c M (j + 1) (pre ++ [a]) as
+    else steadyB d c a) && pspineArgsB Γ d c M (j + 1) (pre ++ [a]) as
 termination_by structural _ _ as => as
 end
 
@@ -436,21 +411,9 @@ theorem pspineArgsB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDe
         · refine ⟨?_, by simpa using hsort⟩
           unfold isType0 at h0; split at h0 <;> simp_all
     · rw [if_neg hty] at h1
-      simp only [Bool.and_eq_true, Bool.or_eq_true] at h1
-      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1.1) (h1.2.imp hintSteadyB_sound id)
-        (pspineArgsB_sound h2)
+      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1) (pspineArgsB_sound h2)
 end
 
-
-/-! ## The grammar in two parts: enforced by the checker today, enforced after main's D123
-
-The lead's ruling (2026-11-22) on (B2): the checker is to store, in a declaration's field and parameter
-types, the parameters it solves for a constructor (main's D123, as Lean's elaborator writes every
-implicit argument). Until then (B2) is false at an accepted declaration (`HintShapes.DK`). So the grammar
-is two named facts: `GrammarCoreOk` (everything but (B2): the first-order grammar, (A), (B); to be
-derived from the checker's checks, step 2) and `GrammarHintOk` ((B2) at every value argument along the
-spine: ENFORCED AFTER MAIN'S D123). Their conjunction is `GrammarOk` (`grammarOk_of_parts`), and likewise
-for `Prop`-sorted declarations (`PGrammarCoreOk`, the same `GrammarHintOk`). -/
 
 /-- The decided check at every field of every constructor, as a `Prop`. -/
 theorem allFields_iff (d : IndDecl) (P : Nat → Term → Bool) :
@@ -483,173 +446,7 @@ theorem allFields_iff (d : IndDecl) (P : Nat → Term → Bool) :
     obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hf
     exact h c i FT (by simp [hc, hi])
 
-mutual
-/-- **(B2) along a field type's spine**: at each value argument of an applied declaration (inside the
-field type and, recursively, inside its arguments at type parameters), the hint is steady or the
-argument does not read it (`hintFreeB`). -/
-def valHintB (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Bool
-  | .tind n as => match Γ.find? (·.name == n) with
-    | some M => valHintArgsB Γ d c M 0 [] as
-    | none => true
-  | _ => true
-termination_by structural t => t
-
-def valHintArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat → List Term → List Term → Bool
-  | _, _, [] => true
-  | j, pre, a :: as =>
-    (if M.paramIsType j then valHintB Γ d c a else (hintSteadyB d c M j pre || hintFreeB Γ a)) &&
-      valHintArgsB Γ d c M (j + 1) (pre ++ [a]) as
-termination_by structural _ _ as => as
-end
-
-/-- **(B2) at every field: a fact about the checker ENFORCED AFTER MAIN'S D123** (false today at
-`HintShapes.DK`). -/
-def GrammarHintOk (Γ : List IndDecl) (d : IndDecl) : Prop :=
-  ∀ c i FT, fieldTerm d c i = some FT → valHintB Γ d c FT = true
-
-instance (Γ : List IndDecl) (d : IndDecl) : Decidable (GrammarHintOk Γ d) :=
-  decidable_of_iff _ (allFields_iff d (valHintB Γ d))
-
-mutual
-/-- `spineB` without (B2): the part of the grammar the checker enforces today. -/
-def spineCoreB (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Bool
-  | .nat => true
-  | .unit => true
-  | .place (.var v) => decide (v < d.params.length)
-  | .tind n as => match Γ.find? (·.name == n) with
-    | some M => spineCoreArgsB Γ d c M 0 [] as
-    | none => false
-  | .call (.const f) as hd => steadyB d c (.call (.const f) as hd)
-  | .eq A a b => steadyB d c (.eq A a b)
-  | _ => false
-termination_by structural t => t
-
-def spineCoreArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat → List Term → List Term → Bool
-  | _, _, [] => true
-  | j, pre, a :: as =>
-    (if M.paramIsType j then
-      spineCoreB Γ d c a && (steadyB d c a || (nestOf M j && notPropDecl Γ a))
-    else steadyB d c a) && spineCoreArgsB Γ d c M (j + 1) (pre ++ [a]) as
-termination_by structural _ _ as => as
-end
-
-mutual
-theorem spineB_of_parts {Γ : List IndDecl} {d : IndDecl} {c : Nat} :
-    ∀ {t : Term}, spineCoreB Γ d c t = true → valHintB Γ d c t = true → spineB Γ d c t = true
-  | .nat, _, _ => by simp [spineB]
-  | .unit, _, _ => by simp [spineB]
-  | .place p, h1, _ => by cases p <;> simp_all [spineCoreB, spineB]
-  | .call f as hd, h1, _ => by cases f <;> simp_all [spineCoreB, spineB]
-  | .eq A a b, h1, _ => by simp_all [spineCoreB, spineB]
-  | .tind n as, h1, h2 => by
-    simp only [spineCoreB] at h1
-    simp only [valHintB] at h2
-    simp only [spineB]
-    split at h1
-    · rename_i M hM
-      rw [hM] at h2
-      exact spineArgsB_of_parts h1 h2
-    · cases h1
-  | .borrow _, h1, _ | .assign _ _, h1, _ | .letIn _ _ _, h1, _ | .seq _ _, h1, _ | .matchNat _ _ _, h1, _ | .const _, h1, _
-  | .val _, h1, _ | .sort _, h1, _ | .pi _ _ _, h1, _ | .fix _ _ _ _ _ _, h1, _ | .zero, h1, _ | .succ _, h1, _ | .tt, h1, _
-  | .cong _ _, h1, _ | .ref _, h1, _ | .id _ _ _, h1, _ | .ascribe _ _, h1, _ | .prim _ _, h1, _ | .ctor _ _ _ _ _, h1, _
-  | .matchInd _ _ _, h1, _ => by simp [spineCoreB] at h1
-
-theorem spineArgsB_of_parts {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDecl} :
-    ∀ {j : Nat} {pre as : List Term}, spineCoreArgsB Γ d c M j pre as = true → valHintArgsB Γ d c M j pre as = true →
-      spineArgsB Γ d c M j pre as = true
-  | _, _, [], _, _ => by simp [spineArgsB]
-  | j, pre, a :: as, h1, h2 => by
-    simp only [spineCoreArgsB, valHintArgsB, spineArgsB, Bool.and_eq_true] at h1 h2 ⊢
-    refine ⟨?_, spineArgsB_of_parts h1.2 h2.2⟩
-    by_cases hty : M.paramIsType j = true
-    · simp only [hty, if_true, Bool.and_eq_true] at h1 h2 ⊢
-      exact ⟨spineB_of_parts h1.1.1 h2.1, h1.1.2⟩
-    · simp only [hty, Bool.false_eq_true, if_false, Bool.and_eq_true] at h1 h2 ⊢
-      exact ⟨h1.1, h2.1⟩
-end
-
-/-- **The rest of the grammar at every field (data-sorted): a fact about the checker, to be derived
-from its checks today** (step 2). -/
-def GrammarCoreOk (Γ : List IndDecl) (d : IndDecl) : Prop :=
-  ∀ c i FT, fieldTerm d c i = some FT → spineCoreB Γ d c FT = true
-
-instance (Γ : List IndDecl) (d : IndDecl) : Decidable (GrammarCoreOk Γ d) :=
-  decidable_of_iff _ (allFields_iff d (spineCoreB Γ d))
-
-theorem grammarOk_of_parts {Γ : List IndDecl} {d : IndDecl} (h1 : GrammarCoreOk Γ d) (h2 : GrammarHintOk Γ d) :
-    GrammarOk Γ d :=
-  fun c i FT hFT => spineB_of_parts (h1 c i FT hFT) (h2 c i FT hFT)
-
-mutual
-/-- `pspineB` without (B2): the part of the grammar the checker enforces today. -/
-def pspineCoreB (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Bool
-  | .nat => true
-  | .unit => true
-  | .place (.var v) => decide (v < d.params.length)
-  | .tind n as => match Γ.find? (·.name == n) with
-    | some M => pspineCoreArgsB Γ d c M 0 [] as
-    | none => false
-  | .call (.const f) as hd => steadyB d c (.call (.const f) as hd)
-  | .eq A a b => steadyB d c (.eq A a b)
-  | _ => false
-termination_by structural t => t
-
-def pspineCoreArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat → List Term → List Term → Bool
-  | _, _, [] => true
-  | j, pre, a :: as =>
-    (if M.paramIsType j then
-      pspineCoreB Γ d c a && (steadyB d c a || (nestOf M j && isType0 (paramTerm M j) && M.sort == 0))
-    else steadyB d c a) && pspineCoreArgsB Γ d c M (j + 1) (pre ++ [a]) as
-termination_by structural _ _ as => as
-end
-
-mutual
-theorem pspineB_of_parts {Γ : List IndDecl} {d : IndDecl} {c : Nat} :
-    ∀ {t : Term}, pspineCoreB Γ d c t = true → valHintB Γ d c t = true → pspineB Γ d c t = true
-  | .nat, _, _ => by simp [pspineB]
-  | .unit, _, _ => by simp [pspineB]
-  | .place p, h1, _ => by cases p <;> simp_all [pspineCoreB, pspineB]
-  | .call f as hd, h1, _ => by cases f <;> simp_all [pspineCoreB, pspineB]
-  | .eq A a b, h1, _ => by simp_all [pspineCoreB, pspineB]
-  | .tind n as, h1, h2 => by
-    simp only [pspineCoreB] at h1
-    simp only [valHintB] at h2
-    simp only [pspineB]
-    split at h1
-    · rename_i M hM
-      rw [hM] at h2
-      exact pspineArgsB_of_parts h1 h2
-    · cases h1
-  | .borrow _, h1, _ | .assign _ _, h1, _ | .letIn _ _ _, h1, _ | .seq _ _, h1, _ | .matchNat _ _ _, h1, _ | .const _, h1, _
-  | .val _, h1, _ | .sort _, h1, _ | .pi _ _ _, h1, _ | .fix _ _ _ _ _ _, h1, _ | .zero, h1, _ | .succ _, h1, _ | .tt, h1, _
-  | .cong _ _, h1, _ | .ref _, h1, _ | .id _ _ _, h1, _ | .ascribe _ _, h1, _ | .prim _ _, h1, _ | .ctor _ _ _ _ _, h1, _
-  | .matchInd _ _ _, h1, _ => by simp [pspineCoreB] at h1
-
-theorem pspineArgsB_of_parts {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDecl} :
-    ∀ {j : Nat} {pre as : List Term}, pspineCoreArgsB Γ d c M j pre as = true → valHintArgsB Γ d c M j pre as = true →
-      pspineArgsB Γ d c M j pre as = true
-  | _, _, [], _, _ => by simp [pspineArgsB]
-  | j, pre, a :: as, h1, h2 => by
-    simp only [pspineCoreArgsB, valHintArgsB, pspineArgsB, Bool.and_eq_true] at h1 h2 ⊢
-    refine ⟨?_, pspineArgsB_of_parts h1.2 h2.2⟩
-    by_cases hty : M.paramIsType j = true
-    · simp only [hty, if_true, Bool.and_eq_true] at h1 h2 ⊢
-      exact ⟨pspineB_of_parts h1.1.1 h2.1, h1.1.2⟩
-    · simp only [hty, Bool.false_eq_true, if_false, Bool.and_eq_true] at h1 h2 ⊢
-      exact ⟨h1.1, h2.1⟩
-end
-
-/-- **The rest of the grammar at every field (`Prop`-sorted): a fact about the checker, to be derived
-from its checks today** (step 2). -/
-def PGrammarCoreOk (Γ : List IndDecl) (d : IndDecl) : Prop :=
-  ∀ c i FT, fieldTerm d c i = some FT → pspineCoreB Γ d c FT = true
-
-instance (Γ : List IndDecl) (d : IndDecl) : Decidable (PGrammarCoreOk Γ d) :=
-  decidable_of_iff _ (allFields_iff d (pspineCoreB Γ d))
-
-theorem pgrammarOk_of_parts {Γ : List IndDecl} {d : IndDecl} (h1 : PGrammarCoreOk Γ d) (h2 : GrammarHintOk Γ d) :
-    PGrammarOk Γ d :=
-  fun c i FT hFT => pspineB_of_parts (h1 c i FT hFT) (h2 c i FT hFT)
+instance (Γ : List IndDecl) (d : IndDecl) : Decidable (PGrammarOk Γ d) :=
+  decidable_of_iff _ (allFields_iff d (pspineB Γ d))
 
 end Ochr.Meaning.DataModel.Exists.Knot

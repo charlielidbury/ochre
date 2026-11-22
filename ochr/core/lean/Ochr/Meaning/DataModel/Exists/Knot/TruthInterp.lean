@@ -44,8 +44,8 @@ noncomputable def itpArgsP (T : List Sem → Prop) (ps : List Sem) (s : SState) 
 /-- One argument's value: a type argument read by `semP`, a value argument as its run. -/
 noncomputable def argSemP (T : List Sem → Prop) (ps : List Sem) (s : SState) (M : IndDecl) (j : Nat)
     (pre : List Sem) : Term → Sem
-  | a => if M.paramIsType j then semP T ps s (.plain (K.dm.paramTy M j pre)) a
-    else valOf K ρ s (.plain (K.dm.paramTy M j pre)) a
+  | a => if M.paramIsType j then semP T ps s (.plain TyM.err) a
+    else valOf K ρ s (.plain TyM.err) a
 end
 
 /-- A term's field type at the canonical frame `s`: `d`'s own occurrence is the proposition leaf. -/
@@ -99,8 +99,8 @@ theorem itpArgsP_cons (T : List Sem → Prop) (ps : List Sem) (s : SState) (M : 
   rw [itpArgsP]
 
 theorem argSemP_eq (T : List Sem → Prop) (ps : List Sem) (s : SState) (M : IndDecl) (j : Nat) (pre : List Sem) (a : Term) :
-    argSemP K ρ d T ps s M j pre a = if M.paramIsType j then semP K ρ d T ps s (.plain (K.dm.paramTy M j pre)) a
-      else valOf K ρ s (.plain (K.dm.paramTy M j pre)) a := by
+    argSemP K ρ d T ps s M j pre a = if M.paramIsType j then semP K ρ d T ps s (.plain TyM.err) a
+      else valOf K ρ s (.plain TyM.err) a := by
   rw [argSemP]
 
 theorem itpP_tind (T : List Sem → Prop) (ps : List Sem) (s : SState) (h : TyS) (n : String) (as : List Term) :

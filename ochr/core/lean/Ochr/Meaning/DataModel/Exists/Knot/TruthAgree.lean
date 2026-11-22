@@ -70,7 +70,7 @@ theorem itpArgsP_run (hT : ∀ a, uTyR d (R a) = TyM.prop (T a))
       rw [argSemP_eq, if_pos hty]
       exact semP_run hT hAs hpar hst ha (hP a (List.mem_cons_self ..)) _ _ _ hv
     rw [itpArgsP_cons, ← e1, itpArgsP_run hT hAs hpar hst hrest (fun b hb => hP b (List.mem_cons_of_mem _ hb)) _ _ _ hrest']
-  | _, _, _, _, .value M j pre a as hty ha _ hrest, hP, vs, psM, s', h => by
+  | _, _, _, _, .value M j pre a as hty ha hrest, hP, vs, psM, s', h => by
     obtain ⟨v, T', s₁, rest, hv, hrest', rfl⟩ := runParams_cons _ _ _ _ _ _ _ _ _ h
     have e1 : v = argSemP K ρ d T ps F M j vs a := by
       rw [argSemP_eq, if_neg (by simp [hty])]

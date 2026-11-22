@@ -3,7 +3,7 @@ import Ochr.Meaning.DataModel.Exists.Knot.Grammar
 /-!
 # From the checker's checks to the grammar (exists7, groundwork for step 2)
 
-Step 2 of the lane: the checker's acceptance of a declaration gives `GrammarCoreOk` / `PGrammarCoreOk`,
+Step 2 of the lane: the checker's acceptance of a declaration gives `GrammarOk` / `PGrammarOk` (exists7 called them `GrammarCoreOk` / `PGrammarCoreOk`; since D172 they are the whole grammar),
 as an implication between decidable functions (the checker's `nestableSet`, `sortNestViolation`, pure
 mirrors of `firstOrderTerm` and `readViolation`), the bridge from `checkInd`'s monadic run to those
 functions being named facts for the machine lane. The argument (HANDOFF, docs/34 §18.12): a variable
