@@ -246,9 +246,36 @@ ochr KindAttacks uses Nats {
   def CallMkF : Nat := UseMkF(Z)
 }
 
+/-! ## (K), attacked again (machine12, step 1 of the lead's brief): a function value at a stuck type-function call
+(an ascription, an argument), a polymorphic identity at a borrow type and at a function type, a type function returning
+a borrow type, a match through a borrow, a closure capturing a function at a deferred type, an assignment of a function
+value, a borrow returned through a generic codomain under a match on an unknown. -/
+
+ochr KindAttacks2 uses Nats {
+  def Idn (n : Nat) : Nat := n
+  def Kb (r : &Nat) : &Nat := r
+  def FT2 (n : Nat) : Type := match n { Z => Π(m : Nat). Nat, S _ => Π(m : Nat). Nat }
+  -- rejected: a function is not converted to a stuck type-function call (so no binding holds one at such a type)
+  reject def BindStuck (n : Nat) : Nat := (let f = (Idn : FT2(n)); Z)
+  def UseFT2 (n : Nat) (f : FT2(n)) (x : Nat) : Nat := match n { Z => (let y = f(x); y), S _ => (let y = f(x); y) }
+  reject def GenIdn (k : Nat) : Nat := UseFT2(k, Idn, Z)
+  def IdP (A : Type) (x : A) : A := x
+  def UseIdF : Nat := (let f = IdP(Π(m : Nat). Nat, Idn); f(Z))
+  inductive P2 := MkP2(a : Nat, b : Nat)
+  def MB (r : &P2) : Nat := match *r { MkP2(a, b) => (let q = &a; clone(*q)) }
+  def UseMB : Nat := (let p = MkP2(Z, S(Z)); MB(&p))
+  def CapFT (f : FT2(Z)) (x : Nat) : Nat := (let g = (λ(m : Nat) : Nat => f(m)); g(x))
+  def UseCapFT : Nat := CapFT(Idn, Z)
+  def AsgF : Nat := (let f = Idn; f := (λ(m : Nat) : Nat => S(m)); f(Z))
+  def ClosB (n : Nat) : Nat := (let z = S(Z); let r = Kb(&z); match n { Z => clone(*r), S _ => clone(*r) })
+  def UseClosB : Nat := ClosB(Z)
+  def ClosF (n : Nat) : Nat := (let f = IdP(Π(m : Nat). Nat, Idn); match n { Z => f(Z), S _ => f(n) })
+  def UseClosF : Nat := ClosF(S(Z))
+}
+
 namespace Sweep
 
 /-- The probe blocks (`lake exe sweep --probes`). -/
-def probes : List (String × Ochr.Surface.Block) := [("LentUnder", LentUnder), ("OpenJoin", OpenJoin), ("KindAttacks", KindAttacks)]
+def probes : List (String × Ochr.Surface.Block) := [("LentUnder", LentUnder), ("OpenJoin", OpenJoin), ("KindAttacks", KindAttacks), ("KindAttacks2", KindAttacks2)]
 
 end Sweep
