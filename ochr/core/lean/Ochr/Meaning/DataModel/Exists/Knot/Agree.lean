@@ -202,6 +202,27 @@ def SteadyAt (K : RunCtx) (ρ : Assignment) (d : IndDecl) (R : List Sem → Rec)
       r.1 = valOf K ρ (canFrame K d ps c i (projIdx d c (e.map Sem.small)) fun j => if _h : j < i then
         shapeTyP (shapeOf (ftyK K ρ d R ps c j ((projIdx d c (e.map Sem.small)).take j))) else TyM.err) h t
 
+/-- `SteadyAt` for the record of any spec `S`, the canonical frame typed by `S`'s own field types
+(exists7: the truth-first construction's spec reads `d` as its truth predicate, not as a knot). For the
+knot's spec it is `SteadyAt` (`steadyAt_of_S`). -/
+def SteadyAtS (K : RunCtx) (ρ : Assignment) (d : IndDecl) (S : KnotSpec) : Prop :=
+  ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term), ps.length = d.params.length →
+    (∀ j (hj : j < ps.length), ps[j] ∈ₛ[K.dm.read] K.dm.paramTy d j (ps.take j)) →
+    (∀ j (hj : j < e.length), e[j] ∈ₛ[K.dm.read] (setRec K.dm d (recK S)).fieldTy d ps c j (e.take j)) →
+    e.length = i → fieldTerm d c i = some FT →
+    ∀ (t : Term) (h : TyS) (r : Res) (s' : SState), Steady d c t → (∀ v ∈ t.freeVars, v ∈ FT.freeVars) →
+      runT { K with dm := setRec K.dm d (recK S) } ρ noFuture false h t (teleFrame (setRec K.dm d (recK S)) K.D d ps c e) = some (r, s') →
+      r.1 = valOf K ρ (canFrame K d ps c i (projIdx d c (e.map Sem.small)) fun j => if _h : j < i then
+        shapeTyP (shapeOf (S.fty (recK S) ps c j ((projIdx d c (e.map Sem.small)).take j))) else TyM.err) h t
+
+theorem steadyAt_of_S {K : RunCtx} {ρ : Assignment} {d : IndDecl} {S : KnotSpec}
+    (hfty : ∀ R ps c i es, S.fty R ps c i es = ftyK K ρ d R ps c i es) (h : SteadyAtS K ρ d S) :
+    SteadyAt K ρ d (recK S) := by
+  intro ps c i e FT hl hty hft hei hFT t h' r s' hts htv hrun
+  have := h ps c i e FT hl hty hft hei hFT t h' r s' hts htv hrun
+  simp only [hfty] at this
+  exact this
+
 /-- **The knot agrees with the run, given the steady nodes** (`SteadyAt`, the one fact left). -/
 theorem knotK_agree (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort ≠ 0) (hdΓ : d ∈ K.Γ)
     (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT)

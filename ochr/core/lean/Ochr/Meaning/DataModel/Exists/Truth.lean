@@ -38,4 +38,45 @@ theorem lfpP_fixed {Φ : (List Sem → Prop) → List Sem → Prop} (hm : MonoOp
   refine ⟨lfpP_closed hm ps, fun h => ?_⟩
   exact h (Φ (lfpP Φ)) (fun qs hq => hm (Φ (lfpP Φ)) (lfpP Φ) (lfpP_closed hm) qs hq)
 
+
+/-! ## The least fixed point among predicates monotone in their arguments (exists7)
+
+A `Prop`-sorted declaration nested at its own nestable parameter (`D(P) := … | N(r : D(D(P)))`) reads its
+truth predicate at arguments that themselves hold its truth: the one-step operator is monotone only on
+predicates that are monotone in their arguments (a weaker proposition at a nestable parameter keeps
+the predicate true). Knaster–Tarski on that sub-lattice, which is closed under intersections. -/
+
+section
+variable (Le : List Sem → List Sem → Prop)
+
+/-- A predicate monotone in its arguments, for the order `Le`. -/
+def ArgMono (X : List Sem → Prop) : Prop := ∀ ps ps', Le ps ps' → X ps → X ps'
+
+/-- **The least fixed point among argument-monotone predicates**. -/
+def lfpM (Φ : (List Sem → Prop) → List Sem → Prop) : List Sem → Prop :=
+  fun ps => ∀ X : List Sem → Prop, ArgMono Le X → (∀ qs, Φ X qs → X qs) → X ps
+
+variable {Le}
+
+theorem lfpM_argMono (Φ : (List Sem → Prop) → List Sem → Prop) : ArgMono Le (lfpM Le Φ) :=
+  fun ps ps' hle h X hX hcl => hX ps ps' hle (h X hX hcl)
+
+theorem lfpM_least (Φ : (List Sem → Prop) → List Sem → Prop) (X : List Sem → Prop) (hX : ArgMono Le X)
+    (hcl : ∀ qs, Φ X qs → X qs) : ∀ ps, lfpM Le Φ ps → X ps :=
+  fun _ h => h X hX hcl
+
+/-- **It is a fixed point**, when `Φ` is monotone on argument-monotone predicates and keeps them so. -/
+theorem lfpM_fixed {Φ : (List Sem → Prop) → List Sem → Prop}
+    (hm : ∀ X Y, ArgMono Le X → ArgMono Le Y → (∀ ps, X ps → Y ps) → ∀ ps, Φ X ps → Φ Y ps)
+    (hpres : ∀ X, ArgMono Le X → ArgMono Le (Φ X)) : Φ (lfpM Le Φ) = lfpM Le Φ := by
+  have hL := lfpM_argMono (Le := Le) Φ
+  have hclosed : ∀ ps, Φ (lfpM Le Φ) ps → lfpM Le Φ ps := fun ps h X hX hcl =>
+    hcl ps (hm _ X hL hX (lfpM_least Φ X hX hcl) ps h)
+  funext ps
+  apply propext
+  refine ⟨hclosed ps, fun h => ?_⟩
+  exact h (Φ (lfpM Le Φ)) (hpres _ hL) (fun qs hq => hm _ _ (hpres _ hL) hL hclosed qs hq)
+
+end
+
 end Ochr.Meaning.DataModel.Exists

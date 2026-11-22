@@ -13,9 +13,10 @@ a ruling has been requested:
   argument in a field type (a *steady* node) reads a binding that varies between the knot's
   comparisons: a field whose type mentions `d` or a varying variable, a nestable parameter, a
   parameter whose type mentions a varying one (`varVaries`).
-* **(A)** `d` does not occur inside an argument at a `Prop` parameter. Stated with what typing
-  gives: a varying type argument stands at a `Type` parameter and, when it is an applied
-  declaration, that declaration is data-sorted (`SemAgree` compares data codes only).
+* **(A)** `d` does not occur inside an argument at a `Prop` parameter. Stated as what the knot uses:
+  a varying type argument that is an applied declaration is data-sorted (`SemAgree` compares data
+  codes only). (exists5 also asked the parameter to be declared `Type`; the knot never used it, and
+  exists7 dropped it: a varying `Prop` parameter of `d` passed on, `Q(P)`, is compared by equality.)
 And one condition on value arguments: **(B2)** a value argument either stands at a parameter whose
 declared type mentions no earlier parameter whose argument varies (its hint, the parameter's type, is
 then the same between the knot's comparisons), or does not read its hint (`hintFreeB`: its head is not
@@ -108,8 +109,7 @@ inductive SpineArgs (Γ : List IndDecl) (d : IndDecl) (c : Nat) : IndDecl → Na
   | nil (M : IndDecl) (j : Nat) (pre : List Term) : SpineArgs Γ d c M j pre []
   | type (M : IndDecl) (j : Nat) (pre : List Term) (a : Term) (as : List Term) (hty : M.paramIsType j = true)
       (ha : Spine Γ d c a) (hn : ¬ Steady d c a → nestOf M j = true)
-      (hA : ¬ Steady d c a → paramTerm M j = .sort 1 ∧
-        ∀ n' as' M', a = .tind n' as' → Γ.find? (·.name == n') = some M' → M'.sort ≠ 0)
+      (hA : ¬ Steady d c a → ∀ n' as' M', a = .tind n' as' → Γ.find? (·.name == n') = some M' → M'.sort ≠ 0)
       (hrest : SpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : SpineArgs Γ d c M j pre (a :: as)
   | value (M : IndDecl) (j : Nat) (pre : List Term) (a : Term) (as : List Term) (hty : M.paramIsType j = false)
       (ha : Steady d c a) (hh : HintSteady d c M j pre ∨ hintFreeB Γ a = true)
@@ -141,11 +141,6 @@ def hintSteadyB (d : IndDecl) (c : Nat) (M : IndDecl) (j : Nat) (pre : List Term
     | some a => steadyB d c a
     | none => true) else true
 
-/-- A parameter type term that is `Type` (`.sort 1`). -/
-def isType1 : Term → Bool
-  | .sort 1 => true
-  | _ => false
-
 /-- An applied declaration found in `Γ` is not `Prop`-sorted (anything else passes). -/
 def notPropDecl (Γ : List IndDecl) : Term → Bool
   | .tind n _ => match Γ.find? (·.name == n) with
@@ -172,7 +167,7 @@ def spineArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat �
   | _, _, [] => true
   | j, pre, a :: as =>
     (if M.paramIsType j then
-      spineB Γ d c a && (steadyB d c a || (nestOf M j && isType1 (paramTerm M j) && notPropDecl Γ a))
+      spineB Γ d c a && (steadyB d c a || (nestOf M j && notPropDecl Γ a))
     else steadyB d c a && (hintSteadyB d c M j pre || hintFreeB Γ a)) && spineArgsB Γ d c M (j + 1) (pre ++ [a]) as
 termination_by structural _ _ as => as
 end
@@ -259,17 +254,15 @@ theorem spineArgsB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDec
       obtain ⟨ha, hs⟩ := h1
       refine .type M j pre a as hty (spineB_sound ha) ?_ ?_ (spineArgsB_sound h2)
       · intro hn
-        rcases hs with hs | ⟨⟨hn', -⟩, -⟩
+        rcases hs with hs | ⟨hn', -⟩
         · exact absurd (steadyB_sound hs) hn
         · exact hn'
       · intro hn
-        rcases hs with hs | ⟨⟨-, h1t⟩, hnp⟩
+        rcases hs with hs | ⟨-, hnp⟩
         · exact absurd (steadyB_sound hs) hn
-        · refine ⟨?_, ?_⟩
-          · unfold isType1 at h1t; split at h1t <;> simp_all
-          · rintro n' as' M' rfl hM'
-            simp [notPropDecl, hM'] at hnp
-            exact hnp
+        · rintro n' as' M' rfl hM'
+          simp [notPropDecl, hM'] at hnp
+          exact hnp
     · rw [if_neg hty] at h1
       simp only [Bool.and_eq_true, Bool.or_eq_true] at h1
       exact .value M j pre a as (by simpa using hty) (steadyB_sound h1.1) (h1.2.imp hintSteadyB_sound id)

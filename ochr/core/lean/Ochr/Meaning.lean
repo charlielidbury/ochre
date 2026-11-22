@@ -265,6 +265,10 @@ import Ochr.Meaning.DataModel.Exists.Truth
 import Ochr.Meaning.DataModel.Exists.TeleFrameGuard
 import Ochr.Meaning.DataModel.Exists.Knot.HintFree
 import Ochr.Meaning.DataModel.Exists.HintShapes
+import Ochr.Meaning.DataModel.Exists.Knot.TruthInterp
+import Ochr.Meaning.DataModel.Exists.Knot.TruthMono
+import Ochr.Meaning.DataModel.Exists.Knot.TruthAgree
+import Ochr.Meaning.DataModel.Exists.Knot.TruthExists
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE

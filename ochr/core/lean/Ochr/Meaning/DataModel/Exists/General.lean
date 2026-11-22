@@ -93,44 +93,8 @@ step is direct (the same constructor and fields; a proof fits any weaker proposi
 content is the hypothesis `hcanon`, which the induction over declarations must establish, and which can
 hold only under rule (A*) (`CrossSortCE.lean`). -/
 
-/-- **A `Prop`-sorted declaration, truth first** (RESTATED by exists6, 2026-11-22; BELIEVED TRUE).
-
-As first written it was FALSE (`TruthCE.truthOld_false`, kernel-checked): it assumed nothing of the
-earlier records, and an anti-monotone earlier record makes `Q : Prop := MkQ(h : N(Q))` inhabited exactly
-when it is not. Restated: the earlier records are monotone in their nestable `Prop` parameters
-(`hmono`, `ShapeLe` at every key, which `mono_prop` turns into monotone inhabitation, and which the
-construction must return for `d` too, the second conclusion, so the induction over declarations goes
-on), both at `Prop`-sorted declarations only (a `Prop`-sorted `d` nests only in `Prop`-sorted ones, by
-(A*)(i)); rule (A*) at `Prop`-sorted declarations only (`hstar`; the lead's fallback variant needs no
-more, and the uniform rule implies it); frame locality's two facts and local
-parameter types (as for the knot); the earlier fields members of their field types (as `knot_exists`).
-The grammar fact for a `Prop`-sorted `d` is `hgram` (`Knot.PGrammarOk`: `PSpine`, which is `Spine`
-with (A) read for `Prop`, decidable).
-
-Plan (HANDOFF): `T := lfpP Φ` (`Truth.lean`), `Φ T ps` = some constructor has fields fitting the shapes
-of the record `R_T ps`, which is the knot's record built from an interpreter that reads `d`'s own
-occurrences `d(ā)` as the proposition leaf `T ā` and everything else as `ftyK` does (no knot: `R_T`
-does not read itself, so it is defined outright by the interpreter at each key). `Φ` is monotone by
-`mono_prop` (`hmono`, (A*): every shape `T` reaches is a proposition leaf or a `Prop`-sorted
-sub-record); then `T = Φ T` (`lfpP_fixed`) is `uTyR d (R_T ps) = TyM.prop (T ps)`; faithfulness is
-`knotK_agree`'s argument with a self-occurrence's run `tyM d ā = prop (Nonempty (car d (R_T ā)))` =
-`prop (T ā)` by the fixed point, and `steadyAt_knotK`'s at the steady nodes. -/
-theorem truth_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort = 0)
-    (hgram : Knot.PGrammarOk K.Γ d) (hstar : ∀ M ∈ K.Γ, M.sort = 0 → Knot.AStarOk K.Γ M = true)
-    (hmono : ∀ M ∈ K.Γ, M ≠ d → M.sort = 0 → ∀ ps ps', PropLe M ps ps' → ∀ c i es,
-      ShapeLe (uShape M (K.dm.recOf M ps) c i es) (uShape M (K.dm.recOf M ps') c i es))
-    (hpty : Knot.ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
-    (hK : ∀ g, (K.C.global g).2.label = none) :
-    ∃ (T : List Sem → Prop) (R : List Sem → Rec),
-      (∀ ps, uTyR d (R ps) = TyM.prop (T ps)) ∧
-      (∀ ps ps', PropLe d ps ps' → ∀ c i es, ShapeLe (uShape d (R ps) c i es) (uShape d (R ps') c i es)) ∧
-      ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (r : Res) (s' : SState),
-        ps.length = d.params.length → (∀ j (hj : j < ps.length), ps[j] ∈ₛ[K.dm.read] K.dm.paramTy d j (ps.take j)) →
-        (∀ j (hj : j < e.length), e[j] ∈ₛ[K.dm.read] (setRec K.dm d R).fieldTy d ps c j (e.take j)) →
-        e.length = i → fieldTerm d c i = some FT →
-        run { K with dm := setRec K.dm d R } ρ noFuture (.plain (TyM.univ 1)) FT
-          (teleFrame (setRec K.dm d R) K.D d ps c e) = some (r, s') →
-          r.1.asTy = shapeTyP (uShape d (R ps) c i (e.map Sem.small)) := by
-  sorry
+/- `truth_exists` (exists6's restatement, believed true) is PROVED by exists7, in the default build:
+`Knot/TruthExists.lean` (`Knot.truth_exists`), in a form parallel to `Knot.knot_exists` (rule (A*) at the
+earlier declarations not assumed; monotonicity at the genuine keys; the third conclusion `(S.fty …).mean`). -/
 
 end Ochr.Meaning.DataModel.Exists.General

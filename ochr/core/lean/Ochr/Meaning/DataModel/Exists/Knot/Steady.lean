@@ -161,28 +161,23 @@ def XS (d : IndDecl) (c n : Nat) (p : Nat) : Prop :=
   (p < n ∧ ¬ (fieldVaries d c p = false ∧ (d.indexFields c).contains p = true)) ∨
     (arity d c ≤ p ∧ paramVaries d (p - arity d c) = true)
 
-/-- **The steady nodes agree, at the knot's own records**: `SteadyAt` for `knotK`, assuming frame
-locality's two facts (`DecLocal` on the decisions, label-free globals). -/
-theorem steadyAt_knotK (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort ≠ 0) (hdΓ : d ∈ K.Γ)
-    (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT)
-    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
-    (hpty : ParamTyLocal K.dm K.Γ)
+/-- **The steady nodes agree, at the records of any spec** (exists7: generalized from `knotK`; the
+proof never read the spec's field types beyond the canonical frame they type): `SteadyAtS`, assuming
+frame locality's two facts (`DecLocal` on the decisions, label-free globals). -/
+theorem steadyAt_spec (K : RunCtx) (ρ : Assignment) (d : IndDecl) (S : KnotSpec)
     (hD : FrameLocal.DecLocal K.D) (hK : ∀ g, (K.C.global g).2.label = none) :
-    SteadyAt K ρ d (recK (knotK K ρ d hs hdΓ hspine hpar hpty)) := by
+    SteadyAtS K ρ d S := by
   intro ps c i e FT hl hty hft hei hFT t h r s' hts htv hrun
-  have hfty : ∀ R ps c i es, (knotK K ρ d hs hdΓ hspine hpar hpty).fty R ps c i es = ftyK K ρ d R ps c i es :=
-    fun _ _ _ _ _ => rfl
-  generalize knotK K ρ d hs hdΓ hspine hpar hpty = S at hfty hft hrun ⊢
   subst hei
   have hiA : e.length < arity d c := fieldTerm_lt hFT
   have he : e.length ≤ arity d c := Nat.le_of_lt hiA
   -- the actual field types at the earlier fields are the knot's canonical ones
   have hft' : ∀ p (hp : p < e.length), (setRec K.dm d (recK S)).fieldTy d ps c p (e.take p) =
-      shapeTyP (shapeOf (ftyK K ρ d (recK S) ps c p ((projIdx d c (e.map Sem.small)).take p))) := by
+      shapeTyP (shapeOf (S.fty (recK S) ps c p ((projIdx d c (e.map Sem.small)).take p))) := by
     intro p hp
-    rw [fieldTy_knot S (setRec K.dm d (recK S)) d (setRec_self K.dm d (recK S)) ps c p e (Nat.le_of_lt hp), hfty]
+    rw [fieldTy_knot S (setRec K.dm d (recK S)) d (setRec_self K.dm d (recK S)) ps c p e (Nat.le_of_lt hp)]
   generalize htyOf : (fun j => if _h : j < e.length then
-      shapeTyP (shapeOf (ftyK K ρ d (recK S) ps c j ((projIdx d c (e.map Sem.small)).take j))) else TyM.err) = tyOf
+      shapeTyP (shapeOf (S.fty (recK S) ps c j ((projIdx d c (e.map Sem.small)).take j))) else TyM.err) = tyOf
   have htyOf_lt : ∀ p (hp : p < e.length), tyOf p = (setRec K.dm d (recK S)).fieldTy d ps c p (e.take p) := by
     intro p hp; rw [← htyOf, hft' p hp]; simp [hp]
   generalize hR : recK S = R at hft' hft hrun htyOf_lt
@@ -290,5 +285,14 @@ theorem steadyAt_knotK (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort
   unfold valOf
   rw [canFrame_bindsF, hc, hswap]
   rfl
+
+/-- **The steady nodes agree, at the knot's own records**: `SteadyAt` for `knotK`. -/
+theorem steadyAt_knotK (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort ≠ 0) (hdΓ : d ∈ K.Γ)
+    (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT)
+    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
+    (hpty : ParamTyLocal K.dm K.Γ)
+    (hD : FrameLocal.DecLocal K.D) (hK : ∀ g, (K.C.global g).2.label = none) :
+    SteadyAt K ρ d (recK (knotK K ρ d hs hdΓ hspine hpar hpty)) :=
+  steadyAt_of_S (fun _ _ _ _ _ => rfl) (steadyAt_spec K ρ d _ hD hK)
 
 end Ochr.Meaning.DataModel.Exists.Knot

@@ -1,6 +1,6 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists6` (from `spine-exists5`), worktree `/home/charlielidbury/repos/ochre-exists3` (it carries the proof line through f6c59f58). Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.5 frame locality, §18.6 the knot). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists6`.
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists7` (origin/spine 36123b14 + spine-lead23 + main cad137f9, the checker with D120/D121), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.5 frame locality, §18.6 the knot). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists7`.
 
 ## Rulings (made by the lead 2026-11-22)
 
@@ -35,21 +35,24 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `CrossSortCE.lean`: the checker accepts nesting across sorts that Lean rejects. Rule (A*) ADOPTED by the lead (subject to measurement); its predicates are `Knot/Grammar.lean`'s `occSortB`/`NestSortB`/`AStarOk` (checker6's spec: keep them exact). My first claim that `hpar` is false for `E` was WRONG: `hpar_E`/`fields_E` check that E's canonical record is parametric and faithful; the knot does not need (A*); truth-first does.
 - `TruthCE.lean`: `truth_exists` as written is false (kernel-checked; no hypothesis on earlier records). `PropMono.lean`: `mono_prop` proved (its content is its hypothesis).
 
-## Which grammar predicate each theorem assumes (the lead's instruction, 2026-11-22)
+## Done (exists7), all in the default build, standard axioms
 
-`checker6` measures two variants: the uniform rule (A*), and the fallback (rule (A) for data-sorted declarations, the same-sort rule for `Prop`-sorted ones only). Either must discharge both constructions, so keep their hypotheses separate and minimal:
-- `Knot.knot_exists` (data-sorted): `GrammarOk K.Γ d` only (`spineB`: first-order grammar, (A), (B), (B2)). NO same-sort predicate (`occSortB`, `NestSortB`, `AStarOk` are not assumed; `CrossSortCE.hpar_E` shows the knot does not need them).
-- `General.truth_exists` (`Prop`-sorted, restated, `sorry`): `PGrammarOk K.Γ d` (`pspineB`: the grammar with (A) read for `Prop`, which includes (A*)(i) at `d`'s own occurrences) and `AStarOk K.Γ M` for `Prop`-sorted `M` only (`hstar`; `Grammar.AStarPropOk` is the per-declaration form); `hmono` likewise only at `Prop`-sorted `M`.
-- `mono_prop`, `lfpP_fixed`, `runT_congrR`: no grammar predicate.
+- The counterexample files' `ochr` blocks mark what D120/D121 now reject (KnotCE `D2`, CrossSortCE `D`/`QW`/`Q`, PropNestCE `P`).
+- (B2) weakened (docs/34 §18.10): `Knot/HintFree.lean` `runT_hintFree` (a term not headed by a parameterless-written constructor, an embedded value, or clone/peek/inplace runs the same at every hint); `SpineArgs.value`/`PSpineArgs.value` take `HintSteady ∨ hintFreeB`. `HintShapes.lean` asserts DF, DK2 pass; DK, DT3 (bare constructor at a hint computed from the declared type) do not. RULING REQUESTED from the lead on DK (recommended: the checker stores solved constructor parameters).
+- (A) in `Spine` weakened: the `Type`-parameter half was never used (only "a varying applied declaration is data-sorted").
+- `Steady.steadyAt_spec`: the steady-node agreement for ANY `KnotSpec` (canonical frame typed by the spec's own field types; `SteadyAtS` in Agree.lean); `steadyAt_knotK` is its instance.
+- `truth_exists` PROVED (`Knot/TruthExists.lean`, docs/34 §18.11): truth interpreter `semP`/`ftyP` (`TruthInterp.lean`), monotonicity `ftyP_le` and the fixed point `truthP` (`TruthMono.lean`, `Truth.lfpM`: least fixed point among argument-monotone predicates), agreement `truth_agree` (`TruthAgree.lean`). Assumes `PGrammarOk`, `hmono` (earlier Prop-sorted records monotone, genuine keys), `ParamTyLocal`, `DecLocal`, label-free globals. Returns d's records monotone (for the next `hmono`). `General.truth_exists` (sorry) retired.
 
-## Next: the truth-first construction (`General.truth_exists`, restated, `sorry`)
+## Which grammar predicate each theorem assumes
 
-Done for it: `PropMono.mono_prop` (generalized to `ShapeLe`: equal shapes, weaker proposition leaves, or `Prop`-sorted sub-records with inhabitation implied), `Truth.lean` (`lfpP`, `lfpP_fixed`: the least fixed point of a monotone operator, impredicative), the restated statement (hypotheses `hstar` (rule (A*)), `hmono` (earlier records `ShapeLe`-monotone), `hpty`, `hD`, `hK`; conclusions: the truth predicate, `d`'s own records `ShapeLe`-monotone (for the induction), faithfulness with members as earlier fields).
-1. DONE: the grammar hypothesis `hgram : PGrammarOk K.Γ d` (`Grammar.lean`: `PSpine`, `pspineB`, `pspineB_sound`).
-2. The interpreter for a `Prop`-sorted `d` (copy `Interp.lean`): `semT` reads `d(ā)` as `.ty (TyM.prop (T ā))` and `itpT` gives `.ty (TyM.prop (T ā))` (a proposition leaf); everything else as `ftyK`. `R_T ps` := the record whose kind/continuation at each key is that `FTy`'s (no knot needed: `R_T` does not read itself; build it with a `KnotSpec` whose `fty` ignores `R`, `recK` then is it, `recK_kind`/`recK_contRec`).
-3. `Φ T ps := ∃ member of d at R_T ps`; monotone via `mono_prop` (each key's shape is `ShapeLe` in `T` by `hmono` and (A*)); `T := lfpP Φ`; `lfpP_fixed` gives `uTyR d (R_T ps) = TyM.prop (T ps)` (`Nonempty (ucar ..) ↔ ∃ member`, `mem_iff_meanC`).
-4. Faithfulness: `knotK_agree`'s and `steadyAt_knotK`'s arguments (frame locality + `runT_congrR`) with a self-occurrence's run `tyM d ā = uTyR d (R_T ā) = prop (T ā)` by step 3.
-Then `globals_typed`, pieces 6, 7 and the assembly (which discharges `hpar` (canonical records are parametric: `CrossSortCE.hpar_E` is the pattern), `ParamTyLocal`, label-free globals, `hmono`).
+- `Knot.knot_exists` (data-sorted): `GrammarOk K.Γ d` (`spineB`). No same-sort predicate.
+- `Knot.truth_exists` (`Prop`-sorted): `PGrammarOk K.Γ d` (`pspineB`; it carries (A*) for `d` itself). No `AStarOk` at the earlier declarations.
+- Step 2 of the lead's brief (checker acceptance gives these) is NOT started: `Scratch/GrammarSweep.lean` (untracked) sweeps the example corpus; run it before stating the implication.
+
+## Next
+
+1. Step 2: the checker's acceptance gives `GrammarOk`/`PGrammarOk` (pure mirrors of `firstOrderTerm`, `readViolation`, `nestableSet`, `sortNestViolation`; the bridge from `checkInd`'s run as named facts for the machine lane; DK pending the ruling).
+2. `globals_typed`, pieces 6 and 7, then the assembly by induction on declarations: discharge `hpar` (canonical records parametric: `CrossSortCE.hpar_E` is the pattern), `ParamTyLocal`, label-free globals, `hmono` (from `truth_exists`'s second conclusion; data-sorted declarations reach no `Prop` parameter's monotonicity question).
 
 ## DecLocal, node by node (exists4, partly done)
 

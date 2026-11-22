@@ -54,6 +54,26 @@ theorem fitsM_mono {d : IndDecl} {r r' : Rec} {c : Nat}
       rw [hs']
       exact ⟨h1.1, hq h1.2⟩
 
+/-- `fitsM_mono` with the shapes compared at the genuine keys only (the earlier readings as many as the
+field's index), which are all fitting reads (exists7). -/
+theorem fitsM_mono' {d : IndDecl} {r r' : Rec} {c : Nat}
+    (h : ∀ i es, es.length = i → ShapeLe (uShape d r c i es) (uShape d r' c i es)) :
+    ∀ (n i : Nat) (e : List Small) (fs : List Sem), e.length = i → FitsM uSig d r c i n e fs → FitsM uSig d r' c i n e fs
+  | 0, _, _, _, _, hf => hf
+  | n + 1, i, e, fs, he, ⟨f, fs', hfs, h1, h2⟩ => by
+    refine ⟨f, fs', hfs, ?_, fitsM_mono' h n (i + 1) _ fs' (by simp [he]) h2⟩
+    show FitsOneM uSig (uShape d r' c i e) f
+    change FitsOneM uSig (uShape d r c i e) f at h1
+    rcases h i e he with he' | ⟨P, P', hPP, hs, hs'⟩ | ⟨M, q, q', hq, hs, hs'⟩
+    · rw [he']; exact h1
+    · rw [hs] at h1
+      rw [hs']
+      obtain ⟨b, hb⟩ := h1
+      exact ⟨⟨hPP b.down⟩, hb⟩
+    · rw [hs] at h1
+      rw [hs']
+      exact ⟨h1.1, hq h1.2⟩
+
 /-- **Membership is monotone in weaker shapes** (`General.mono_prop`, proved and generalized by exists6
 from proposition leaves to `ShapeLe`, which also admits `Prop`-sorted sub-records: a `Prop`-sorted
 declaration nested in another keeps it as a `prf` shape; the parameter relation `hle` is not used). -/

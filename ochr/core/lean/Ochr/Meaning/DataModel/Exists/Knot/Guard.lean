@@ -337,7 +337,7 @@ theorem itpArgs_agree (G : GuardHyp K d n R R' ps ps') {M : IndDecl} (hMΓ : M �
         split
         · exact .inl e
         · exact e
-      · have e := semT_agree G ha (fun _ => .inr (hA hst).2) (.plain (K.dm.paramTy M j vs'))
+      · have e := semT_agree G ha (fun _ => .inr (hA hst)) (.plain (K.dm.paramTy M j vs'))
         rw [hpl, if_pos (hn hst)]
         exact ⟨e, fun h => absurd h hst⟩
     have h' := h.snoc a _ _ hv.1 hv.2
