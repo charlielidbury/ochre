@@ -2454,6 +2454,56 @@ Every former's erased case is one lemma: where the table reads `t` as erased (`f
 
 **Also built:** `Machine.SuccInvD` (`Steps/MasterDepth.lean`, PROVED): `evalCore`'s `S(u)` inverted at any erased depth, `succInvR`'s proof with the mode free.
 
+### D172. Every hint site of the reference, against the checker's typed run, its end-of-body check and its untyped run; two more drifts fixed (twenty-fourth lead, 2026-11-22; `spine-lead24`; the lead's audit after D171)
+
+Every sub-run of `runT` (`Run.lean`), clause by clause, with the hint the reference hands down, the hint the typed `evalCore` hands down at the same site (`Machine.lean`, read from the code), what `checkTail` hands down where it treats the term by its shape, and the untyped run's. "none" is the checker's `none`, which the reference reads as `.plain TyM.err` (`hintM K ρ none`); "the hint" is the term's own hint; "tailHint" is the hint in tail position and none out of it (`Run.tailHint`, D156). **Marks:** **R** the reference differs from the typed run; **U** the typed and the untyped run differ inside the checker (whether or not the reference agrees with either); **T** the end-of-body check differs from the reference in tail position.
+
+| Site | Reference | Typed `evalCore` | `checkTail` (tail position) | Untyped run | Marks |
+|---|---|---|---|---|---|
+| `place p`, `borrow p` | no sub-run | — | — | — | |
+| `p := u`: `u` | the place's type iff `u` is a constructor or an embedded value (`assignHinted`), else none | `placeType? p` iff `u` is a constructor or an embedded value, else none; a proof field assigned while lent (`lentProofAssign`): `u` at the field's type, on a private copy, whatever `u` is | as typed | none | **U**; **R** at `lentProofAssign` only |
+| `let x = u; w`: `u` | none | none | none | none | |
+| `let x = u; w`: `w` | tailHint | none (a typed run is never in tail position, D156) | the goal | the hint, at every tail flag | **U** (main's D124) |
+| `u; w`: `u`, `w` | none; tailHint | none; none | none; the goal | none; the hint at every tail flag | **U** (D124) |
+| `match p {…}` (`Nat`): each arm | tailHint | none (a known tag; and each arm of a split closed off, `splitThenClose`) | the goal (each world of the split) | the hint at every tail flag | **U** (D124) |
+| `match p {…}` (inductive, data): each arm | tailHint | none | the goal | the hint at every tail flag | **U** (D124) |
+| `match p {…}` on a proof (by type): each arm | tailHint | none (`evalMatchByType`) | the goal | none, also in tail position | **U** (untyped by-type arm in tail position: none where the typed check hands the goal and the reference the hint) |
+| `fix`: each domain, the codomain | none (`runBinds`, `codOf`) | none (`evalType`) | — | — (not run at forming) | |
+| `fix`: the body | the codomain at the arguments, in tail position (`runT true (cod args)`) | the goal = the codomain, in tail position (`checkFix` → `checkTail`) | the goal | at a call (`runBody`, in tail position): the declared codomain at the arguments iff `needsCtx body`, else none | **U** (`runBody` vs `checkFix`) |
+| `Π`: each domain, the codomain | none | none (`evalType`, `piSort`/`sortOf`) | — | none | |
+| a call: the head | none (read in place) | none | — | none | |
+| a call: each argument | the parameter's type iff a constructor, an embedded value, `rewrite`, `rewriteR` or a hole (`argHinted`), else none | `argHint` iff the same five, else none | as typed | `argHint` iff `needsCtx a`, else none | **U** |
+| `Nat`, `Z`, `Unit`, `()`, `sort`, a constant | no sub-run | — | — | — | |
+| `S(u)`: `u` | none (D171; was `Nat`) | none | — | none | fixed (D171) |
+| `Eq(A, a, b)`: `A` | none | none (`evalType`) | — | none | |
+| `Eq(A, a, b)`: `a`, `b` | **none (this entry; was `A`'s meaning)** | none (`inStatement (eval fuel' typed a)`) | — | none | fixed here |
+| `cong(f, h)`: `f`; `h` | `f` NOT RUN; `h` none | `f` none; `h` none | — | the same | (no hint differs; the reference does not run `f`: deliberate, the term is a proof on a copy) |
+| `&A`: `A` | none | none (`evalType`) | — | none | |
+| `Id(A, t, u)`: `A`; `t`, `u` | none; `A`'s meaning | none; `A` (`observe`, always typed) | — | the same (`idType` observes typed in both runs) | (the checker also probes `t` untyped on a copy, no hint) |
+| `(u : A)`: `A`; `u` | none; `A`'s meaning | none; `A` (a match: `A` as its expected type, its arms none) | as typed | `A` iff the type is wanted or `needsCtx u`, else none | **U** |
+| `.val v` | no sub-run; its type: by its kind (`valType?`), else the hint; a sealed program's meaning runs it at the hint (`meanV`) | its type by `valType` (a proof or a loan reads the hint) | as typed | its type IS the hint | **U** |
+| `D(ā)`: each parameter | **none (this entry; was the parameter's type)** | none (`evalParams`) | — | none | fixed here |
+| `C(ā)` (constructor): each written parameter | **none (this entry)** | none (`evalParams`) | — | none | fixed here |
+| `C(ā)`: each field | the field's type iff `fieldHinted` and the parameters it reads are solved, else none | the same (`fh`, D119) | as typed | the field's type iff every parameter is solved and `needsCtx a`, else none | **U** |
+| `J(A, a, b, P, h, t)`: `A`, `a`, `b`, `P`, `h` | none (each on a copy) | none (`evalType` for `A`) | — | `a`, `b` none; `A`, `P`, `h` not run | |
+| `J(…)`: `t` | none | none where `J` computes; the block's arm `P(a)` where it is stuck (`closeBlock`) | as typed | none | **R** (the stuck path only; the typed check's two paths also differ from each other) |
+| `symm(h)`, `trans(h, k)` | none | none | — | none | |
+| `rewrite h u`, `rewriteR h u`: `h`; `u` | none; none (both on a copy, the result `⋆`) | none (`rewriteGoal`); the rewritten goal `G'` | `u` checked to the end at the goal `G'` | NOT RUN (`(⋆, hint)`) | **R**, **T**, **U** |
+| `clone(u)`, `peek(u)`, `inplace(u)`: `u` | the hint | the hint | — | the hint | (the copying mode differs: D150) |
+| `split f in u`, `split f { … }` | **NO CLAUSE: the reference fails** (`.prim _ _ => SM.fail`) | rejected ("only in tail position") | `u` (each arm) checked at the goal, per world | rejected | **finding** (below) |
+| `?` (hole) | no clause | the hint | — | stuck | excluded (`hasHolePrim`) |
+| the default tail (`checkTail`'s `eval fuel' true t goal`) | `runT true hint t` | — | the goal | — | |
+
+**Fixed in the model in this entry (the drift of D119, D171: the reference handed a hint where the typed checker hands none).** `Eq`'s two sides now run with no hint (they ran at `A`'s meaning), and every parameter of `D(ā)` and of a constructor (`runParams`) with no hint (it ran at the parameter's type). Conditions, met: `Strict.fund_all` unchanged and free of `sorry` (both clauses are generic in the sub-run's hint); every column theorem, `frag_run_free`, `master` and the proved steps keep their statements and the standard axioms; so do the existence lane's `knot_exists` and `knotK_agree`. Repaired, mechanically (each restated a lemma at the old hint): `Regress/EqJ.lean` (`ref_eq`), `Steps/EqJAsm.lean` (`runT_eq_some`, `eq_sides`, a `sorry`'d leaf, statement only), and, of the existence lane (ruling (A)), `DataModel/Exists/RunLemmas.lean` (`runParams_spec`, `runT_tind1`, `runT_tind2`, `runT_eq`), `Knot/Interp.lean` (`argSem`, the interpreter of a parameter, which mirrors the run's hint), `Knot/Guard.lean` (`argSem_eq`; `itpArgs_agree` no longer needs `hint_eq`: both sides' hints are none), `Knot/Agree.lean` (`runParams_cons`).
+
+**Inside the checker, typed and untyped differ (U), at eleven sites.** The four of main's D124 (a `let`'s tail, a `;`'s tail, the arms of both matches), and seven more: an assignment's right-hand side (typed: the place's type for a constructor or a value; untyped: none); a call's argument (typed: by its form; untyped: `needsCtx`); a constructor's field (typed: `fieldHinted`; untyped: `needsCtx`); an ascription's term (typed: `A`; untyped: `A` only if wanted or `needsCtx`); an embedded value's type (typed: `valType`; untyped: the hint); and, where the reference agrees with the TYPED run, a called body (`runBody` hands the codomain only if `needsCtx body`, `checkFix`'s check hands it always, the reference always) and a by-type match's arm in tail position (untyped none; typed and reference the hint). At every one of these the reference follows the typed run, so the untyped step there meets the D124 situation: the induction hypothesis gives the run at the untyped hint. Candidates for the same repair (the untyped run hands what the typed run hands), all at once as the lead asked; not acted on (checker changes). The one fact the untyped `let`, `;` and match steps state meanwhile is `HintSites.UntypedTailNoHint` (FALSE today, true after main's D124), pinned by `let y = Z; N` untyped at `L(Nat)` out of tail position: `N` records `[Nat]` today, `[]` after D124 (`Steps/HintSites.lean`, marked to flip).
+
+**The reference differs from the typed run or the end-of-body check (R, T), at four sites, one of them a missing clause.**
+- `J`'s transported term where `J` is stuck: the typed check closes `J` off and checks `t` as the block's arm at `P(a)`; where `J` computes, at none; the reference runs `t` at none always. OPEN, and inside the checker too (its two typed paths differ): handing `t` none on the stuck path would align all three; the general `J` step otherwise needs that `t`'s reference run at none succeeds where its check at `P(a)` did.
+- `rewrite`'s term (and `checkTail`'s rewrite, which checks `u` to the end at the rewritten goal): the reference runs `h` and `u` at none on a copy (a proof runs, to `⋆`) and cannot compute the rewritten goal. DELIBERATE: the result is `⋆` whatever `u`'s hint; what the general step needs instead is that a proof's reference run at none succeeds where its check at a goal did (the erased wrapper's neighbour; true unless `u`'s tail is a bare constructor of a declaration with parameters reading them only from the goal). The untyped run does not run `rewrite` at all.
+- `lentProofAssign`: a proof assigned to a lent proof field is checked at the field's type whatever it is; the reference hands that type only to a constructor or a value. As `rewrite`: a proof's run.
+- **`split f in u` and `split f { … }` have no reference clause (FINDING).** They are accepted in tail position (`HintSites.HintSplit.PickNotZero : Eq(B, IsZ(Pick(n)), F) := split IsZ in refl`, guarded, its core body `split` of `IsZ`), and the reference's run of every body ending in one fails (`HintSites.run_split_fails`), so `TailAt` is false there and the tail step for the primitives (`TStepPrim`) cannot be proved as the model stands. A model change is needed: a `split` is a typing device (a match on a result the goal is stuck on), and its run is `u`'s (each arm, `splitArms`'s `let`); the checker's untyped run rejects it outside tail position. RULING ASKED.
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass

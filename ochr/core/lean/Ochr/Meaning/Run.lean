@@ -1514,9 +1514,10 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     pure (v.succ, .plain TyM.nat))) s
   | .eq A a b => SM.onCopy do
     let (TA, _) ← runT false (.plain TyM.err) A
-    let T : TyS := .plain TA.asTy
-    let (va, _) ← SM.onCopy (runT false T a)
-    let (vb, _) ← SM.onCopy (runT false T b)
+    -- each side runs with no hint, as the TYPED checker runs it (`evalCore`'s `.eq`: `eval fuel' typed a`;
+    -- docs/31 D172, missed by D119, which handed it `A`)
+    let (va, _) ← SM.onCopy (runT false (.plain TyM.err) a)
+    let (vb, _) ← SM.onCopy (runT false (.plain TyM.err) b)
     -- STRICT: the type has a level and each side is `⊥` or a member of it (`EqOk`)
     fun s => if EqOk K.dm.read TA va vb then some ((.ty (TyM.prop (va = vb)), .plain (TyM.univ 0)), s) else none
   -- decision 1: the premise proofs run, each on a copy; `⋆` at `prop True`
@@ -1623,7 +1624,9 @@ termination_by structural ds => ds
 noncomputable def runParams (d : IndDecl) (i : Nat) (earlier : List Sem) : List Term → SM (List Sem)
   | [] => pure []
   | a :: as => do
-    let (v, _) ← SM.onCopy (runT false (.plain (K.dm.paramTy d i earlier)) a)
+    -- with no hint, as the TYPED checker runs it (`evalParams`: `eval fuel' typed a`; docs/31 D172, missed by
+    -- D119, which handed it the parameter's type)
+    let (v, _) ← SM.onCopy (runT false (.plain TyM.err) a)
     let rest ← runParams d (i + 1) (earlier ++ [v]) as
     pure (v :: rest)
 termination_by structural as => as

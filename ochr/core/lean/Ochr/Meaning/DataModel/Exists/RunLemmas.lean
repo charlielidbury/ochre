@@ -173,7 +173,7 @@ theorem runParams_spec (K : RunCtx) (ρ : Assignment) (φ : Future) (d : IndDecl
       runParams K ρ φ d i earlier as s = some (vs, s') →
       s' = s ∧ vs.length = as.length ∧
       ∀ (k : Nat) (a : Term) (v : Sem), as[k]? = some a → vs[k]? = some v →
-        ∃ T s₁, runT K ρ φ false (.plain (K.dm.paramTy d (i + k) (earlier ++ vs.take k))) a s = some ((v, T), s₁)
+        ∃ T s₁, runT K ρ φ false (.plain TyM.err) a s = some ((v, T), s₁)
   | [], i, earlier, s, s', vs, h => by
     simp only [runParams, pure] at h
     cases h
@@ -181,7 +181,7 @@ theorem runParams_spec (K : RunCtx) (ρ : Assignment) (φ : Future) (d : IndDecl
   | a :: as, i, earlier, s, s', vs, h => by
     simp only [runParams, bind, SM.onCopy] at h
     revert h
-    cases ha : runT K ρ φ false (.plain (K.dm.paramTy d i earlier)) a s with
+    cases ha : runT K ρ φ false (.plain TyM.err) a s with
     | none => intro h; simp at h
     | some p =>
       obtain ⟨⟨v, T⟩, s₁⟩ := p
@@ -203,9 +203,7 @@ theorem runParams_spec (K : RunCtx) (ρ : Assignment) (φ : Future) (d : IndDecl
         · simp only [List.getElem?_cons_succ] at ha' hv'
           obtain ⟨T', s₃, h3⟩ := hk k a' v' ha' hv'
           refine ⟨T', s₃, ?_⟩
-          have : i + 1 + k = i + (k + 1) := by omega
-          rw [this, List.append_assoc] at h3
-          simpa using h3
+          exact h3
 
 /-- **`D(ā)` runs to `D`'s code at its arguments' meanings** (when it runs): the declaration is the
 first of its name in `Γ`, the arguments are each run on a copy at its parameter's type, they are
@@ -243,8 +241,8 @@ or a member (`EqOk`, the strict former); all on a copy, the state unchanged. -/
 theorem runT_eq (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (A a b : Term)
     (s : SState) {r : Res} {s' : SState} (hr : runT K ρ φ tl h (.eq A a b) s = some (r, s')) :
     ∃ (TA va vb : Sem) (s₁ : SState), (∃ RA, runT K ρ φ false (.plain TyM.err) A s = some ((TA, RA), s₁)) ∧
-      (∃ Ra sa, runT K ρ φ false (.plain TA.asTy) a s₁ = some ((va, Ra), sa)) ∧
-      (∃ Rb sb, runT K ρ φ false (.plain TA.asTy) b s₁ = some ((vb, Rb), sb)) ∧
+      (∃ Ra sa, runT K ρ φ false (.plain TyM.err) a s₁ = some ((va, Ra), sa)) ∧
+      (∃ Rb sb, runT K ρ φ false (.plain TyM.err) b s₁ = some ((vb, Rb), sb)) ∧
       EqOk K.dm.read TA va vb ∧ r.1 = .ty (TyM.prop (va = vb)) ∧ s' = s := by
   simp only [runT, SM.onCopy, bind] at hr
   revert hr
@@ -252,11 +250,11 @@ theorem runT_eq (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : Ty
   | none => intro hr; simp at hr
   | some p =>
     obtain ⟨⟨TA, RA⟩, s₁⟩ := p
-    cases ha : runT K ρ φ false (.plain TA.asTy) a s₁ with
+    cases ha : runT K ρ φ false (.plain TyM.err) a s₁ with
     | none => intro hr; simp [ha] at hr
     | some q =>
       obtain ⟨⟨va, Ra⟩, sa⟩ := q
-      cases hb : runT K ρ φ false (.plain TA.asTy) b s₁ with
+      cases hb : runT K ρ φ false (.plain TyM.err) b s₁ with
       | none => intro hr; simp [ha, hb] at hr
       | some w =>
         obtain ⟨⟨vb, Rb⟩, sb⟩ := w
@@ -353,7 +351,7 @@ theorem runT_tind0 (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h :
 theorem runT_tind1 (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (n : String) (a : Term)
     (s : SState) {r : Res} {s' : SState} (hr : runT K ρ φ tl h (.tind n [a]) s = some (r, s')) :
     ∃ d v T s₁, K.Γ.find? (·.name == n) = some d ∧
-      runT K ρ φ false (.plain (K.dm.paramTy d 0 [])) a s = some ((v, T), s₁) ∧ r.1 = .ty (K.dm.tyM d [v]) := by
+      runT K ρ φ false (.plain TyM.err) a s = some ((v, T), s₁) ∧ r.1 = .ty (K.dm.tyM d [v]) := by
   obtain ⟨d, psM, hd, hp, -, hr', -⟩ := runT_tind K ρ φ tl h n [a] s hr
   obtain ⟨-, hl, hk⟩ := runParams_spec K ρ φ d [a] 0 [] s s psM hp
   obtain ⟨v, rfl⟩ : ∃ v, psM = [v] := by
@@ -365,8 +363,8 @@ theorem runT_tind1 (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h :
 theorem runT_tind2 (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (n : String) (a b : Term)
     (s : SState) {r : Res} {s' : SState} (hr : runT K ρ φ tl h (.tind n [a, b]) s = some (r, s')) :
     ∃ d v w T U s₁ s₂, K.Γ.find? (·.name == n) = some d ∧
-      runT K ρ φ false (.plain (K.dm.paramTy d 0 [])) a s = some ((v, T), s₁) ∧
-      runT K ρ φ false (.plain (K.dm.paramTy d 1 [v])) b s = some ((w, U), s₂) ∧
+      runT K ρ φ false (.plain TyM.err) a s = some ((v, T), s₁) ∧
+      runT K ρ φ false (.plain TyM.err) b s = some ((w, U), s₂) ∧
       r.1 = .ty (K.dm.tyM d [v, w]) := by
   obtain ⟨d, psM, hd, hp, -, hr', -⟩ := runT_tind K ρ φ tl h n [a, b] s hr
   obtain ⟨-, hl, hk⟩ := runParams_spec K ρ φ d [a, b] 0 [] s s psM hp
