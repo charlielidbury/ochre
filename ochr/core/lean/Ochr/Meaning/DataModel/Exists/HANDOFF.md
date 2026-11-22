@@ -1,6 +1,6 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists10` (from `origin/spine` bffe26ec), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.15 the assembly closed and the honest count). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists10`.
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists11` (from `origin/spine-machine11` 84ba58a9), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.16: the eight facts, their statements and statuses, what the theorem says). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists11`.
 
 ## Rulings (made by the lead 2026-11-22)
 
@@ -65,11 +65,20 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `Assembly.lean` (now default build): `inv_step` proved (`inv_reject`, `inv_defn`, `inv_ind_core`, `inv_ind_faithful`); `exists_dataModel_facts`. `Consistency.exists_dataModel` restated with `hF : DataFacts` and `hpre`, proved; `consistencyBounded_assembled` takes `hdata`.
 - `Scratch/ChecksSweep.lean`, `GrammarSweep.lean`, `VaryValSweep.lean` committed (the sweeps behind `ItemFacts`).
 
-## Next (exists10's successor)
+## Done (exists11), default build, standard axioms (docs/34 §18.16)
 
-1. The facts of the first kind that are plain reads of `Check.lean` (most doubtful first): `ItemFacts`' "an accepted definition leaves the declarations and extends the globals" and "an accepted declaration leaves the globals" (reads of `checkDef`/`checkInd`); `ParamsNoVal`/`FieldsNoVal` (resolution: surface syntax has no `.val`); `NamesFact` from `undeclaredCheck` (D118) plus resolution. `FieldLevels` is a sortOf soundness fact, not a plain read.
-2. `CheckIndGivesChecks` (the inductive half of `ItemFacts`) is the machine lane's.
-3. Check `Scratch/VaryValSweep.lean` and `ChecksSweep.lean` still compile against the current definitions before rerunning them (`ItemFacts` now also names `ParamsNoVal`).
+- `FactsCE.lean`: the old forms' counterexamples (`itemFactsOld_false`, `varyValFact_false`, `fieldHeads_false`, `join_regrains`/`decLocal_false`, `decStableOld_flags`). `tlAccepted` is a native `#guard` (the kernel's reduction of `TL`'s `checkItem` run gets stuck; `EV`'s and `EP`'s finish in under a second). When D128/D129 reach the line, `tlAccepted` and `join_regrains` fail: delete those parts and the facts' FALSE TODAY notes.
+- `Assembly.lean`: `ItemFacts` restated (params/ctors instead of the no-value and VaryValFree parts); `NoValFact`, `VaryValFact` new; `DecStable` per program (NOT the ruling's any-state form, see docs/34 §18.16); `FieldLevels` replaced by `FieldHeads` (checker) + `GlobalCallLevels` (model, unproved); `hpre` discharged by `Steps.Machine.indsOf_take_prefix`.
+- `FieldLevel.lean`: `fieldLevel0_of` PROVED (a field type runs to a level-0 code from its top shape, `HeadLevels`, `CallsLevel0` of the called globals, parameter types faithful); `callsLevel0_of_not_t2`, `enc1_lvl0`.
+- Probe programs (scratchpad, not committed): `FLProbe.lean` (calls into `Type₁` and parameters written at calls: all rejected, so `FieldHeads`' call part reads true).
+
+## Next (exists11's successor), most valuable first
+
+1. `GlobalCallLevels` (the one model fact). Three pieces: (a) a stage invariant: for `f` in `(stage dm k).globals`, `(stage dm k).baseC.global f` has type `.plain .err` or `globalTyS` of the FIRST stored entry named `f` (means are appended with the stored type of the accepting state; globals only grow, `checkItem_tables`); (b) `meanV` at `.tPi cs (.pi hs ds (.sort l)) rd` is `.ty err` or `.ty (piTyAt R l' ps ⟨false, fun _ => univ l⟩)` (unfold `meanV`'s `tPi` clause, `runT`'s `.pi` clause at `Run.lean:1374`, `runT_sort`); (c) `CallsLevel0` of that: `l' ≤ 2` by `callsLevel0_of_not_t2` (`piTyAt` 0 is `prop`, 1 is `.t0`, 2 is `.t1`); `l' = 3` needs a version of `LeafOk.callOfL_enc` that tracks the `.dat` code through `telL` (`Apply.lean:204`: the codomain code is `(lvl2 R).codeOf (out.cod acc)`), then `codeOf` of a `.t1` code is a lift, and `enc2 (lift c) = enc1 c`.
+2. `NoValFact` from `Surface.lean` (`resolveDecl`, `bindersF`, `resolveF`: no clause builds `Term.val`), and `NamesFact` (machine10's reading: `undeclaredCheck` plus resolution). Both are statements over the resolved items; `consistencyBounded_assembled` passes `ResolvesTo`.
+3. `CheckIndGivesChecks` (the `IndChecks` part of `ItemFacts`): machine10 proved the pieces; the assembly plan is in `Steps/Machine/CheckIndChecks.lean`. Then `ItemFacts` is a theorem (with `checkItem_tables`).
+4. `DecStable` per program: whether a hole in a called global's stored type lets the decisions read `absDecl` (the later state's `absDecl` is unconstrained by `Extends`).
+5. Check `Scratch/VaryValSweep.lean` and `ChecksSweep.lean` still compile against the current definitions before rerunning them.
 
 ## Which grammar predicate each theorem assumes
 
