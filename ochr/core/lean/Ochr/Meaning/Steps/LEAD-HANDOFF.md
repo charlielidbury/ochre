@@ -1,4 +1,20 @@
-# Lead handoff (twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+# Lead handoff (twenty-first lead, lead21, 2026-11-22; twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+
+## TWENTY-FIRST LEAD (lead21, 2026-11-22; `spine-lead21`, branched from `spine-lead20` 111d9ac9): the first data types; a capture pinned
+
+**Built (standard axioms; docs/31 D147, D148, D149).**
+- D147 (d4367b00): `Steps/DataNot.lean` (states, `SplitNotInv`), `DataGuards.lean` (`kernEqI`: a kernel comparison with declarations, readings by `DeclInfo`'s own `==`, values exactly, η records), `DataNotRun.lean` (`runNot`, `datB_mem`, `mem_B`), `DataNotSplit.lean` (`KNot`, `DataModelB`, `ctxS_Not`, `meanV_tyB`, `meanV_ctorB`, `refNot_of_rel`, `rel_leafT/F`, `inv_envBT`, `pre_leafB`, **`split_outNot`/`split_simNot`**: assumes `SplitNotInv`, `DataModelB`), `DataNotColumn.lean` (`parDecNot` by kernel evaluation, `dataModelB_triv`, `pre_stNot`, `rel_stNot`, **`body_outNot`**, `body_outNot_triv`).
+- D148 (ba33130d): `DataBox.lean` (states, `WrapInv`, `UnboxInv`), `DataBoxGuards.lean` (also (c): `UseC` has no join, `UseO` has [Entry] and [Join]), `DataBoxModel.lean` (`DataModelBox`, `fieldTy_box`, `shape_box`, `mem_box`, `datBox_mem`, `dmLeafNat`/`dataModelBox_leafNat`), `DataBoxRun.lean` (`runWrap`, `runReadBn`, `runUnbox`).
+- D149: `CaptureGuards.lean` (the capture pinned; the program as asked is rejected).
+
+**Not done, in order.**
+1. `Unbox`'s and `Wrap`'s `TailSim` steps (D148's list: `rel_transfer` across the refinement in place under `ρ` extended by `σ1 ↦ m`, `Δ` by `σ1 : Nat`; `botWrite_rel` at `[.field fieldN]`; `Pre` at `leafUnbox` with `σ1` in flight, with the η record; `Wrap` as `ParBody.body_simI` with the constructor around the read). Copy `DataNotSplit.lean`'s shape: `envU`'s frame lemmas, `inv_env…`, `pre_leaf…`, then the step. The decisions by kernel evaluation as `parDecNot` (`RU`, `RW`; `pbn`'s copy decision; the self binding's reading for `ShapeFacts` (V)).
+2. The join after an arm: the `Opt` program `UseO` (pinned in `DataBoxGuards`): a known two-constructor scrutinee, [Entry], the arm's move of `o.n`, [Join] drops `o`.
+3. `Not`'s `.fix`-level column (`column_Not_ff`: `fixBodyAt`'s state for a domain `B`, `SGood` at the start).
+4. The capture (D149): the `.fix` step's value agreement (the checker's `.clo [σ0] …` against the reference's closure formed in the forming state: equal at every argument for `clone(#2)`, by computing both runs); the caller `UseK`. The hazard (`refTy` by name; an anonymous closure's self binding `_` marked uid `1`) needs a ruling only when a lambda's body must be simulated.
+5. Task 3 of the brief, untouched: `L`'s call step (D146's list), `Q`'s step (D137), `J2` (D139).
+
+**Traps.** A structure update `{ x with f := … }` whose fields continue on the next line must start the fields on their own line (the continuation column must not be left of the first field). `lake env lean` has `autoImplicit` on: an unbound `a` compiles there and fails in `lake build`. `ParGuards.declIs`/`SplitGuards.kernEq` compare only `.other`/`.pi` readings and ask `inds` and η records empty: use `DataGuards.kernEqI` with declarations. `Sem.updAt`'s equation lemmas cannot be generated: use `Sem.updAt.eq_def`. With `Γ ≠ []`, `Inv` needs the table's reading of every place whose value is not a constructor value or stand-in (`ShapeFacts` (V)).
 
 ## TWENTIETH LEAD (lead20, 2026-11-22; `spine-lead20`, branched from `spine-lead19` f6c59f58): D141 built; `K`'s step and column; the first caller of `K`
 

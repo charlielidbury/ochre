@@ -14,6 +14,11 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FIRST DATA TYPES `B` AND `Box`; A CAPTURE PINNED (lead21, 2026-11-22, `spine-lead21`; docs/31 D147 to D149)
+- Stated checker facts, unreviewed, guarded: `ColumnNot.SplitNotInv` (`Steps/DataNot.lean`), `ColumnBox.WrapInv`, `ColumnBox.UnboxInv` (`Steps/DataBox.lean`). For the machine lane.
+- Data-model hypotheses (named, one per column; each is `CtxS`'s data-model fields at the column's declarations; instances given): `ColumnNot.DataModelB` (`dataModelB_triv`), `ColumnBox.DataModelBox` (`dataModelBox_leafNat`).
+- Not built: `Unbox`'s and `Wrap`'s `TailSim` steps; the join after an arm (`UseO`); `Not`'s `.fix`-level column; the capture's `.fix` step (D149) and the ruling on `refTy` by name if a lambda's body must be simulated.
+
 ## `K` CLOSED AT THE COLUMN LEVEL; `K`'S STEP; THE FIRST CALLER OF `K` (lead20, 2026-11-22, `spine-lead20`; docs/31 D141, D145, D146)
 
 - **D141 built**: `OutGood`'s final clause at the futures typed for the result (`HeldTyped` at `BodyOut.held`). `ColumnW.closure_mem_K`, **`ColumnW.column_K_ff` (NO assumed fact)**.
