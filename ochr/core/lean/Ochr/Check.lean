@@ -260,22 +260,79 @@ declared) and, for the declaration being checked, from the set computed from its
 (`nestableSet`); a name with no entry has no nestable parameter. -/
 abbrev NestTable := String → Nat → Bool
 
+/-- The declared type of variable `u` of constructor `c`'s field scope (a parameter below `np`,
+a field below `np + k`; D64's layout, `IndDecl.fieldRefs`), as a term of that same scope for a
+field, and in the scope of the earlier parameters for a parameter. -/
+def IndDecl.varType (d : IndDecl) (c u : Nat) : Option Term :=
+  let np := d.params.length
+  let fs := ((d.ctors[c]?).map (·.2)).getD []
+  if u < np then (d.params[np - 1 - u]?).map (·.2)
+  else ((fs[np + fs.length - 1 - u]?).map (·.2))
+
+/-- D120 (Lean's kernel: "nested inductive datatypes parameters cannot contain local
+variables"): the variables a term of constructor `c`'s field scope *reads*, where a variable
+reads what its declared type reads. Its free variables, closed under adding the free variables of
+each one's declared type (a field's type is in the same scope; parameter `p`'s, in the scope of the
+parameters before it, has its `var w` at `var (u + 1 + w)` here, for `u = np - 1 - p`). So `x`
+with `x : List(D)`, and `a` with `a : A`, read what their types mention. Each round adds a
+variable or ends, so `np + k` rounds reach the closure. Read off the declaration, no fuel. -/
+def IndDecl.deepVars (d : IndDecl) (c : Nat) (t : Term) : List Nat := Id.run do
+  let np := d.params.length
+  let k := (((d.ctors[c]?).map (·.2)).getD []).length
+  let tyVars (u : Nat) : List Nat :=
+    match d.varType c u with
+    | none => []
+    | some T => if u < np then T.freeVars.map (u + 1 + ·) else T.freeVars
+  let mut acc := t.freeVars
+  for _ in [0:np + k] do
+    let next := (acc ++ acc.flatMap tyVars).eraseDups
+    if next.length == acc.length then break
+    acc := next
+  pure acc
+
 mutual
 /-- D107: does the parameter `v` (a de Bruijn index of a field type's scope) occur in `t` only at
 nestable positions: as the whole of `t`, or inside an argument of an inductive `m(…)` at a
 parameter `j` with `nest m j`, and nestably inside that argument again? An occurrence anywhere
 else (a type function's argument, an equation, a value argument, a `Π`, a borrow) is not
-nestable: there the type `v` stands for may be used negatively. Structural, total, no fuel. -/
-def Term.nestOk (nest : NestTable) (v : Nat) : Term → Bool
+nestable: there the type `v` stands for may be used negatively. Which variables a term reads is
+`vars`: its free variables, or (D120) those closed under the variables' declared types
+(`IndDecl.deepVars`), so that reading `x : List(A)` or `a : A` there reads `A`. Structural,
+total, no fuel. -/
+def Term.nestOk (nest : NestTable) (vars : Term → List Nat) (v : Nat) : Term → Bool
   | .place (.var _) => true
-  | .tind m as => Term.nestOkArgs nest v m 0 as
-  | t => !(t.freeVars.contains v)
+  | .tind m as => Term.nestOkArgs nest vars v m 0 as
+  | t => !((vars t).contains v)
 termination_by structural t => t
 
 /-- The arguments of `m(…)`, the first at `m`'s parameter `j`. -/
-def Term.nestOkArgs (nest : NestTable) (v : Nat) (m : String) (j : Nat) : List Term → Bool
+def Term.nestOkArgs (nest : NestTable) (vars : Term → List Nat) (v : Nat) (m : String) (j : Nat) : List Term → Bool
   | [] => true
-  | a :: as => (!(a.freeVars.contains v) || (nest m j && a.nestOk nest v)) && Term.nestOkArgs nest v m (j + 1) as
+  | a :: as => (!((vars a).contains v) || (nest m j && a.nestOk nest vars v)) && Term.nestOkArgs nest vars v m (j + 1) as
+termination_by structural as => as
+end
+
+/-- D121's table: the sort of the inductive named `m` (`0` for `Prop`, `1` for `Type`), from the
+declarations in Σ and the one being declared. -/
+abbrev SortTable := String → Option Nat
+
+def sortTableOf (inds : List IndDecl) (d : IndDecl) : SortTable := fun m =>
+  if m == d.name then some d.sort else (inds.find? (·.name == m)).map (·.sort)
+
+mutual
+/-- D121 (Lean's kernel: "mutually inductive types must live in the same universe"): is the
+variable `v` passed (as `vars` reads, D120) to a declaration of another sort than `s`: does it
+occur in an argument of an inductive `m(…)`, at any depth of nesting, whose sort is not `s`
+(`E (A : Type) := MkE(p : PP(A))` with `PP : Prop`; `F (P : Prop) : Prop := MkF(w : Wrap(P))`
+with `Wrap` data)? -/
+def Term.passOther (st : SortTable) (s : Nat) (vars : Term → List Nat) (v : Nat) : Term → Bool
+  | .tind m as => Term.passOtherArgs st s vars v m as
+  | _ => false
+termination_by structural t => t
+
+def Term.passOtherArgs (st : SortTable) (s : Nat) (vars : Term → List Nat) (v : Nat) (m : String) : List Term → Bool
+  | [] => false
+  | a :: as => (st m != some s && (vars a).contains v) || a.passOther st s vars v || Term.passOtherArgs st s vars v m as
 termination_by structural as => as
 end
 
@@ -287,19 +344,45 @@ type parameters such that each `i ∈ N` occurs in every field type of `d` only 
 parameter" by removing, each round, the parameters that occur elsewhere, until a round removes
 none: each round but the last removes one, so `np` rounds reach the fixed point. A parameter passed
 to a type function (`Neg(A)`), to an equation, into a value argument, or on to a parameter that is
-not nestable (`E(B, A)` with `E`'s `A` not nestable, finding 1 of D107) is not nestable. The list
-is in declaration order (`nestable[i]` for parameter `i`). -/
-def nestableSet (nest : NestTable) (d : IndDecl) : List Bool := Id.run do
+not nestable (`E(B, A)` with `E`'s `A` not nestable, finding 1 of D107) is not nestable. A
+variable reads what its declared type reads (D120, `IndDecl.deepVars`): a parameter that a field
+reads through another variable's type, as `ws : List(A)` read by an equation or `a : A` passed as a
+value, is not nestable. A parameter passed to a declaration of the other sort than `d`'s
+(`PP(A)` in a type of data, `PP : Prop`) is not nestable (D121): a nested occurrence passes only
+through declarations of its own sort. The list is in declaration order (`nestable[i]` for
+parameter `i`). -/
+def nestableSet (nest : NestTable) (st : SortTable) (d : IndDecl) (lean : Bool := true) : List Bool := Id.run do
   let np := d.params.length
-  let mut S := (List.range np).map d.paramIsType
+  let fieldsOk (P : Nat → Term → Bool) : Bool :=
+    d.ctors.zipIdx.all fun ((_, fields), c) => fields.all fun (_, FT) => P c FT
+  -- with `lean := false`, the set as K4 and D107 computed it, before D120 and D121 (for messages)
+  let vars (c : Nat) : Term → List Nat := if lean then d.deepVars c else Term.freeVars
+  -- D121: a parameter passed to a declaration of the other sort is not nestable, whatever the
+  -- others are
+  let mut S := (List.range np).map fun i => d.paramIsType i &&
+    !(lean && !fieldsOk fun c FT => !FT.passOther st d.sort (vars c) (np - 1 - i))
   for _ in [0:np] do
     let cur := S
     let nest' : NestTable := fun m j => if m == d.name then cur.getD j false else nest m j
     let S' := (List.range np).map fun i => cur.getD i false &&
-      d.ctors.all fun (_, fields) => fields.all fun (_, FT) => FT.nestOk nest' (np - 1 - i)
+      fieldsOk fun c FT => FT.nestOk nest' (vars c) (np - 1 - i)
     if S' == cur then break
     S := S'
   pure S
+
+/-- Why parameter `i` of `dm` is not nestable, for K4's message (`dm` the declaration itself,
+with its constructors, for the type being declared). If it is not nestable in the set computed as
+before D120 and D121 (the other declarations' sets as stored), the reason K4 and D107 give;
+otherwise, a parameter passed to a declaration of the other sort (D121), or one read through a
+variable's declared type (D120). -/
+def nestReason (nest : NestTable) (st : SortTable) (dm : IndDecl) (i : Nat) : String :=
+  let v := dm.params.length - 1 - i
+  if !((nestableSet nest st dm (lean := false)).getD i false) then
+    s!"{dm.name} passes it to a type function, an equation, a value or a parameter that is not nestable, any of which may use its argument negatively: not strictly positive (K4, D36, D107)"
+  else if dm.ctors.zipIdx.any fun ((_, fields), c) => fields.any fun (_, FT) => FT.passOther st dm.sort (dm.deepVars c) v then
+    s!"{dm.name} passes it to a declaration of the other sort, and a nested occurrence passes only through declarations of its own sort (D121; Lean's kernel: \"mutually inductive types must live in the same universe\")"
+  else
+    s!"a field of {dm.name} reads, in an equation, a call or a value argument, a variable whose declared type mentions it, and a variable mentions what its declared type mentions (D120; Lean's kernel: \"nested inductive datatypes parameters cannot contain local variables\")"
 
 /-- The table of the declarations in Σ: each one's set, stored when it was declared (D107). -/
 def nestTableOf (inds : List IndDecl) : NestTable := fun m j =>
@@ -310,23 +393,67 @@ def nestTableOf (inds : List IndDecl) : NestTable := fun m j =>
 mutual
 /-- K4's nesting condition, for its message: an occurrence of the type being declared `n` at
 a parameter of an inductive that is not nestable there (`nest`; `n`'s own parameters
-included, D107), as the inner inductive and the parameter's name. -/
-def nestViolation (nest : NestTable) (n : String) : Term → M (Option (String × String))
+included, D107), as the inner inductive, the parameter's name and why it is not nestable
+(`nestReason`; `d` is the declaration being checked, with its constructors). -/
+def nestViolation (nest : NestTable) (st : SortTable) (d : IndDecl) (n : String) : Term → M (Option (String × String × String))
   | .tind m as => do
-    let dm ← lookupInd m
-    nestViolationArgs nest n m dm 0 as
+    let dm ← if m == d.name then pure d else lookupInd m
+    nestViolationArgs nest st d n m dm 0 as
   | _ => pure none
 termination_by structural t => t
 
 /-- The arguments of `m(…)`, the first at `m`'s parameter `i`: the first violation. -/
-def nestViolationArgs (nest : NestTable) (n m : String) (dm : IndDecl) (i : Nat) :
-    List Term → M (Option (String × String))
+def nestViolationArgs (nest : NestTable) (st : SortTable) (d : IndDecl) (n m : String) (dm : IndDecl) (i : Nat) :
+    List Term → M (Option (String × String × String))
   | [] => pure none
   | a :: as => do
     if dm.paramIsType i && a.mentionsType n && !(nest m i) then
-      return some (m, (dm.params[i]!).1.name)
-    if let some r ← nestViolation nest n a then return some r
-    nestViolationArgs nest n m dm (i + 1) as
+      return some (m, (dm.params[i]!).1.name, nestReason nest st dm i)
+    if let some r ← nestViolation nest st d n a then return some r
+    nestViolationArgs nest st d n m dm (i + 1) as
+termination_by structural as => as
+end
+
+mutual
+/-- D120 (Lean's kernel: "nested inductive datatypes parameters cannot contain local
+variables"): the first node of a field type that is not on its spine (an equation, a call of a
+type function, an argument at a value parameter of an inductive) and reads a variable whose
+declared type mentions the type being declared, read through the declared types of the variables
+it reads (`reads`: that variable, or none). The spine is the field type itself and, inside an
+inductive `m(…)`, its arguments at type parameters. Returns what reads it and the variable. -/
+def readViolation (reads : Term → Option Nat) : Term → M (Option (String × Nat))
+  | .tind m as => do
+    let dm ← lookupInd m
+    readViolationArgs reads m dm 0 as
+  | .call f as hd => pure ((reads (.call f as hd)).map fun u => ("the call", u))
+  | .eq A a b => pure ((reads (.eq A a b)).map fun u => ("the equation", u))
+  | _ => pure none
+termination_by structural t => t
+
+def readViolationArgs (reads : Term → Option Nat) (m : String) (dm : IndDecl) (i : Nat) :
+    List Term → M (Option (String × Nat))
+  | [] => pure none
+  | a :: as => do
+    if dm.paramIsType i then
+      if let some r ← readViolation reads a then return some r
+    else if let some u := reads a then
+      return some (s!"the argument at the value parameter {((dm.params[i]?).map (·.1.name)).getD "?"} of {m}", u)
+    readViolationArgs reads m dm (i + 1) as
+termination_by structural as => as
+end
+
+mutual
+/-- D121 (Lean's kernel: "mutually inductive types must live in the same universe"): the first
+inductive `m(…)` in a field type, at any depth, one of whose arguments mentions the type `n` being
+declared and whose sort (`st`) is not `n`'s, `s`. -/
+def sortNestViolation (st : SortTable) (n : String) (s : Nat) : Term → Option String
+  | .tind m as => if st m != some s && Term.mentionsTypeList n as then some m else sortNestViolationArgs st n s as
+  | _ => none
+termination_by structural t => t
+
+def sortNestViolationArgs (st : SortTable) (n : String) (s : Nat) : List Term → Option String
+  | [] => none
+  | a :: as => (sortNestViolation st n s a).or (sortNestViolationArgs st n s as)
 termination_by structural as => as
 end
 
@@ -414,7 +541,8 @@ def checkInd (d : IndDecl) : M Unit := do
   -- constructors and no nestable parameter, so nothing reads `d`'s nesting from it), of every
   -- earlier inductive from the set stored when it was declared
   let earlier := nestTableOf (← get).inds
-  let ownSet := nestableSet earlier d
+  let st := sortTableOf (← get).inds d
+  let ownSet := nestableSet earlier st d
   let nest : NestTable := fun m j => if m == n then ownSet.getD j false else earlier m j
   modify fun s => { s with env := #[{}], inds := s.inds ++ [{ d with ctors := [], nestable := [], declaring := true }] }
   let np := d.params.length
@@ -453,8 +581,8 @@ def checkInd (d : IndDecl) : M Unit := do
       if T.typeHasRef then err s!"field {fname} of {cn}: no borrows inside data"
       if (← sortOf (← fuelLeft) T) > 1 then err s!"field {fname} of {cn}: its type must be in Prop or Type"
       -- K4's nesting condition
-      if let some (m, a) ← nestViolation nest n FT then
-        err s!"field {fname} of {cn} : {FT.pp names}: {n} occurs at the parameter {a} of {m}, which is not nestable in {m}: {m} passes it to a type function, an equation, a value or a parameter that is not nestable, any of which may use its argument negatively: not strictly positive (K4, D36, D107)"
+      if let some (m, a, why) ← nestViolation nest st d n FT then
+        err s!"field {fname} of {cn} : {FT.pp names}: {n} occurs at the parameter {a} of {m}, which is not nestable in {m}: {why}"
       -- D36, K4
       if !(← firstOrderTerm nest n np fields.length FT) then
         err s!"field {fname} of {cn} : {FT.pp names}: fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"
@@ -469,6 +597,19 @@ def checkInd (d : IndDecl) : M Unit := do
         let r ← fieldDecl (← fuelLeft) d (d.params.map fun _ => .other) c j
         unless ← declCopy (← fuelLeft) r do
           err s!"[D53] {n} is declared copy, but the field {fname} of {cn} has the type {T}, which is not a copy type"
+      -- D120 (Lean's kernel: the parameters of a nested occurrence contain no local variables): off
+      -- the spine, a field type reads no variable whose declared type mentions the type being
+      -- declared, a variable reading what its declared type reads
+      let reads : Term → Option Nat := fun t =>
+        (d.deepVars c t).find? fun u => ((d.varType c u).map (·.mentionsType n)).getD false
+      if let some (what, u) ← readViolation reads FT then
+        let uT := ((d.varType c u).map fun T => if u < np then T.pp (pnames.drop (u + 1)) else T.pp names).getD ""
+        err s!"field {fname} of {cn} : {FT.pp names}: {what} reads {names.getD u "?"}, whose declared type {uT} mentions {n}, and a variable mentions what its declared type mentions: an equation, a type function's argument or a value argument may not depend on a value of the type being declared (D120; Lean's kernel: \"nested inductive datatypes parameters cannot contain local variables\")"
+      -- D121 (Lean's kernel: the types of a nested occurrence live in one universe): a nested
+      -- occurrence passes only through declarations of its own sort
+      if let some m := sortNestViolation st n d.sort FT then
+        let sortName (k : Nat) : String := if k == 0 then "a proposition" else "a type of data"
+        err s!"field {fname} of {cn} : {FT.pp names}: {n}, {sortName d.sort}, occurs inside an argument of {m}, {sortName (1 - d.sort)}, and a nested occurrence passes only through declarations of its own sort (D121; Lean's kernel: \"mutually inductive types must live in the same universe\")"
       genericValue (← fuelLeft) T
   modify fun s => { s with env := #[{}], inds := s.inds.map fun e => if e.name == n then { d with nestable := ownSet } else e }
 
