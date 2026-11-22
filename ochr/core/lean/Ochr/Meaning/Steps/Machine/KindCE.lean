@@ -16,7 +16,8 @@ false there (each run below is the checker's own):
   deferred type.
 * `EvalKindT`'s function part: at `stG` (a real hole's state, `StoredTypeCE.st0F`, plus `f ↦ g`, the global function,
   at the same deferred type) the typed read of `f` returns `g` at `Nat` (`readG`).
-* `Machine.LaterPiG` (READ FALSE as stated): at `stG`, the untyped call `f(Z)` with its type wanted and the deferral
+* `Machine.LaterPiG` (READ FALSE as stated before main's D134; since D134, merged by machine12, the two calls below FAIL:
+  the deferred path tests the recorded head type, `callPi`, so `LaterPiG` is an inversion): at `stG`, the untyped call `f(Z)` with its type wanted and the deferral
   flag set (how a `let` starts it) returns `Z` with no type and records `(Nat, [Z])`, not a Π-type (`callG`). And
   WITHOUT a deferred type: at `stU` (the hole's state plus a fresh unknown `σ` whose own type is `Π(m : Nat). Nat`,
   held by `f` stored at `Nat`; (K) asks nothing of an unknown, and no clause ties a holder's stored type to its
@@ -94,7 +95,9 @@ def callAt (st : MState) : Option (Value × Option Value × Option (Value × Lis
   | .ok r _ => some r
   | _ => none
 
-#guard callAt stG == some (.zero, none, some (.tNat, [.zero]))
+-- since main's D134 the deferred call FAILS here (the recorded head type is tested, `callPi`); before, it returned `Z`
+-- with no type and recorded `(Nat, [Z])`
+#guard callAt stG == none
 
 /-- The hole's state plus a fresh unknown `σ` of type `Π(m : Nat). Nat`, held by `f` stored at `Nat`. -/
 def stU : MState :=
@@ -105,9 +108,8 @@ def stU : MState :=
     absTy := StoredTypeCE.st0F.absTy.push piNN, absDecl := StoredTypeCE.st0F.absDecl.push .other,
     nextAbs := k + 1 }
 
-#guard match callAt stU with
-  | some (.sealed _, none, some (T, [.zero])) => T == .tNat
-  | _ => false
+-- since main's D134 the deferred call FAILS here too (before: the sealed `σ(Z)` with no type, record `(Nat, [Z])`)
+#guard callAt stU == none
 
 /-- A global the checker never accepted: `gb (r : &Nat) : Nat := r`. -/
 def gBad : GDef :=

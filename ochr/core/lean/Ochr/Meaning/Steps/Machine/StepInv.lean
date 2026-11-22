@@ -290,49 +290,104 @@ theorem letInvR : LetInvR := by
   obtain ⟨fl, s₅, b₆, hgf, h₄⟩ := Runs.bind_inv h₃
   clear h₃
   obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
-  obtain ⟨_, s₆, b₇, hpb, h₅⟩ := Runs.bind_inv h₄
-  clear h₄
-  have hs6 := runs_pushBind_inv hpb
-  subst hs6
-  simp only [Bool.not_true, Bool.false_and, Bool.false_eq_true, if_false] at h₅
-  rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
-  peel h₅
-  simp only [Bool.true_or, if_true, ite_true] at h₅
-  obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
-  clear h₅
-  obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆
-  clear h₆
-  obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
-  obtain ⟨_, s₉, b₁₀, hpt, h₈⟩ := Runs.bind_inv h₇
-  clear h₇
-  have hs9 := runs_pushTemp_inv hpt
-  subst hs9
-  obtain ⟨⟨⟩, s₁₀, b₁₁, hdr, h₉⟩ := Runs.bind_inv h₈
-  clear h₈
-  unfold setFlags at h₉
-  rw [runs_modify_bind] at h₉
-  obtain ⟨pv, s₁₁, b₁₂, hpop, h₁₀⟩ := Runs.bind_inv h₉
-  clear h₉
-  obtain ⟨hvt, rfl⟩ := runs_pure_inv h₁₀
-  simp only [Prod.mk.injEq] at hvt
-  obtain ⟨rfl, rfl⟩ := hvt
-  obtain ⟨hback, rfl⟩ := runs_popTemp_inv hpop
-  have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
-  have hk3 := kern_popTemp_withTempT _ _ T? hback
-  refine ⟨du', { s₂ with wantTy := true }, s₃,
-    { s₃ with env := Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
-    s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
-    hdr, ?_, ?_, ?_, ?_⟩
-  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
-  · exact ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩
-  · exact decTab_declOf_at hDst hdu
-  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
-  · exact ⟨rfl, rfl, rfl, rfl⟩
-  · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
-  · exact ⟨rfl, rfl, rfl, rfl⟩
-  · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
-      ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
-        (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
-  · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
+  -- main's D131: a typed `let` checks its binding's reading against its type (`readingAgrees`), a test that keeps
+  -- the state; the code after it is the same on both paths
+  rw [if_pos trivial] at h₄
+  cases T₀ with
+  | none =>
+    simp only at h₄
+    obtain ⟨_, s₆, b₇, hpb, h₅⟩ := Runs.bind_inv h₄
+    clear h₄
+    have hs6 := runs_pushBind_inv hpb
+    subst hs6
+    simp only [Bool.not_true, Bool.false_and, Bool.false_eq_true, if_false] at h₅
+    rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
+    peel h₅
+    simp only [Bool.true_or, if_true, ite_true] at h₅
+    obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
+    clear h₅
+    obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆
+    clear h₆
+    obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
+    obtain ⟨_, s₉, b₁₀, hpt, h₈⟩ := Runs.bind_inv h₇
+    clear h₇
+    have hs9 := runs_pushTemp_inv hpt
+    subst hs9
+    obtain ⟨⟨⟩, s₁₀, b₁₁, hdr, h₉⟩ := Runs.bind_inv h₈
+    clear h₈
+    unfold setFlags at h₉
+    rw [runs_modify_bind] at h₉
+    obtain ⟨pv, s₁₁, b₁₂, hpop, h₁₀⟩ := Runs.bind_inv h₉
+    clear h₉
+    obtain ⟨hvt, rfl⟩ := runs_pure_inv h₁₀
+    simp only [Prod.mk.injEq] at hvt
+    obtain ⟨rfl, rfl⟩ := hvt
+    obtain ⟨hback, rfl⟩ := runs_popTemp_inv hpop
+    have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
+    have hk3 := kern_popTemp_withTempT _ _ T? hback
+    refine ⟨du', { s₂ with wantTy := true }, s₃,
+      { s₃ with env := Env.pushBindE s₃.env x none v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
+      s₈, s₁₀, v₀, r, none, s₃.lastProof || du'.isProof, _, _, _, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
+      hdr, ?_, ?_, ?_, ?_⟩
+    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩
+    · exact decTab_declOf_at hDst hdu
+    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact ⟨rfl, rfl, rfl, rfl⟩
+    · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+    · exact ⟨rfl, rfl, rfl, rfl⟩
+    · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
+        ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
+          (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
+    · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
+  | some T' =>
+    simp only at h₄
+    obtain ⟨_, s₆', b₆', hra, h₄⟩ := Runs.bind_inv h₄
+    have := runs_keep (keep_readingAgrees _ _ _ _ _) hra
+    subst this
+    obtain ⟨_, s₆, b₇, hpb, h₅⟩ := Runs.bind_inv h₄
+    clear h₄
+    have hs6 := runs_pushBind_inv hpb
+    subst hs6
+    simp only [Bool.not_true, Bool.false_and, Bool.false_eq_true, if_false] at h₅
+    rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
+    peel h₅
+    simp only [Bool.true_or, if_true, ite_true] at h₅
+    obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
+    clear h₅
+    obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆
+    clear h₆
+    obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
+    obtain ⟨_, s₉, b₁₀, hpt, h₈⟩ := Runs.bind_inv h₇
+    clear h₇
+    have hs9 := runs_pushTemp_inv hpt
+    subst hs9
+    obtain ⟨⟨⟩, s₁₀, b₁₁, hdr, h₉⟩ := Runs.bind_inv h₈
+    clear h₈
+    unfold setFlags at h₉
+    rw [runs_modify_bind] at h₉
+    obtain ⟨pv, s₁₁, b₁₂, hpop, h₁₀⟩ := Runs.bind_inv h₉
+    clear h₉
+    obtain ⟨hvt, rfl⟩ := runs_pure_inv h₁₀
+    simp only [Prod.mk.injEq] at hvt
+    obtain ⟨rfl, rfl⟩ := hvt
+    obtain ⟨hback, rfl⟩ := runs_popTemp_inv hpop
+    have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
+    have hk3 := kern_popTemp_withTempT _ _ T? hback
+    refine ⟨du', { s₂ with wantTy := true }, s₃,
+      { s₃ with env := Env.pushBindE s₃.env x (some T') v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
+      s₈, s₁₀, v₀, r, (some T'), s₃.lastProof || du'.isProof, _, _, _, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
+      hdr, ?_, ?_, ?_, ?_⟩
+    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩
+    · exact decTab_declOf_at hDst hdu
+    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact ⟨rfl, rfl, rfl, rfl⟩
+    · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+    · exact ⟨rfl, rfl, rfl, rfl⟩
+    · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
+        ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
+          (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
+    · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
 
 end Ochr.Meaning.Steps.Machine
