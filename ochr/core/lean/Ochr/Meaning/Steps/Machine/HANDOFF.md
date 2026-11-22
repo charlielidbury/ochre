@@ -593,8 +593,27 @@ FOR THE NEXT LEAD LANE (the lead's ruling (b)): the `let` steps' entry-class con
 needed at `eval`'s entry (`EvalInvD` hands the core `deferCallTy = false`); deleting it means giving `eval_of_coreK` two
 classes (entry `P`, core `P ∧ flag clear`).
 
-NOT DONE: `NoValFact` (scratch file `NoVal.lean`, uncommitted: the `RRet` tool for the resolver's monad and the walk work;
-three goals left, the match's arm loop (`forIn` over the constructors) and its `out.toList`); `DeferClearG`'s induction
+LATER (same session): R2 re-ruled and BUILT (the deferred component is a borrow type as written: the term `&A` or an
+embedded `.val (&A)`; docs/31 D194); `EvalFitsT` restated at the value the `let` binds (`LetInvD` exposes D131's test);
+`spine-lead29` merged (8c32025e).
+
+`LaterPiG` with D134 (NOT PROVED; what stands in the way): (a) AS STATED IT IS STILL FALSE for a call the pre-pass ERASES
+(the statement has no hypothesis excluding it): `evalAt` runs an erased call inside `inStatement`, whose private copy is
+discarded with the record `callFn` set, so the run returns no type and no record. Since main's D132 the `let` never sets
+the flag for an erased call, so the fix is a hypothesis "the pre-pass does not erase the call" (`preFlags` not
+`(true, _)`), which `LetCallInvU`'s deferred branch can expose (its `erasedU = false`). (b) Then a full inversion of
+`eval`/`evalAt`/`evalCall`/`callFn`: a proof head returns a type (`want` holds); otherwise `B = none` iff `later`, and
+`later` passed `callPi` (D134: `.tPi _ (.pi …) _`); the class-2 return comes right after the first `setLater` with only
+state-reading decisions between (check `endBorrowArgs` runs no evaluation); the main path ends with the second
+`setLater`; nothing after `callFn` (`evalCall`'s and `evalAt`'s epilogues for a `.call`: `getFlags`, the pre-pass
+assertion) touches the record. `RetP` (`BorrowRead.lean`) is the tool; budget ~200 lines.
+
+NOT DONE: `NoValFact` (work in progress, NOT in the repo, at scratchpad `NoVal.lean.wip`, copy it to
+`Steps/Machine/NoVal.lean`: the `RRet` tool for the resolver's monad (`RRun_bind`, `RRun_tryCatch`, pure/bind/onFail/
+mapM/forIn/map lemmas) and the walk `rret_walk` work; three goals left, all in `resolveF`'s `matchGen` arm loop: the
+`forIn` body (its `match List.find? …` and `<$>` were simp'd before the walk reached them: run the walk before the
+closing `simp_all`) and two `Term.anyAtomArms … out.toList = false` (from the loop invariant via `anyAtomArms_noVal`);
+then `bindersF` (the `sorry` after it), `resolveDecl`'s `.ind` branch, and `ResolvesTo → NoValFact`); `DeferClearG`'s induction
 (see whether `machineGrows`' generated skeleton can be reused: `GrowsIn` is fixed to `TablesGrow`, so it needs its own
 relation or a parallel generated family); `NamesFact`, `CheckIndGivesChecks`, `DecLocal`'s other parts, `ReadInvD`,
 `checkDef`/`checkFix` inversion.
