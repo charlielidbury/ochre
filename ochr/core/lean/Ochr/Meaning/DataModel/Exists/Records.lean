@@ -542,4 +542,220 @@ theorem par_canon (n : Nat) :
 
 end
 
+/-! ## The same for a `Prop`-sorted declaration (the truth spec) -/
+
+section
+variable {K : RunCtx} {ρ : Assignment} {d : IndDecl} {c : Nat} {T : List Sem → Prop} {ps ps' : List Sem} {s : SState}
+
+mutual
+theorem semP_psAt : ∀ {t : Term}, PSpine K.Γ d c t → PsAt d.params.length ps ps' t →
+    ∀ h, semP K ρ d T ps s h t = semP K ρ d T ps' s h t
+  | _, .nat, _, _ => by
+    rw [semP_other K ρ d T ps s _ _ (fun _ _ e => by cases e) (fun _ e => by cases e),
+      semP_other K ρ d T ps' s _ _ (fun _ _ e => by cases e) (fun _ e => by cases e)]
+  | _, .unit, _, _ => by
+    rw [semP_other K ρ d T ps s _ _ (fun _ _ e => by cases e) (fun _ e => by cases e),
+      semP_other K ρ d T ps' s _ _ (fun _ _ e => by cases e) (fun _ e => by cases e)]
+  | _, .param v hv, hq, h => by
+    rw [semP_var K ρ d T ps s h v hv, semP_var K ρ d T ps' s h v hv]
+    exact hq v (FrameLocal.root_mem_place (.var v)) hv
+  | _, .tind n as M hM hargs, hq, h => by
+    rw [semP_tind, semP_tind, hM]
+    dsimp only
+    rw [itpArgsP_psAt hargs (fun a ha v hv hlt => hq v (mem_freeVars_tind ha hv) hlt) []]
+  | _, .call _ _ _ _, _, _ => by
+    rw [semP_other K ρ d T ps s _ _ (fun _ _ e => by cases e) (fun _ e => by cases e),
+      semP_other K ρ d T ps' s _ _ (fun _ _ e => by cases e) (fun _ e => by cases e)]
+  | _, .eq _ _ _ _, _, _ => by
+    rw [semP_other K ρ d T ps s _ _ (fun _ _ e => by cases e) (fun _ e => by cases e),
+      semP_other K ρ d T ps' s _ _ (fun _ _ e => by cases e) (fun _ e => by cases e)]
+
+theorem itpArgsP_psAt : ∀ {M : IndDecl} {j : Nat} {pre as : List Term}, PSpineArgs K.Γ d c M j pre as →
+    (∀ a ∈ as, PsAt d.params.length ps ps' a) →
+      ∀ vpre, itpArgsP K ρ d T ps s M j vpre as = itpArgsP K ρ d T ps' s M j vpre as
+  | _, _, _, _, .nil _ _ _, _, vpre => by rw [itpArgsP_nil, itpArgsP_nil]
+  | _, _, _, _, .type M j pre a as hty ha _ _ hrest, hq, vpre => by
+    have e : argSemP K ρ d T ps s M j vpre a = argSemP K ρ d T ps' s M j vpre a := by
+      rw [argSemP_eq, argSemP_eq, if_pos hty, if_pos hty]
+      exact semP_psAt ha (hq a (List.mem_cons_self ..)) _
+    rw [itpArgsP_cons, itpArgsP_cons, e,
+      itpArgsP_psAt hrest (fun b hb => hq b (List.mem_cons_of_mem _ hb)) _]
+  | _, _, _, _, .value M j pre a as hty _ hrest, hq, vpre => by
+    have e : argSemP K ρ d T ps s M j vpre a = argSemP K ρ d T ps' s M j vpre a := by
+      rw [argSemP_eq, argSemP_eq, if_neg (by simp [hty]), if_neg (by simp [hty])]
+    rw [itpArgsP_cons, itpArgsP_cons, e,
+      itpArgsP_psAt hrest (fun b hb => hq b (List.mem_cons_of_mem _ hb)) _]
+end
+
+theorem itpP_psAt {t : Term} (ht : PSpine K.Γ d c t) (hq : PsAt d.params.length ps ps' t) (h : TyS) :
+    itpP K ρ d T ps s h t = itpP K ρ d T ps' s h t := by
+  cases ht with
+  | tind n as M hM hargs =>
+    rw [itpP_tind, itpP_tind, hM]
+    dsimp only
+    rw [itpArgsP_psAt hargs (fun a ha v hv hlt => hq v (mem_freeVars_tind ha hv) hlt) []]
+  | _ =>
+    rw [itpP_other _ _ _ _ _ _ _ _ (fun _ _ e => by cases e), itpP_other _ _ _ _ _ _ _ _ (fun _ _ e => by cases e),
+      semP_psAt (c := c) (by constructor <;> assumption) hq h]
+
+/-- **The truth interpreter's field types at parameter lists equal where they do not vary and at every
+parameter a field type reads.** -/
+theorem ftyP_psAt (hspine : ∀ c i FT, fieldTerm d c i = some FT → PSpine K.Γ d c FT)
+    (hpty : ParamTyLocalD K.dm d) (hdΓ : d ∈ K.Γ) (hl : ps.length = ps'.length) (hps : PsSteady d ps ps')
+    (hfree : ∀ i FT, fieldTerm d c i = some FT → PsAt d.params.length ps ps' FT) :
+    ∀ (i : Nat) (es : List Small), ftyP K ρ d T ps c i es = ftyP K ρ d T ps' c i es := by
+  intro i
+  induction i using Nat.strongRecOn with
+  | ind i ih =>
+    intro es
+    rw [ftyP_eq, ftyP_eq]
+    cases hFT : fieldTerm d c i with
+    | none => rfl
+    | some FT =>
+      dsimp only
+      rw [canFrame_eq hpty hdΓ hl hps (tyOf' := fun j => if _h : j < i then
+          shapeTyP (shapeOf (ftyP K ρ d T ps' c j (es.take j))) else TyM.err)
+        (fun j hj _ _ => by simp only [dif_pos hj]; rw [ih j hj _])]
+      exact itpP_psAt (hspine c i FT hFT) (hfree i FT hFT) _
+
+end
+
+section
+variable (K : RunCtx) (ρ : Assignment) (d : IndDecl) (T : List Sem → Prop) (hdΓ : d ∈ K.Γ)
+  (hspine : ∀ c i FT, fieldTerm d c i = some FT → PSpine K.Γ d c FT) (hpty : ParamTyLocalD K.dm d)
+
+/-- **The model's record of a `Prop`-sorted declaration**: the truth spec's at the canonical parameters. -/
+noncomputable def recCanonP : List Sem → Rec :=
+  fun ps => recK (truthSpec K ρ d T) (canonPs K.dm (K.dm.paramTy d) d ps)
+
+include hdΓ hspine hpty in
+/-- **Piece 6 for a `Prop`-sorted declaration**: the records `recCanonP` (the truth spec's at the canonical
+parameters) are faithful (`types`, `values`,
+`smallOnly`) at any context whose model has them and the same parameter types at `d`. Assumes, besides
+the knot's: `hTyP` (a type parameter's type has no level-0 member; the run-defined parameter types
+read a universe, `Params.pty_type`), `hfree` (`VaryValFree`, a fact about the checker), and `hleaf`, the clause
+`leafOk` itself (OPEN: the knot's field types at members are never the raw code of a `Prop`-sorted
+declaration; a property of the run, see docs/34 §18.14). -/
+theorem recordsFaithful_canonP
+    (hTyP : ∀ j qs, d.paramIsType j = true → ∀ (A : Type) (c : Code0 A) (v : Sem), K.dm.paramTy d j qs = .t0 A c →
+      ¬ v ∈ₛ[K.dm.read] .t0 A c)
+    (hfree : VaryValFree d) (K' : RunCtx)
+    (hrec : K'.dm.recOf d = recCanonP K ρ d T) (hpt : K'.dm.paramTy d = K.dm.paramTy d)
+    (hleaf : ∀ ps, ps.length = d.params.length → ParamsTyped K'.dm d ps → K'.dm.RecLeafOk d (K'.dm.recOf d ps)) :
+    RecordsFaithfulAt K' d := by
+  have htyped : ∀ ps, ParamsTyped K'.dm d ps → Typed K.dm (K.dm.paramTy d) ps := fun ps h j hj => by
+    have := h j hj; rw [hpt] at this; exact this
+  have hcanon : ∀ ps, ParamsTyped K'.dm d ps → K'.dm.recOf d ps = recK (truthSpec K ρ d T) ps :=
+    fun ps h => by rw [hrec]; show recK _ (canonPs _ _ _ ps) = _; rw [canonPs_typed _ _ _ ps (htyped ps h)]
+  refine ⟨?types, ?values, ?smallOnly, hleaf⟩
+  case types =>
+    intro ps j A c _ hty hps hj
+    rw [hcanon ps hps]
+    exact paramTyOf_recK' K'.dm _ ps j (by simp [truthSpec, pEntryV, hty]) c hj
+  case values =>
+    intro ps j v A c hps hj hT hv
+    rw [hcanon ps hps, recK_param]
+    have hty : d.paramIsType j = false := by
+      cases e : d.paramIsType j
+      · rfl
+      · exact absurd hv (hTyP j _ e A c v (hpt ▸ hT))
+    simp [truthSpec, pEntryV, hty, List.getD_eq_getElem?_getD, hj]
+  case smallOnly =>
+    intro ps ps' hps hl hrel
+    rw [hcanon ps hps, hrec]
+    show recK _ (canonPs _ _ _ ps') = _
+    have hrel' : ∀ (j : Nat) (v v' : Sem), ps[j]? = some v → ps'[j]? = some v' →
+        v' = v ∨ ((∃ (A : Type) (c : Code0 A), K.dm.paramTy d j (ps.take j) = .t0 A c ∧ v ∈ₛ[K.dm.read] .t0 A c) ∧
+          v'.small = v.small) := fun j v v' h1 h2 => by
+      rcases hrel j v v' h1 h2 with e | ⟨⟨A, c, hT, hm⟩, hsm⟩
+      · exact .inl e
+      · exact .inr ⟨⟨A, c, hpt ▸ hT, hm⟩, hsm⟩
+    obtain ⟨hlq, hq⟩ := canonPs_small K.dm (K.dm.paramTy d) d hpty (htyped ps hps) hl hrel'
+    generalize canonPs K.dm (K.dm.paramTy d) d ps' = q at hlq hq ⊢
+    -- at a position, `ps` and `q` are equal, or `d`'s parameter there varies, is a value parameter, and
+    -- the two have one small reading, neither a type value
+    have hpos : ∀ j, ps.getD j .err = q.getD j .err ∨
+        (paramVaries d j = true ∧ d.paramIsType j = false ∧ (ps.getD j .err).small = (q.getD j .err).small ∧
+          (ps.getD j .err).small ≠ .other) := by
+      intro j
+      by_cases hj : j < ps.length
+      · have hj' : j < q.length := by rw [hlq]; exact hj
+        rcases hq j ps[j] q[j] (List.getElem?_eq_getElem hj) (List.getElem?_eq_getElem hj') with e | ⟨hv, ⟨A, c, hT, hm⟩, hsm⟩
+        · left; simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj', e]
+        · right
+          have hty : d.paramIsType j = false := by
+            cases e : d.paramIsType j
+            · rfl
+            · exact absurd hm (hTyP j _ e A c _ hT)
+          simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj',
+            Option.getD_some]
+          exact ⟨hv, hty, hsm.symm, mem_t0_small K.dm c hm⟩
+      · left
+        have h1 : ps[j]? = none := List.getElem?_eq_none_iff.2 (by omega)
+        have h2 : q[j]? = none := List.getElem?_eq_none_iff.2 (by omega)
+        simp [List.getD_eq_getElem?_getD, h1, h2]
+    have hsteady : PsSteady d ps q := fun j hv => by
+      rcases hpos j with e | ⟨hv', _⟩
+      · exact e
+      · rw [hv] at hv'; cases hv'
+    have hfreeq : ∀ (c i : Nat) (FT : Term), fieldTerm d c i = some FT → PsAt d.params.length ps q FT := by
+      intro c i FT hFT v hv hlt
+      rcases hpos (d.params.length - 1 - v) with e | ⟨hvar, hty, _⟩
+      · exact e
+      · have := hfree c i FT hFT v hv hlt hvar
+        rw [hty] at this; cases this
+    symm
+    apply recK_congr
+    · intro R c i es
+      exact ftyP_psAt (K := K) (ρ := ρ) (c := c) (T := T) hspine hpty hdΓ hlq.symm hsteady (hfreeq c) i es
+    · intro j
+      show pEntryV d ps j = pEntryV d q j
+      unfold pEntryV
+      rcases hpos j with e | ⟨_, hty, hsm, _⟩
+      · split
+        · unfold pEntryTy parTy
+          have : ps[j]? = q[j]? := by
+            by_cases hj : j < ps.length
+            · have hj' : j < q.length := by rw [hlq]; exact hj
+              simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj',
+                Option.getD_some] at e
+              rw [List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj', e]
+            · rw [List.getElem?_eq_none_iff.2 (by omega), List.getElem?_eq_none_iff.2 (by omega)]
+          rw [this]
+        · rw [e]
+      · rw [if_neg (by simp [hty]), if_neg (by simp [hty]), hsm]
+    · intro j
+      unfold paramRec
+      rcases hpos j with e | ⟨_, _, hsm, hne⟩
+      · by_cases hj : j < ps.length
+        · have hj' : j < q.length := by rw [hlq]; exact hj
+          simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj',
+            Option.getD_some] at e
+          rw [List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj', e]
+        · rw [List.getElem?_eq_none_iff.2 (by omega), List.getElem?_eq_none_iff.2 (by omega)]
+      · have hj : j < ps.length := by
+          rcases Nat.lt_or_ge j ps.length with h | h
+          · exact h
+          · exfalso; apply hne; simp [List.getD_eq_getElem?_getD, List.getElem?_eq_none_iff.2 h, Sem.small]
+        have hj' : j < q.length := by rw [hlq]; exact hj
+        simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj',
+          Option.getD_some] at hsm hne
+        rw [List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj']
+        have h1 : ∀ X, ps[j] ≠ .ty X := fun X e => hne (by rw [e]; rfl)
+        have h2 : ∀ X, q[j] ≠ .ty X := fun X e => hne (by rw [hsm, e]; rfl)
+        rcases e1 : ps[j] with _ | _ | _ | _ | _ | _ | _ | _ <;> rcases e2 : q[j] with _ | _ | _ | _ | _ | _ | _ | _ <;>
+          first | rfl | exact absurd e1 (h1 _) | exact absurd e2 (h2 _)
+
+include hpty in
+/-- **Monotonicity of the model's records** (`Inv.mono`), from the truth records' (`truth_exists`'
+second conclusion) through `canonPs_propLe`. -/
+theorem mono_canonP
+    (hm : ∀ ps ps', PropLe d ps ps' → ∀ c i es, es.length = i →
+      ShapeLe (uShape d (recK (truthSpec K ρ d T) ps) c i es) (uShape d (recK (truthSpec K ρ d T) ps') c i es))
+    (ps ps' : List Sem) (h : PropLe d ps ps') (c i : Nat) (es : List Small) (hes : es.length = i) :
+    ShapeLe (uShape d (recCanonP K ρ d T ps) c i es) (uShape d (recCanonP K ρ d T ps') c i es) :=
+  hm _ _ (canonPs_propLe K.dm (K.dm.paramTy d) d hpty h) c i es hes
+
+end
+
 end Ochr.Meaning.DataModel.Exists.Records
