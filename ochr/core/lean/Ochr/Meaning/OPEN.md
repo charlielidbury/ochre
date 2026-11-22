@@ -14,6 +14,16 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE MASTER INDUCTION OF (II), CONTINUED (lead28, 2026-11-22, `spine-lead28`; docs/31 D188 to D190)
+- BUILT: the invariant's clause (K), `Form.KindTyped` (where its type is stored, a binding holding a borrow stores `&A`, one holding a function value a Π written as one; globals likewise; deferred and missing types asked nothing), checked on the checker's own states (guards; `lake exe sweep` clause (K), depth 0 and `--deep-private`, 151/152 blocks) and the ripple repaired (`Machine.KindFrom`, every proved invariant lemma, every hand-built start state). Ruling (ii): `OutL`'s clause "a promised type that is missing means `err`", concluded by `EvalAt`; `LetPushG` asks it and every `let` supplies it. `EvalInvD` keeps the deferral flag (proved); `LetInvDUn`, `LetCallInvU` strengthened (proved).
+- PROVED: `succArgNoBorrowT_of` (`SuccArgNoBorrowT` from `EvalKindT` and `ExpectRefNat`); `not_kindTyped_stB` (machine11's counterexample fails (K)).
+- ASSEMBLED: every unerased `let` from 9 facts (`LetTailDecl`, `ValsCongrA`, `LetPushG`, `LetLazyPushG`, `LetDropG`, `EvalFitsT`, `EvalFitsU`, `EvalKindW`, `LaterPiG`); `stepSucc` from 4.
+- NEW FACTS, UNREAD (checker): `EvalKindT`, `ExpectRefNat` (MasterKind), `EvalKindW` (MasterLet), `LaterPiG` (MasterUntyped); (table) `TableSoundL1`; (model) `MemShapeL2`. PLACEHOLDER until main's D130: `DeferClearG` (nothing built on it).
+- FALSE UNTIL A NAMED CHANGE: `EvalFitsT`, `EvalFitsU`, `TableSoundL1` until main's D131.
+- OWE (K) NOW (machine lane): `LetPushG`, `LetLazyPushG`, `LetDropG`, `DropValueG`, `SuccFlightG`, `InvPushType`, `AccessG`, `PlaceTypeG`, `ReadOutG`, `InvMoveBorrow`, `AssignNumInv`, `InvExpectTy`, `BodyLazyInv`, `VarNumAInv`.
+- RULED, NOT BUILT: the deferral flag as an `EvalAt` entry condition (with `StepLetIn`'s assembly into `EvalAt`); D187's reference change (label tests at fields, parameters, call arguments, assignment, ascription, `Eq`'s sides; `J`/`rewrite`'s term).
+- FINDING FOR THE CHECKER: `Binding.lazyTy`'s docstring "a borrow's type is never deferred" is false in a sealed program's re-run (D188).
+
 ## THE MASTER INDUCTION OF (II), CONTINUED (lead27, 2026-11-22, `spine-lead27`; docs/31 D184 to D187)
 - PROVED: `Machine.evalAt_invF`; `Master.succRefNoLabel`, `ref_succ_borrow_fails` (the reference's `S` refuses a labelled argument, ruling (A), D186); `letPush_old_breaks_fits`, `succFlight_old_breaks_wf1` (the old forms' counterexamples). `Strict.fund_all` re-proved after two model changes (`J`'s hint `P(a)`, D184; `S`'s label test, D186).
 - ASSEMBLED: `stepSucc` from 4 facts (`SuccStrictG`, `SuccMeanG`, `SuccFlightG` restated, `SuccArgNoBorrowT`); every `let` (`stepLetIn_unerasedAll`) from 7 (`LetTailDecl`, `ValsCongrA`, `LetPushG`, `LetLazyPushG`, `LetDropG`, `EvalFitsT`, `EvalFitsU`).
