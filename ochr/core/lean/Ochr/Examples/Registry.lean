@@ -47,7 +47,7 @@ def programs : List (String × Block) :=
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion), ("ProofCopies", ProofCopies), ("CloneProof", CloneProof), ("CloneK2", CloneK2), ("CloneK3", CloneK3), ("CloneCaptured", CloneCaptured),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
    ("GlobalRecords", GlobalRecords), ("ArmLocal", ArmLocal), ("ArmLocalBoom", ArmLocalBoom), ("ArmRecords", ArmRecords), ("ArmEta", ArmEta), ("Functions", Functions), ("ConvModel", ConvModel), ("CallUnknown", CallUnknown), ("InFlight", InFlight), ("CallArgs", CallArgs), ("Undeclared", Undeclared), ("NatLists", NatLists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
-   ("PolyLists", PolyLists), ("ParamInference", ParamInference), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
+   ("PolyLists", PolyLists), ("ParamInference", ParamInference), ("UntypedHints", UntypedHints), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
    ("PositivityPaper", PositivityPaper),
    ("PositivitySelf", PositivitySelf), ("PositivityCurry", PositivityCurry), ("PositivityChain", PositivityChain), ("PositivityTyFn", PositivityTyFn), ("PositivityPropRoute", PositivityPropRoute), ("PositivitySwap", PositivitySwap), ("PositivitySecondHole", PositivitySecondHole), ("PositivityRoutes", PositivityRoutes), ("PositivityDeclaring", PositivityDeclaring), ("PositivityKeep", PositivityKeep), ("PositivityProbesNest", PositivityProbesNest), ("PositivityProbesLarge", PositivityProbesLarge), ("PositivityProbesAdv", PositivityProbesAdv), ("PositivityControls", PositivityControls), ("NestReads", NestReads), ("NestProps", NestProps),
    ("FrozenReadings", FrozenReadings), ("Propositions", Propositions), ("Destructuring", Destructuring),
@@ -74,7 +74,7 @@ def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 4060
+def Ochr.Registry.expectedTotal : Nat := 4271
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal
