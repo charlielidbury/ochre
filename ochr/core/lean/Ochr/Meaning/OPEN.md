@@ -14,9 +14,14 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE MASTER INDUCTION OF (II), CONTINUED (lead26, 2026-11-22, `spine-lead26`; docs/31 D180 on)
+- PROVED at every tail flag: `stepSeq_untyped` (assumes `SeqTailDecl`, `DropValueG`, `ValsCongrA`), `stepLetIn_untyped` (right-hand side not a call; assumes `LetTailDecl`, `LetPushG`, `LetDropG`, `ValsCongrA`); typed and untyped together `stepSeq_unerased`, `stepLetIn_unerased`; `hintM_congrA` (proved). D124's facts are no longer assumed by any step.
+- PROVED: `Machine.letCallInvU` (`LetCallInvU`, guarded in `Steps/LetCallGuards.lean`).
+- RESTATED (was FALSE by reading): `Master.LetLazyPushG` now takes the link `paramTy … = ru.2`; nothing supplies it until `EvalAt` hands on the call's deferred type (ruling asked, D180).
+
 ## THE MASTER INDUCTION OF (II), CONTINUED (lead25, 2026-11-22, `spine-lead25`; docs/31 D174 to D179)
 - PROVED: `stepSeq_untyped` (out of tail position; assumes `UntypedSeqTailNoHint` [checker, PROVED since the merge of D124: `Machine.untypedSeqTailNoHint`], `SeqTailDecl`, `DropValueG`, `ValsCongrA`), `stepLetIn_untyped` (out of tail position, right-hand side not a call; assumes `UntypedLetTailNoHint` [checker, PROVED since the merge of D124: `Machine.untypedLetTailNoHint`], `LetTailDecl`, `LetPushG`, `LetDropG`, `ValsCongrA`); `Machine.seqInvDU`, `Machine.letInvDUn` (proved).
-- PROVED at the merge of main (machine9, spine-machine10): `HintSites.UntypedLetTailNoHint`, `UntypedSeqTailNoHint`, `UntypedMatchNatArmNoHint`, `UntypedMatchIndArmNoHint` (D124), `ClonePeekPlace` (D122), all in `Steps/Machine/HintFacts.lean`. Still open: `Machine.LetCallInvU` (checker; restated at the merge: its tail runs at `if st.curTail then hint else none`), `Master.LetLazyPushG` (mixed): stated, unused yet.
+- PROVED at the merge of main (machine9, spine-machine10): `HintSites.UntypedLetTailNoHint`, `UntypedSeqTailNoHint`, `UntypedMatchNatArmNoHint`, `UntypedMatchIndArmNoHint` (D124), `ClonePeekPlace` (D122), all in `Steps/Machine/HintFacts.lean`. `Machine.LetCallInvU` PROVED since (lead26); `Master.LetLazyPushG` restated (lead26, D180).
 - NEW, open (Consistency chain): `Assembly.inds_prefix` (checker leaf: every stage's declarations are a prefix of the whole program's); `covered_prefix` deleted.
 - The tail shape `split f in u`: the reference now runs `u` (D178). KNOWN FALSE: the tail shape `split f {…}` (`splitArms`): no reference clause (`run_splitArms_fails`); ruling asked (D178).
 - `EvalAt`/`CoreSimK`/`EvalSimK` assume `HintBelow` (D179, ruled); the old form is not shown false (counterexample not built).
