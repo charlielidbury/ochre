@@ -293,6 +293,7 @@ import Ochr.Meaning.Strict.OpenFutureCE
 import Ochr.Meaning.Strict.FrameCE
 import Ochr.Meaning.Strict.FrameLocCE
 import Ochr.Meaning.Steps.Machine.HintFacts
+import Ochr.Meaning.Steps.Machine.TailOther
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
