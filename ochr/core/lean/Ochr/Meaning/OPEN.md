@@ -14,6 +14,13 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE MASTER INDUCTION OF (II), CONTINUED (lead27, 2026-11-22, `spine-lead27`; docs/31 D184 to D187)
+- PROVED: `Machine.evalAt_invF`; `Master.succRefNoLabel`, `ref_succ_borrow_fails` (the reference's `S` refuses a labelled argument, ruling (A), D186); `letPush_old_breaks_fits`, `succFlight_old_breaks_wf1` (the old forms' counterexamples). `Strict.fund_all` re-proved after two model changes (`J`'s hint `P(a)`, D184; `S`'s label test, D186).
+- ASSEMBLED: `stepSucc` from 4 facts (`SuccStrictG`, `SuccMeanG`, `SuccFlightG` restated, `SuccArgNoBorrowT`); every `let` (`stepLetIn_unerasedAll`) from 7 (`LetTailDecl`, `ValsCongrA`, `LetPushG`, `LetLazyPushG`, `LetDropG`, `EvalFitsT`, `EvalFitsU`).
+- NEW FACTS, UNREAD: `SuccArgNoBorrowT` (checker), `EvalFitsT` (checker, guarded), `EvalFitsU` (mixed). STILL FALSE: `LetPushG` at a value with no type, until ruling (ii) is built (D185, D187).
+- RULED, NOT BUILT: (ii) "the type returned reads as the reference's, none as `err`" in `EvalAt`; the deferral flag's entry condition and `DeferClearG` until main's D130; D187's reference change (label tests at fields, parameters, call arguments, assignment, ascription, `Eq`'s sides; `J`/`rewrite`'s term).
+- GONE: `split`'s braces form (main's D126); `Master.StepJ` stated.
+
 ## THE MASTER INDUCTION OF (II), CONTINUED (lead26, 2026-11-22, `spine-lead26`; docs/31 D180 to D183)
 - `EvalAt` concludes `OutL` (D183, ruled): a call run with the deferral flag set and the record clear means, by any pair it records, the reference's result type (`LaterOk`). Every proved step and `master` re-proved, mechanically.
 - PROVED at every tail flag: `stepSeq_unerased` (typed or untyped; 3 facts: `SeqTailDecl`, `DropValueG`, `ValsCongrA`), `stepLetIn_unerasedAll` (every `let`, typed or untyped, a call's right-hand side included; 5 facts: `LetTailDecl`, `LetPushG`, `LetLazyPushG`, `LetDropG`, `ValsCongrA`); `hintM_congrA`, `Machine.letCallInvU` (restated with the record link) PROVED. D124's facts are no longer assumed by any step.
