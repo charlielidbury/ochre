@@ -245,10 +245,19 @@ end
 mutual
 /-- Replace every read of the whole free variable `o` (at depth `c`, the variable
 `o + c`) by the closed term `u`; other occurrences stay. Used to inline a captured proof
-with its type (a proof's value is ⋆, so only its type needs keeping). -/
+with its type (a proof's value is ⋆, so only its type needs keeping).
+
+D122: a `clone` or `peek` of such a read is replaced by `u` too, not wrapped around it: the
+clone of a proof is that proof (D116), and both take a place (`evalCore`), so the checker never
+builds `clone((⋆ : T))`. (`peek` is built only by [Close]'s fills, which hold no closure or
+Π-type for `capture` to inline into; it is handled the same way so that no built term depends
+on that.) -/
 def Term.inlineReads (t : Term) (o : Nat) (u : Term) (c : Nat) : Term :=
   match t with
   | .place (.var j) => if j == o + c then u else .place (.var j)
+  | .prim n [.place (.var j)] =>
+    if (n == "clone" || n == "peek") && j == o + c then u
+    else .prim n (Term.inlineReadsList o u c [.place (.var j)])
   | .assign p t => .assign p (t.inlineReads o u c)
   | .letIn h t w => .letIn h (t.inlineReads o u c) (w.inlineReads o u (c + 1))
   | .seq t w => .seq (t.inlineReads o u c) (w.inlineReads o u c)

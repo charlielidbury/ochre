@@ -2614,13 +2614,18 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     setFlags (p, p)
     pure (← if p then pure Value.proof else absOf fuel' G, some G)
   -- D53: `clone(p)` copies `p` (an erased read); `peek` is an observation's final read
+  -- D122: both take a place, in the core as in the surface ("clone takes a place"): only a read of
+  -- a place is run in copying mode. The checker builds neither of anything else (`capture`
+  -- inlines `clone` of a captured proof as the proof itself, `Term.inlineReads`)
   | .prim "clone" [u] =>
+    let .place p := u | err s!"[D122] clone takes a place: clone({u.pp []})"
     -- K2: cloning a view at runtime copies it
-    if let .place p := u then
-      if let some v ← content? p then unsizedCheck p v "cloned"
+    if let some v ← content? p then unsizedCheck p v "cloned"
     demand want
     withCopying (withErased (eval fuel' typed u hint))
-  | .prim "peek" [u] => do demand want; withCopying (withErased (eval fuel' typed u hint))
+  | .prim "peek" [u] => do
+    unless u matches .place _ do err s!"[D122] peek takes a place: peek({u.pp []})"
+    demand want; withCopying (withErased (eval fuel' typed u hint))
   | .prim "inplace" [t] =>
     if t matches .place _ then modify fun s => { s with inPlace := true }
     demand want

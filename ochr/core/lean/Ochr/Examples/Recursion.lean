@@ -550,3 +550,92 @@ ochr CloneK3 uses Nats {
   ("Q17", "rewrite: the proof has type Nat, which is not an equation"),
   ("Q21", "symm: not an equation"),
   ("Q22", "symm: not an equation")]
+
+/-! ## `clone` and `peek` take a place, in the core too (D122)
+
+The surface accepts `clone` of a place only ("clone takes a place"); the core ran `clone(u)` of any
+term in copying mode, where a read leaves what it reads in place, so a core `let x = S(Z); let y =
+clone(S(x)); x` was accepted, with `x` still there (the guards below). Now `evalCore` rejects
+`clone` and `peek` of a term that is not a place, for every core term, written or built. The checker
+built one such term itself: `capture` inlines each read of a captured proof as `(⋆ : T)`, so
+`clone(h)` in a closure's or a Π-type's text became `clone((⋆ : T))`. It now inlines the clone of
+such a read as the proof itself, `(⋆ : T)` (D116: the clone of a proof is that proof). `CloneCaptured`
+is the hunt for that producer, one program per place a closure or a Π-type can clone a captured
+proof, every one accepted before and after, with closed runs; and the comparisons of two closures,
+or two function types, whose texts differed only by that `clone` before (now they are the same
+text). -/
+
+ochr CloneCaptured uses Nats {
+  reject def Ctl : False := ()
+  -- a closure's body (λ), cloning a captured proof
+  def KClo (h : ⊤) : ⊤ := (let c = (λ(u : Unit) : ⊤ => clone(h)); c(()))
+  def KCloRun : Eq(Nat, (let k = KClo(refl); 0), 0) := refl
+  -- a closure's declared codomain and parameter type
+  def KCod (h : ⊤) : ⊤ := (let c = (λ(u : Unit) : Eq(⊤, clone(h), h) => refl); h)
+  def KDom (h : ⊤) : ⊤ := (let c = (λ(e : Eq(⊤, clone(h), h)) : Unit => ()); h)
+  -- a Π-type's codomain and domain, a Π-type as a result type and a λ of it
+  def KPiC (h : ⊤) : Prop := Π(u : Unit). Eq(⊤, clone(h), h)
+  def KPiD (h : ⊤) : Type := Π(e : Eq(⊤, clone(h), h)). Unit
+  def KPiR (h : ⊤) : (Π(u : Unit). Eq(⊤, clone(h), h)) := λ(u : Unit) : Eq(⊤, clone(h), h) => refl
+  -- nested closures: the outer capture inlines into the inner closure's text
+  def KNest (h : ⊤) : ⊤ := (let c = (λ(u : Unit) : ⊤ => (let d = (λ(v : Unit) : ⊤ => clone(h)); d(()))); c(()))
+  -- a captured proof's field is not inlined (a place inside the closure)
+  def KFld (p : And(⊤, ⊤)) : ⊤ := (let c = (λ(u : Unit) : ⊤ => clone(p.0)); c(()))
+  -- a let-bound local proof, captured
+  def KLoc (n : Nat) : Eq(Nat, n, n) := (let h : Eq(Nat, n, n) = refl; let c = (λ(u : Unit) : Eq(Nat, n, n) => clone(h)); c(()))
+  -- a closure as an argument of a data function, with its closed run
+  def App (f : Π(u : Unit). ⊤) : Nat := (let r = f(()); 0)
+  def KArg (h : ⊤) : Nat := App(λ(u : Unit) : ⊤ => clone(h))
+  def KArgRun : Eq(Nat, KArg(refl), 0) := refl
+  -- a data closure that clones a captured proof and a captured number, with its closed run
+  def KData (h : ⊤) (n : Nat) : Nat := (let c = (λ(u : Unit) : Nat => (let q = clone(h); clone(n))); c(()))
+  def KDataRun : Eq(Nat, KData(refl, 5), 5) := refl
+  -- a closure in a stuck match's arm, and in a side of Id
+  def KArm (k : Nat) (h : ⊤) : ⊤ := (let r : ⊤ = match k { Z => (let c = (λ(u : Unit) : ⊤ => clone(h)); c(())), S _ => h }; r)
+  def KId (h : ⊤) : Id(⊤, (let c = (λ(u : Unit) : ⊤ => clone(h)); c(())), h) := refl
+  -- controls: captured data is a place inside the closure; a captured proof read without clone
+  def CData (n : Nat) : Nat := (let c = (λ(u : Unit) : Nat => clone(n)); c(()))
+  def CPlain (h : ⊤) : ⊤ := (let c = (λ(u : Unit) : ⊤ => h); c(()))
+  -- comparisons of two closures whose texts differed only by the clone, by Eq and by Id
+  def CEq (h : ⊤) : Eq(Π(u : Unit). ⊤, λ(u : Unit) : ⊤ => clone(h), λ(u : Unit) : ⊤ => h) := refl
+  def CId (h : ⊤) : Id(Π(u : Unit). ⊤, λ(u : Unit) : ⊤ => clone(h), λ(u : Unit) : ⊤ => h) := refl
+  def CEqD (h : ⊤) : Eq(Π(u : Unit). Nat, λ(u : Unit) : Nat => (let q = clone(h); 0), λ(u : Unit) : Nat => (let q = h; 0)) := refl
+  def CIdD (h : ⊤) : Id(Π(u : Unit). Nat, λ(u : Unit) : Nat => (let q = clone(h); 0), λ(u : Unit) : Nat => (let q = h; 0)) := refl
+  def CSelf (h : ⊤) : Id(Π(u : Unit). ⊤, λ(u : Unit) : ⊤ => clone(h), λ(u : Unit) : ⊤ => clone(h)) := refl
+  -- two function types, by Eq and by Id, and a binding's declared type against its value's
+  def PEq (h : ⊤) : Eq(Prop, Π(u : Unit). Eq(⊤, clone(h), h), Π(u : Unit). Eq(⊤, h, h)) := refl
+  def PId (h : ⊤) : Id(Prop, Π(u : Unit). Eq(⊤, clone(h), h), Π(u : Unit). Eq(⊤, h, h)) := refl
+  def PEqT (h : ⊤) : Eq(Type, Π(e : Eq(⊤, clone(h), h)). Unit, Π(e : Eq(⊤, h, h)). Unit) := refl
+  def PIdT (h : ⊤) : Id(Type, Π(e : Eq(⊤, clone(h), h)). Unit, Π(e : Eq(⊤, h, h)). Unit) := refl
+  def CBind (h : ⊤) : ⊤ := (let f : (Π(u : Unit). Eq(⊤, clone(h), h)) = (λ(u : Unit) : Eq(⊤, h, h) => refl); h)
+  def CBindR (h : ⊤) : ⊤ := (let f : (Π(u : Unit). Eq(⊤, h, h)) = (λ(u : Unit) : Eq(⊤, clone(h), h) => refl); h)
+}
+
+#guard (run "CloneCaptured" CloneCaptured).rejectedWith [
+  ("Ctl", "the body of Ctl has type Unit")]
+
+namespace Ochr.Examples.CloneCore
+open Ochr
+
+/-- A core definition `CL : Nat := body` (no parameters), checked alone. -/
+def clDef (body : Term) : Def := { name := "CL", hs := [], doms := [], cod := .nat, dec := none, body := body }
+
+/-- The verdict of `clDef body`: `""` if accepted, else the message. -/
+def clVerdict (body : Term) : String :=
+  match runM (checkDef (clDef body)) {} with
+  | .ok () => ""
+  | .error m => m
+
+-- `let x = S(Z); let y = clone(S(x)); x` (the proof lane's guard, `MasterGuards.bodyCL`): before
+-- D122 accepted, with `x` still there after the clone; now rejected, as the surface rejects it
+#guard clVerdict (.letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ (.prim "clone" [.succ (.place (.var 0))]) (.place (.var 1))))
+  |>.startsWith "[D122] clone takes a place: clone(S("
+-- `peek` likewise
+#guard clVerdict (.letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ (.prim "peek" [.succ (.place (.var 0))]) (.place (.var 1))))
+  |>.startsWith "[D122] peek takes a place: peek(S("
+-- `clone` of the place `x` itself is accepted, and `x` is still there
+#guard clVerdict (.letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ (.prim "clone" [.place (.var 0)]) (.place (.var 1)))) == ""
+-- without `clone` the read of `x` in `S(x)` moves it, and the last read is rejected
+#guard clVerdict (.letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ (.succ (.place (.var 0))) (.place (.var 1)))) != ""
+
+end Ochr.Examples.CloneCore
