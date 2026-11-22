@@ -530,6 +530,45 @@ CheckItem.lean). (2) `lake env lean` does not run imported `initialize`, so `@[g
 `@[grows]` lookup; use `dsimp (config := { proj := false }) only at h`. (4) `split at h` on a large `if` exceeds
 simp's step limit: `cases`/`by_cases` the condition and `rw [if_pos …]`/`rw [if_neg …]`.
 
+### machine11 (2026-11-22): main merged (D127, D129); step 1 found five facts false; BorrowReadWhole and DecLocal.join proved
+
+Branch `spine-machine12` (worktree `ochre-machine5`) = `spine-lead27` ecd0f74c + main 400644c6 (D127, D129; D128 and
+D130 were not on main). No conflict, no regeneration of `machineGrows` (D127/D129 change bodies only). Guards flipped:
+`PlaceGuards.MB2` rejected, `readR` fails; `FactsCE.join_regrains` gone (historical note; `join_keeps_entry` pins the
+new answer).
+
+READ (reasons and states in scratchpad `reports/machine11.md`):
+- FALSE: `EvalFitsT` and `EvalFitsU` (their (C⋆) part; and the invariant's `ShapeFacts.proofCopy` after the `let`): a
+  CHECKER BUG, `Steps/Machine/FitProofCE.lean`: `J(…, λ(x : Nat) : PropF(x) => ⊤, …)` with `PropF (n) : Type₁ := Prop`
+  is a proof read `other` (typeFnDecl does not read a sort through a body), and the join then drops it at an instance:
+  `V1` accepted, `V2 := V1(Z)` rejected. `SuccArgNoBorrowT` (unconstrained state: no `Inv` clause ties a stored type
+  to a borrow value, `StoredTypeCE.runX`). `NamesFact`'s inductive parameter part (`NamesCE.lean`: `Q6` names
+  itself in a parameter type's dead match arm; `undeclaredCheck (some n)`).
+- TRUE: `BorrowReadWhole`, `DecLocal.join` (both now PROVED), `NoValFact`, `SuccFlightG`'s and `LetPushG`'s checker
+  parts, `LetCallInvU` as stated (the gap under it is pinned, `StoredTypeCE.runC`: the deferred call records the
+  head's stored type unchecked). `SuccMeanG` has no checker part; nothing is stated under `Master.StepJ`.
+
+PROVED (standard axioms, root-imported):
+- `BorrowRead.lean`: `borrowReadWhole`; the tool `RetP P x` (every value a successful run returns satisfies `P`) with
+  lemmas for pure/bind/err/if/dif; walk goal-first.
+- `JoinLocal.lean`: `decLocal_join_ff`, `decLocal_join_chain`, `jd_local` (jdMoves/jdMovesList/jdMatch invariant),
+  `retP_jdMatch_succ`, `retP_jdGrain`, `retP_jdFns`, `blockOccs_pk`/`blockOccs_sub`, `fnOccs_ok`, `RetP.forIn'`,
+  `RetP.bind_of`, `RetP.withLive'`, `Place.beq_refl`.
+
+NOT DONE (in the lead's order): `NoValFact` (true; needs a run-predicate tool for the resolver's monad `R`, then an
+induction on `resolveF`'s fuel: no clause builds `Term.val`); `CheckIndGivesChecks`' assembly (plan in
+`CheckIndChecks.lean`; `RetP` should make the ifs cheaper than hypothesis-side peeling); `ReadInvD`; the inversion of
+`checkDef`/`checkFix`; DecLocal's caps/rep/inv.
+
+TRAPS found here: (1) Core `repeat` continues on the FIRST goal only: use `repeat (any_goals first | …)`. (2) Inside
+`first`, `rcases`/`obtain`/`exact … (by tac)` log elaboration errors (sorry) instead of failing: use `refine`/`apply`
+and run sub-proofs as tactic steps. (3) Inside `first`, `done` sees every goal: wrap in `focus`. (4) Hypothesis-side
+`split` on readPlace's code hits simp's step limit (the do-notation inlines continuations into both arms of every
+`if`); goal-side `RetP` walking does not. (5) `split` on a match over a prim's string patterns leaves impossible
+equations: `split <;> try (injections <;> subst_vars)` and `contradiction`. (6) Probes: `ulimit -v 60000000` (16 GB
+is too little for Lean's threads); `inductive Q3 (A : Type) (n : Nat) (x : Q3(A, n, n)) := MkQ3` makes the checker run
+away (a run was SIGTERMed): never unguarded.
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed
