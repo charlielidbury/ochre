@@ -15,15 +15,16 @@ holders left). The read of one place, the place's type, and the step around them
 assemblies are PROVED from them:
 
 * `readPlace_sim`: the checker's `readPlace` against the reference's `SM.guarded ContentOk (readPlace …)`, from
-  `ReadInvD` (checker), `AccessG` (mixed), `ReadOutG` (mixed: the read after its access);
+  `ReadInvD`, `BorrowReadWhole` (checker), `AccessG` (mixed), `ReadOutG` (mixed: the read after its access);
 * `stepPlace_direct`: the evaluation step for a place read directly (no positional projection, which the checker runs
   as the one-constructor match naming the field, D81), from `PlaceInvD` (checker), `PlaceTypeG` (mixed),
   `readPlace_sim`'s three, and `EvalInvDT` (checker: `eval` hands `evalCore` the typing flag `typed`).
 
 The class: a direct place, an unerased term the table reads as decided data. NOT covered: a place with a positional
 projection (a one-constructor match, `projMatch`; its arm is a direct read of the field); an erased read (the erased
-wrapper, D158). Known FALSE on one accepted program (D181, ruling asked): the read of a borrow whose content is
-partly moved (`PlaceGuards.MB2`); `ReadOutG` is false there and so is the step.
+wrapper, D158). The read of a borrow whose content is partly moved is accepted today (`PlaceGuards.MB2`, D181) and
+will be rejected (RULED (A), main's D127): the step assumes it as one named checker fact, `BorrowReadWhole`, false
+until then.
 -/
 
 namespace Ochr.Meaning.Steps.Form.Master
@@ -98,13 +99,22 @@ def ReadInvD : Prop :=
         ((∀ l w, v ≠ .borrow l w) → v.hasHole = false) ∧
         ∃ E', ckSetBot stA.env pos p.steps.2 = some E' ∧ Kern { stA with env := E' } st')
 
+/-- **A read of a place holding a borrow finds the borrow's content whole** (a fact about the checker alone; FALSE
+today, TRUE after main's D127, the lead's ruling (A) on D181, D182): `readPlace`'s borrow branch runs before the
+`hasHole` test every other moved value meets. Pin: `PlaceGuards.readR` (at `MB2`'s point the read returns a borrow
+over `(⊥, σb)`; it fails after D127), beside `MB1` (accepted) and `MB3` (rejected). -/
+def BorrowReadWhole : Prop :=
+  ∀ (n : Nat) (p : Place) (st st' : MState) (bh : Nat) (v : Value),
+    Runs (Ochr.readPlace n p) st bh v st' → ∀ l w, v = .borrow l w → w.hasHole = false
+
 /-- **The read after its access** (mixed; STATED; the model's half of the read): at the checker's state after the
 access, related to the reference's state after its own access, the reference's `readPlace` of `p` at the copy
 decision `c` (the aligned table's, the checker's) succeeds in a typed run (in an untyped one it is an entry condition)
 and gives the value the checker's content means, carrying its borrow's label; the states after are related with the
 value in flight: the place unchanged where the checker copies, `⊥` against the reference's `moved` where it moves (a
 whole borrow parked in a temporary on both sides, `rel_moveOut`'s case; a field path through `Sem.updAt`,
-`botWrite_rel`'s). FALSE as stated at a borrow whose content is partly moved (`PlaceGuards.MB2`, D181). -/
+`botWrite_rel`'s). A borrow read is whole (`hbw`, from `BorrowReadWhole`): as first stated, without it, FALSE at a
+borrow whose content is partly moved (`PlaceGuards.MB2`, D181). -/
 def ReadOutG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (stA stR : MState) (s : SState) (p : Place)
     (pos : Pos) (v : Value) (c : Bool),
@@ -117,6 +127,7 @@ def ReadOutG : Prop :=
     (ReadCopies v c → stR = stA) →
     (¬ ReadCopies v c → ((∀ l w, v ≠ .borrow l w) → v.hasHole = false) ∧
       ∃ E', ckSetBot stA.env pos p.steps.2 = some E' ∧ stR = { stA with env := E' }) →
+    (∀ l w, v = .borrow l w → w.hasHole = false) →
     ∃ (r : Res) (s' : SState), readPlace K φ p c s = some (r, s') ∧
       meanV K ρ (fun l => φ (π l)) r.2 v = r.1 ∧ r.2.label = (Value.heldLabel v).map π ∧
       Pre K ρ (stR.withTempT v none) ∧ Rel K ρ φ π (stR.withTempT v none) s'
@@ -130,8 +141,8 @@ theorem contentOk_withΔ (K : RunCtx) (Δ : Nat → TyS) (φ : Future) (p : Plac
     ContentOk { K with Δ := Δ } φ p = ContentOk K φ p := rfl
 
 /-- **The checker's `readPlace` simulates the reference's** (`readPlace_step_stmt` in the master's form), PROVED from
-`ReadInvD` (checker), `AccessG` (mixed), `ReadOutG` (mixed). -/
-theorem readPlace_sim (hRI : ReadInvD) (hA : AccessG) (hRO : ReadOutG) {K : RunCtx} {ρ : Assignment} {φ : Future}
+`ReadInvD`, `BorrowReadWhole` (checker), `AccessG`, `ReadOutG` (mixed). -/
+theorem readPlace_sim (hRI : ReadInvD) (hBW : BorrowReadWhole) (hA : AccessG) (hRO : ReadOutG) {K : RunCtx} {ρ : Assignment} {φ : Future}
     {π : Nat → Nat} {st st' : MState} {s : SState} {p : Place} {v : Value} {n bh : Nat}
     (hm : ModeR st) (hne : 0 < st.env.size) (hp : Pre K ρ st) (hr : Rel K ρ φ π st s)
     (hS : Strict.SGood K.dm K.Γ φ s)
@@ -182,7 +193,7 @@ theorem readPlace_sim (hRI : ReadInvD) (hA : AccessG) (hRO : ReadOutG) {K : RunC
     (fun e => by
       have := hok (by rw [← htyp]; exact e)
       rw [hguard] at this; exact this)
-    hR₁ hR₂
+    hR₁ hR₂ (hBW (n + 1) p st st' bh v h)
   refine ⟨ρ', Δ', π', r, s', ?_, by rw [hguard]; exact hrd, hmean, hlab,
     Pre.of_kern (hkR.withTempT v none) hpR, Rel.of_kern (hkR.withTempT v none) hrR, ?_, ?_⟩
   · exact hext.congr rfl rfl (hRa.symm.trans hkR.absTy) (hRl.symm.trans hkR.nextLoan)
@@ -297,7 +308,8 @@ variable {K : RunCtx} {φ : Future}
 
 /-- **The read of a direct place, at `evalCore`, in general** (typed or untyped, at every tail flag), from the five
 facts `PlaceInvD` (checker), `PlaceTypeG` (mixed), `ReadInvD` (checker), `AccessG` (mixed), `ReadOutG` (mixed). -/
-theorem place_coreT (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD) (hA : AccessG) (hRO : ReadOutG)
+theorem place_coreT (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD) (hBW : BorrowReadWhole) (hA : AccessG)
+    (hRO : ReadOutG)
     {ρ : Assignment} {m : Nat} {p : Place} (hdir : p.Direct) :
     CoreSimKT K ρ φ (m + 1) (.place p) (fun st => 0 < st.env.size) := by
   intro st st' typed hint v T? s π hne hty hm _ _ _ _ hp hr hS _ _ _ _ hfl hok hD bh h
@@ -306,7 +318,7 @@ theorem place_coreT (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD) (hA : 
     hPT K ρ φ π st st₁ s p (n + 1) b₁ typed st.wantHere T? hm hne hp hr hS hT
   have hx := runT_place K ρ φ st.curTail (hintM K ρ hint) p s hfl
   obtain ⟨ρ', Δ', π', r, s', he', hrd, hmean, hlab, hp', hr', hK', hty'⟩ :=
-    readPlace_sim (K := { K with Δ := Δ₁ }) hRI hA hRO (hm.of_modeEq hK₁.mode) (by rw [hK₁.size]; exact hne) hp₁ hr₁ hS
+    readPlace_sim (K := { K with Δ := Δ₁ }) hRI hBW hA hRO (hm.of_modeEq hK₁.mode) (by rw [hK₁.size]; exact hne) hp₁ hr₁ hS
       (fun e => by
         have := hok (by rw [← hty, ← hty₁]; exact e)
         rw [hx] at this; exact this)
@@ -319,11 +331,11 @@ theorem place_coreT (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD) (hA : 
     (fun T' e => by cases e; exact hb₁ T hT') he'.agree (hag₁ T hT' _ r s' hrd')
 
 /-- **The step for a direct place read, typed or untyped, at every tail flag, where the table reads it as decided
-data** (docs/31 D181), with what the run keeps. ASSUMES 6 facts: `EvalInvDT`, `PlaceInvD`, `ReadInvD` (checker),
-`PlaceTypeG`, `AccessG`, `ReadOutG` (each part checker, part model). It uses no induction hypothesis (a read has no
-sub-run). `ReadOutG` is FALSE at a borrow whose content is partly moved (`PlaceGuards.MB2`, ruling asked, D181). -/
-theorem stepPlace_direct (hET : EvalInvDT) (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD) (hA : AccessG)
-    (hRO : ReadOutG) :
+data** (docs/31 D181, D182), with what the run keeps. ASSUMES 7 facts: `EvalInvDT`, `PlaceInvD`, `ReadInvD`,
+`BorrowReadWhole` (checker; the last FALSE today, true after main's D127), `PlaceTypeG`, `AccessG`, `ReadOutG` (each
+part checker, part model). It uses no induction hypothesis (a read has no sub-run). -/
+theorem stepPlace_direct (hET : EvalInvDT) (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD)
+    (hBW : BorrowReadWhole) (hA : AccessG) (hRO : ReadOutG) :
     ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (p : Place), p.Direct →
       EvalSimK { K with Δ := Δ } ρ φ n (.place p)
         (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.place p) ≠ .any ∧
@@ -337,7 +349,7 @@ theorem stepPlace_direct (hET : EvalInvDT) (hPI : PlaceInvD) (hPT : PlaceTypeG) 
     (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2)
-    (fun st st' typed hint v T? s π hP => place_coreT (K := { K with Δ := Δ }) hPI hPT hRI hA hRO hdir
+    (fun st st' typed hint v T? s π hP => place_coreT (K := { K with Δ := Δ }) hPI hPT hRI hBW hA hRO hdir
       st st' typed hint v T? s π hP.1)
 
 end
