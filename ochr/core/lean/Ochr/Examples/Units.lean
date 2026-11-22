@@ -245,6 +245,10 @@ def addX : Term := .call (.const "Add") [.place (.var 0), .zero] false
 -- the flag and deferred its type, and the `let`, not bound to a call, read no record: `y` was bound
 -- with no type, and the run gave none though its type was wanted, `some (none, false, false)`)
 #guard deferRun (.letIn ⟨"y"⟩ (.seq .zero addX) (.place (.var 0))) true == some (some .tNat, false, false)
+-- a `let`'s tail never reads a flag its right-hand side's evaluation could have left: `let y = Z;
+-- Add(y, 0)` from a state with the flag set (before D130 this held because the `let` cleared the flag
+-- after its right-hand side; since D130 because the `let`'s own evaluation consumed it on entry)
+#guard deferRun (.letIn ⟨"y"⟩ .zero addX) true == some (some .tNat, false, false)
 -- a `let` of a call still defers its type to the binding, which gives it when read
 #guard deferRun (.letIn ⟨"y"⟩ addX (.place (.var 0))) false == some (some .tNat, false, false)
 #guard deferRun (.letIn ⟨"y"⟩ addX (.place (.var 0))) true == some (some .tNat, false, false)
