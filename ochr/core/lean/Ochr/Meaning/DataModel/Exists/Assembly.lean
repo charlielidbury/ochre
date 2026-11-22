@@ -150,9 +150,9 @@ for a model that agrees with it at stage `k`'s declarations. By the `k`-th item'
   the model congruence (`Congr.runT_congrR`, extended to parameter types); the globals by a
   congruence at the constants a field type names; the decisions by a named machine fact (piece 8:
   the field-type runs do not change with the state's later globals and declarations); and the
-  declaration list, which the run reads not only at the names a term mentions but at the names
-  strong-updated trees carry (`DataModel.readTy`'s `ownTy`, through `Sem.follow`/`Sem.updAt`): the
-  open point of the assembly. -/
+  declaration list, which the run reads not only at the names a term mentions but at the name a
+  strong-updated tree carries (`DataModel.readTy`'s `ownTy`, through `Sem.follow` only: `Sem.updAt`
+  does not read the list; `ScopeCE.run_differs`): the open point of the assembly (docs/34 §18.13). -/
 theorem inv_step (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm) :
     ∃ dm' : DataModel, Inv D fuel items (k + 1) dm' ∧
       ∀ d ∈ (stage D fuel items dm k).inds, dm'.recOf d = dm.recOf d ∧ dm'.paramTy d = dm.paramTy d := by
