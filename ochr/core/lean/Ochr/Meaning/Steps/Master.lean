@@ -131,11 +131,64 @@ theorem hintBelow_none (n : Nat) : HintBelow none n := fun _ h => by cases h
 theorem HintBelow.mono {hint : Option Value} {a b : Nat} (h : HintBelow hint a) (hab : a ≤ b) : HintBelow hint b :=
   fun T hT σ hσ => Nat.lt_of_lt_of_le (h T hT σ hσ) hab
 
+/-- **A deferred call type means the reference's result type** (the lead's ruling on docs/31 D180; D183): for a run
+of a CALL from a state with the deferral flag set and the record clear (`deferCallTy`, `callTyLater`: how an untyped
+`let` of a call starts it, `Machine.LetCallInvU`), a pair `(P, ws)` the end state records, `P` a Π-type with `|ds|`
+domains, reads at its codomain (`CodeMeaning.paramTy`, as `Env.hintAt` reads a lazily typed binding) as the
+reference's result type `R`. Vacuous for every other term and every other start: the checker does not clear the
+record on entry, so a run that is not such a call can end with a stale record (`LaterGuards`), which no consumer
+reads (the `let` clears it before its call and reads it right after). -/
+def LaterOk (K : RunCtx) (ρ : Assignment) (t : Term) (st st' : MState) (R : TyS) : Prop :=
+  (∃ f as hd, t = .call f as hd) → st.deferCallTy = true → st.callTyLater = none →
+    ∀ caps hs ds cod rd ws, st'.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws) →
+      K.M.paramTy ρ (.tPi caps (.pi hs ds cod) rd) ws ds.length = R
+
+theorem laterOk_of_not_call {K : RunCtx} {ρ : Assignment} {t : Term} {st st' : MState} {R : TyS}
+    (ht : ∀ f as hd, t ≠ .call f as hd) : LaterOk K ρ t st st' R :=
+  fun ⟨f, as, hd, e⟩ => absurd e (ht f as hd)
+
+/-- **`Out` with the deferred type** (the lead's ruling on D180; D183): `Out`, and inside its existential, at its
+extended context and assignment, `LaterOk` for the run of `t`. `EvalAt`'s conclusion. -/
+def OutL (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st st' : MState) (s : SState)
+    (x : SM Res) (v : Value) (T? : Option Value) (t : Term) : Prop :=
+  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
+    Ext K ρ π st st' ρ' Δ' π' ∧ x s = some (r, s') ∧
+    meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    (∀ T, T? = some T → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+    r.2.label = (Value.heldLabel v).map π' ∧
+    Pre { K with Δ := Δ' } ρ' (st'.withTempT v T?) ∧
+    Rel { K with Δ := Δ' } ρ' φ π' (st'.withTempT v T?) s' ∧
+    LaterOk { K with Δ := Δ' } ρ' t st st' r.2
+
+theorem OutL.out {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} (h : OutL K ρ φ π st st' s x v T? t) :
+    Out K ρ φ π st st' s x v T? :=
+  let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, _⟩ := h
+  ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr⟩
+
+theorem OutL.of_out {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} (ht : ∀ f as hd, t ≠ .call f as hd)
+    (h : Out K ρ φ π st st' s x v T?) : OutL K ρ φ π st st' s x v T? t :=
+  let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr⟩ := h
+  ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, laterOk_of_not_call ht⟩
+
+/-- `EvalAt`'s conclusion read as `Out`'s (every consumer but the `let` of a call). -/
+theorem outK_of_outLK {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} (h : OutL K ρ φ π st st' s x v T? t ∧ Kept st st') :
+    Out K ρ φ π st st' s x v T? ∧ Kept st st' :=
+  ⟨h.1.out, h.2⟩
+
+/-- A step for a term that is not a call concludes `EvalAt`'s form from `Out`'s. -/
+theorem outLK_of_outK {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} (ht : ∀ f as hd, t ≠ .call f as hd)
+    (h : Out K ρ φ π st st' s x v T? ∧ Kept st st') : OutL K ρ φ π st st' s x v T? t ∧ Kept st st' :=
+  ⟨OutL.of_out ht h.1, h.2⟩
+
 /-- **The evaluation step at fuel `n`, for one term**: from a state in the plain mode at any erased depth
 (`ModeR`) with a frame,
 whose handed-down reading, if any, is the table's reading of `t`, meeting `Pre`, related to a good reference
-state, the checker's successful run of `eval` makes the reference's run of `t` succeed (`Out`), and the run
-keeps the mode, the frames and the top frame's readings (`Kept`). -/
+state, the checker's successful run of `eval` makes the reference's run of `t` succeed (`Out`, with the deferred
+type a call records: `OutL`, D183), and the run keeps the mode, the frames and the top frame's readings (`Kept`). -/
 def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
@@ -146,7 +199,7 @@ def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : P
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
     ∀ bh, Runs (Ochr.eval n typed t hint) st bh (v, T?) st' →
-    Out K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T? ∧ Kept st st'
+    OutL K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T? t ∧ Kept st st'
 
 /-- **A tail step's conclusion, with what the run keeps**: `TailOut` (some leaf `stl` where the continuation
 ran, `Out` there) with `Kept` from the start to the leaf. -/

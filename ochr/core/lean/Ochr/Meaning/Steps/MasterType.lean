@@ -128,7 +128,7 @@ theorem stepNat (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepNat K φ :=
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .nat ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .nat).isProof = false :=
     fun st _ => by rw [hdz]; exact ⟨(fun e => by cases e), rfl⟩
-  exact eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
+  exact outLK_of_outK (fun f as h e => by cases e) <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany (type_coreSimK hIT .tNat TyM.nat (.inl rfl) (natInvE m) (fun _ _ _ => by rw [runT]; rfl)
       (fun _ _ _ _ => rfl))
@@ -145,7 +145,7 @@ theorem stepUnit (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepUnit K φ 
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .unit ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .unit).isProof = false :=
     fun st _ => by rw [hdz]; exact ⟨(fun e => by cases e), rfl⟩
-  exact eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
+  exact outLK_of_outK (fun f as h e => by cases e) <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany (type_coreSimK hIT .tUnit TyM.unit (.inr rfl) (unitInvE m) (fun _ _ _ => by rw [runT]; rfl)
       (fun _ _ _ _ => rfl))

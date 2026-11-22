@@ -130,6 +130,6 @@ theorem tStepOther (hT : TailOtherInv) (K : RunCtx) (φ : Future) : TStepOther K
     (Or.inl (htd₀.trans htd)) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv hab₀ hgb hnh (fun e => by cases e) hD₁ b₁ hev
   refine ⟨st₁, v, T, ⟨b₂, st₂, hkr⟩, ?_, (Kept.of_kern hk₀ hme₀).trans hO.2⟩
   rw [runT_tl_indep t ht true st₀.tailNext]
-  exact Out.of_kern hk₀ (Kern.rfl' _) hO.1
+  exact Out.of_kern hk₀ (Kern.rfl' _) hO.1.out
 
 end Ochr.Meaning.Steps.Form.Master
