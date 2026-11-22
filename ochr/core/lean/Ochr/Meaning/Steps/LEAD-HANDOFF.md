@@ -1,4 +1,24 @@
-# Lead handoff (twenty-first lead, lead21, 2026-11-22; twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+# Lead handoff (twenty-second lead, lead22, 2026-11-22; twenty-first lead, lead21, 2026-11-22; twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+
+## TWENTY-SECOND LEAD (lead22, 2026-11-22; `spine-lead22`, branched from `spine` ab9754c9): the master induction; the general step by former
+
+**Built (standard axioms; docs/31 D150 to D153).**
+- `Steps/Master.lean`: `EvalAt` (the statement: `Form.eval_sim` for one term + `Mode`, a frame, the handed-down reading; `Form.eval_sim` itself is false without them), `TailAt` (`TailSim` + the same, the continuation `GrowsM`), `IH` (every smaller fuel, every `Δ`, `ρ`, both statements, every term), the 32 step statements (`StepPlace` … `StepMatchInd`, `TStepLetIn` … `TStepOther`), `AllSteps`, `master`/`eval_all`/`tail_all` (assume the 32 and nothing else); `evalAt_of_eval_sim`, `evalSim_of_evalAt`; `tailShaped` (the shapes `checkTailAt` matches, in its order).
+- `Steps/MasterLeaf.lean`: `stepZero`, `stepTt` (assume nothing); `decTab_fixed` (the table at a term whose reading `declOf` computes outright); `ttInv`, `tt_coreSim`.
+- `Steps/MasterTail.lean`: `tStepOther` (assumes `TailOtherInv`, new, guarded); `runT_tl_indep` (proved; the prim case by named-pattern splits, as `AssignCongr`'s).
+- `Steps/MasterLet.lean`: `letIn_core`, `stepLetIn_typed` (typed, unerased; assume `EvalTop`, `LetTailDecl`, `ValsCongrA`, `LetPushG`, `LetDropG` and `FundCtx`); guards for `EvalTop` and `LetTailDecl`.
+- `Steps/MasterGuards.lean`: `clone(S(x))` accepted by the core checker, (II) false there; the tail-hint misfit (`ochr MasterProbeTailHint`: `F`, `F2`, `F3`).
+
+**Rulings asked of the orchestrator (not answered at my stop):** (a) restate `Form.eval_sim` as `EvalAt`; (b) the erased mode: drop `Mode.erased` from the master's mode (recommended) or a second statement; (c) the core checker rejects `clone`/`peek` of a non-place (recommended); (d) the model: in tail position `.letIn`, `.seq` and match arms hand their hint on (recommended).
+
+**Not done, in order (the table is D153).**
+1. After ruling (b): restate `EvalAt`/`TailAt`'s mode and re-check `stepZero`, `stepTt`, `tStepOther`, `stepLetIn_typed` (they use `Mode` only through `evalInvR`/`letInv`, whose statements the machine lane must confirm at any erasure depth); then the erased wrapper: one lemma "an erased term's step is its core step on a copy", which every former's erased case uses.
+2. `seq` in general: `letIn_core` without the push; facts `SeqInvG` (`SeqInv` for every value), `DropValueG` (the discard on both sides; the reference's `discardEnd` assumes a non-borrow value in flight holds no live loan: state it as a checker fact).
+3. The untyped `let` (callee bodies): `LetInv` untyped (call deferral, `lazyTy`), the tail's hint (`runT_hintIndep`).
+4. `place`, `borrow`, `assign` in general (D153's rows); then `succ` (needs the model's hint fix or hint independence at `Nat`), `nat`/`unit` (an `Inv` fact for a type value in flight).
+5. Prove the new facts that are provable now: `ValsCongrA` (an induction over `Term.valsOk` with `runT_congrA` at each value), `LetTailDecl` at the class where the `let`'s `declOf` succeeds (machine lane), `EvalTop` (machine lane; a whole-machine induction).
+
+**Traps.** `{ K with Δ := Δ }` is not defeq to `K` as an argument of a structure-valued `Prop` (`Strict.FundCtx`): rebuild as `⟨hc.globals, hc.sorts⟩`. `rw [runT, runT]` on a term with a variable `prim` name needs the named-pattern splits (`runT_tl_indep`, `AssignCongr`). `letDrop_eval` closes the reference's `let` drop where `simp only [hlast, hsh]` does not reach inside the `if`. The `ochr` block fails elaboration on a rejected definition (use it to pin acceptance); `checkDef` with `#guard isOk` for core terms the surface does not produce.
 
 ## TWENTY-FIRST LEAD (lead21, 2026-11-22; `spine-lead21`, branched from `spine-lead20` 111d9ac9): the first data types; a capture pinned
 
