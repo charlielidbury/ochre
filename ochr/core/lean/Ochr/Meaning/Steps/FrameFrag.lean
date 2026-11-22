@@ -896,7 +896,10 @@ top frame none of the parameters' (the clause D129 adds: without it the statemen
 result, its label renamed, and related states, or fails on both sides. At a call the closure's state is `fixBodyAt`'s:
 its frame 0 the cells (`x° ↦ loan l` at the content type, a member at every typed future), its top frame `self` (the
 stage below, a member of the weakened type) and the arguments (members); the run keeps goodness on both sides
-(`Strict.fund_all`).
+(`Strict.fund_all`). And the closure's frame 0 has a binding for every parameter label (D203: `FrameRel` reads the
+caller's frames at the cells' values, `cellsOf` truncating, so without a cell the end of a parameter label breaks
+`lowerVal`, `Steps/FrameEnd.lowerVal_end_needs_cells`; a run never changes frame 0's length, and `fixBodyAt` pushes one
+cell per borrow parameter).
 
 What a proof needs beyond the label-free fragment, clause by clause of `runT` (docs/31 D129, D201): `&x` and
 `x := u`/`*y := u` with a label: [End] (`endLabel`) and [Access] (`access`, its rounds) on related states,
@@ -917,6 +920,7 @@ def RunFrameS : Prop :=
     (∀ p, Ochr.Meaning.FT (fun l => s'.Live l) (s'.valAt p)) →
     (∀ p, p.frameOf = 1 → Ochr.Meaning.FT (fun l => s'.Live l ∧ σ l ∉ ks) (s'.valAt p)) →
     Strict.SGood K.dm K.Γ φ s → Strict.SGood K.dm K.Γ φ s' →
+    ks.length ≤ (s'.env.headD {}).binds.length →
     FrameAgreeS K.dm.read σ s₀ ks i (runT K ρ φ tl hint t s) (runT K ρ φ tl hint t s')
 
 end FrameFrag

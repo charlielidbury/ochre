@@ -51,7 +51,7 @@ open Ochr Ochr.Meaning Ochr.Meaning.Steps
 /-- **The frame property at EQUAL selves** (docs/31 D202): `RunFrameS` over `FrameRel` itself (the function's own
 binding the same on both sides, as everywhere else in the frame), so with no "the body does not read `self`"
 hypothesis: a recursive call in the body is a `.call` on related states. Both states good (D201), the locality clauses
-(D129). OPEN. The run in place is the checker's (`CallRef.callFrame`, `self` the global `G` at its declared type); the
+(D129), a cell for every parameter label (D203). OPEN. The run in place is the checker's (`CallRef.callFrame`, `self` the global `G` at its declared type); the
 closure's is `fixBodyAt` with `self = G` at the true type, linked to `callOf` by `FixEqG`. -/
 def RunFrame : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (σ : Nat → Nat) (s₀ : SState) (ks : List Nat)
@@ -61,6 +61,7 @@ def RunFrame : Prop :=
     (∀ p, Ochr.Meaning.FT (fun l => s'.Live l) (s'.valAt p)) →
     (∀ p, p.frameOf = 1 → Ochr.Meaning.FT (fun l => s'.Live l ∧ σ l ∉ ks) (s'.valAt p)) →
     Strict.SGood K.dm K.Γ φ s → Strict.SGood K.dm K.Γ φ s' →
+    ks.length ≤ (s'.env.headD {}).binds.length →
     FrameAgree σ s₀ ks (runT K ρ φ tl hint t s) (runT K ρ φ tl hint t s')
 
 /-- **The fixpoint equation of an accepted global** (MODEL; a clause of the context, docs/31 D202). For every global
