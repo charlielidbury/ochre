@@ -55,12 +55,8 @@ theorem runT_bodyI_ref (hfl : K.D.flags [.other, .pi .other] bodyI = (false, fal
       h.shape, hset]
     rfl
   unfold bodyI
-  rw [runT_succ _ _ _ s hfl']
+  rw [runT_succ_of _ _ _ s hfl' hrd rfl]
   unfold SM.strictS
-  have hb : (runT K ρ φ false (.plain TyM.err) (.place (.var 0)) >>= fun x : Res => match x with
-      | (v, _) => (pure (v.succ, TyS.plain TyM.nat) : SM Res)) s = some (((Sem.el0 Nat a).succ, .plain TyM.nat), dropN K s) := by
-    simp only [Bind.bind]; rw [hrd]; rfl
-  rw [hb]
   have hsu : (Sem.el0 Nat a).succ = .el0 Nat (a + 1) := by rw [Sem.succ, Sem.asNat_el0]
   have hc : (Sem.el0 Nat a).succ ∈ₛ[K.dm.read] (TyS.plain TyM.nat).m := by rw [hsu]; exact ⟨a + 1, rfl⟩
   dsimp only; rw [if_pos hc, hsu]

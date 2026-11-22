@@ -118,12 +118,8 @@ theorem runBodyQ (hd : ParDecQ K.D) (h : RefP ρ φ g s) (hg : ∀ q, Sem.movedI
     | zero => exact hZ h0
     | succ a => exact hS a h0
   show runT K ρ φ tl hint (.succ matchQ) s = _
-  rw [runT_succ _ _ _ s hfl]
+  rw [runT_succ_of _ _ _ s hfl hm rfl]
   unfold SM.strictS
-  have hb : (runT K ρ φ false (.plain TyM.err) matchQ >>= fun x : Res => match x with
-      | (v, _) => (pure (v.succ, TyS.plain TyM.nat) : SM Res)) s = some (((Sem.el0 Nat (m - 1)).succ, .plain TyM.nat), dropN K s) := by
-    simp only [Bind.bind]; rw [hm]; rfl
-  rw [hb]
   have hsu : (Sem.el0 Nat (m - 1)).succ = .el0 Nat (m - 1 + 1) := by rw [Sem.succ, Sem.asNat_el0]
   have hc : (Sem.el0 Nat (m - 1)).succ ∈ₛ[K.dm.read] (TyS.plain TyM.nat).m := by rw [hsu]; exact ⟨m - 1 + 1, rfl⟩
   dsimp only; rw [if_pos hc, hsu]

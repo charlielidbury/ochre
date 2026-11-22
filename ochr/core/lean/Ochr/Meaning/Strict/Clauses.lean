@@ -114,8 +114,17 @@ theorem fund_ref {A : Term} (hA : Fund K ρ φ A) : Fund K ρ φ (.ref A) := fun
 theorem fund_succ {u : Term} (hu : Fund K ρ φ u) : Fund K ρ φ (.succ u) := fun tl hint => by
   intro s s' r hs h
   rw [runT] at h
-  exact fund_erasedS (fund_strictS (presLab_bind_pure (hu false _) (fun r => (r.1.succ, .plain TyM.nat))
-    (fun _ => rfl))) s s' r hs h
+  refine fund_erasedS (fund_strictS ?_) s s' r hs h
+  -- the argument's result carries no label (the strict test, the lead's ruling (A) on docs/31 D185)
+  intro s₀ s₁ r₀ hs₀ h₀
+  obtain ⟨⟨v, R⟩, s₂, h1, h2⟩ := SM.bind_some h₀
+  dsimp only at h2
+  cases hl : R.label with
+  | some _ => rw [hl] at h2; cases h2
+  | none =>
+    rw [hl] at h2
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h2)
+    exact ⟨(fun l h' => by cases h'), (fun l h' => by cases h'), (hu false _ s₀ _ (v, R) hs₀ h1).2.2.2⟩
 
 /-- `(u : A)`: strict at the annotation, the result's label at it; the state is `u`'s run's. -/
 theorem fund_ascribe {u A : Term} (hu : Fund K ρ φ u) : Fund K ρ φ (.ascribe u A) := fun tl hint => by

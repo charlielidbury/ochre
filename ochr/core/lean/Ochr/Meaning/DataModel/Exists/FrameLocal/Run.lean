@@ -345,7 +345,12 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
   | tl, .succ u, hint, s, Q, β, β', hA, hV, hR => by
     unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
     refine comm_erasedIf (comm_strictS (comm_bind (runT_qset hK hD false u _ s Q β β' hA
-      (hV.sub fun x hx => by simpa [Term.placeOccs] using hx) hR) fun _ _ _ => comm_pure _ _))
+      (hV.sub fun x hx => by simpa [Term.placeOccs] using hx) hR) fun x _ _ => ?_))
+    obtain ⟨v, R⟩ := x
+    dsimp only
+    cases R.label with
+    | none => exact comm_pure _ _
+    | some _ => exact comm_fail _
   | tl, .ref A, hint, s, Q, β, β', hA, hV, hR => by
     unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
     refine comm_erasedIf (comm_strictS (comm_bind (runT_qset hK hD false A _ s Q β β' hA

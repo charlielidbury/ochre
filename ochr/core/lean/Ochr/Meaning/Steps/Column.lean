@@ -304,9 +304,44 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 /-- `S(u)`'s strict clause, where the aligned table does not erase it. -/
 theorem runT_succ (tl : Bool) (hint : TyS) (u : Term) (s : SState) (hfl : K.D.flags (scopeOf s) (.succ u) = (false, false)) :
     runT K ρ φ tl hint (.succ u) s =
-      SM.strictS K.dm.read (do let (v, _) ← runT K ρ φ false (.plain TyM.err) u; pure (v.succ, .plain TyM.nat)) s := by
+      SM.strictS K.dm.read (do
+        let (v, R) ← runT K ρ φ false (.plain TyM.err) u
+        match R.label with
+        | none => pure (v.succ, .plain TyM.nat)
+        | some _ => SM.fail) s := by
   rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) (.succ u)) _ s = _
   rw [hfl]; rfl
+
+/-- `S(u)`'s strict clause at an argument run that succeeds carrying no label (lead27; the label test is the lead's
+ruling (A) on docs/31 D185): the strict test at `Nat` on the successor. -/
+theorem runT_succ_of (tl : Bool) (hint : TyS) (u : Term) (s : SState)
+    (hfl : K.D.flags (scopeOf s) (.succ u) = (false, false)) {r : Res} {s₁ : SState}
+    (hx : runT K ρ φ false (.plain TyM.err) u s = some (r, s₁)) (hrl : r.2.label = none) :
+    runT K ρ φ tl hint (.succ u) s =
+      SM.strictS K.dm.read (fun _ => some ((r.1.succ, .plain TyM.nat), s₁)) s := by
+  rw [runT_succ _ _ u s hfl]
+  have hb : (runT K ρ φ false (.plain TyM.err) u >>= fun x : Res => match x with
+      | (v, R) => match R.label with
+        | none => (pure (v.succ, TyS.plain TyM.nat) : SM Res)
+        | some _ => SM.fail) s = some ((r.1.succ, .plain TyM.nat), s₁) := by
+    simp only [Bind.bind]; rw [hx]; dsimp only; rw [hrl]; rfl
+  unfold SM.strictS
+  rw [hb]
+
+/-- `S(u)`'s strict clause at an argument run that succeeds carrying a label: it FAILS (the lead's ruling (A) on docs/31
+D185: the argument holds no borrow, as the typed check of its type against `Nat` refuses `&A`). -/
+theorem runT_succ_label (tl : Bool) (hint : TyS) (u : Term) (s : SState)
+    (hfl : K.D.flags (scopeOf s) (.succ u) = (false, false)) {r : Res} {s₁ : SState} {l : Nat}
+    (hx : runT K ρ φ false (.plain TyM.err) u s = some (r, s₁)) (hrl : r.2.label = some l) :
+    runT K ρ φ tl hint (.succ u) s = none := by
+  rw [runT_succ _ _ u s hfl]
+  have hb : (runT K ρ φ false (.plain TyM.err) u >>= fun x : Res => match x with
+      | (v, R) => match R.label with
+        | none => (pure (v.succ, TyS.plain TyM.nat) : SM Res)
+        | some _ => SM.fail) s = none := by
+    simp only [Bind.bind]; rw [hx]; dsimp only; rw [hrl]; rfl
+  unfold SM.strictS
+  rw [hb]
 
 /-- **`S(u)`, at `evalCore`, for an argument whose value is a number** (`Value.Num`: what the column
 needs; the general step needs the value in flight to hold no live loan, so that wrapping it moves no
@@ -344,17 +379,15 @@ theorem succ_core (hS : SuccInv) (hI : InvSteps) {n : Nat} {u : Term} {P Pu : MS
       | some _ => rfl)
     (hDb K.D hD) bh₁ hu₀
   rw [htn₀] at hO
-  obtain ⟨ρ₁, Δ₁, π₁, r, s₁, he, hx, hmean, -, -, hp₁, hr₁⟩ := hO
+  obtain ⟨ρ₁, Δ₁, π₁, r, s₁, he, hx, hmean, -, hlab, hp₁, hr₁⟩ := hO
   obtain ⟨m, hm'⟩ := hv₀.mean
   have hr1 : r.1 = .el0 Nat m := by rw [← hmean, hm']
   have hx' : runT K ρ φ false (.plain TyM.err) u s = some (r, s₁) := hx
+  -- a number holds no borrow, so the strict test on the argument's label passes (the lead's ruling (A), D185)
+  have hrl : r.2.label = none := by rw [hlab]; cases hv₀ <;> rfl
   have hrun : runT K ρ φ st.curTail (hintM K ρ hint) (.succ u) s = some ((.el0 Nat (m + 1), .plain TyM.nat), s₁) := by
-    rw [runT_succ _ _ u s hfl]
-    have hb : (runT K ρ φ false (.plain TyM.err) u >>= fun x : Res => match x with
-        | (v, _) => (pure (v.succ, TyS.plain TyM.nat) : SM Res)) s = some ((r.1.succ, .plain TyM.nat), s₁) := by
-      simp only [Bind.bind]; rw [hx']; rfl
+    rw [runT_succ_of _ _ u s hfl hx' hrl]
     unfold SM.strictS
-    rw [hb]
     simp only [hr1, show (Sem.el0 Nat m).succ = .el0 Nat (m + 1) by rw [Sem.succ, Sem.asNat_el0]]
     rw [if_pos (show Sem.el0 Nat (m + 1) ∈ₛ[K.dm.read] (TyS.plain TyM.nat).m from ⟨m + 1, rfl⟩)]
   have hq' := hq.withTempT v₀ T₀

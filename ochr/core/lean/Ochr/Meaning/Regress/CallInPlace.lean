@@ -141,11 +141,11 @@ theorem flags_Kc (sc : List DeclInfo) (t : Term) : (Kc dm).D.flags sc t = (false
 theorem copy_Kc (r : DeclInfo) : (Kc dm).D.copy r = true := rfl
 
 theorem readPlace_SB (a : Nat) :
-    ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SB dm ρ φ (.el0 Nat a) r)
+    ∃ T : TyS, T.label = none ∧ readPlace (Kc dm) φ (.deref (.var 0)) true (SB dm ρ φ (.el0 Nat a) r)
       = some ((.el0 Nat a, T), SB dm ρ φ (.el0 Nat a) r) := by
   obtain ⟨T, hTm, hT⟩ := contentOf_SB_nat (r := r) dm ρ φ (.el0 Nat a)
   have hg : ReadGood (Kc dm).dm.read T.m (.el0 Nat a) := Or.inl (by rw [hTm]; exact ⟨a, rfl⟩)
-  refine ⟨{ T with label := none }, ?_⟩
+  refine ⟨{ T with label := none }, rfl, ?_⟩
   simp [readPlace, hT, hg, bind, Option.bind, Sem.whole]
 
 theorem setContent_SB (a b : Nat) :
@@ -177,10 +177,10 @@ theorem endsOk_SB (c : Sem) (hc : c ∈ₛ[(Kc dm).dm.read] TyM.nat) : EndsOk (K
 theorem runBody_inc (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint incBody (SB dm ρ φ (.el0 Nat a) r) = some ((.el0 Unit (), .plain TyM.unit), SB dm ρ φ (.el0 Nat (a + 1)) r) := by
   obtain ⟨T, hTm, hT⟩ := contentOf_SB_nat (r := r) dm ρ φ (.el0 Nat a)
-  obtain ⟨T', hT'⟩ := readPlace_SB (r := r) dm ρ φ a
+  obtain ⟨T', hTl, hT'⟩ := readPlace_SB (r := r) dm ρ φ a
   have hs : (Sem.el0 Nat a).succ = .el0 Nat (a + 1) := Sem.succ_el0 a
   simp only [incBody, runT, SM.erasedIf, SM.stmtIf, flags_Kc, copy_Kc, hT, SM.guarded_of (contentOk_SB dm ρ φ (r := r) (.el0 Nat a)), hT', Bool.false_eq_true, if_false,
-    bind, Option.bind, pure, SM.strictS, hs]
+    bind, Option.bind, pure, SM.strictS, hs, hTl]
   -- the strict `S` and the strict write: `a + 1` is a `Nat`, `*x`'s type
   have hm : Sem.el0 Nat (a + 1) ∈ₛ[(Kc dm).dm.read] TyM.nat := ⟨a + 1, rfl⟩
   simp only [hm, if_true, placeTy, hT, hTm, labTyOk, TyS.plain, reduceCtorEq, false_implies, implies_true,
@@ -520,11 +520,11 @@ theorem contentOf_SP_nat (c : Sem) :
   simp [Sem.follow, Sem.step, SState.valAt, SState.tyAt, SP, xB, TyS.plain]
 
 theorem readPlace_SP (a : Nat) :
-    ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SP dm ρ φ cd d (.el0 Nat a) r)
+    ∃ T : TyS, T.label = none ∧ readPlace (Kc dm) φ (.deref (.var 0)) true (SP dm ρ φ cd d (.el0 Nat a) r)
       = some ((.el0 Nat a, T), SP dm ρ φ cd d (.el0 Nat a) r) := by
   obtain ⟨T, hTm, hT⟩ := contentOf_SP_nat (r := r) dm ρ φ cd d (.el0 Nat a)
   have hg : ReadGood (Kc dm).dm.read T.m (.el0 Nat a) := Or.inl (by rw [hTm]; exact ⟨a, rfl⟩)
-  refine ⟨{ T with label := none }, ?_⟩
+  refine ⟨{ T with label := none }, rfl, ?_⟩
   simp [readPlace, hT, hg, bind, Option.bind, Sem.whole]
 
 theorem setContent_SP (a b : Nat) :
@@ -547,10 +547,10 @@ theorem runBody_incP (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint incBody (SP dm ρ φ cd d (.el0 Nat a) r)
       = some ((.el0 Unit (), .plain TyM.unit), SP dm ρ φ cd d (.el0 Nat (a + 1)) r) := by
   obtain ⟨T, hTm, hT⟩ := contentOf_SP_nat (r := r) dm ρ φ cd d (.el0 Nat a)
-  obtain ⟨T', hT'⟩ := readPlace_SP (r := r) dm ρ φ cd d a
+  obtain ⟨T', hTl, hT'⟩ := readPlace_SP (r := r) dm ρ φ cd d a
   have hs : (Sem.el0 Nat a).succ = .el0 Nat (a + 1) := Sem.succ_el0 a
   simp only [incBody, runT, SM.erasedIf, SM.stmtIf, flags_Kc, copy_Kc, SM.guarded_of (contentOk_SP dm ρ φ cd d (r := r) (.el0 Nat a)), hT', Bool.false_eq_true, if_false,
-    bind, Option.bind, pure, SM.strictS, hs]
+    bind, Option.bind, pure, SM.strictS, hs, hTl]
   -- the strict `S` and the strict write: `a + 1` is a `Nat`, `*x`'s type
   have hm : Sem.el0 Nat (a + 1) ∈ₛ[(Kc dm).dm.read] TyM.nat := ⟨a + 1, rfl⟩
   simp only [hm, if_true, placeTy, hT, hTm, labTyOk, TyS.plain, reduceCtorEq, false_implies, implies_true,

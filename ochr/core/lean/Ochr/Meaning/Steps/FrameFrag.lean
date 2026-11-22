@@ -525,7 +525,12 @@ theorem lf_run {a : Bool} (hNI : a = true → ∀ sc p, K.D.invalidated sc p = [
     rw [← lf_scope hr hd]
     refine agree_erasedIf _ hr (agree_strictS _ (agree_smBind (ih s s' false false _ _ hr) ?_))
     intro r t t' _ ht
-    exact agree_some rfl ht
+    -- the strict test on the argument's label (the lead's ruling (A), docs/31 D185)
+    obtain ⟨v, R⟩ := r
+    dsimp only
+    cases R.label with
+    | none => exact agree_some rfl ht
+    | some _ => exact agree_none
   | var n j hj =>
     intro s s' tl tl' h h' hr
     rw [runT, runT]

@@ -171,12 +171,10 @@ theorem bodyLazy_out (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd :
       runT K ρ φ st.tailNext (hintM K ρ hint) bodyI s = some ((.el0 Nat (m + 1), .plain TyM.nat), s₁) := by
     intro s₁ hrd
     unfold bodyI
-    rw [runT_succ _ _ _ s hfl]
-    have hb' : (runT K ρ φ false (.plain TyM.err) (.place (.var 0)) >>= fun x : Res => match x with
-        | (v, _) => (pure (v.succ, TyS.plain TyM.nat) : SM Res)) s = some (((Sem.el0 Nat m).succ, .plain TyM.nat), s₁) := by
-      simp only [Bind.bind]; rw [hrun0, hrd]; rfl
+    have hx0 : runT K ρ φ false (.plain TyM.err) (.place (.var 0)) s =
+        some ((.el0 Nat m, { s.tyAt (.bind f j) with label := none }), s₁) := by rw [hrun0, hrd]
+    rw [runT_succ_of _ _ _ s hfl hx0 rfl]
     unfold SM.strictS
-    rw [hb']
     have hsu : (Sem.el0 Nat m).succ = .el0 Nat (m + 1) := by rw [Sem.succ, Sem.asNat_el0]
     have hc : (Sem.el0 Nat m).succ ∈ₛ[K.dm.read] (TyS.plain TyM.nat).m := by rw [hsu]; exact ⟨m + 1, rfl⟩
     dsimp only; rw [if_pos hc, hsu]

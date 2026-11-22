@@ -101,12 +101,9 @@ theorem run_one_at (T : TyS) (s : SState) :
     runT (Kp dm [] G) ρ φ false T (Term.zero.succ) s = some ((one, .plain TyM.nat), s) := by
   rw [runT]
   show SM.erasedIf (false, false) _ _ = _
-  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, SM.strictS]
-  have h0 : (runT (Kp dm [] G) ρ φ false (TyS.plain TyM.err) Term.zero >>= fun x => pure (x.fst.succ, TyS.plain TyM.nat)) s
-      = some (((Sem.el0 Nat 0).succ, TyS.plain TyM.nat), s) := rfl
-  rw [h0]
-  dsimp only
-  rw [if_pos (by exact one_mem dm)]
+  have hm : (Sem.el0 Nat 0).succ ∈ₛ[(Kp dm [] G).dm.read] TyM.nat := one_mem dm
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, SM.strictS, bind, Option.bind, pure, TyS.plain,
+    runT, hm, if_true]
   rfl
 
 theorem run_one (T : TyS) :

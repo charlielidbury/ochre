@@ -795,10 +795,15 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
     rotate_left
     · exact rinv_pure L hi hl
-    obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some (SM.strictS_some h).1
-    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h2)
-    obtain ⟨hi₁, _, e₁, o₁⟩ := runT_rinv hK false u _ s _ x hi h1
-    exact rinv_ret L hi₁ e₁ o₁ rfl
+    obtain ⟨⟨v, R⟩, s₁, h1, h2⟩ := SM.bind_some (SM.strictS_some h).1
+    dsimp only at h2
+    cases hl : R.label with
+    | some _ => rw [hl] at h2; cases h2
+    | none =>
+      rw [hl] at h2
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h2)
+      obtain ⟨hi₁, _, e₁, o₁⟩ := runT_rinv hK false u _ s _ (v, R) hi h1
+      exact rinv_ret L hi₁ e₁ o₁ rfl
   | tl, .ref A, hint, s, s', r, hi, h => by
     rw [runT] at h
     rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩

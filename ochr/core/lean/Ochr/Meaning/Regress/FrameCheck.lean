@@ -261,9 +261,9 @@ theorem inc_after (c c₀ : Sem) : FrameRel (fun l => l) (SPg selfB d c₀ r) [0
 /-! ## `Inc` -/
 
 theorem readPlace_SBs (a : Nat) :
-    ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SBs selfB d (.el0 Nat a) r)
+    ∃ T : TyS, T.label = none ∧ readPlace (Kc dm) φ (.deref (.var 0)) true (SBs selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, T), SBs selfB d (.el0 Nat a) r) :=
-  ⟨{ T₀ with label := none }, by
+  ⟨{ T₀ with label := none }, rfl, by
     have hg : ReadGood (Kc dm).dm.read T₀.m (.el0 Nat a) := Or.inl ⟨a, rfl⟩
     simp [readPlace, contentOf_SBs_eq, bind, Option.bind, Sem.whole, hg]⟩
 
@@ -276,10 +276,10 @@ theorem setContent_SBs (a b : Nat) :
 theorem run_inc_cl (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint incBody (SBs selfB d (.el0 Nat a) r)
       = some ((.el0 Unit (), .plain TyM.unit), SBs selfB d (.el0 Nat (a + 1)) r) := by
-  obtain ⟨T', hT'⟩ := readPlace_SBs (r := r) dm φ selfB d a
+  obtain ⟨T', hTl, hT'⟩ := readPlace_SBs (r := r) dm φ selfB d a
   have hs : (Sem.el0 Nat a).succ = .el0 Nat (a + 1) := Sem.succ_el0 a
   simp only [incBody, runT, SM.erasedIf, SM.stmtIf, flags_Kc, copy_Kc, hT',
-    Bool.false_eq_true, if_false, bind, Option.bind, pure, SM.strictS, hs,
+    Bool.false_eq_true, if_false, bind, Option.bind, pure, SM.strictS, hs, hTl,
     SM.guarded_of (contentOk_SBs (r := r) dm φ selfB d (.el0 Nat a))]
   -- the strict `S` and the strict write: `a + 1` is a `Nat`, `*x`'s type
   have hm : Sem.el0 Nat (a + 1) ∈ₛ[(Kc dm).dm.read] TyM.nat := ⟨a + 1, rfl⟩

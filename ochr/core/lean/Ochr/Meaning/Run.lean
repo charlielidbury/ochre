@@ -1510,8 +1510,12 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
   | .succ u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.succ u)) (SM.strictS K.dm.read (do
     -- the argument runs with no hint, as the TYPED checker runs it (`evalCore`'s `.succ`: `eval fuel' typed u`;
     -- docs/31 D171, missed by D119, which handed it `Nat`)
-    let (v, _) ← runT false (.plain TyM.err) u
-    pure (v.succ, .plain TyM.nat))) s
+    let (v, R) ← runT false (.plain TyM.err) u
+    -- STRICT (the lead's ruling (A) on docs/31 D185): the argument holds no borrow, as the typed check of its type
+    -- against `Nat` refuses `&A`; a borrow means its content, so the test on the value alone would pass `S(&x)`
+    match R.label with
+    | none => pure (v.succ, .plain TyM.nat)
+    | some _ => SM.fail)) s
   | .eq A a b => SM.onCopy do
     let (TA, _) ← runT false (.plain TyM.err) A
     -- each side runs with no hint, as the TYPED checker runs it (`evalCore`'s `.eq`: `eval fuel' typed a`;

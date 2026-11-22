@@ -92,19 +92,17 @@ theorem succA_core (hS : SuccInv) (hI : InvSteps) (hN : InvNumA) {n : Nat} {u : 
       | some _ => rfl)
     (hDb K.D hD) bh₁ hu₀
   rw [htn₀] at hO
-  obtain ⟨ρ₁, Δ₁, π₁, r, s₁, he, hx, hmean, -, -, hp₁, hr₁⟩ := hO
+  obtain ⟨ρ₁, Δ₁, π₁, r, s₁, he, hx, hmean, -, hlab, hp₁, hr₁⟩ := hO
+  -- a number holds no borrow, so the strict test on the argument's label passes (the lead's ruling (A), D185)
+  have hrl : r.2.label = none := by rw [hlab]; cases hv₀ <;> rfl
   have hρ₁ : ∀ σ, v₀.hasAbs σ = true → ∃ m, ρ₁ σ = .el0 Nat m := fun σ hσ =>
     asg_abs_nat (st := st₁.withTempT v₀ T₀) hp₁.asg (.val v₀ (mem_values_withTempT st₁ v₀ T₀ hne₁) hσ) (hσ₀ σ hσ)
   obtain ⟨m, hm'⟩ := hv₀.mean hρ₁
   have hr1 : r.1 = .el0 Nat m := by rw [← hmean, hm']
   have hx' : runT K ρ φ false (.plain TyM.err) u s = some (r, s₁) := hx
   have hrun : runT K ρ φ st.curTail (hintM K ρ hint) (.succ u) s = some ((.el0 Nat (m + 1), .plain TyM.nat), s₁) := by
-    rw [runT_succ _ _ u s hfl]
-    have hb : (runT K ρ φ false (.plain TyM.err) u >>= fun x : Res => match x with
-        | (v, _) => (pure (v.succ, TyS.plain TyM.nat) : SM Res)) s = some ((r.1.succ, .plain TyM.nat), s₁) := by
-      simp only [Bind.bind]; rw [hx']; rfl
+    rw [runT_succ_of _ _ u s hfl hx' hrl]
     unfold SM.strictS
-    rw [hb]
     have hsu : r.1.succ = .el0 Nat (m + 1) := by rw [hr1, Sem.succ, Sem.asNat_el0]
     have hc : r.1.succ ∈ₛ[K.dm.read] (TyS.plain TyM.nat).m := by rw [hsu]; exact ⟨m + 1, rfl⟩
     dsimp only; rw [if_pos hc, hsu]
