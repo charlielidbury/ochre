@@ -152,15 +152,15 @@ untyped one whose type is wanted (`wantTy`, what `evalAt` reads) and not deferre
 call's type is `LaterOk`'s). -/
 def TyWanted (typed : Bool) (st : MState) : Prop := typed = true ∨ (st.wantTy = true ∧ st.deferCallTy = false)
 
-/-- **PLACEHOLDER until main's D130 is merged into the proof line** (the lead's ruling (2) on D185; lead28, docs/31 D190;
-checker; guarded in `Steps/MasterKind.lean`; to be DELETED at the merge): a successful run from a state with the
-deferral flag clear ends with it clear. Today only an untyped `let` of a call sets the flag, and clears it right after
-its call; main's D130 consumes it at the start of every evaluation. Nothing is built on it yet: the `let` steps take
-"the flag is clear" in their state class (D190) and the `;` step will need this where its tail starts in the state its
-first part ends in, once `EvalAt` takes the entry condition "the flag is set only for a call". -/
+/-- **A successful run ends with the deferral flag clear** (the lead's ruling (2) on D185; lead28, docs/31 D190; restated by
+machine12 at main's D130, docs/31 D191, the lead's ruling (c): the premise "the flag clear at the start" dropped, since
+`evalAt` consumes the flag when every evaluation starts). Checker; READ TRUE, UNPROVED: an induction over the whole
+mutual block (every function keeps the flag clear; only the `let` sets it, immediately before an `eval` that consumes
+it; a failure inside a `try` resumes from the state at the `try`, the state living inside `M`'s success result). The
+`;` step will need it where its tail starts in the state its first part ends in. Guarded in `Steps/MasterKind.lean`. -/
 def DeferClearG : Prop :=
   ∀ (n : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
-    st.deferCallTy = false → Runs (Ochr.eval n typed t hint) st bh r st' → st'.deferCallTy = false
+    Runs (Ochr.eval n typed t hint) st bh r st' → st'.deferCallTy = false
 
 /-- **`Out` with the deferred type and the promised type** (the lead's rulings on D180, D183 and (ii) on D185): `Out`,
 and inside its existential, at its extended context and assignment, `LaterOk` for the run of `t`, and, where the run
