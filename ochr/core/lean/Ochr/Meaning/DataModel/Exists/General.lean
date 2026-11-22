@@ -88,8 +88,10 @@ first-order grammar with Lean's two rules (`Knot.Spine`: (B) the non-spine nodes
 value arguments, read nothing that varies between the knot's comparisons; (A) a varying type argument
 stands at a `Type` parameter and is data-sorted; (B2) a value argument's parameter type does not
 mention a varying argument), the parameter types local (`Knot.ParamTyLocal`), the decisions local
-(`DecLocal`, frame locality's hypothesis), and the globals label-free. `GlobalsTyped` is not needed:
-the conclusion compares types only.
+(`DecLocal`, frame locality's hypothesis), the globals label-free, and `GlobalsTyped`: frame
+locality swaps only bindings holding members of their types (`Good`), and an earlier field typed by a
+call's result is a member of it only when that result is no junk code (`LeafOk`: a call returns a code
+of level 0 or 1, never a `Prop`-sorted declaration's data code over its own carrier).
 
 How: the interpreter reads the field type along its spine (`D(ā)` as `D`'s record at the arguments,
 `d`'s own through the knot's record function, a parameter as itself) and the non-spine nodes as their
@@ -109,7 +111,8 @@ theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.�
     (hspine : ∀ c i FT, fieldTerm d c i = some FT → Knot.Spine K.Γ d c FT)
     (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
     (hpty : Knot.ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
-    (hK : ∀ g, (K.C.global g).2.label = none) :
+    (hK : ∀ g, (K.C.global g).2.label = none)
+    (hglob : ∀ P : ProgState, P.baseC = K.C → GlobalsTyped K.dm P) :
     ∃ S : KnotSpec, S.d = d ∧ (∀ j, S.N j = d.nestable.getD j false) ∧
       ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (r : Res) (s' : SState),
         ps.length = d.params.length → (∀ j (hj : j < ps.length), ps[j] ∈ₛ[K.dm.read] K.dm.paramTy d j (ps.take j)) →

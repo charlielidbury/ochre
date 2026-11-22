@@ -236,6 +236,7 @@ import Ochr.Meaning.DataModel.Exists.Knot.Swap
 import Ochr.Meaning.DataModel.Exists.Knot.Grammar
 import Ochr.Meaning.DataModel.Exists.Knot.Interp
 import Ochr.Meaning.DataModel.Exists.Knot.Guard
+import Ochr.Meaning.DataModel.Exists.Knot.Agree
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE
