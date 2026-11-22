@@ -123,7 +123,10 @@ theorem letInvDUn : LetInvDUn := by
   unfold demand at h₁
   rw [runs_modify_bind] at h₁
   simp only [Bool.not_false, Bool.true_and] at h₁
-  rw [if_neg (by simp)] at h₁
+  -- D132: the right-hand side is not an untyped call, so the pre-pass is not asked (`erasedU := false`)
+  rw [if_pos (by simp [hncall])] at h₁
+  peel h₁
+  rw [if_neg (by simp [hncall])] at h₁
   peel h₁
   obtain ⟨⟨v₀, T₀⟩, s₃, b₄, hu, h₂⟩ := Runs.bind_inv h₁
   clear h₁
@@ -166,7 +169,7 @@ theorem letInvDUn : LetInvDUn := by
   have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
   have hk3 := kern_popTemp_withTempT _ _ T? hback
   refine ⟨du', { s₂ with wantTy := true }, s₃,
-    { s₃ with env := Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du', deferCallTy := false, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
+    { s₃ with env := Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
     s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
     hdr, ?_, ?_, ?_, ?_, rfl, rfl⟩
   · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
@@ -183,8 +186,9 @@ theorem letInvDUn : LetInvDUn := by
 
 /-- **An untyped deferred call that returns no type records a Π written as one** (checker, NEW, lead28, docs/31 D188,
 D190; UNREAD): the gap under `LetCallInvU` (machine11's (a) and (b) together). From a state meeting the invariant, an
-untyped run of a call with its type wanted, the deferral flag set and the record clear (how an untyped `let` of a call
-starts it) that returns no type ends with a record `(P, ws)`, `P` a Π-type written as one. (a) `callFn` sets the record
+untyped run of a call with its type wanted and the deferral flag set (how an untyped `let` of a call starts it) that
+returns no type ends with a record `(P, ws)`, `P` a Π-type written as one. (Restated at main's D130 by machine12: the
+premise "the record clear" is gone; `evalAt` clears the record when the evaluation starts.) (a) `callFn` sets the record
 on every path that returns no type (machine11, read TRUE); (b) the record is `funType fv fT` for the head's value and
 the type its wanted run returned: a function value's by (K) at a stored type and by the deferred type's evaluation
 otherwise (`EvalKindW`), a global's own by (K)'s part on globals, a closure's own `.tPi`; a neutral head (an unknown, a
@@ -193,7 +197,7 @@ sealed program) at a type not written as a Π is the one case (K) does not reach
 def LaterPiG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (n : Nat) (f : Term) (as : List Term) (hd : Bool) (st₀ st₁ : MState) (bh : Nat)
     (v : Value),
-    Pre K ρ st₀ → st₀.wantTy = true → st₀.deferCallTy = true → st₀.callTyLater = none →
+    Pre K ρ st₀ → st₀.wantTy = true → st₀.deferCallTy = true →
     Runs (Ochr.eval n false (.call f as hd) none) st₀ bh (v, none) st₁ →
     ∃ caps hs ds cod rd ws, st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws)
 
@@ -205,11 +209,14 @@ def _root_.Ochr.Env.setLazyTop (E : Env) : Option (Value × List Value × Nat) �
       { fr with binds := fr.binds.modify (fr.binds.size - 1) fun b => { b with lazyTy := some z } }
 
 /-- **`evalCore` of an UNTYPED `let` whose right-hand side is a call** (a fact about the checker alone; PROVED,
-`letCallInvU`): as `LetInvDUn`, except that `u` runs
-with the deferral flag set and the record cleared (`deferCallTy`, `callTyLater`, outside the kernel) and, where its
+`letCallInvU`): as `LetInvDUn`, except that, where the pre-pass does not erase the call, `u` runs
+with the deferral flag set (`deferCallTy`, outside the kernel) and, where its
 type comes back unknown, the new binding takes its type from the pair the call recorded (`lazyTy`, `setLazyTop`):
 exactly where the record holds a Π-type (restated, lead26, D183: the record is read only right after the call, from
-the state its run ends in, as the checker reads it). -/
+the state its run ends in, as the checker reads it). Restated at main's D130 and D132 (machine12): the `let` no longer
+clears the record before the call (`evalAt` does, when the call's evaluation starts), so "the record clear at the
+call's entry" is gone; and a call the pre-pass erases (one returning a type or a proof) is not deferred: it runs with
+the flag as the `let` found it, and the binding takes the type the call returned (the second disjunct). -/
 def LetCallInvU : Prop :=
   ∀ (n : Nat) (h : Hint) (f : Term) (as : List Term) (hd : Bool) (w : Term) (hint : Option Value) (st st' : MState)
     (bh : Nat) (v : Value) (T? : Option Value) (D : Decisions),
@@ -220,10 +227,11 @@ def LetCallInvU : Prop :=
       Kern st st₀ ∧ Form.ModeEq st st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧ stB.tailDecl = st.curDecl ∧
       Runs (Ochr.eval n false (.call f as hd) none) st₀ bh₁ (v₀, T₀) st₁ ∧
       D.declOf (DecideScope.topReadings st) (.call f as hd) = du ∧
-      st₀.deferCallTy = true ∧ st₀.callTyLater = none ∧
-      ((lz = none ∧ ∀ caps hs ds cod rd ws, T₀ = none → st₁.callTyLater ≠ some (.tPi caps (.pi hs ds cod) rd, ws)) ∨
-        ∃ caps hs ds cod rd ws, T₀ = none ∧ st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws) ∧
-        lz = some (.tPi caps (.pi hs ds cod) rd, ws, ds.length)) ∧
+      ((st₀.deferCallTy = true ∧
+        ((lz = none ∧ ∀ caps hs ds cod rd ws, T₀ = none → st₁.callTyLater ≠ some (.tPi caps (.pi hs ds cod) rd, ws)) ∨
+          ∃ caps hs ds cod rd ws, T₀ = none ∧ st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws) ∧
+          lz = some (.tPi caps (.pi hs ds cod) rd, ws, ds.length))) ∨
+        (st₀.deferCallTy = st.deferCallTy ∧ lz = none)) ∧
       Kern { st₁ with env := (Env.pushBindE st₁.env h T₀ v₀ p du).setLazyTop lz } stB ∧ Form.ModeEq st₁ stB ∧
       stB.tailNext = st.curTail ∧
       Runs (Ochr.eval n false w (if st.curTail then hint else none)) stB bh₂ (r, T?) st₂ ∧
@@ -265,71 +273,105 @@ theorem letCallInvU : LetCallInvU := by
   unfold demand at h₁
   rw [runs_modify_bind] at h₁
   simp only [Bool.not_false, Bool.true_and] at h₁
-  rw [if_pos (by simp)] at h₁
-  rw [runs_modify_bind] at h₁
-  obtain ⟨⟨v₀, T₀⟩, s₃, b₄, hu, h₂⟩ := Runs.bind_inv h₁
-  clear h₁
-  rw [runs_get_bind] at h₂
-  rw [runs_modify_bind] at h₂
-  obtain ⟨du', s₄, b₅, hrd, h₃⟩ := Runs.bind_inv h₂
-  clear h₂
-  obtain ⟨rfl, rfl⟩ := runs_refineDecl_inv hrd
-  obtain ⟨fl, s₅, b₆, hgf, h₄⟩ := Runs.bind_inv h₃
-  clear h₃
-  obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
-  obtain ⟨_, s₆, b₇, hpb, h₅⟩ := Runs.bind_inv h₄
-  clear h₄
-  have hs6 := runs_pushBind_inv hpb
-  subst hs6
-  generalize hL : (if (v₀, T₀).snd.isNone = true then s₃.callTyLater else none) = later at h₅
-  rcases later with _ | ⟨P, ws⟩
-  · simp only at h₅
-    rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
-    peel h₅
-    try simp only [if_true, ite_true, Bool.false_eq_true, if_false] at h₅
-    rw [untypedTailHint_eq] at h₅
-    obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
-    clear h₅
-    obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆
-    clear h₆
+  -- D132: whether the pre-pass erases the call (`erasedU`): asked only where the reading is not a conflict, and asking
+  -- leaves the state as it was. Not erased (by the conflict or by the pre-pass): the deferred path below, the same in
+  -- both; erased: not deferred, no record read, the binding at the type the call returned
+  by_cases hcf : du = .conflict
+  case' pos =>
+    rw [if_pos (by simp [hcf])] at h₁
+    peel h₁
+  case' neg =>
+    rw [if_neg (by clear h₁ hdu; cases du <;> first | exact absurd rfl hcf | simp)] at h₁
+    obtain ⟨pf, s', b', hpf, h₁'⟩ := Runs.bind_inv h₁
+    have := runs_keep (keep_preFlags _ _) hpf
+    subst this
+    clear h₁ hpf
+    peel h₁'
+    generalize (Option.map (fun x => x.fst) pf).getD false = eU at h₁'
+    have h₁ := h₁'
+    clear h₁'
+    cases eU
+    case true =>
+      -- the pre-pass erases the call: not deferred (`isCall` false), no record read, the binding at the type returned
+      rw [if_neg (by simp)] at h₁
+      peel h₁
+      obtain ⟨⟨v₀, T₀⟩, s₃, b₄, hu, h₂⟩ := Runs.bind_inv h₁
+      clear h₁
+      rw [runs_get_bind] at h₂
+      rw [runs_modify_bind] at h₂
+      obtain ⟨du', s₄, b₅, hrd, h₃⟩ := Runs.bind_inv h₂
+      clear h₂
+      obtain ⟨rfl, rfl⟩ := runs_refineDecl_inv hrd
+      obtain ⟨fl, s₅, b₆, hgf, h₄⟩ := Runs.bind_inv h₃
+      clear h₃
+      obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
+      obtain ⟨_, s₆, b₇, hpb, h₅⟩ := Runs.bind_inv h₄
+      clear h₄
+      have hs6 := runs_pushBind_inv hpb
+      subst hs6
+      simp only [Bool.not_true, Bool.and_false, Bool.false_and, Bool.false_eq_true, if_false, ite_false] at h₅
+      peel h₅
+      rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
+      peel h₅
+      try simp only [if_true, ite_true, Bool.false_eq_true, if_false] at h₅
+      rw [untypedTailHint_eq] at h₅
+      obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
+      clear h₅
+      obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆
+      clear h₆
+      obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
+      obtain ⟨_, s₉, b₁₀, hpt, h₈⟩ := Runs.bind_inv h₇
+      clear h₇
+      have hs9 := runs_pushTemp_inv hpt
+      subst hs9
+      obtain ⟨⟨⟩, s₁₀, b₁₁, hdr, h₉⟩ := Runs.bind_inv h₈
+      clear h₈
+      unfold setFlags at h₉
+      rw [runs_modify_bind] at h₉
+      obtain ⟨pv, s₁₁, b₁₂, hpop, h₁₀⟩ := Runs.bind_inv h₉
+      clear h₉
+      obtain ⟨hvt, rfl⟩ := runs_pure_inv h₁₀
+      simp only [Prod.mk.injEq] at hvt
+      obtain ⟨rfl, rfl⟩ := hvt
+      obtain ⟨hback, rfl⟩ := runs_popTemp_inv hpop
+      have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
+      have hk3 := kern_popTemp_withTempT _ _ T? hback
+      refine ⟨du', { s₂ with wantTy := true }, s₃,
+        { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop none, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
+        s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, _, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, (.inr ⟨rfl, rfl⟩), ?_, ?_,
+        rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
+      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      · exact ⟨rfl, rfl, rfl, rfl⟩
+      · exact decTab_declOf_at hDst hdu
+      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      · exact ⟨rfl, rfl, rfl, rfl⟩
+      · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+      · exact ⟨rfl, rfl, rfl, rfl⟩
+      · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
+          ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
+            (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
+      · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
+  all_goals (
+    rw [if_pos (by simp)] at h₁
+    rw [runs_modify_bind] at h₁
+    obtain ⟨⟨v₀, T₀⟩, s₃, b₄, hu, h₂⟩ := Runs.bind_inv h₁
+    clear h₁
+    rw [runs_get_bind] at h₂
+    rw [runs_modify_bind] at h₂
+    obtain ⟨du', s₄, b₅, hrd, h₃⟩ := Runs.bind_inv h₂
+    clear h₂
+    obtain ⟨rfl, rfl⟩ := runs_refineDecl_inv hrd
+    obtain ⟨fl, s₅, b₆, hgf, h₄⟩ := Runs.bind_inv h₃
+    clear h₃
     obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
-    obtain ⟨_, s₉, b₁₀, hpt, h₈⟩ := Runs.bind_inv h₇
-    clear h₇
-    have hs9 := runs_pushTemp_inv hpt
-    subst hs9
-    obtain ⟨⟨⟩, s₁₀, b₁₁, hdr, h₉⟩ := Runs.bind_inv h₈
-    clear h₈
-    unfold setFlags at h₉
-    rw [runs_modify_bind] at h₉
-    obtain ⟨pv, s₁₁, b₁₂, hpop, h₁₀⟩ := Runs.bind_inv h₉
-    clear h₉
-    obtain ⟨hvt, rfl⟩ := runs_pure_inv h₁₀
-    simp only [Prod.mk.injEq] at hvt
-    obtain ⟨rfl, rfl⟩ := hvt
-    obtain ⟨hback, rfl⟩ := runs_popTemp_inv hpop
-    have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
-    have hk3 := kern_popTemp_withTempT _ _ T? hback
-    refine ⟨du', { s₂ with wantTy := true, deferCallTy := true, callTyLater := none }, s₃,
-      { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop none, deferCallTy := false, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
-      s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, rfl, rfl, (.inl ⟨rfl, fun caps hs ds cod rd ws hT e => by subst hT; simp at hL; rw [hL] at e; cases e⟩), ?_, ?_,
-      rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
-    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
-    · exact ⟨rfl, rfl, rfl, rfl⟩
-    · exact decTab_declOf_at hDst hdu
-    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
-    · exact ⟨rfl, rfl, rfl, rfl⟩
-    · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
-    · exact ⟨rfl, rfl, rfl, rfl⟩
-    · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
-        ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
-          (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
-    · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
-  · have hT : T₀ = none := none_of_later hL
-    simp only at h₅
-    split at h₅
-    · rename_i caps hs ds cod rd
-      simp only [topIdx, modifyFrame, bind_assoc] at h₅
-      peel h₅
+    obtain ⟨_, s₆, b₇, hpb, h₅⟩ := Runs.bind_inv h₄
+    clear h₄
+    have hs6 := runs_pushBind_inv hpb
+    subst hs6
+    simp only [Bool.not_false, Bool.true_and] at h₅
+    generalize hL : (if (v₀, T₀).snd.isNone = true then s₃.callTyLater else none) = later at h₅
+    rcases later with _ | ⟨P, ws⟩
+    · simp only at h₅
       rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
       peel h₅
       try simp only [if_true, ite_true, Bool.false_eq_true, if_false] at h₅
@@ -355,9 +397,9 @@ theorem letCallInvU : LetCallInvU := by
       obtain ⟨hback, rfl⟩ := runs_popTemp_inv hpop
       have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
       have hk3 := kern_popTemp_withTempT _ _ T? hback
-      refine ⟨du', { s₂ with wantTy := true, deferCallTy := true, callTyLater := none }, s₃,
-        { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop (some (Value.tPi caps (.pi hs ds cod) rd, ws, ds.length)), deferCallTy := false, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
-        s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, some (Value.tPi caps (.pi hs ds cod) rd, ws, ds.length), b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, rfl, rfl, (.inr ⟨caps, hs, ds, cod, rd, ws, hT, later_eq hL, rfl⟩), ?_, ?_,
+      refine ⟨du', { s₂ with wantTy := true, deferCallTy := true }, s₃,
+        { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop none, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
+        s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, _, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, (.inl ⟨rfl, .inl ⟨rfl, fun caps hs ds cod rd ws hT e => by subst hT; simp at hL; rw [hL] at e; cases e⟩⟩), ?_, ?_,
         rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
       · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
       · exact ⟨rfl, rfl, rfl, rfl⟩
@@ -370,49 +412,95 @@ theorem letCallInvU : LetCallInvU := by
           ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
             (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
       · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
-    · rename_i hnotPi
-      rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
-      peel h₅
-      try simp only [if_true, ite_true, Bool.false_eq_true, if_false] at h₅
-      rw [untypedTailHint_eq] at h₅
-      obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
-      clear h₅
-      obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆
-      clear h₆
-      obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
-      obtain ⟨_, s₉, b₁₀, hpt, h₈⟩ := Runs.bind_inv h₇
-      clear h₇
-      have hs9 := runs_pushTemp_inv hpt
-      subst hs9
-      obtain ⟨⟨⟩, s₁₀, b₁₁, hdr, h₉⟩ := Runs.bind_inv h₈
-      clear h₈
-      unfold setFlags at h₉
-      rw [runs_modify_bind] at h₉
-      obtain ⟨pv, s₁₁, b₁₂, hpop, h₁₀⟩ := Runs.bind_inv h₉
-      clear h₉
-      obtain ⟨hvt, rfl⟩ := runs_pure_inv h₁₀
-      simp only [Prod.mk.injEq] at hvt
-      obtain ⟨rfl, rfl⟩ := hvt
-      obtain ⟨hback, rfl⟩ := runs_popTemp_inv hpop
-      have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
-      have hk3 := kern_popTemp_withTempT _ _ T? hback
-      refine ⟨du', { s₂ with wantTy := true, deferCallTy := true, callTyLater := none }, s₃,
-        { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop none, deferCallTy := false, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
-        s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, rfl, rfl, (.inl ⟨rfl, fun caps hs ds cod rd ws hT e => by
-          subst hT; simp at hL; rw [hL] at e; cases e
-          first | exact hnotPi _ _ _ _ _ rfl | exact (hnotPi _ _ _ _ _ rfl).elim | simp_all⟩), ?_, ?_,
-        rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
-      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
-      · exact ⟨rfl, rfl, rfl, rfl⟩
-      · exact decTab_declOf_at hDst hdu
-      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
-      · exact ⟨rfl, rfl, rfl, rfl⟩
-      · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
-      · exact ⟨rfl, rfl, rfl, rfl⟩
-      · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
-          ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
-            (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
-      · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
+    · have hT : T₀ = none := none_of_later hL
+      simp only at h₅
+      split at h₅
+      · rename_i caps hs ds cod rd
+        simp only [topIdx, modifyFrame, bind_assoc] at h₅
+        peel h₅
+        rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
+        peel h₅
+        try simp only [if_true, ite_true, Bool.false_eq_true, if_false] at h₅
+        rw [untypedTailHint_eq] at h₅
+        obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
+        clear h₅
+        obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆
+        clear h₆
+        obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
+        obtain ⟨_, s₉, b₁₀, hpt, h₈⟩ := Runs.bind_inv h₇
+        clear h₇
+        have hs9 := runs_pushTemp_inv hpt
+        subst hs9
+        obtain ⟨⟨⟩, s₁₀, b₁₁, hdr, h₉⟩ := Runs.bind_inv h₈
+        clear h₈
+        unfold setFlags at h₉
+        rw [runs_modify_bind] at h₉
+        obtain ⟨pv, s₁₁, b₁₂, hpop, h₁₀⟩ := Runs.bind_inv h₉
+        clear h₉
+        obtain ⟨hvt, rfl⟩ := runs_pure_inv h₁₀
+        simp only [Prod.mk.injEq] at hvt
+        obtain ⟨rfl, rfl⟩ := hvt
+        obtain ⟨hback, rfl⟩ := runs_popTemp_inv hpop
+        have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
+        have hk3 := kern_popTemp_withTempT _ _ T? hback
+        refine ⟨du', { s₂ with wantTy := true, deferCallTy := true }, s₃,
+          { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop (some (Value.tPi caps (.pi hs ds cod) rd, ws, ds.length)), callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
+          s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, some (Value.tPi caps (.pi hs ds cod) rd, ws, ds.length), _, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, (.inl ⟨rfl, .inr ⟨caps, hs, ds, cod, rd, ws, hT, later_eq hL, rfl⟩⟩), ?_, ?_,
+          rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl⟩
+        · exact decTab_declOf_at hDst hdu
+        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl⟩
+        · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+        · exact ⟨rfl, rfl, rfl, rfl⟩
+        · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
+            ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
+              (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
+        · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
+      · rename_i hnotPi
+        rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
+        peel h₅
+        try simp only [if_true, ite_true, Bool.false_eq_true, if_false] at h₅
+        rw [untypedTailHint_eq] at h₅
+        obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
+        clear h₅
+        obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆
+        clear h₆
+        obtain ⟨rfl, rfl⟩ := runs_getFlags_inv hgf
+        obtain ⟨_, s₉, b₁₀, hpt, h₈⟩ := Runs.bind_inv h₇
+        clear h₇
+        have hs9 := runs_pushTemp_inv hpt
+        subst hs9
+        obtain ⟨⟨⟩, s₁₀, b₁₁, hdr, h₉⟩ := Runs.bind_inv h₈
+        clear h₈
+        unfold setFlags at h₉
+        rw [runs_modify_bind] at h₉
+        obtain ⟨pv, s₁₁, b₁₂, hpop, h₁₀⟩ := Runs.bind_inv h₉
+        clear h₉
+        obtain ⟨hvt, rfl⟩ := runs_pure_inv h₁₀
+        simp only [Prod.mk.injEq] at hvt
+        obtain ⟨rfl, rfl⟩ := hvt
+        obtain ⟨hback, rfl⟩ := runs_popTemp_inv hpop
+        have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
+        have hk3 := kern_popTemp_withTempT _ _ T? hback
+        refine ⟨du', { s₂ with wantTy := true, deferCallTy := true }, s₃,
+          { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop none, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
+          s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, _, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, (.inl ⟨rfl, .inl ⟨rfl, fun caps hs ds cod rd ws hT e => by
+            subst hT; simp at hL; rw [hL] at e; cases e
+            first | exact hnotPi _ _ _ _ _ rfl | exact (hnotPi _ _ _ _ _ rfl).elim | simp_all⟩⟩), ?_, ?_,
+          rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl⟩
+        · exact decTab_declOf_at hDst hdu
+        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl⟩
+        · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+        · exact ⟨rfl, rfl, rfl, rfl⟩
+        · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
+            ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
+              (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
+        · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))))
 
 end Ochr.Meaning.Steps.Machine
 
@@ -718,11 +806,11 @@ type by the call's own conclusion (`OutL`'s `LaterOk`, the lead's ruling on D180
 theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hLP : Machine.LaterPiG) (hPL : LetLazyPushG) (hDr : LetDropG)
     (hVC : ValsCongrA) (hFU : EvalFitsU) (hc : Strict.FundCtx K) {ρ : Assignment} {m : Nat} {x : Hint} {f : Term} {as : List Term}
     {hd : Bool} {w : Term} (ih : IH K φ (m + 3)) :
-    CoreSimK K ρ φ (m + 1) (.letIn x (.call f as hd) w) (fun st => 0 < st.env.size) (· = false) := by
-  intro st st' typed hint v T? s π hne hty hm _ htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
+    CoreSimK K ρ φ (m + 1) (.letIn x (.call f as hd) w) (fun st => 0 < st.env.size ∧ st.deferCallTy = false) (· = false) := by
+  intro st st' typed hint v T? s π ⟨hne, hdfz⟩ hty hm _ htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
   subst hty
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, lz, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hdu,
-    hdf₀, hcl₀, hlz, hkB, hmeB, htnB, hrw, hrd, hk₃, hme₃', hD₁, hD₂, hwt₀⟩ :=
+    hlz, hkB, hmeB, htnB, hrw, hrd, hk₃, hme₃', hD₁, hD₂, hwt₀⟩ :=
     Machine.letCallInvU m x f as hd w hint st st' bh v T? K.D htn htd hD h
   -- the tail's hint, on both sides: the `let`'s in tail position, none out of it
   have hth := tailHint_hintM K ρ st.curTail hint
@@ -756,17 +844,22 @@ theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW)
   -- reference's result type (the call's `LaterOk`, read where the checker reads the record)
   obtain ⟨hpB, hrB⟩ : Pre { K with Δ := Δ₁ } ρ₁ stB ∧
       Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stB (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) := by
-    rcases hlz with ⟨rfl, hnr⟩ | ⟨caps, hs, ds, cod, rd, ws, rfl, hrec, rfl⟩
+    rcases hlz with ⟨hdf₀, ⟨rfl, hnr⟩ | ⟨caps, hs, ds, cod, rd, ws, rfl, hrec, rfl⟩⟩ | ⟨hdf₀, rfl⟩
     · -- no type came back only where the record is a Π-type (`LaterPiG`), which the `let` would have deferred
       have hT : T₀ = none → ru.2.m = TyM.err := fun e => by
         subst e
-        obtain ⟨caps, hs, ds, cod, rd, ws, hrec⟩ := hLP K ρ m f as hd st₀ st₁ bh₁ v₀ (hp.of_kern hk₀) hwt₀ hdf₀ hcl₀ hru
+        obtain ⟨caps, hs, ds, cod, rd, ws, hrec⟩ := hLP K ρ m f as hd st₀ st₁ bh₁ v₀ (hp.of_kern hk₀) hwt₀ hdf₀ hru
         exact absurd hrec (hnr caps hs ds cod rd ws rfl)
       exact hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau hT hlu
         hgu hlabu hlouu hfit (hEK K ρ m false _ none st₀ st₁ bh₁ v₀ T₀ (hp.of_kern hk₀) (.inr hwt₀) hru) hkB
-    · have hz := hlat ⟨f, as, hd, rfl⟩ hdf₀ hcl₀ caps hs ds cod rd ws hrec
+    · have hz := hlat ⟨f, as, hd, rfl⟩ hdf₀ caps hs ds cod rd ws hrec
       exact hPL { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ x p du _ ru s₁ hz hne₁ hp₁ hr₁ hS₁ hmu hlu
         hgu hlabu hlouu hfit hkB
+    · -- main's D132: a call the pre-pass erases is not deferred; it runs wanted with the flag clear, so a missing type
+      -- reads as the reference's `err` (the call's own `OutL`)
+      exact hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau
+        (hwu (.inr ⟨hwt₀, hdf₀.trans hdfz⟩)) hlu
+        hgu hlabu hlouu hfit (hEK K ρ m false _ none st₀ st₁ bh₁ v₀ T₀ (hp.of_kern hk₀) (.inr hwt₀) hru) hkB
   have hSB : Strict.SGood K.dm K.Γ φ (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) := by
     by_cases hs₁ : s₁.env = []
     · rw [Strict.pushBindShaped_nil _ _ hs₁]; exact hS₁
@@ -860,7 +953,7 @@ theorem stepLetIn_untyped (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKi
     fun st st' typed hint v T? s π hP => letIn_coreU (K := { K with Δ := Δ }) hLT hPu hEK hDr hVC hFU ⟨hc.globals, hc.sorts⟩
       hnc ih st st' typed hint v T? s π hP.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
-    (fun a b hk hf ha => ⟨⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1.1, hf.trans ha.1.2⟩,
+    (fun a b hk hf ha => ⟨⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1.1, hf⟩,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'
 
@@ -917,9 +1010,9 @@ theorem stepLetIn_untypedCall (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : Ev
       (fun st => (0 < st.env.size ∧ st.deferCallTy = false) ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x (.call f as hd) w) ≠ .any ∧
         (K.D.declOf (DecideScope.topReadings st) (.letIn x (.call f as hd) w)).isProof = false) (· = false) :=
     fun st st' typed hint v T? s π hP => letCall_coreU (K := { K with Δ := Δ }) hLT hPu hEK hLP hPL hDr hVC hFU
-      ⟨hc.globals, hc.sorts⟩ ih st st' typed hint v T? s π hP.1.1
+      ⟨hc.globals, hc.sorts⟩ ih st st' typed hint v T? s π hP.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
-    (fun a b hk hf ha => ⟨⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1.1, hf.trans ha.1.2⟩,
+    (fun a b hk hf ha => ⟨⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1.1, hf⟩,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'
 

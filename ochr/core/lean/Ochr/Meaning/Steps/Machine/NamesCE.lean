@@ -1,10 +1,15 @@
 import Ochr.Examples.Nat
 
 /-!
-# `NamesFact`'s parameter part is false (machine11, 2026-11-22)
+# `NamesFact`'s parameter part was false before main's D133 (machine11, 2026-11-22; machine12: now rejected)
+
+HISTORICAL (machine12, at the merge of main's D133): `Q6` below is now REJECTED (`[D133] Q6 is not declared in its own
+parameters' types`): `checkInd` runs `undeclaredCheck none (params) (own := some n)`, so a parameter type may name only
+the stage's constants and inductive types, never the type being declared, in a dead arm or not. The guard below pins the
+rejection. What machine11 read, before D133:
 
 READ FALSE: `Assembly.NamesFact`'s inductive parameter part ("its parameter types name only the stage's"). The checker
-ACCEPTS `inductive Q6 (A : Type) (x : (let z = Z; match z { Z => A, S(k) => Q6 })) := MkQ6`: the parameter type of
+ACCEPTED `inductive Q6 (A : Type) (x : (let z = Z; match z { Z => A, S(k) => Q6 })) := MkQ6`: the parameter type of
 `x` names `Q6` itself, which is not in the stage (`stageNames` holds the earlier items' names only).
 
 Why: D118's `undeclaredCheck (some n) (params ++ field types)` (`Check.lean`, `checkInd`) admits the type's own name in
@@ -23,8 +28,9 @@ and the first attempt, at the default fuel, was killed by SIGTERM (memory): not 
 open Ochr.Test
 
 ochr NamesCE uses Nats {
-  -- ACCEPTED: the parameter type of `x` names `Q6` in the arm the match on `Z` does not take
-  inductive Q6 (A : Type) (x : (let z = Z; match z { Z => A, S(k) => Q6 })) := MkQ6
+  -- REJECTED since main's D133 (accepted before): the parameter type of `x` names `Q6` in the arm the match on `Z`
+  -- does not take
+  reject inductive Q6 (A : Type) (x : (let z = Z; match z { Z => A, S(k) => Q6 })) := MkQ6
   -- controls: a mention the checker evaluates is one parameter short
   reject inductive Q1 (A : Type) (x : Q1(A)) := MkQ1
   reject inductive Q2 (x : Q2) := MkQ2

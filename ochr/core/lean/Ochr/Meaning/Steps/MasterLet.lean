@@ -391,7 +391,7 @@ theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKind
     fun st st' typed hint v T? s π hP => letIn_core (K := { K with Δ := Δ }) hLT hPu hEK hDr hVC hFT ⟨hc.globals, hc.sorts⟩ ih
       st st' typed hint v T? s π hP.1.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
-    (fun a b hk hf ha => ⟨⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1.1, hf.trans ha.1.2⟩,
+    (fun a b hk hf ha => ⟨⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1.1, hf⟩,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'
 

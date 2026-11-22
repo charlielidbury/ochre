@@ -5,9 +5,11 @@ import Ochr.Meaning.Steps.Machine.EvalInv
 
 `evalAt_invF` is machine10's `evalAt_invT` (`Machine/EvalInvT.lean`) with three more conjuncts, read off `evalAt`'s
 code: the state `evalCore` starts from wants the result's type exactly when the run is typed or the context asked
-for it (`wantHere := typed || wantTy`), and `evalAt` never writes the call-deferral flag (`deferCallTy`), so it is
-the entry's at `evalCore`'s entry and the core's at the exit. What `Master.EvalAt`'s promise of a type
-(`Master.TyOut`) and its entry condition on the deferral flag (`Master.DeferOk`) are carried across.
+for it (`wantHere := typed || wantTy`). The call-deferral flag (`deferCallTy`): since main's D130 (machine12's merge)
+`evalAt` CONSUMES it when the evaluation starts, in the same update as the other one-shot flags: `evalCore` starts with
+the flag clear, its copy `deferHere` holding the entry's flag (what `evalCall` reads), and the record of a deferred
+call's type (`callTyLater`) cleared; at the exit the flag is the core's. (Before D130 `evalAt` never wrote the flag,
+and this said `evalCore` started with the entry's flag.)
 -/
 
 namespace Ochr.Meaning.Steps.Machine
@@ -16,8 +18,10 @@ open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.DecideScope Ochr.Meaning.
 open Ochr.Meaning.Steps.Form
 
 set_option maxHeartbeats 4000000 in
-/-- **`evalAt_inv'`, with the typing flag and the type-wanted and deferral flags** (lead27; docs/31 D184): `evalAt` sets
-`wantHere := typed || wantTy` and the typing flag before `evalCore`, and never writes `deferCallTy`. -/
+/-- **`evalAt_inv'`, with the typing flag and the type-wanted and deferral flags** (lead27; docs/31 D184; restated at
+main's D130 by machine12): `evalAt` sets `wantHere := typed || wantTy` and the typing flag before `evalCore`, and
+consumes the deferral flag: `evalCore` starts with `deferCallTy` clear, `deferHere` the entry's flag and the record
+`callTyLater` cleared. -/
 theorem evalAt_invF {n : Nat} {typed : Bool} {t : Term} {hint : Option Value} {st st' : MState} {bh : Nat}
     {r : Value × Option Value} {dd : DeclInfo}
     (hh : st.headEval = false) (hv : ∀ w, t ≠ .val w) (hc : ∀ f as h, t ≠ .call f as h)
@@ -28,7 +32,8 @@ theorem evalAt_invF {n : Nat} {typed : Bool} {t : Term} {hint : Option Value} {s
     ∃ st₀ st₁ bh', Kern st st₀ ∧ ModeEq st₀ { st with headEval := false } ∧ st₀.curTail = st.tailNext ∧
       st₀.tailNext = false ∧ st₀.tailDecl = none ∧ st₀.curDecl = some dd ∧
       Runs (Ochr.evalCore n typed t hint) st₀ bh' r st₁ ∧ Kern st₁ st' ∧ ModeEq st₁ st' ∧ st'.tailDecl = st₁.tailDecl ∧ st₀.typing = typed ∧
-      st₀.wantHere = (typed || st.wantTy) ∧ st₀.deferCallTy = st.deferCallTy ∧ st'.deferCallTy = st₁.deferCallTy := by
+      st₀.wantHere = (typed || st.wantTy) ∧ st₀.deferCallTy = false ∧ st₀.deferHere = st.deferCallTy ∧
+      st₀.callTyLater = none ∧ st'.deferCallTy = st₁.deferCallTy := by
   unfold Ochr.evalAt at h
   peel h
   rw [if_pos] at h
@@ -79,7 +84,7 @@ theorem evalAt_invF {n : Nat} {typed : Bool} {t : Term} {hint : Option Value} {s
       | (split at h₂))
     all_goals first
       | (obtain ⟨rfl, rfl⟩ := runs_pure_inv h₂
-         refine ⟨_, _, _, ?_, ?_, ?_, ?_, ?_, ?_, hcore, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+         refine ⟨_, _, _, ?_, ?_, ?_, ?_, ?_, ?_, hcore, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
          · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
          · exact ⟨rfl, rfl, rfl, rfl⟩
          · rfl
@@ -88,6 +93,8 @@ theorem evalAt_invF {n : Nat} {typed : Bool} {t : Term} {hint : Option Value} {s
          · rfl
          · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
          · exact ⟨rfl, rfl, rfl, rfl⟩
+         · rfl
+         · rfl
          · rfl
          · rfl
          · rfl

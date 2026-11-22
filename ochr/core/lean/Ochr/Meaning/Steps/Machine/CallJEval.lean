@@ -302,7 +302,7 @@ theorem evalCall_J_inv {k : Nat} {s s' : MState} {bh : Nat} {r : Value × Option
     ∃ res sF bF, Kern stJ2 sF ∧ Mode sF ∧ sF.tailDecl = none ∧
       Runs (withLive true (Ochr.declOf k false [] [] CallGuards.bodyJ)) s bh res s ∧
       Runs (Ochr.callFn k true (some ColumnI.piNat) 1 #[some .tNat] false none none res #[false] s.wantHere
-        s.deferCallTy none) sF bF r s' := by
+        s.deferHere none) sF bF r s' := by
   unfold Ochr.evalCall at h
   peel h
   simp only [Bool.false_eq_true, if_false] at h

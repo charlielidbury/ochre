@@ -16,7 +16,10 @@ answer.)
   `EV := MkEV(x : L(⟨0⟩))` and `EP (h : L(⟨0⟩)) := MkEP`, with `L (n : Nat) := MkL` declared
   (`ev_accepted`, `ep_accepted`, `itemFactsOld_false`). Resolution never builds one, so the fact is
   now `Assembly.NoValFact`, about the program's items.
-* `ItemFacts` also concluded `Records.VaryValFree` of the entry. The surface declaration
+* HISTORICAL since main's D128 (merged by machine12: `TL` is now REJECTED, `[D128] the parameter B of TL is declared
+  at (let z = A; Type), which reads as the sort Type without being written as one`; `tlAccepted` is false, pinned
+  below, and the two refutations that take it as a hypothesis are vacuous). What exists11 found before D128:
+  `ItemFacts` also concluded `Records.VaryValFree` of the entry. The surface declaration
   `inductive TL (A : Type) (B : (let z = A; Type)) := MkTL(x : B)` is accepted and breaks it
   (`tlAccepted`, checked natively as the kernel's reduction of that run gets stuck;
   `varyValFact_false` from it, in the kernel): `B` varies, is not a type parameter, and the field
@@ -105,20 +108,22 @@ def dTL : IndDecl :=
     ctors := [("MkTL", [("x", .place (.var 0))])] }
 def tlItems : List Item := [.ind dTL]
 
-/-- **The checker accepts `TL`** at the program's first stage. Checked natively (`#guard`): the
+/-- **Whether the checker accepts `TL`** at the program's first stage. Checked natively (`#guard`): the
 kernel's reduction of this run gets stuck (it does finish the runs of `EV` and `EP` above), so the
-refutation below takes acceptance as its hypothesis and checks the rest in the kernel. -/
+refutation below takes acceptance as its hypothesis and checks the rest in the kernel. Before main's D128 it was
+accepted; since D128 (machine12's merge) it is REJECTED (the guard below). -/
 def tlAccepted : Bool :=
   match (runMachine (checkItem (.ind dTL)) (Assembly.stSt 3000 tlItems 0) 3000).1 with
   | .ok () _ => true
   | _ => false
 
-#guard tlAccepted
+-- REJECTED since main's D128 (accepted before: the guard was `#guard tlAccepted`)
+#guard !tlAccepted
 
 /-- The entry the checker stores for `TL` (machine10's `checkItem_tables`): `B` is not nestable, `A` is. -/
 theorem tl_nestable : nestableSet (nestTableOf []) (sortTableOf [] dTL) dTL = [true, false] := by decide +kernel
 
-/-- **`VaryValFact` is false**, given that the checker accepts `TL` (`tlAccepted`, natively): the
+/-- HISTORICAL (vacuous since main's D128: `tlAccepted` is false). **`VaryValFact` was false**, given that the checker accepts `TL` (`tlAccepted`, natively): the
 stored entry's field `x : B` reads parameter `B`, which varies (its type reads `A`, which is
 nestable) and is not a type parameter (`paramIsType` sees a `let`). -/
 theorem varyValFact_false (hacc : tlAccepted = true) : ¬ Assembly.VaryValFact 3000 tlItems := by
@@ -140,7 +145,7 @@ theorem varyValFact_false (hacc : tlAccepted = true) : ¬ Assembly.VaryValFact 3
     revert this; decide +kernel
   · cases hacc
 
-/-- **`FieldHeads`' parameter part is false**, given that the checker accepts `TL`: the field `x : B`
+/-- HISTORICAL (vacuous since main's D128: `tlAccepted` is false). **`FieldHeads`' parameter part was false**, given that the checker accepts `TL`: the field `x : B`
 is headed by parameter `B`, written at a `let`, not a sort. -/
 theorem fieldHeads_false (hacc : tlAccepted = true) : ¬ Assembly.FieldHeads 3000 tlItems := by
   intro H

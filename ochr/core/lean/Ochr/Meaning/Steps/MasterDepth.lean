@@ -39,7 +39,7 @@ theorem evalInvD : EvalInvD := by
   obtain ⟨ba', hat⟩ := Runs.noteValue_inv hna
   have hka := hla.kern
   obtain ⟨hhe, htde, htne⟩ := hla.tail
-  obtain ⟨st₀, st₁, bh', hk₀, hme₀, hct, htn, htd₀, hcd, hcore, hk₁, hme₁, -, -, -, hdf₀, -⟩ :=
+  obtain ⟨st₀, st₁, bh', hk₀, hme₀, hct, htn, htd₀, hcd, hcore, hk₁, hme₁, -, -, -, hdf₀, hdh₀, hcl₀, -⟩ :=
     evalAt_invF (dd := D.declOf (DecideScope.topReadings st) t) (hhe ▸ hm.headEval) hv hc (htde ▸ htd)
       (fun s b d s' hks hr => by
         have := decTab_declOf_at (DecTab.of_kern (hka.trans hks) hDst) hr
@@ -50,7 +50,7 @@ theorem evalInvD : EvalInvD := by
   refine ⟨st₀, st₁, bh', hk0, hsa.trans (modeEq_form hme₀).symm, by rw [hct, ← htne], htn, htd₀, ?_, hcore,
     hk₁.trans hlb.kern, (modeEq_form hme₁).trans (modeEq_form hlb.modeEq), ?_⟩
   · rw [hcd, ColumnC.topReadings_kern hk0]
-  · rw [hdf₀]; exact (congrArg MState.deferCallTy hla).symm
+  · exact ⟨hdf₀, by rw [hdh₀]; exact (congrArg MState.deferCallTy hla).symm, hcl₀⟩
 
 /-- **`evalCore` of a typed `let`, at any erased depth**: the machine lane's `LetInvR` with no mode hypothesis
 and the mode at `u`'s entry the `let`'s (`ModeEq`) where `LetInvR` concludes `Mode`. -/
@@ -89,6 +89,9 @@ theorem letInvD : LetInvD := by
   subst hs2
   unfold demand at h₁
   rw [runs_modify_bind] at h₁
+  -- D132: the right-hand side is not an untyped call, so the pre-pass is not asked (`erasedU := false`)
+  rw [if_pos (by simp)] at h₁
+  peel h₁
   rw [if_neg (by simp)] at h₁
   peel h₁
   obtain ⟨⟨v₀, T₀⟩, s₃, b₄, hu, h₂⟩ := Runs.bind_inv h₁
@@ -130,7 +133,7 @@ theorem letInvD : LetInvD := by
   have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
   have hk3 := kern_popTemp_withTempT _ _ T? hback
   refine ⟨du', { s₂ with wantTy := true }, s₃,
-    { s₃ with env := Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du', deferCallTy := false, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
+    { s₃ with env := Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
     s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
     hdr, ?_, ?_, ?_, ?_⟩
   · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩

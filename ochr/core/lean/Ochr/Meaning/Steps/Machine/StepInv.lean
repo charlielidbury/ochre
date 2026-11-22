@@ -276,6 +276,9 @@ theorem letInvR : LetInvR := by
   subst hs2
   unfold demand at h₁
   rw [runs_modify_bind] at h₁
+  -- D132: the right-hand side is not an untyped call, so the pre-pass is not asked (`erasedU := false`)
+  rw [if_pos (by simp)] at h₁
+  peel h₁
   rw [if_neg (by simp)] at h₁
   peel h₁
   obtain ⟨⟨v₀, T₀⟩, s₃, b₄, hu, h₂⟩ := Runs.bind_inv h₁
@@ -317,7 +320,7 @@ theorem letInvR : LetInvR := by
   have hg₂ := (TablesGrow.withTempT _ _ _).trans (Runs.grows (grows_dropTopBind _) hdr)
   have hk3 := kern_popTemp_withTempT _ _ T? hback
   refine ⟨du', { s₂ with wantTy := true }, s₃,
-    { s₃ with env := Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du', deferCallTy := false, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
+    { s₃ with env := Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
     s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
     hdr, ?_, ?_, ?_, ?_⟩
   · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩

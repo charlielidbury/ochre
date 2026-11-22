@@ -114,11 +114,10 @@ def letG2 (b : Term) : Option (Value × Option Value) :=
 #guard match letG2 tF with | some (_, some T) => Value.exact T .tUnit | _ => false
 #guard !(match letG2 tT with | some (_, some T) => Value.exact T .tUnit | _ => false)
 
-/-! ### Condition 1: what a run leaves in the record when it did not start with the flag. The checker does NOT clear
-the record on entry: a term that runs no call carries a stale record through (`Z`), as does an erased run (its
-private copy is restored whole). A call run without the flag records nothing (`Inc(n)` above). The `let` clears the
-record itself before its call and reads it right after, so it never reads a stale one; `LaterOk` is stated only
-for a run that starts with the flag set and the record clear. -/
+/-! ### Condition 1: what a run leaves in the record when it did not start with the flag. Since main's D130 the checker
+CLEARS the record when every evaluation starts (`evalAt`), so a term that runs no call leaves none (`Z`: the stale record
+is gone; before D130 it was carried through, machine12's merge flipped this guard). A call run without the flag records
+nothing (`Inc(n)` above). -/
 def stale : Option (Value × List Value) := some (.tNat, [])
 def afterZ : Option (Option (Value × List Value)) :=
   match (runMachine (do
@@ -127,7 +126,7 @@ def afterZ : Option (Option (Value × List Value)) :=
       pure (← get).callTyLater) stAt 1000000).1 with
   | .ok r _ => some r
   | _ => none
-#guard match afterZ with | some (some (T, [])) => Value.exact T .tNat | _ => false
+#guard afterZ == some none
 -- a call without the flag overwrites a stale record with nothing
 def afterCall : Option (Option (Value × List Value)) :=
   match (runMachine (do

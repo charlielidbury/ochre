@@ -20,7 +20,8 @@ theorem keep_declared (n : String) : Keep (declared n) := by unfold declared; ke
 
 theorem keep_fuelLeft : Keep fuelLeft := by unfold fuelLeft; keep_go; all_goals exact keep_getThe_fuel
 
-theorem keep_undeclaredCheck (self : Option String) (ts : List Term) : Keep (undeclaredCheck self ts) := by
+theorem keep_undeclaredCheck (self : Option String) (ts : List Term) (own : Option String := none) :
+    Keep (undeclaredCheck self ts own) := by
   unfold undeclaredCheck; keep_go
   all_goals (intro s f l a s' f' l' h; cases h)
 

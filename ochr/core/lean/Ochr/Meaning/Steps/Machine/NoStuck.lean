@@ -478,8 +478,9 @@ theorem nsAt_evalAt {n : Nat} {typed : Bool} {t : Term} {hint : Option Value} {s
       NSAt (Ochr.evalCore n typed t hint) s') :
     NSAt (Ochr.evalAt (n + 1) typed t hint) s := by
   unfold Ochr.evalAt
+  -- seven reads: D130 added the deferral flag's
   refine nsAt_get_bind (nsAt_get_bind (nsAt_get_bind (nsAt_get_bind (nsAt_get_bind (nsAt_get_bind
-    (nsAt_modify_bind (nsAt_modify_bind ?_)))))))
+    (nsAt_get_bind (nsAt_modify_bind (nsAt_modify_bind ?_))))))))
   rw [if_pos (by rw [hh]; cases t <;> first | rfl | exact absurd rfl (hv _)), htd]
   split
   · rename_i h; cases h

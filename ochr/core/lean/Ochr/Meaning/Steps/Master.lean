@@ -132,14 +132,14 @@ theorem HintBelow.mono {hint : Option Value} {a b : Nat} (h : HintBelow hint a) 
   fun T hT σ hσ => Nat.lt_of_lt_of_le (h T hT σ hσ) hab
 
 /-- **A deferred call type means the reference's result type** (the lead's ruling on docs/31 D180; D183): for a run
-of a CALL from a state with the deferral flag set and the record clear (`deferCallTy`, `callTyLater`: how an untyped
-`let` of a call starts it, `Machine.LetCallInvU`), a pair `(P, ws)` the end state records, `P` a Π-type with `|ds|`
+of a CALL from a state with the deferral flag set (`deferCallTy`: how an untyped `let` of a call starts it,
+`Machine.LetCallInvU`), a pair `(P, ws)` the end state records (`callTyLater`), `P` a Π-type with `|ds|`
 domains, reads at its codomain (`CodeMeaning.paramTy`, as `Env.hintAt` reads a lazily typed binding) as the
-reference's result type `R`. Vacuous for every other term and every other start: the checker does not clear the
-record on entry, so a run that is not such a call can end with a stale record (`LaterGuards`), which no consumer
-reads (the `let` clears it before its call and reads it right after). -/
+reference's result type `R`. Vacuous for every other term and every other start. Restated at main's D130 (machine12):
+`evalAt` clears the record when every evaluation starts, so the premise "the record clear at the start" is gone (a
+record at the end was left by this run; before D130 a run could end with a stale one, `LaterGuards`). -/
 def LaterOk (K : RunCtx) (ρ : Assignment) (t : Term) (st st' : MState) (R : TyS) : Prop :=
-  (∃ f as hd, t = .call f as hd) → st.deferCallTy = true → st.callTyLater = none →
+  (∃ f as hd, t = .call f as hd) → st.deferCallTy = true →
     ∀ caps hs ds cod rd ws, st'.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws) →
       K.M.paramTy ρ (.tPi caps (.pi hs ds cod) rd) ws ds.length = R
 
@@ -293,7 +293,9 @@ def EvalSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
 
 /-- **`eval` around `evalCore`, at any erased depth** (a fact about the checker alone; `Machine.EvalInvR` with
 `ModeR` for `Mode` and the mode's equalities for its `Mode` conclusions; PROVED, `MasterDepth.evalInvD`, by
-`EvalInvR`'s proof: `evalAt`'s code reads no depth). -/
+`EvalInvR`'s proof: `evalAt`'s code reads no depth). The deferral flag (restated at main's D130 by machine12; before,
+`st₀.deferCallTy = st.deferCallTy`): `evalAt` consumes it, so `evalCore` starts with it CLEAR, its copy `deferHere`
+holding the entry's flag (what `evalCall` reads) and the record `callTyLater` cleared. -/
 def EvalInvD : Prop :=
   ∀ (n : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
     (T? : Option Value) (D : Decisions),
@@ -304,13 +306,13 @@ def EvalInvD : Prop :=
     ∃ (st₀ st₁ : MState) (bh' : Nat), Kern st st₀ ∧ ModeEq st st₀ ∧ st₀.curTail = st.tailNext ∧
       st₀.tailNext = false ∧ st₀.tailDecl = none ∧ st₀.curDecl = some (D.declOf (DecideScope.topReadings st₀) t) ∧
       Runs (Ochr.evalCore n typed t hint) st₀ bh' (v, T?) st₁ ∧ Kern st₁ st' ∧ ModeEq st₁ st' ∧
-      st₀.deferCallTy = st.deferCallTy
+      st₀.deferCallTy = false ∧ st₀.deferHere = st.deferCallTy ∧ st₀.callTyLater = none
 
 /-- **`eval` around `evalCore`, with what the run keeps**: `Column.eval_of_core` at any erased depth, carrying
 `Kept` (the mode by `EvalInvD`'s equalities, the frames and readings by the kernel). -/
 theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInvD) {n : Nat} {t : Term}
     {P : MState → Prop} {TY : Bool → Prop}
-    (hP : ∀ a b, Kern a b → b.deferCallTy = a.deferCallTy → P a → P b) (ht : ∀ w, t ≠ .val w)
+    (hP : ∀ a b, Kern a b → b.deferCallTy = false → P a → P b) (ht : ∀ w, t ≠ .val w)
     (hcall : ∀ f as h, t ≠ .call f as h)
     (hany : ∀ st, P st → K.D.declOf (DecideScope.topReadings st) t ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) t).isProof = false) (hc : CoreSimK K ρ φ n t P TY) :
@@ -318,7 +320,7 @@ theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInv
   intro st st' typed hint v T? s π hPs hty hm htl htd hp hr hS hv hab hhb hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, h₀, hk₁, hm₁, hdf₀⟩ :=
     hE n typed t hint st st' bh v T? K.D hm hD ht hcall (hany st hPs).1 (hany st hPs).2 htd h
-  obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hdf₀ hPs) hty (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ hcd₀ (hp.of_kern hk₀)
+  obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hdf₀.1 hPs) hty (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ hcd₀ (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS hv
     (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl (by rw [hct]; exact hok)
     (DecTab.of_kern hk₁.symm hD) bh' h₀

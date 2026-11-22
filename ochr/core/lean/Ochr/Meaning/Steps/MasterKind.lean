@@ -115,8 +115,9 @@ def retype (st : MState) (i : Nat) (T : Option Value) : MState :=
   { st with env := st.env.map fun fr => { fr with binds := fr.binds.map fun b => if b.val matches .gfn "Idn" then { b with ty := some .tNat } else b } }
 
 -- `DeferClearG` (the placeholder until main's D130): from the hole of `AtClosure` (`f` a closure), the untyped `let` of a
--- call, its type wanted, ends with the deferral flag clear; and the leak it guards against: `Z` run from a state with
--- the flag SET ends with it still set (no evaluation consumes it today but a call's, D187)
+-- call, its type wanted, ends with the deferral flag clear; and the leak it guarded against, gone since main's D130
+-- (machine12's merge flipped this guard): `Z` run from a state with the flag SET now ends with it CLEAR (`evalAt`
+-- consumes the flag when every evaluation starts; before D130 the flag stayed set)
 def runFlag (st : MState) (t : Term) : Option Bool :=
   match (runMachine (do
       modify fun s => { s with wantTy := true }
@@ -126,7 +127,7 @@ def runFlag (st : MState) (t : Term) : Option Bool :=
   | _ => none
 
 #guard runFlag (holeSt "AtClosure") (.letIn ⟨"y"⟩ (.call (.place (.var 0)) [.zero] false) (.place (.var 0))) == some false
-#guard runFlag { holeSt "AtClosure" with deferCallTy := true } .zero == some true
+#guard runFlag { holeSt "AtClosure" with deferCallTy := true } .zero == some false
 
 end Ochr.Meaning.Steps.Form.Master.KindGuards
 

@@ -64,8 +64,8 @@ theorem keep_readViolation (reads : Term → Option Nat) :
 variable {G : Tab}
 
 @[grows] theorem growsIn_declared (n : String) : GrowsIn G (declared n) := growsIn_of_keep (keep_declared n)
-@[grows] theorem growsIn_undeclaredCheck (self : Option String) (ts : List Term) :
-    GrowsIn G (undeclaredCheck self ts) := growsIn_of_keep (keep_undeclaredCheck self ts)
+@[grows] theorem growsIn_undeclaredCheck (self : Option String) (ts : List Term) (own : Option String) :
+    GrowsIn G (undeclaredCheck self ts own) := growsIn_of_keep (keep_undeclaredCheck self ts own)
 @[grows] theorem growsIn_firstOrderTerm (nest : NestTable) (n : String) (np k : Nat) (t : Term) :
     GrowsIn G (firstOrderTerm nest n np k t) := growsIn_of_keep ((keep_firstOrder nest n np k).1 t)
 @[grows] theorem growsIn_nestViolation (nest : NestTable) (st : SortTable) (d : IndDecl) (n : String) (t : Term) :
@@ -117,13 +117,16 @@ theorem runs_checkInd_tables {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
   obtain ⟨_, s₅, b₅, hg₅, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
   obtain ⟨x, s₆, b₆, hg₆, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
   obtain ⟨sc, ns, l⟩ := x
+  -- main's D128 (the written-sort check on parameters) and D133 (`undeclaredCheck` split in two) add two steps
+  obtain ⟨_, s₇a, b₇a, hg₇a, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
   obtain ⟨_, s₇, b₇, hg₇, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+  obtain ⟨_, s₇b, b₇b, hg₇b, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
   obtain ⟨_, s₈, b₈, hg₈, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
   obtain ⟨ps, s₉, b₉, hg₉, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
   obtain ⟨_, s₁₀, b₁₀, hg₁₀, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
   have hst := runs_modify_inv h
   subst hst
-  have hT := (((((((hg₃.trans hg₄).trans hg₅).trans hg₆).trans hg₇).trans hg₈).trans hg₉).trans hg₁₀)
+  have hT := (((((((((hg₃.trans hg₄).trans hg₅).trans hg₆).trans hg₇a).trans hg₇).trans hg₇b).trans hg₈).trans hg₉).trans hg₁₀)
   have hfresh : ∀ e ∈ s₁.inds, (e.name == d.name) = false := by
     intro e he
     have h2 : (s₁.inds.any fun e => e.name == d.name || e.ctors.any (·.1 == d.name)) = false := by
