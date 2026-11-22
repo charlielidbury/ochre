@@ -5,6 +5,7 @@ import Ochr.Meaning.DataModel.Exists.Knot.FromChecks
 import Ochr.Meaning.DataModel.Exists.Params
 import Ochr.Meaning.DataModel.Exists.Knot.CongrN
 import Ochr.Meaning.DataModel.Exists.DeclStep
+import Ochr.Meaning.Steps.Machine.CheckItem
 
 /-!
 # The assembly: the induction's invariant, and the existence of the data model (exists8–exists10)
@@ -21,14 +22,17 @@ items under the stage's model (`stage`). The invariant `Inv` at stage `k` says, 
 
 PROVED, standard axioms, in the default build: `inv_zero`, `inv_step` (a rejected item, `inv_reject`;
 an accepted definition, `inv_defn`; an accepted inductive declaration of either sort, `inv_ind_core`
-with `inv_ind_faithful`), `exists_of_inv`, and `exists_dataModel'`, which assumes six named facts:
-* about the checker, not derived from its code: `ItemFacts` (an accepted inductive declaration
-  appends one entry passing `Knot.IndChecks`, with no embedded value in its field and parameter types
-  and no field type reading a varying value parameter; an accepted definition leaves the declarations
-  and extends the globals), `NamesFact` (the names an accepted item's code mentions are the stage's),
-  `FieldLevels` (the checker's field-level check is sound: a field type runs at members to a code of
-  carrier level 0), and the stage prefix fact `hpre` (`Consistency.inds_prefix`);
-* obligations on the checker's decisions: `DecLocal` at every state, and `DecStable` (piece 8).
+with `inv_ind_faithful`), `exists_of_inv`, and `exists_dataModel_facts`, which assumes the facts in
+`DataFacts` (docs/34 §18.16 gives each one's exact statement and status):
+* about the checker: `ItemFacts` (read true; all but its `IndChecks` part proved by machine10),
+  `NamesFact` (read true for resolved items), `FieldLevels` (see its docstring), `VaryValFact` (FALSE
+  TODAY, true after main's D128);
+* about resolution: `NoValFact` (no embedded value in an inductive item's types);
+* obligations on the checker's decisions: `DecLocal` at every state (its `join` part FALSE TODAY,
+  a checker bug, true after main's D129) and `DecStable` (at the states the checker reaches).
+The stage prefix fact is proved (machine10's `Steps.Machine.indsOf_take_prefix`). `DecLocal` is asked
+at every state and is false at one, so today no list of items satisfies `DataFacts` and the theorem
+says nothing about today's checker; the counterexamples are checked in `FactsCE.lean`.
 -/
 
 namespace Ochr.Meaning.DataModel.Exists.Assembly
@@ -296,27 +300,80 @@ is an obligation on the decisions (piece 8). -/
 /-- A declared parameter type holds no embedded value (resolution, as `Knot.FieldsNoVal`). -/
 def ParamsNoVal (d : IndDecl) : Prop := ∀ j, (Knot.paramTerm d j).anyAtom (fun _ => true) = false
 
-/-- **One accepted item, as the checker stores it** (about the checker, enforced but not derived; an
-extension of `CheckIndGivesChecks` to `checkItem`, whose `seedHoles` comes first): an accepted inductive
-declaration appends one entry passing `IndChecks` and leaves the globals; an accepted definition leaves
-the declarations and appends its globals. -/
+/-- **One accepted item, as the checker stores it** (about the checker; read TRUE against `Check.lean`
+by machine10, and all of it but `IndChecks` is machine10's PROVED `Steps.Machine.checkItem_tables`:
+the stored entry is `{ d with nestable := nestableSet … }`; `IndChecks` is `Knot.CheckIndGivesChecks`
+through `checkItem`, whose `seedHoles` comes first and writes neither table): an accepted inductive
+declaration `d` appends one entry `d'` passing `IndChecks`, with `d`'s parameters and constructors,
+and leaves the globals; an accepted definition leaves the declarations and extends the globals.
+
+Restated by exists11 (docs/34 §18.16). Before, it also concluded `FieldsNoVal d'`, `ParamsNoVal d'`
+(no embedded value in a field or parameter type) and `Records.VaryValFree d'`, at EVERY item and
+state, and so was false two ways (`FactsCE.lean`): the checker accepts a core declaration holding an
+embedded value (`EV`, `EP`), which resolution never produces, so the first two are now `NoValFact`, a
+fact about the program's items; and it accepts a surface declaration breaking the third (`TL`), which
+is now `VaryValFact`, false until main's D128. -/
 def ItemFacts : Prop :=
   ∀ (it : Item) (st st' : MState) (fuel : Nat), (runMachine (checkItem it) st fuel).1 = .ok () st' →
-    (∀ d, it = .ind d → ∃ d', st'.inds = st.inds ++ [d'] ∧ Knot.IndChecks st.inds d' ∧ Knot.FieldsNoVal d' ∧
-      ParamsNoVal d' ∧ Records.VaryValFree d' ∧ st'.globals = st.globals) ∧
+    (∀ d, it = .ind d → ∃ d', st'.inds = st.inds ++ [d'] ∧ Knot.IndChecks st.inds d' ∧
+      d'.params = d.params ∧ d'.ctors = d.ctors ∧ st'.globals = st.globals) ∧
     (∀ d, it = .defn d → st'.inds = st.inds ∧ st.globals <+: st'.globals)
 
-/-- **Piece 8 (an obligation on the decisions, for the machine lane)**: a declared field type and a
-declared parameter type of a declaration of the state `st0` run the same, in the frames the checker
-types them in, under the decisions at `st0` and at any state over more declarations and more globals. -/
-def DecStable (D : MState → Decisions) : Prop :=
-  ∀ (st0 st : MState), st0.inds <+: st.inds → st0.globals <+: st.globals → ∀ d ∈ st0.inds,
-    (∀ (K : RunCtx) (ρ : Assignment) (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term), fieldTerm d c i = some FT →
-      run { K with D := D st } ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm (D st) d ps c e) =
-        run { K with D := D st0 } ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm (D st0) d ps c e)) ∧
-    (∀ (K : RunCtx) (ρ : Assignment) (ps : List Sem) (j : Nat) (mask : Bool), j < d.params.length →
-      run { K with D := D st } ρ noFuture (.plain (TyM.univ 2)) (Knot.paramTerm d j) (Params.frameP d (K.dm.paramTy d) (D st) mask ps) =
-        run { K with D := D st0 } ρ noFuture (.plain (TyM.univ 2)) (Knot.paramTerm d j) (Params.frameP d (K.dm.paramTy d) (D st0) mask ps))
+/-- **Resolution builds no embedded value** (a fact about the program's items as resolution produces
+them, NOT about the checker, which accepts core declarations holding one: `FactsCE.EV`, `FactsCE.EP`;
+not derived): no parameter type and no field type of an inductive item holds an embedded value
+(`Term.val`). Stated, as `NamesFact` is, of the items `exists_dataModel` is given, which
+`consistencyBounded_assembled` takes to be the ones the program resolves to. A derivation reads
+`Ochr/Surface.lean`: `resolveDecl`'s inductive case (parameter types from `binders`, i.e. `bindersF`,
+field types from `resolve`, i.e. `resolveF`) and `resolveF`, no clause of which builds `Term.val`
+(the only builder of a term resolution has; `succFn` is a closed constant term with none). -/
+def NoValFact : Prop :=
+  ∀ d, Item.ind d ∈ items → Knot.FieldsNoVal d ∧ ParamsNoVal d
+
+/-- **No field type of an accepted declaration reads a varying value parameter** (about the checker,
+not derived; FALSE TODAY, true after main's D128). Of the entry `d'` the checker stores for the
+program's `k`-th item, `Records.VaryValFree d'`. Counterexample today (`FactsCE.tl_accepted`,
+`FactsCE.tl_not_varyValFree`): the surface declaration `inductive TL (A : Type) (B : (let z = A; Type))
+:= MkTL(x : B)` is accepted, with `B` varying (its type reads `A`) and not a type parameter
+(`paramIsType` sees a `let`, not a written sort), while D55 lets the field `x : B` stand because
+`typeDecl` reads `B`'s declared type through the `let` as `Type`. D128 (a parameter whose declared
+reading is a sort must be written as a sort) rejects `TL`; machine10 found no other route
+(any other read of a varying value parameter makes the parameter it reads non-nestable). Its consumer
+(`Records.recordsFaithful_canon`, `_canonP`) needs less: at `TL`'s `B` the parameter type is the
+universe, where the two parameter lists agree anyway. -/
+def VaryValFact : Prop :=
+  ∀ (k : Nat) (hk : k < items.length) (st' : MState) (d0 d' : IndDecl),
+    verdict fuel items k hk = .ok () st' → items[k] = .ind d0 → st'.inds = indsOf {} fuel (items.take k) ++ [d'] →
+    Records.VaryValFree d'
+
+/-- **Piece 8 (an obligation on the decisions, for the machine lane; not derived)**: a field type and a
+parameter type of the declaration `d'` the checker accepts at the program's `k`-th item run the same,
+in the frames the checker types them in, under the decisions at the state `st'` that accepted it and
+at any state `st` over more declarations (within the program's) and more globals.
+
+Restated by exists11 (docs/34 §18.16). The old form asked it of ANY state `st0` and any declaration of
+it, and was false (`FactsCE.lean`, the pair `E`/`F`): a declaration of an arbitrary state can call a
+global only the later state has, and the call's flags differ. The lead's first ruling added the
+hypotheses that `d`'s field and parameter types name only `st0`'s declarations, globals and `d`, and
+hold no embedded value. That is still false at a state the checker never reaches, one step removed:
+the decisions at a call `F(Z)` read `F`'s stored type, and a global of an arbitrary `st0` may have a
+stored type that calls a global only `st` has (argued, not kernel-checked). So it is asked only at the
+states the checker reaches on the program, where every stored type and field type names only earlier
+names (D118's `undeclaredCheck` at each item, and `NamesFact`), and `d'`'s own types name only the
+stage's (`NamesFact`) and hold no embedded value (`NoValFact`). Every lookup by name then finds the
+same entry in `st'` and `st`. Not constrained, and read by no decision on these runs as far as
+machine10 read (`absDecl` only at an embedded abstract value; `env` replaced by `scopeState`;
+counters and `cfg` never): the other fields of `st`. -/
+def DecStable : Prop :=
+  ∀ (k : Nat) (hk : k < items.length) (st' : MState) (d0 d' : IndDecl),
+    verdict fuel items k hk = .ok () st' → items[k] = .ind d0 → st'.inds = indsOf {} fuel (items.take k) ++ [d'] →
+    ∀ st : MState, st'.inds <+: st.inds → st.inds <+: indsOf {} fuel items → st'.globals <+: st.globals →
+    (∀ (K : RunCtx) (ρ : Assignment) (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term), fieldTerm d' c i = some FT →
+      run { K with D := D st } ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm (D st) d' ps c e) =
+        run { K with D := D st' } ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm (D st') d' ps c e)) ∧
+    (∀ (K : RunCtx) (ρ : Assignment) (ps : List Sem) (j : Nat) (mask : Bool), j < d'.params.length →
+      run { K with D := D st } ρ noFuture (.plain (TyM.univ 2)) (Knot.paramTerm d' j) (Params.frameP d' (K.dm.paramTy d') (D st) mask ps) =
+        run { K with D := D st' } ρ noFuture (.plain (TyM.univ 2)) (Knot.paramTerm d' j) (Params.frameP d' (K.dm.paramTy d') (D st') mask ps))
 
 /-- **The names an accepted item's code mentions are the stage's** (about the checker: resolution
 and D118, `undeclaredCheck`; not derived): an accepted definition's body, its `fix` term and its stored
@@ -357,15 +414,23 @@ def FieldLevels : Prop :=
       ParamsFaithfulAt ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d' →
       FieldLevel0 ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d'
 
+theorem fieldsNoVal_of_ctors {d d' : IndDecl} (h : d'.ctors = d.ctors) (hv : Knot.FieldsNoVal d) :
+    Knot.FieldsNoVal d' := fun c i FT hFT => hv c i FT (by unfold fieldTerm at hFT ⊢; rw [← h]; exact hFT)
+
+theorem paramsNoVal_of_params {d d' : IndDecl} (h : d'.params = d.params) (hv : ParamsNoVal d) :
+    ParamsNoVal d' := fun j => by have := hv j; unfold Knot.paramTerm at this ⊢; rw [h]; exact this
+
 /-- **The facts the existence of the data model rests on**, together (`exists_dataModel_facts`): about
 the checker, not derived from its code, `ItemFacts`, `NamesFact`, `FieldLevels`; obligations on the
 checker's decisions, `DecLocal` at every state and `DecStable`. -/
 structure DataFacts : Prop where
   item : ItemFacts
+  noVal : NoValFact items
+  varyVal : VaryValFact fuel items
   names : NamesFact D fuel items
   levels : FieldLevels D fuel items
   decLocal : ∀ st, FrameLocal.DecLocal (D st)
-  decStable : DecStable D
+  decStable : DecStable D fuel items
 
 /-! ## The step's bookkeeping (exists10) -/
 
@@ -547,7 +612,7 @@ theorem paramsOk_typed {dm : DataModel} {d : IndDecl} {ps : List Sem} (h : param
 
 /-- **The new declaration is faithful at every extension of the stage that accepts it.** -/
 theorem inv_ind_faithful (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
-    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (k : Nat) (hk : k < items.length) (dm : DataModel)
     (st' : MState) (d0 d' : IndDecl) (hv : verdict fuel items k hk = .ok () st') (hit : items[k] = .ind d0)
     (hI : st'.inds = (stage D fuel items dm k).inds ++ [d']) (hgl : st'.globals = (stage D fuel items dm k).globals)
@@ -579,8 +644,10 @@ theorem inv_ind_faithful (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel
     have := hK.globals n (by show ((stage D fuel items dm' k).means.find? _).isSome = true; rw [hmeans]; exact hn)
     rw [this]
     simp only [ProgState.baseC, ProgState.globalMean, ProgState.globalTy, hmeans]
+  have hI0 : st'.inds = indsOf {} fuel (items.take k) ++ [d'] := by rw [hI, hPi]
+  have hst'Γ : st'.inds <+: indsOf {} fuel items := by rw [hI]; exact hΓp
   obtain ⟨st, h1, h2, h3, hKD⟩ := hK.dec
-  obtain ⟨hDSf, hDSp⟩ := hDS st' st h1 h3 d' hd'
+  obtain ⟨hDSf, hDSp⟩ := hDS k hk st' d0 d' hv hit hI0 st h1 h2 h3
   have hlab : ∀ g, ((stage D fuel items dm k).baseC.global g).2.label = none :=
     stage_label D fuel items dm k (by omega)
   have hnames := (hN dm k hk st' hv).2 d0 d' hit hI
@@ -596,7 +663,7 @@ theorem inv_ind_faithful (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel
     simp [Kb, ctx1, ProgState.ctx, setRec, setPty]
   -- `d'`'s parameter types are faithful at the knot's context (what `FieldLevels` asks)
   have hPFb : ParamsFaithfulAt Kb (fun _ => .err) d' := by
-    obtain ⟨-, hDSp'⟩ := hDS st' st' (List.prefix_refl _) (List.prefix_refl _) d' hd'
+    obtain ⟨-, hDSp'⟩ := hDS k hk st' d0 d' hv hit hI0 st' (List.prefix_refl _) hst'Γ (List.prefix_refl _)
     apply DeclStep.paramsFaithful_pty (ctx0 D fuel items dm k st') (fun _ => .err) d' hlab (hDL st') Kb _ hKbd.2
     intro ps j hn Q hps hl hj
     have hjl : j < d'.params.length := (List.getElem?_eq_some_iff.1 hj).1
@@ -646,7 +713,7 @@ and a spec `S` with `S`'s agreement at the build context, `Rc` the spec's record
 parameters, `Rc` faithful as records, parametric (data-sorted) or monotone (`Prop`-sorted). The new
 model sets `d'`'s parameter types (`ptyAt`) and records (`Rc`). -/
 theorem inv_ind_core (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
-    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items)
     (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm)
     (st' : MState) (d0 d' : IndDecl) (hv : verdict fuel items k hk = .ok () st') (hit : items[k] = .ind d0)
@@ -749,8 +816,8 @@ for a model agreeing with it at stage `k`'s declarations. By the `k`-th item's v
   hypothesis `hmono` from `mono` and `rest`). `d'` is faithful at every extension (`inv_ind_faithful`,
   through `DeclStep`'s transfers: `DecStable`, `Knot.runT_congrN` with `NamesFact`, no embedded value;
   the field types' level by `FieldLevels`). -/
-theorem inv_step (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
-    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+theorem inv_step (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fuel items) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items)
     (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm) :
     ∃ dm' : DataModel, Inv D fuel items (k + 1) dm' ∧
@@ -765,10 +832,14 @@ theorem inv_step (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLev
   | ind d0 =>
   have hv' := hv
   rw [verdict_eq D fuel items dm k hk] at hv'
-  obtain ⟨d', hI, hchk, hnv, hpnv, hfree, hgl⟩ := (hIF _ _ _ _ hv').1 d0 hit
+  obtain ⟨d', hI, hchk, hpar0, hctor0, hgl⟩ := (hIF _ _ _ _ hv').1 d0 hit
   have hI' : st'.inds = (stage D fuel items dm k).inds ++ [d'] := hI
   have hgl' : st'.globals = (stage D fuel items dm k).globals := hgl
   have hPi : (stage D fuel items dm k).inds = indsOf {} fuel (items.take k) := stage_inds D fuel items dm k
+  have hmem : Item.ind d0 ∈ items := by rw [← hit]; exact List.getElem_mem hk
+  have hnv : Knot.FieldsNoVal d' := fieldsNoVal_of_ctors hctor0 (hNV d0 hmem).1
+  have hpnv : ParamsNoVal d' := paramsNoVal_of_params hpar0 (hNV d0 hmem).2
+  have hfree : Records.VaryValFree d' := hVV k hk st' d0 d' hv hit (by rw [hI', hPi])
   have hfresh : d' ∉ (stage D fuel items dm k).inds := fun hm => by
     have := List.find?_eq_none.1 hchk.fresh d' hm
     simp at this
@@ -843,36 +914,36 @@ theorem inv_step (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLev
       exact Records.recordsFaithful_canon K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty hTyP hfree K hrec
         (hpt.trans hK1pt.symm)
 
-theorem inv_all (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
-    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+theorem inv_all (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fuel items) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
     ∀ k, k ≤ items.length → ∃ dm, Inv D fuel items k dm
   | 0, _ => ⟨_, inv_zero D fuel items⟩
   | k + 1, hk => by
-    obtain ⟨dm, h⟩ := inv_all hIF hN hFL hDL hDS hpre k (by omega)
-    obtain ⟨dm', h', -⟩ := inv_step D fuel items hIF hN hFL hDL hDS hpre k (by omega) dm h
+    obtain ⟨dm, h⟩ := inv_all hIF hNV hVV hN hFL hDL hDS hpre k (by omega)
+    obtain ⟨dm', h', -⟩ := inv_step D fuel items hIF hNV hVV hN hFL hDL hDS hpre k (by omega) dm h
     exact ⟨dm', h'⟩
 
 /-- `exists_dataModel`, from the step (and the prefix fact `hpre`). -/
-theorem exists_dataModel' (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
-    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+theorem exists_dataModel' (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fuel items) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
-  obtain ⟨dm, h⟩ := inv_all D fuel items hIF hN hFL hDL hDS hpre items.length (Nat.le_refl _)
+  obtain ⟨dm, h⟩ := inv_all D fuel items hIF hNV hVV hN hFL hDL hDS hpre items.length (Nat.le_refl _)
   exact ⟨dm, exists_of_inv D fuel items h hpre⟩
 
-/-- **The data model exists**, from the facts it rests on (`DataFacts`, five) and the stage prefix fact
-`hpre` (`Consistency.inds_prefix`): six facts in all. -/
-theorem exists_dataModel_facts (hF : DataFacts D fuel items)
-    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
+/-- **The data model exists**, from the facts it rests on (`DataFacts`); the stage prefix fact is
+machine10's PROVED `Steps.Machine.indsOf_take_prefix`. -/
+theorem exists_dataModel_facts (hF : DataFacts D fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
-  exists_dataModel' D fuel items hF.item hF.names hF.levels hF.decLocal hF.decStable hpre
+  exists_dataModel' D fuel items hF.item hF.noVal hF.varyVal hF.names hF.levels hF.decLocal hF.decStable
+    (fun k _ => Steps.Machine.indsOf_take_prefix {} fuel items k)
 
 end
 

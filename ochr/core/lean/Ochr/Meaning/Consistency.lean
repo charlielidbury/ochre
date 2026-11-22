@@ -27,11 +27,12 @@ the leaves below and the step lemmas (`Steps/*.lean`). Writing them found the kn
 4. **Consistency**: a parameterless definition of type `False` would mean a member of `prop
    False`, that is, a proof of `False` (`Sem.mem proof (prop P) = P`); so there is none.
 A data model covering and faithful to every accepted program exists (`exists_dataModel`, docs/34),
-which turns the relative statement into `consistencyBounded`. It is proved (exists10,
-`DataModel/Exists/Assembly.lean`) assuming six named facts: five in `DataFacts` (about the checker,
-not derived from its code: `ItemFacts`, `NamesFact`, `FieldLevels`; obligations on its decisions:
-`DecLocal`, `DecStable`) and the stage prefix fact `inds_prefix`; `consistencyBounded_assembled`
-takes `DataFacts` as a hypothesis.
+which turns the relative statement into `consistencyBounded`. It is proved (exists10, exists11,
+`DataModel/Exists/Assembly.lean`) assuming the facts bundled in `DataFacts` (docs/34 §18.16); two of
+them are false today (`VaryValFact`, `DecLocal`'s `join`; main's D128 and D129 make them true), and
+`DecLocal` is asked at every state, so until those changes reach the proof line it says nothing about
+today's checker.
+`consistencyBounded_assembled` takes `DataFacts` as a hypothesis.
 
 What the assembly covers as the run stands (docs/31 D12): definitions whose Π-type is in `Type₀`
 or `Prop`; polymorphic definitions wait on the level-1 construction.
@@ -399,27 +400,36 @@ checker, kept as an assumption of the construction, not a hypothesis here: the c
 decides that two applications of a type former to different arguments are different (a record
 keeps what field types read of the parameters, not the parameters; docs/34 §8, §13).
 
-**Assumes six facts** (exists10; docs/34 §18.15): `hF : DataFacts` bundles five, of two kinds:
-* about the checker, true by sweep or enforced by a check, not derived from its code:
-  `ItemFacts` (an accepted inductive declaration appends one entry passing `Knot.IndChecks`, with no
-  embedded value in its field types (`FieldsNoVal`) or parameter types (`ParamsNoVal`) and no field type
-  reading a varying value parameter (`VaryValFree`); an accepted definition leaves the declarations and
-  extends the globals), `NamesFact` (the names an accepted item's code mentions are the stage's:
-  resolution and D118), `FieldLevels` (the field-level check is sound: at members a field type runs to
-  a code of carrier level 0);
-* obligations on the checker's decisions: `DecLocal` at every state, and `DecStable` (piece 8: a
-  declaration's field-type and parameter-type runs do not change with the decisions at states with more
-  declarations and globals).
-The sixth is `hpre`, the stage prefix fact (`inds_prefix`, a leaf about the checker). Until exists10 the
-statement had no hypotheses and its proof was `sorry`. -/
+**Assumes seven facts, bundled in `hF : DataFacts`** (exists11; docs/34 §18.16 states each exactly):
+* `ItemFacts` (about the checker; read true, all but its `IndChecks` part proved by machine10's
+  `checkItem_tables`): an accepted inductive declaration appends one entry passing `Knot.IndChecks`
+  with the item's parameters and constructors and leaves the globals; an accepted definition leaves
+  the declarations and extends the globals;
+* `NoValFact` (about resolution, not the checker; not derived): no parameter or field type of an
+  inductive item holds an embedded value;
+* `VaryValFact` (about the checker; FALSE TODAY, checked counterexample `FactsCE.varyValFact_false`,
+  true after main's D128): no field type of an accepted declaration reads a varying value parameter;
+* `NamesFact` (about the checker and resolution; read true for resolved items): the names an accepted
+  item's code mentions are the stage's;
+* `FieldLevels` (the checker's field-level check, and the model's run; see its docstring);
+* `DecLocal` at every state (an obligation on the decisions; its `join` part FALSE TODAY, a checker bug,
+  checked counterexample `FactsCE.decLocal_false`, true after main's D129);
+* `DecStable` (an obligation on the decisions, at the states the checker reaches on the program).
+The stage prefix fact is no longer assumed: it is machine10's `Steps.Machine.indsOf_take_prefix`.
+`DecLocal` is asked at every state and is false at one (given the machine's agreement across fuels
+there, the machine lane's `decide_fuel_agree`), so today no list of items satisfies `DataFacts` and this
+theorem says nothing about today's checker; `VaryValFact` fails besides for every program holding a
+declaration like `TL`. Once D128 and D129 are merged into the proof line, it says: a data model
+covering and faithful to every stage exists for every program whose items satisfy the remaining facts,
+each read true against the code or about resolution, with `FieldLevels`' model part as its docstring
+says. -/
 theorem exists_dataModel (items : List Item) (fuel : Nat)
-    (hF : DataModel.Exists.Assembly.DataFacts (chainDecisions fuel) fuel items)
-    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
+    (hF : DataModel.Exists.Assembly.DataFacts (chainDecisions fuel) fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithful dm (chainDecisions fuel) (indsOf {} fuel items)
         (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
-  DataModel.Exists.Assembly.exists_dataModel_facts (chainDecisions fuel) fuel items hF hpre
+  DataModel.Exists.Assembly.exists_dataModel_facts (chainDecisions fuel) fuel items hF
 
 /-- (leaf, checker) **Every stage's declarations are a prefix of the whole program's** (docs/31 D174):
 along accepted items Σ's inductive declarations only grow at the end (a definition adds none; a
@@ -427,8 +437,8 @@ declaration appends a placeholder and, accepted, replaces the entry of its own n
 being distinct is its own: `checkInd`, `Check.declared`). -/
 theorem inds_prefix (p : Program) (fuel : Nat) (acc : Accepted p fuel) (items : List Item)
     (hres : ResolvesTo p fuel items) :
-    ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items := by
-  sorry
+    ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items :=
+  fun k _ => Steps.Machine.indsOf_take_prefix {} fuel items k
 
 /-- (leaf, checker) An accepted program resolves: `checkProgram`'s first loop gives every
 declaration an item. -/
@@ -450,7 +460,7 @@ theorem consistencyBounded_assembled (q : Program) (fuel : Nat)
       DataModel.Exists.Assembly.DataFacts (chainDecisions fuel) fuel items) :
     ∀ d ∈ q, ¬ d.IsFalseConst := by
   obtain ⟨items, hres⟩ := resolves_of_accepted (Prelude.decls ++ q) fuel acc
-  obtain ⟨dm, hcov, hfaith⟩ := exists_dataModel items fuel (hdata items hres) (inds_prefix _ fuel acc items hres)
+  obtain ⟨dm, hcov, hfaith⟩ := exists_dataModel items fuel (hdata items hres)
   refine consistency_rel dm (chainDecisions fuel) (indsOf {} fuel items) q fuel holes levels acc
     (fun d' hd' => hcov d' (by rw [progMeaning_inds]; exact hd')) (fun items' h' => ?_) (fun items' h' => ?_)
     (chainDecisions_aligned fuel)
