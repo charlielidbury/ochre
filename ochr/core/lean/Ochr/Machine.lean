@@ -3142,14 +3142,25 @@ def declCallType (fuel : Nat) (piTy : Value) (ws : Array Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let (cs, hs, ds, c, rd) ← callPi piTy ws.size
   let pf ← paramFlags fuel' cs rd ds
+  let n := ds.length
+  -- PARKED (not on main): the parameters whose types the codomain can read: those it mentions,
+  -- closed under the earlier parameters each of their types mentions (as `paramTypes`); the others
+  -- are bound untyped
+  let mut want := Array.replicate n false
+  for j in c.freeVars do if j < n then want := want.set! (n - 1 - j) true
+  for i' in [0:n] do
+    let i := n - 1 - i'
+    if want[i]! then
+      for j in (ds[i]!).freeVars do
+        if j < i then want := want.set! (i - 1 - j) true
   privately <| unlocated do
     pushFrame
     pushCaps fuel' cs rd
     let (pds, _) ← paramDecls fuel' cs rd hs ds c
     for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
-      let A ← evalType fuel' d
+      let A ← if want[i]! then some <$> evalType fuel' d else pure none
       takeArgBorrow ws[i]!
-      pushBind h (some A) (etaUnit pd ws[i]!) (pf.getD i false) (← refineDecl pd)
+      pushBind h A (etaUnit pd ws[i]!) (pf.getD i false) (← refineDecl pd)
     evalType fuel' c
 termination_by structural fuel
 
