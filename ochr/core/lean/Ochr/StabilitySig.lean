@@ -557,6 +557,14 @@ theorem sigPres_mapState (f : Value → M Value) (hf : ∀ v, SigPres (f v)) (ty
 
 /-! ### The functions a refinement reaches -/
 
+/-- D117: resolving a field value's loans for the field-type frame reads the state only. -/
+theorem sigPres_resolveLoans : ∀ (n : Nat) (v : Value), SigPres (resolveLoans n v)
+  | 0, v => by unfold resolveLoans; sp
+  | n + 1, v => by
+    have := sigPres_resolveLoans n
+    unfold resolveLoans; sp
+
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_resolveLoans)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_evalType)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_sealedType?)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_canonNeutral)

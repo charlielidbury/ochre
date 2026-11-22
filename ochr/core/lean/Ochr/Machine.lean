@@ -800,6 +800,25 @@ def needsCtx (fuel : Nat) (t : Term) : M Bool := do
   | _ => pure false
 termination_by structural fuel
 
+/-- D117: what a field's value stands for in the frame that types a later field (`fieldTypesOf`):
+each live loan resolved to its borrow's content, recursively, and each mark to the content it marks,
+as `valType?` reads a loan and a mark for typing. So that frame binds no second occurrence of a
+loan, and a later field's type is computed at the index's current content; a read of the index
+there ends no borrow. A loan whose borrow is not in Ω stays as it is. -/
+def resolveLoans (fuel : Nat) (v : Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match v with
+  | .loan l =>
+    let env := (← get).env
+    match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
+    | some (c, _) => resolveLoans fuel' c
+    | none => pure v
+  | .gloan _ w => resolveLoans fuel' w
+  | .succ w => pure (.succ (← resolveLoans fuel' w))
+  | .ind t c h ps fs => pure (.ind t c h ps (← fs.mapM (resolveLoans fuel')))
+  | _ => pure v
+termination_by structural fuel
+
 -- the machine is one `mutual` block, and compiling it (LCNF) outgrew the default heartbeats
 set_option maxHeartbeats 1000000 in
 mutual
@@ -1081,9 +1100,12 @@ borrower of the top frame, and the frame property's one channel downward stays t
 frame holds (their [End] writes the lender's place). This is the single place they end such a
 borrow, and it asserts F4 rather than trusting it: a violation is an internal error, never a
 silent write below the frame. Inside a private copy (`privateDepth > 0`) F4 need not hold: the
-checker's scaffolding binds copies of field or captured values in a frame of its own (a field's
-type computed at the value's fields, `fieldTele`), and a copy may hold a live loan whose borrower
-is below (`DepFields.CellGet`); whatever [Access] ends there is discarded with the copy. -/
+checker's scaffolding binds copies of stored values in frames of its own, and a copy may hold a
+live loan whose borrower is below; whatever [Access] ends there is discarded with the copy. D117
+removed the commonest such copy (the frame that types a dependent field binds what a lent field
+stands for, `resolveLoans`, so `DepFields.CellGet` no longer copies a loan), but not all: with F4
+made strict inside private copies too, rejected rows of `OpenAttacks` and `DepVec` are rejected by
+this internal error instead of their reasons (checked 2026-11-22). -/
 def endTopLoan (fuel : Nat) (l : Nat) (site : String := "") (p? : Option Place := none) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let env := (← get).env
@@ -1672,11 +1694,13 @@ def fieldTypes (fuel : Nat) (d : IndDecl) (ps : List Value) (c : Nat) : M (List 
 termination_by structural fuel
 
 /-- D64: the field types of constructor `c` at the parameters `ps` and the field values
-`fs` (rule 2: a field's type is computed from the earlier fields' contents). -/
+`fs` (rule 2: a field's type is computed from the earlier fields' contents). D117: the frame that
+types a later field binds what each earlier field stands for (`resolveLoans`), not a lent field's
+loan, which would be a second occurrence of it whose read there ends the index's borrow. -/
 def fieldTypesOf (fuel : Nat) (d : IndDecl) (ps : List Value) (c : Nat) (fs : List Value)
     (upto : Option Nat := none) : M (List (String × Value)) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  pure ((← fieldTele fuel' d ps c (fun j _ => pure (fs.getD j .bot)) upto).map fun (f, T, _) => (f, T))
+  pure ((← fieldTele fuel' d ps c (fun j _ => resolveLoans fuel' (fs.getD j .bot)) upto).map fun (f, T, _) => (f, T))
 termination_by structural fuel
 
 /-- D64: fresh generic values for the fields of constructor `c`, each of its type computed
