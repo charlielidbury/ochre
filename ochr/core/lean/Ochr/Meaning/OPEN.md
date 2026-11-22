@@ -18,7 +18,7 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 
 - `Steps/FrameFrag.RunFrameS` RESTATED: both states good (`SGood` of the closure's state added). The D129 form (`RunFrameS_old`) is FALSE, kernel-checked (`Strict/FrameCellCE.runFrameS_false`: a frame-0 binding of the closure outside its type fails the closure's `StateOk` after `x.0 := c`). OPEN in general; proved on the label-free fragment (`run_frameS_lf`).
 - Owed at a call (Task 2): goodness of `fixBodyAt`'s state (cells, `self` the stage below, the arguments).
-- GROUP 2 (docs/31 D202): `Steps/FrameRec.RunFrame` (the frame property at EQUAL selves, `FrameRel`, a body may read `self`) and `Steps/FrameRec.FixEqG` (context clause: an accepted global's `fixG` equals one body run with `self` itself at the true type; to be established at acceptance by induction on the rank from [Rec]). Both OPEN; attacked by reading on `R` and a two-argument function. The in-place branch of `CallFnG` = `RunFrame` + `FixEqG`.
+- GROUP 2 (docs/31 D202): `Steps/FrameRec.RunFrame` (the frame property at EQUAL selves, `FrameRel`, a body may read `self`) and `Steps/FrameRec.FixEqG` (context clause: an accepted global's `fixG` equals one body run with `self` itself at the true type; to be established at acceptance by induction on the rank from [Rec]). Both OPEN; `FixEqG`'s content kernel-checked on `R` (`Steps/FixEqR.fixEq_R`, assuming the aligned table), by reading on a two-argument function. The in-place branch of `CallFnG` = `RunFrame` + `FixEqG`.
 
 ## THE MASTER INDUCTION OF (II): A CALL OF A GLOBAL (lead29, 2026-11-22, `spine-lead29`; docs/31 D200)
 
