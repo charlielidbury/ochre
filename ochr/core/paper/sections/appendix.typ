@@ -150,14 +150,14 @@ Every rule that reads or borrows a place $p$ first computes $acc^R_p$, an assign
 #rules(
   ir(name: "Copy", $acc^R_p (Omega) = Omega_1$, pv($cont_(Omega_1)(p) = v in.not {bot, "borrow"_ell w}, thick v "whole"$, $dty(p) "a copy type"$), $cfg(Omega, p) ev cfg(Omega_1, v)$),
   ir(name: "Read", $acc^R_p (Omega) = Omega_1$, pv($cont_(Omega_1)(p) = v in.not {bot, "borrow"_ell w}, thick v "whole"$, $dty(p) "not a copy type"$), $cfg(Omega, p) ev cfg(Omega_1 [p |-> bot], v)$),
-  ir(name: "Move", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = "borrow"_ell w$, $cfg(Omega, p) ev cfg(Omega_1 [p |-> bot], "borrow"_ell w)$),
-  ir(name: "Read-err", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "undefined, not whole, or" bot$, $cfg(Omega, p) ev err$),
+  ir(name: "Move", $acc^R_p (Omega) = Omega_1$, pv($cont_(Omega_1)(p) = "borrow"_ell w$, $w "whole"$), $cfg(Omega, p) ev cfg(Omega_1 [p |-> bot], "borrow"_ell w)$),
+  ir(name: "Read-err", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "undefined," bot ", not whole, or a borrow of content not whole"$, $cfg(Omega, p) ev err$),
   ir(name: "Borrow", pv($acc^R_p (Omega) = Omega_1 quad ell "fresh"$, $cont_(Omega_1)(p) = v in.not {bot, "borrow"_m w}, thick v "whole"$), $cfg(Omega, \&p) ev cfg(Omega_1 [p |-> "loan"_ell], "borrow"_ell v)$),
   ir(name: "Borrow-err", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "undefined," bot ", a borrow, or not whole"$, $cfg(Omega, \&p) ev err$),
-  ir(name: "Clone", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = v in.not {bot, "borrow"_m w}$, $cfg(Omega, kw("clone")(p)) ev cfg(Omega_1, v)$),
+  ir(name: "Clone", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = v in.not {bot, "borrow"_m w}, thick v "whole"$, $cfg(Omega, kw("clone")(p)) ev cfg(Omega_1, v)$),
   ir(name: "Assign", pv($cfg(Omega, t) ev cfg(Omega_1, v) quad acc^A_p (Omega_1 dot v) = Omega_2 dot v'$, $cont_(Omega_2)(p) = w quad "drop"(Omega_2, w) = Omega_3$), $cfg(Omega, p := t) ev cfg(Omega_3 [p |-> v'], ())$),
 )
-An erased term reads as code does: only [Copy] and [Clone] copy, and a borrow cannot be cloned. [End] requires the content $w$ to be whole, and so do a returned borrow and a borrow argument of a call that closes off: moving data out through a borrow is allowed only if the place is filled again before the borrow ends, as with `mem::replace` in Rust. In [Assign] the new value travels as a temporary while $p$ is accessed, so that ending a borrow can substitute into it; $"drop"(Omega_2, w)$ ends the old content if it is a borrow, and fails if it still holds a live loan. #lean("readPlace", "borrowPlace", "assignPlace", "evalCore (.prim \"clone\")")
+An erased term reads as code does: only [Copy] and [Clone] copy, and a borrow cannot be cloned. [End] and [Move] require the content $w$ to be whole: moving data out through a borrow is allowed only if the place is filled again, through that borrow, before the borrow ends or is read (moved on, returned, or passed to any call), as with `mem::replace` in Rust (D127). In [Assign] the new value travels as a temporary while $p$ is accessed, so that ending a borrow can substitute into it; $"drop"(Omega_2, w)$ ends the old content if it is a borrow, and fails if it still holds a live loan. #lean("readPlace", "borrowPlace", "assignPlace", "evalCore (.prim \"clone\")")
 
 === Sequencing and data
 
