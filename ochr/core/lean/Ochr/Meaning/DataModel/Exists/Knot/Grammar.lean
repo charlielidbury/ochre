@@ -62,16 +62,16 @@ def varVaries (d : IndDecl) (c v : Nat) : Bool :=
   else if v < d.params.length + DataLib.arity d c then fieldVaries d c (d.params.length + DataLib.arity d c - 1 - v)
   else false
 
-/-- An embedded value naming the declaration `n` (a type or a constructor value of it). -/
-def namesV (n : String) : Value → Bool
-  | .tInd m _ => m == n
-  | .ind m .. => m == n
-  | _ => false
+/-- A term avoids the declaration named `n`: no `n(…)`, constructor or match names it, and it holds
+no embedded value (the model's records for `n` are then never read by its run: `Congr.runT_congrR`).
 
-/-- A term avoids the declaration named `n`: no `n(…)`, constructor, match or embedded value names it
-(the model's records for `n` are then never read by its run). -/
+The second clause first read "no embedded value names `n`" (an atom `n(…)` or a constructor value of
+`n`). That was not enough: an embedded sealed program or closure `.val (.sealed (.tind n []))` names `n`
+only in its term, which `Term.anyAtom` does not look at, and its meaning runs `n(…)` under the model
+(`Congr.avoidsOld_gap`). The checker's declared field types hold no embedded value at all (they are
+resolved surface syntax), so the clause is now that, decidable and as strong as needed. -/
 def Avoids (n : String) (t : Term) : Prop :=
-  t.mentionsType n = false ∧ t.anyAtom (namesV n) = false
+  t.mentionsType n = false ∧ t.anyAtom (fun _ => true) = false
 
 /-- **A steady term** (B): it avoids `d` and reads no varying variable. -/
 def Steady (d : IndDecl) (c : Nat) (t : Term) : Prop :=
