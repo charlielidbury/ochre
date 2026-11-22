@@ -30,7 +30,7 @@ open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 `knotK_agree` along the spine and `steadyAt_knotK` at the steady nodes. -/
 theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort ≠ 0)
     (hgram : GrammarOk K.Γ d)
-    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
+    (hpar : ParHyp K d)
     (hpty : ParamTyLocalD K.dm d) (hD : FrameLocal.DecLocal K.D)
     (hK : ∀ g, (K.C.global g).2.label = none) :
     ∃ S : KnotSpec, S.d = d ∧ (∀ j, S.N j = d.nestable.getD j false) ∧

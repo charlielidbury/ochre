@@ -1,6 +1,6 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists9` (from `spine-lead25` b54f9c83: the one-list ruling, D174/D177), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.5 frame locality, §18.6 the knot). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists9`.
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists10` (from `origin/spine` bffe26ec), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.15 the assembly closed and the honest count). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists10`.
 
 ## Rulings (made by the lead 2026-11-22)
 
@@ -57,12 +57,19 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `Assembly.lean` (outside the build): `Extends`/`Inv` at one list (`rest` added, `pty` gone), `exists_of_inv`, `inv_zero`; the step's facts stated: `ItemFacts`, `DecStable` (piece 8), `NamesOk`; `inv_step`'s docstring is the recipe.
 - `Scratch/VaryValSweep.lean` (untracked): `VaryValFree` and "parameter types hold no embedded value" at all 300 stored declarations: all pass.
 
-## Next (exists9's successor), in order of risk
+## Done (exists10), default build, standard axioms (docs/34 §18.15)
 
-1. `leafOk` for the knot's records (`hleaf` of `recordsFaithful_canon`): the knot's field type at members is never the raw data code of a `Prop`-sorted declaration. Attack: the knot's agreement (`knotK_agree`) makes it the run's value where the run is defined; elsewhere the interpreter's own value (`itpT`: `.data` along the spine, the run's value at steady nodes). Either prove the run never builds such a code from members (type parameters that are members of a universe have a level, the raw code has none), or ask the lead whether `RecordsFaithful.leafOk` can be restricted to keys where the run is defined.
-2. DONE (exists9): the `Prop`-sorted analogue (`semP_psAt`, `itpP_psAt`, `ftyP_psAt`, `recCanonP`, `recordsFaithful_canonP`, `mono_canonP`). Not done for it: `par` (a `Prop`-sorted declaration's records are asked `RAgree` only by a later knot, through `hpar` for all of `K.Γ`; `truthSpec`'s `N` is constantly false, so `recK_agree` gives `RAgree` for its own `N` only: check what `hpar` needs at a `Prop`-sorted earlier declaration).
-3. The step's glue, following `inv_step`'s docstring. Pieces: the build context `K0`; `K0`'s model with `d`'s parameter types `pty`; the transfer of `knot_exists`' conclusion to an extension (`runT_congrA`, `DecStable`, `runT_congrN` with `NamesOk`, `teleFrame` reads the model only at `d`'s field types and parameter types); `congr` for a definition (`runT_congrN` on its `fix` term or body and `meanV_congrN` on its stored type); `faithful` at old declarations by `Extends` monotonicity; `ItemFacts` for the stage structure; `Nodup` of the list's names (from `IndChecks.fresh` and `inds_prefix`). Also needed: `NamesOk`'s tests pass on field types (`Term.nok`), from a checker fact (names declared) plus "no constructor of `d` in its own field types" (from `Spine`/`PSpine`: off-spine nodes avoid `d`).
-4. Restate `exists_dataModel` (`Consistency.lean`, approved): hypotheses `ItemFacts`, `NamesOk` per stage, `DecLocal`, `DecStable`, `inds_prefix`; repair `consistencyBounded_assembled`.
+- `LeafOk.lean`: `leafOk` of the knot's and truth spec's records from the grammar; `hleaf` gone.
+- `PropParCE.lean` + `Knot.ParHyp`/`TopSortOk`: the knot asks parametricity of data-sorted declarations only; `grammar_of_checks` has a fourth conclusion (`TopSortOk`).
+- `DeclStep.lean`: `fieldsFaithful_spec` (both sorts), `paramsFaithful_pty`, `field_transfer`, `param_transfer`. Finding: `FieldLevels` (the checker's field-level check) is needed.
+- `Assembly.lean` (now default build): `inv_step` proved (`inv_reject`, `inv_defn`, `inv_ind_core`, `inv_ind_faithful`); `exists_dataModel_facts`. `Consistency.exists_dataModel` restated with `hF : DataFacts` and `hpre`, proved; `consistencyBounded_assembled` takes `hdata`.
+- `Scratch/ChecksSweep.lean`, `GrammarSweep.lean`, `VaryValSweep.lean` committed (the sweeps behind `ItemFacts`).
+
+## Next (exists10's successor)
+
+1. The facts of the first kind that are plain reads of `Check.lean` (most doubtful first): `ItemFacts`' "an accepted definition leaves the declarations and extends the globals" and "an accepted declaration leaves the globals" (reads of `checkDef`/`checkInd`); `ParamsNoVal`/`FieldsNoVal` (resolution: surface syntax has no `.val`); `NamesFact` from `undeclaredCheck` (D118) plus resolution. `FieldLevels` is a sortOf soundness fact, not a plain read.
+2. `CheckIndGivesChecks` (the inductive half of `ItemFacts`) is the machine lane's.
+3. Check `Scratch/VaryValSweep.lean` and `ChecksSweep.lean` still compile against the current definitions before rerunning them (`ItemFacts` now also names `ParamsNoVal`).
 
 ## Which grammar predicate each theorem assumes
 

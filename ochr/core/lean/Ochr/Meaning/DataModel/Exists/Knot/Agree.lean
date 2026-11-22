@@ -226,7 +226,7 @@ theorem steadyAt_of_S {K : RunCtx} {ρ : Assignment} {d : IndDecl} {S : KnotSpec
 /-- **The knot agrees with the run, given the steady nodes** (`SteadyAt`, the one fact left). -/
 theorem knotK_agree (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort ≠ 0) (hdΓ : d ∈ K.Γ)
     (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT)
-    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
+    (hpar : ParHyp K d)
     (hpty : ParamTyLocalD K.dm d)
     (hst : SteadyAt K ρ d (recK (knotK K ρ d hs hdΓ hspine hpar hpty))) :
     ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (r : Res) (s' : SState),

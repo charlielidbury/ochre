@@ -138,6 +138,16 @@ checker since main's D120/D121, its derivation from the checker's checks is `Fro
 def steadyB (d : IndDecl) (c : Nat) (t : Term) : Bool :=
   !t.mentionsType d.name && !t.anyAtom (fun _ => true) && t.freeVars.all fun v => !varVaries d c v
 
+/-- **Rule (A*) at the top of a field** (exists10): an applied `Prop`-sorted declaration heading a
+field type of `d` is steady (its arguments mention neither `d` nor a varying variable). For a
+data-sorted `d` this is what (A*)(i) (`sortNestViolation`) and (ii) (a nestable parameter is passed
+only to declarations of `d`'s sort, `nestableSet`) give at the top of a field; the knot reads such a
+declaration's records only at one list, so it asks nothing of their parametricity (`Guard.ParHyp`).
+Derived from the checks: `FromChecks.grammar_of_checks`. -/
+def TopSortOk (Γ : List IndDecl) (d : IndDecl) : Prop :=
+  ∀ c i n as M, fieldTerm d c i = some (.tind n as) → Γ.find? (·.name == n) = some M → M.sort = 0 →
+    steadyB d c (.tind n as) = true
+
 /-- An applied declaration found in `Γ` is not `Prop`-sorted (anything else passes). -/
 def notPropDecl (Γ : List IndDecl) : Term → Bool
   | .tind n _ => match Γ.find? (·.name == n) with

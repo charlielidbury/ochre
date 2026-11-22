@@ -494,7 +494,7 @@ earlier declaration: the assembly's induction carries it). -/
 theorem grammar_of_checks {Γ0 : List IndDecl} {d : IndDecl} (h : IndChecks Γ0 d) (hnv : FieldsNoVal d)
     (hval : ∀ M ∈ Γ0, ∀ j, nestOf M j = true → M.paramIsType j = true) (rest : List IndDecl) :
     (d.sort ≠ 0 → GrammarOk (Γ0 ++ d :: rest) d) ∧ (d.sort = 0 → PGrammarOk (Γ0 ++ d :: rest) d) ∧
-      (∀ j, nestOf d j = true → d.paramIsType j = true) := by
+      (∀ j, nestOf d j = true → d.paramIsType j = true) ∧ (d.sort ≠ 0 → TopSortOk (Γ0 ++ d :: rest) d) := by
   obtain ⟨P1, P2, P3⟩ := nestableSet_spec (nestTableOf Γ0) (sortTableOf Γ0 d) d
   rw [← h.nest] at P1 P2 P3
   have H : FieldHyp Γ0 d := ⟨h.fresh, h.tele, P1, hval⟩
@@ -507,6 +507,44 @@ theorem grammar_of_checks {Γ0 : List IndDecl} {d : IndDecl} (h : IndChecks Γ0 
     · intro w hw
       have := P2 (d.params.length - 1 - w) hw.2 c i FT hFT
       rwa [show d.params.length - 1 - (d.params.length - 1 - w) = w by have := hw.1; omega] at this
-  exact ⟨fun hs c i FT hFT => (hres c i FT hFT).1 hs, fun hs c i FT hFT => (hres c i FT hFT).2.1 hs, P1⟩
+  refine ⟨fun hs c i FT hFT => (hres c i FT hFT).1 hs, fun hs c i FT hFT => (hres c i FT hFT).2.1 hs, P1, ?_⟩
+  -- (A*) at the top of a field (exists10): a `Prop`-sorted head of a data-sorted `d`'s field is steady
+  intro hs c i n as M hFT hM hM0
+  have hfo := h.fo c i _ hFT
+  simp only [foB] at hfo
+  split at hfo
+  · rename_i dm hdm
+    obtain ⟨M', hM', -, -, hst, -, hnd⟩ := env_find (rest := rest) h.fresh hdm
+    rw [hM] at hM'
+    cases hM'
+    have hsv := h.sv c i _ hFT
+    simp only [sortNestViolation] at hsv
+    have hne : (sortTableOf Γ0 d n != some d.sort) = true := by
+      rw [hst, hM0]; simpa using Ne.symm hs
+    have hment : Term.mentionsTypeList d.name as = false := by
+      cases e : Term.mentionsTypeList d.name as
+      · rfl
+      · rw [if_pos (by simp [e, hne])] at hsv; cases hsv
+    have hnd' : (n == d.name) = false := by
+      rw [beq_eq_false_iff_ne]
+      intro e
+      have := hnd e
+      subst this
+      exact hs hM0
+    simp only [steadyB, Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true]
+    refine ⟨⟨by simp [Term.mentionsType, hment, hnd'], hnv c i _ hFT⟩, fun v hv => ?_⟩
+    cases hvv : varVaries d c v
+    · rfl
+    · exfalso
+      have hvl := (hres c i _ hFT).2.2 v hv hvv
+      obtain ⟨w, hw, hwd⟩ := deepVars_nest hv hvl hvv
+      have hpo := P2 (d.params.length - 1 - w) hw.2 c i _ hFT
+      rw [show d.params.length - 1 - (d.params.length - 1 - w) = w by have := hw.1; omega] at hpo
+      simp only [Term.passOther] at hpo
+      obtain ⟨b, hb, hwb⟩ := deepVars_tind_inv hwd
+      have := passOtherArgs_sort hpo b hb hwb
+      rw [hst, hM0] at this
+      exact hs (Option.some.inj this).symm
+  · cases hfo
 
 end Ochr.Meaning.DataModel.Exists.Knot

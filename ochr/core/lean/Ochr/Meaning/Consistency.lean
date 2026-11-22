@@ -4,6 +4,7 @@ import Ochr.Meaning.Steps.Tail
 import Ochr.Meaning.Steps.Knot
 import Ochr.Meaning.Steps.FixKnot
 import Ochr.Meaning.DecisionsFF
+import Ochr.Meaning.DataModel.Exists.Assembly
 
 /-!
 # Milestone 4: the assembly of `consistencyBounded` (docs/18 Corollaries 15 and 16)
@@ -26,7 +27,11 @@ the leaves below and the step lemmas (`Steps/*.lean`). Writing them found the kn
 4. **Consistency**: a parameterless definition of type `False` would mean a member of `prop
    False`, that is, a proof of `False` (`Sem.mem proof (prop P) = P`); so there is none.
 A data model covering and faithful to every accepted program exists (`exists_dataModel`, docs/34),
-which turns the relative statement into `consistencyBounded`.
+which turns the relative statement into `consistencyBounded`. It is proved (exists10,
+`DataModel/Exists/Assembly.lean`) assuming six named facts: five in `DataFacts` (about the checker,
+not derived from its code: `ItemFacts`, `NamesFact`, `FieldLevels`; obligations on its decisions:
+`DecLocal`, `DecStable`) and the stage prefix fact `inds_prefix`; `consistencyBounded_assembled`
+takes `DataFacts` as a hypothesis.
 
 What the assembly covers as the run stands (docs/31 D12): definitions whose Π-type is in `Type₀`
 or `Prop`; polymorphic definitions wait on the level-1 construction.
@@ -392,13 +397,29 @@ height of a meaning) are defined from that and their laws are the library's theo
 the degenerate model (`DataModel/Degenerate.lean`). The model relies on one property of the
 checker, kept as an assumption of the construction, not a hypothesis here: the checker never
 decides that two applications of a type former to different arguments are different (a record
-keeps what field types read of the parameters, not the parameters; docs/34 §8, §13). -/
-theorem exists_dataModel (items : List Item) (fuel : Nat) :
+keeps what field types read of the parameters, not the parameters; docs/34 §8, §13).
+
+**Assumes six facts** (exists10; docs/34 §18.15): `hF : DataFacts` bundles five, of two kinds:
+* about the checker, true by sweep or enforced by a check, not derived from its code:
+  `ItemFacts` (an accepted inductive declaration appends one entry passing `Knot.IndChecks`, with no
+  embedded value in its field types (`FieldsNoVal`) or parameter types (`ParamsNoVal`) and no field type
+  reading a varying value parameter (`VaryValFree`); an accepted definition leaves the declarations and
+  extends the globals), `NamesFact` (the names an accepted item's code mentions are the stage's:
+  resolution and D118), `FieldLevels` (the field-level check is sound: at members a field type runs to
+  a code of carrier level 0);
+* obligations on the checker's decisions: `DecLocal` at every state, and `DecStable` (piece 8: a
+  declaration's field-type and parameter-type runs do not change with the decisions at states with more
+  declarations and globals).
+The sixth is `hpre`, the stage prefix fact (`inds_prefix`, a leaf about the checker). Until exists10 the
+statement had no hypotheses and its proof was `sorry`. -/
+theorem exists_dataModel (items : List Item) (fuel : Nat)
+    (hF : DataModel.Exists.Assembly.DataFacts (chainDecisions fuel) fuel items)
+    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithful dm (chainDecisions fuel) (indsOf {} fuel items)
-        (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
-  sorry
+        (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
+  DataModel.Exists.Assembly.exists_dataModel_facts (chainDecisions fuel) fuel items hF hpre
 
 /-- (leaf, checker) **Every stage's declarations are a prefix of the whole program's** (docs/31 D174):
 along accepted items Σ's inductive declarations only grow at the end (a definition adds none; a
@@ -420,13 +441,16 @@ theorem resolvesTo_unique (p : Program) (fuel : Nat) (items items' : List Item)
     (h : ResolvesTo p fuel items) (h' : ResolvesTo p fuel items') : items = items' := by
   sorry
 
-/-- `consistencyBounded` from the relative statement and the existence of a data model. -/
+/-- `consistencyBounded` from the relative statement and the existence of a data model, assuming the
+facts the existence rests on (`hdata`, exists10). -/
 theorem consistencyBounded_assembled (q : Program) (fuel : Nat)
     (holes : NoHoles q) (levels : LevelsBelow 2 q)
-    (acc : Accepted (Prelude.decls ++ q) fuel) :
+    (acc : Accepted (Prelude.decls ++ q) fuel)
+    (hdata : ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items →
+      DataModel.Exists.Assembly.DataFacts (chainDecisions fuel) fuel items) :
     ∀ d ∈ q, ¬ d.IsFalseConst := by
   obtain ⟨items, hres⟩ := resolves_of_accepted (Prelude.decls ++ q) fuel acc
-  obtain ⟨dm, hcov, hfaith⟩ := exists_dataModel items fuel
+  obtain ⟨dm, hcov, hfaith⟩ := exists_dataModel items fuel (hdata items hres) (inds_prefix _ fuel acc items hres)
   refine consistency_rel dm (chainDecisions fuel) (indsOf {} fuel items) q fuel holes levels acc
     (fun d' hd' => hcov d' (by rw [progMeaning_inds]; exact hd')) (fun items' h' => ?_) (fun items' h' => ?_)
     (chainDecisions_aligned fuel)

@@ -257,25 +257,36 @@ theorem hint_eq (hpty : ParamTyLocal K.dm K.Γ) {M : IndDecl} (hM : M ∈ K.Γ) 
 
 end
 
+/-- **What the knot asks of the other declarations** (exists10): the records of the DATA-sorted ones
+are parametric in their nestable parameters; and a `Prop`-sorted declaration heading a field type of
+`d` has steady arguments (`TopSortOk`, rule (A*) at the top of a field, from the checks), so the knot
+reads its records at one list only. Until exists10 parametricity was asked of every declaration, the
+`Prop`-sorted ones included, which their truth records need not satisfy: the truth spec reads a
+declaration's own occurrence as its truth value at the arguments (`Truth.lean`), and that value can
+depend on a nestable parameter's record at every depth (docs/34 §18.15). -/
+def ParHyp (K : RunCtx) (d : IndDecl) : Prop :=
+  (∀ M ∈ K.Γ, M ≠ d → M.sort ≠ 0 → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M)) ∧
+    TopSortOk K.Γ d
+
 /-- What guardedness rests on, at records `R`, `R'` and parameters `ps`, `ps'` agreeing below `n`. -/
 structure GuardHyp (K : RunCtx) (d : IndDecl) (n : Nat) (R R' : List Sem → Rec) (ps ps' : List Sem) : Prop where
   hs : d.sort ≠ 0
   hR : RAgree (fun j => d.nestable.getD j false) n R R'
   hp : ParAgree (fun j => d.nestable.getD j false) n ps ps'
-  hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M)
+  hpar : ParHyp K d
   hpty : ParamTyLocalD K.dm d
 
 section
 variable {K : RunCtx} {ρ : Assignment} {d : IndDecl} {c : Nat}
 variable {n : Nat} {R R' : List Sem → Rec} {ps ps' : List Sem} {s : SState}
 
-theorem recFor_agree (G : GuardHyp K d n R R' ps ps') {M : IndDecl} (hMΓ : M ∈ K.Γ) {vs vs' : List Sem}
-    (h : ParAgree (fun j => M.nestable.getD j false) n vs vs') :
+theorem recFor_agree (G : GuardHyp K d n R R' ps ps') {M : IndDecl} (hMΓ : M ∈ K.Γ) (hMs : M.sort ≠ 0)
+    {vs vs' : List Sem} (h : ParAgree (fun j => M.nestable.getD j false) n vs vs') :
     RecAgree n (recFor K d R M vs) (recFor K d R' M vs') := by
   unfold recFor
   by_cases hMd : M = d
   · subst hMd; rw [if_pos rfl, if_pos rfl]; exact G.hR vs vs' h
-  · rw [if_neg hMd, if_neg hMd]; exact G.hpar M hMΓ hMd n vs vs' h
+  · rw [if_neg hMd, if_neg hMd]; exact G.hpar.1 M hMΓ hMd hMs n vs vs' h
 
 theorem sem_eq_other (h' : TyS) (t : Term) (h1 : ∀ n as, t ≠ .tind n as) (h2 : ∀ v, t ≠ .place (.var v)) :
     semT K ρ d R ps s h' t = semT K ρ d R' ps' s h' t := by
@@ -315,7 +326,7 @@ theorem semT_agree (G : GuardHyp K d n R R' ps ps') :
       rw [semT_tind, semT_tind, hM]
       have hA := itpArgs_agree G hMΓ hargs [] [] (ArgRel.nil d c M n) rfl
       simp only [List.nil_append] at hA
-      exact .inr ⟨M, _, _, hMs, rfl, rfl, recFor_agree G hMΓ hA.parAgree⟩
+      exact .inr ⟨M, _, _, hMs, rfl, rfl, recFor_agree G hMΓ hMs hA.parAgree⟩
 
 theorem itpArgs_agree (G : GuardHyp K d n R R' ps ps') {M : IndDecl} (hMΓ : M ∈ K.Γ) :
     ∀ {j : Nat} {pre as : List Term}, SpineArgs K.Γ d c M j pre as →
@@ -482,15 +493,20 @@ theorem ftyK_quiet (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.�
       exact itpT_quiet hps (hspine c i FT hFT) (quiet_of_fieldVaries hv hFT) _
 
 theorem itpT_agree {n : Nat} {R R' : List Sem → Rec} {ps ps' : List Sem} {s : SState}
-    (G : GuardHyp K d n R R' ps ps') {t : Term} (ht : Spine K.Γ d c t) (h : TyS) :
+    (G : GuardHyp K d n R R' ps ps') {t : Term} (ht : Spine K.Γ d c t) (h : TyS)
+    (htop : ∀ n' as M, t = .tind n' as → K.Γ.find? (·.name == n') = some M → M.sort = 0 → Steady d c t) :
     FTyAgree n (itpT K ρ d R ps s h t) (itpT K ρ d R' ps' s h t) := by
   cases ht with
   | tind n' as M hM hargs =>
+    by_cases hM0 : M.sort = 0
+    · -- a `Prop`-sorted head: steady (`TopSortOk`), so the two sides are equal
+      rw [itpT_quiet (psSteady_of_parAgree G.hp) (.tind n' as M hM hargs) (steady_quiet (htop n' as M rfl hM hM0)) h]
+      exact FTyAgree.refl _ _
     rw [itpT_tind, itpT_tind, hM]
     have hMΓ := (find_name hM).2
     have hA := itpArgs_agree (ρ := ρ) (s := s) G hMΓ hargs [] [] (ArgRel.nil d c M n) rfl
     simp only [List.nil_append] at hA
-    exact data_agree M (recFor_agree G hMΓ hA.parAgree)
+    exact data_agree M (recFor_agree G hMΓ hM0 hA.parAgree)
   | _ =>
     rw [itpT_other _ _ _ _ _ _ _ _ (fun _ _ e => by cases e), itpT_other _ _ _ _ _ _ _ _ (fun _ _ e => by cases e)]
     exact semAgree_fty (semT_agree (c := c) G (by constructor <;> assumption)
@@ -511,14 +527,15 @@ theorem ftyK_agree (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.�
       (fun j hj hvj _ => by
         simp only [dif_pos hj]
         rw [ftyK_quiet hspine G.hpty hdΓ G.hp.1 (psSteady_of_parAgree G.hp) j _ hvj])]
-    exact itpT_agree G (hspine c i FT hFT) _
+    exact itpT_agree G (hspine c i FT hFT) _ fun n' as M e hM hM0 => by
+      subst e; exact steadyB_sound (G.hpar.2 c i n' as M hFT hM hM0)
 
 end
 
 /-- **The knot of an accepted data-sorted declaration**: the interpreter's field types, guarded. -/
 noncomputable def knotK (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort ≠ 0) (hdΓ : d ∈ K.Γ)
     (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT)
-    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
+    (hpar : ParHyp K d)
     (hpty : ParamTyLocalD K.dm d) : KnotSpec where
   d := d
   N := fun j => d.nestable.getD j false
