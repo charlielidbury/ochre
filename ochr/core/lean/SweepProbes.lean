@@ -273,9 +273,31 @@ ochr KindAttacks2 uses Nats {
   def UseClosF : Nat := ClosF(S(Z))
 }
 
+/-! ## A proof read as data, where main's D131 does not look (machine12): the `J` of a motive whose codomain hides
+`Prop` behind a call (`FitProofCE`'s `V1`, rejected at a typed `let` since D131) placed where no typed `let` binds it: in
+a codomain, a parameter type, a λ's parameter type, an ascribed `let`'s type (each run by `evalType`), a dropped `;`,
+an ascribed `let` (read by its annotation), a match on it (a desugared `let`), a call's argument. The type positions
+are typed too, so D131 rejects `V8`–`V11` and the match `V14`; `V12`, `V13`, `V15` bind no proof as data. -/
+
+ochr ProofReadAttacks uses Nats {
+  def PropF (n : Nat) : Type₁ := Prop
+  reject def V8 (k : Nat) : (let y = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); Nat) := 0
+  reject def V9 (k : Nat) (m : (let y = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); Nat)) : Nat := m
+  reject def V10 (k : Nat) : Unit := (let f = (λ(m : (let y = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); Nat)) : Nat => m); ())
+  reject def V11 (k : Nat) : Unit := (let z : (let y = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); Nat) = 0; ())
+  def V12 (k : Nat) : Unit := (J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); ())
+  def V13 (k : Nat) : ⊤ := (let y : ⊤ = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); y)
+  reject def V14 (k : Nat) : Unit := match J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl) { I => () }
+  def TakeT (h : ⊤) : Unit := ()
+  def V15 (k : Nat) : Unit := TakeT(J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl))
+  def UseV15 : Unit := V15(Z)
+  -- a stuck hidden-Prop type has no accepted inhabitant here: the transported term is typed `⊤`, not the stuck `P(k)`
+  reject def V16 (k : Nat) : Unit := (let y = J(Nat, k, k, λ(x : Nat) : PropF(x) => match x { Z => ⊤, S _ => ⊤ }, refl, match k { Z => refl, S _ => refl }); match k { Z => (let z = y; ()), S _ => () }; let w = y; ())
+}
+
 namespace Sweep
 
 /-- The probe blocks (`lake exe sweep --probes`). -/
-def probes : List (String × Ochr.Surface.Block) := [("LentUnder", LentUnder), ("OpenJoin", OpenJoin), ("KindAttacks", KindAttacks), ("KindAttacks2", KindAttacks2)]
+def probes : List (String × Ochr.Surface.Block) := [("LentUnder", LentUnder), ("OpenJoin", OpenJoin), ("KindAttacks", KindAttacks), ("KindAttacks2", KindAttacks2), ("ProofReadAttacks", ProofReadAttacks)]
 
 end Sweep
