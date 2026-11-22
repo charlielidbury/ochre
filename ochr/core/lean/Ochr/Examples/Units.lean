@@ -254,3 +254,46 @@ def addX : Term := .call (.const "Add") [.place (.var 0), .zero] false
 #guard deferRun (.letIn ⟨"y"⟩ addX (.place (.var 0))) true == some (some .tNat, false, false)
 
 end Ochr.Units
+
+/-! ## A deferred call's head type is tested when the type is recorded (D134)
+
+An untyped run computes a call's type, when wanted, with `declCallType`, which rejects a head type
+that is not a function type written as one and a wrong arity. A `let` bound to the call defers the
+type (D82, `callTyLater`), and that path recorded the head type untested, so the same call was
+rejected outside a `let` and went on inside one with a record nobody could use. Since D134 both
+paths make the one test (`callPi`). No surface program reaches the difference (the hunt: a parameter
+refined by a split, a function behind a type function's result, a sealed function, an unknown at a
+stuck type-function type, each called inside and outside a `let`, at the generic call, an instance
+and a generic caller, all accepted alike), so it is pinned on a state: `f` holds `Add` but is stored
+at a type that is not its own (the proof lane's `KindCE.stG`). -/
+
+namespace Ochr.Units
+
+/-- An untyped call `f(0, 0)` from the state after `Nats`, `f ↦ Add` stored at `T`, its type wanted,
+deferred (as a `let` starts it) or not: its error, or its value, type and record. -/
+def callKind (T : Value) (defer : Bool) : Except String (Value × Option Value × Option (Value × List Value)) :=
+  let fr : Frame := { binds := #[{ hint := ⟨"f"⟩, ty := some T, val := .gfn "Add", decl := .other }] }
+  let s0 : MState := { st Nats 0 with env := #[fr], wantTy := true, deferCallTy := defer }
+  runM (do
+    let (v, T') ← Ochr.eval 1000 false (.call (.place (.var 0)) [.zero, .zero] false)
+    pure (v, T', (← get).callTyLater)) s0
+
+/-- The error's message starts with `pre`. -/
+def failsWith {α : Type} (r : Except String α) (pre : String) : Bool :=
+  match r with
+  | .error m => pre.isPrefixOf m
+  | .ok _ => false
+
+-- a head stored at `Nat`: rejected on both paths (before D134 the deferred one returned `0` with
+-- no type and the record `(Nat, [0, 0])`)
+#guard failsWith (callKind .tNat false) "not a function type: Nat"
+#guard failsWith (callKind .tNat true) "not a function type: Nat"
+-- a head stored at a function type of one parameter, called with two: rejected on both paths
+#guard failsWith (callKind (.tPi [] (.pi [⟨"m"⟩] [.nat] .nat) []) false) "arity: 1 parameters, 2 arguments"
+#guard failsWith (callKind (.tPi [] (.pi [⟨"m"⟩] [.nat] .nat) []) true) "arity: 1 parameters, 2 arguments"
+-- at its own type, the deferred path records it, and the binding's type is computed when read
+#guard match callKind (.tPi [] (.pi [⟨"x"⟩, ⟨"y"⟩] [.nat, .nat] .nat) []) true with
+  | .ok (_, none, some (.tPi .., [.zero, .zero])) => true
+  | _ => false
+
+end Ochr.Units

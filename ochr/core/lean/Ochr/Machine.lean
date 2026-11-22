@@ -879,6 +879,17 @@ def readingAgrees (fuel : Nat) (h : Hint) (T : Value) (d : DeclInfo) (v : Value)
   if rd == 0 && !(v matches .proof | .abs _ | .sealed _) then
     err s!"[D131] {h.name} is read as a proof, but holds {v}, which is not a proof (its type {T})"
 
+/-- D134: a call's head type, as the untyped run has it (`funType`: the caller's stored type for the
+head, else the value's own), is a function type written as one, of the call's arity. `declCallType`
+tests it before it computes the call's type, and `callFn`'s deferred path (a `let` bound to the call,
+`later`) tests it when it records the type for later: deferral postpones computing a type, not the
+test that there is one. One function, so the two paths cannot drift. -/
+def callPi (piTy : Value) (n : Nat) :
+    M (List Value × List Hint × List Term × Term × List (DeclInfo × Value)) := do
+  let .tPi cs (.pi hs ds c) rd := piTy | err s!"not a function type: {piTy}"
+  if ds.length != n then err s!"arity: {ds.length} parameters, {n} arguments"
+  pure (cs, hs, ds, c, rd)
+
 -- the machine is one `mutual` block, and compiling it (LCNF) outgrew the default heartbeats
 set_option maxHeartbeats 1000000 in
 mutual
@@ -3129,8 +3140,7 @@ termination_by structural fuel
 arguments, each parameter bound at its declared type. The machine's type of a call. -/
 def declCallType (fuel : Nat) (piTy : Value) (ws : Array Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let .tPi cs (.pi hs ds c) rd := piTy | err s!"not a function type: {piTy}"
-  if ds.length != ws.size then err s!"arity: {ds.length} parameters, {ws.size} arguments"
+  let (cs, hs, ds, c, rd) ← callPi piTy ws.size
   let pf ← paramFlags fuel' cs rd ds
   privately <| unlocated do
     pushFrame
@@ -3311,6 +3321,8 @@ def callFn (fuel : Nat) (typed : Bool) (fT : Option Value) (n : Nat)
   -- arguments against the parameter types ([Call-type]), the machine does not re-check them
   -- D82: a `let` bound to the call takes its type lazily, unless the call returns a borrow
   let later := !typed && want && defer && !(res matches .ref _)
+  -- D134: the deferred path makes the eager path's test when it records (`callPi`)
+  if later then discard (callPi piTy ws.size)
   let B ← if typed then some <$> callType fuel' piTy ws tys
     else if want && !later then some <$> declCallType fuel' piTy ws else pure none
   let setLater : M Unit := modify fun s => { s with callTyLater := if later then some (piTy, ws.toList) else none }
