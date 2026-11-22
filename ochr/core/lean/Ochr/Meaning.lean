@@ -284,6 +284,7 @@ import Ochr.Meaning.DataModel.Exists.Params
 import Ochr.Meaning.DataModel.Exists.LeafOk
 import Ochr.Meaning.DataModel.Exists.PropParCE
 import Ochr.Meaning.DataModel.Exists.DeclStep
+import Ochr.Meaning.DataModel.Exists.Assembly
 import Ochr.Meaning.DataModel.Exists.ScopeCE
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs

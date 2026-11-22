@@ -7,26 +7,28 @@ import Ochr.Meaning.DataModel.Exists.Knot.CongrN
 import Ochr.Meaning.DataModel.Exists.DeclStep
 
 /-!
-# The assembly: the induction's invariant (exists8; OUTSIDE the default build, it has `sorry`)
+# The assembly: the induction's invariant, and the existence of the data model (exists8–exists10)
 
-`Assembly.exists_dataModel` by induction over the items, one model per stage. Stage `k` is the
-program meaning of the first `k` items under the stage's model (`stage`). The invariant `Inv` at
-stage `k` says, of the stage's model:
-* it covers every declaration (`covers := True`);
-* `congr`: every earlier stage's program meaning reads the model only at that stage's declarations
-  (a model agreeing there gives the same `ProgState`): what lets the final model, which adds later
-  declarations, keep every earlier stage's meaning;
+`Assembly.exists_dataModel` by induction over the items, one model per stage, at the whole program's
+declaration list (the one-list ruling, docs/31 D174). Stage `k` is the program meaning of the first `k`
+items under the stage's model (`stage`). The invariant `Inv` at stage `k` says, of the stage's model:
+* `rest`: it is the constant `dm0` at every declaration the stage has not reached;
+* `congr`: every earlier stage's program meaning reads the model only at that stage's declarations;
 * `faithful`: every declaration of every stage up to `k` is faithful (`DeclFaithful`) at EVERY run
-  context that extends that stage (`Extends`: the same records and parameter types at its
-  declarations, a declaration list with them as a prefix, the same globals' meanings, and the
-  checker's decisions at a state over that list extending its globals);
-* what the next declaration's construction assumes of the earlier ones: `par` (`knot_exists`'s
-  `hpar`), `mono` (`truth_exists`'s `hmono`), `pty` (`ParamTyLocal`), `val` (`grammar_of_checks`'s
-  `hval`).
+  context that extends that stage (`Extends`);
+* what the next declaration's construction assumes of the earlier ones: `par` (data-sorted ones'
+  records parametric, `Knot.ParHyp`), `mono` (`Prop`-sorted ones' records monotone), `val`.
 
-`exists_of_inv` (PROVED here, no assumed fact) is the check that the invariant at the last stage
-gives `exists_dataModel`'s conclusion; `inv_zero` (PROVED) starts it; `inv_step` (`sorry`) is the
-work, and its docstring lists what it rests on.
+PROVED, standard axioms, in the default build: `inv_zero`, `inv_step` (a rejected item, `inv_reject`;
+an accepted definition, `inv_defn`; an accepted inductive declaration of either sort, `inv_ind_core`
+with `inv_ind_faithful`), `exists_of_inv`, and `exists_dataModel'`, which assumes six named facts:
+* about the checker, not derived from its code: `ItemFacts` (an accepted inductive declaration
+  appends one entry passing `Knot.IndChecks`, with no embedded value in its field and parameter types
+  and no field type reading a varying value parameter; an accepted definition leaves the declarations
+  and extends the globals), `NamesFact` (the names an accepted item's code mentions are the stage's),
+  `FieldLevels` (the checker's field-level check is sound: a field type runs at members to a code of
+  carrier level 0), and the stage prefix fact `hpre` (`Consistency.inds_prefix`);
+* obligations on the checker's decisions: `DecLocal` at every state, and `DecStable` (piece 8).
 -/
 
 namespace Ochr.Meaning.DataModel.Exists.Assembly
@@ -67,15 +69,40 @@ theorem find_in_prefix {Γ0 Γ : List IndDecl} (hp : Γ0 <+: Γ) {n : String} {M
 
 /-- The models agree at the stage's declarations and the globals at the stage's: `AgreeN` for the
 stage's name tests. -/
-theorem agreeN_stage {K : RunCtx} {dm' : DataModel} {P : ProgState} (hp : P.inds <+: K.Γ)
+theorem agreeN_stage {K : RunCtx} {dm' : DataModel} {P : ProgState} (Γ : List IndDecl) (hKΓ : K.Γ = Γ)
+    (hp : P.inds <+: Γ)
     (hag : ∀ M ∈ P.inds, dm'.recOf M = K.dm.recOf M ∧ dm'.paramTy M = K.dm.paramTy M)
     {C' : CodeMeaning} (hgl : ∀ n, (P.means.find? (·.1 == n)).isSome = true → C'.global n = K.C.global n) :
-    Knot.AgreeN K dm' C' (stageNames K.Γ P) where
+    Knot.AgreeN K dm' C' (stageNames Γ P) where
   ty n M h hM := by
+    rw [hKΓ] at hM
     have hM' := find_in_prefix hp (by simp only [stageNames, Bool.and_eq_true] at h; exact h.1) hM
     exact ⟨(hag M hM').2, fun ps _ => by rw [(hag M hM').1]⟩
   rc n M h hM := by
+    rw [hKΓ] at hM
     have hM' := find_in_prefix hp h hM
+    exact ⟨(hag M hM').1, (hag M hM').2⟩
+  gl n h := hgl n h
+
+/-- The same for a new declaration's field types (`fieldNames`): at `d` itself, the parameter types
+agree and the records agree at well-typed parameters. -/
+theorem agreeN_field {K : RunCtx} {dm' : DataModel} {P : ProgState} {d : IndDecl} (Γ : List IndDecl) (hKΓ : K.Γ = Γ)
+    (hp : P.inds ++ [d] <+: Γ)
+    (hag : ∀ M ∈ P.inds, dm'.recOf M = K.dm.recOf M ∧ dm'.paramTy M = K.dm.paramTy M)
+    (hpd : dm'.paramTy d = K.dm.paramTy d) (hrd : ∀ ps, paramsOk K.dm d ps → dm'.recOf d ps = K.dm.recOf d ps)
+    {C' : CodeMeaning} (hgl : ∀ n, (P.means.find? (·.1 == n)).isSome = true → C'.global n = K.C.global n) :
+    Knot.AgreeN K dm' C' (fieldNames Γ P d) where
+  ty n M h hM := by
+    rw [hKΓ] at hM
+    have hM' := find_in_prefix hp (by simp only [fieldNames, Bool.and_eq_true] at h; exact h.1) hM
+    rcases List.mem_append.1 hM' with hM' | hM'
+    · exact ⟨(hag M hM').2, fun ps _ => by rw [(hag M hM').1]⟩
+    · rw [List.mem_singleton] at hM'
+      subst hM'
+      exact ⟨hpd, hrd⟩
+  rc n M h hM := by
+    rw [hKΓ] at hM
+    have hM' := find_in_prefix ((List.prefix_append _ _).trans hp) h hM
     exact ⟨(hag M hM').1, (hag M hM').2⟩
   gl n h := hgl n h
 
@@ -463,7 +490,7 @@ theorem inv_defn (hIF : ItemFacts) (hN : NamesFact D fuel items)
       rw [hstage dm', hstage dm, h.congr k (Nat.le_refl _) dm' hag]
       obtain ⟨h1, h2, h3⟩ := (hN dm k hk st' hv).1 d hit
       have hA := agreeN_stage (K := (stage D fuel items dm k).ctx dm D (indsOf {} fuel items) st') (dm' := dm')
-        (P := stage D fuel items dm k) (by rw [stage_inds]; exact hpre k (by omega))
+        (P := stage D fuel items dm k) _ rfl (by rw [stage_inds]; exact hpre k (by omega))
         (fun M hM => hag M (by rw [← stage_inds D fuel items dm k]; exact hM)) (fun _ _ => rfl)
       rw [show (stage D fuel items dm k).ctx dm' D (indsOf {} fuel items) st' =
         { (stage D fuel items dm k).ctx dm D (indsOf {} fuel items) st' with dm := dm' } from rfl,
@@ -480,44 +507,346 @@ theorem inv_defn (hIF : ItemFacts) (hN : NamesFact D fuel items)
   · rw [hind]; exact h.mono
   · rw [hind]; exact h.val
 
-/-- **The step** (OPEN; exists9's plan, docs/34 §18.14). From the invariant at stage `k` for a model, the
-invariant at stage `k + 1` for a model agreeing with it at stage `k`'s declarations. By the `k`-th item's
-verdict (`ItemFacts`):
-* not accepted: the stage is unchanged, the same model;
-* an accepted definition: the same model; `congr` at `k + 1` is `Knot.runT_congrN`/`meanV_congrN` for the
-  definition's body and stored type at models agreeing at the stage's declarations (`NamesOk`);
-  `faithful` at `k + 1` from `k`: an extension of stage `k + 1` extends stage `k` (more means, more
-  globals, the same declarations);
-* an accepted inductive declaration `d` (`ItemFacts`: one new entry passing `IndChecks`): the build
-  context `K0` (the whole list, the model at stage `k`, the stage's globals, the decisions at the stage's
-  state `st0`, `ρ = err`); parameter types `Params.pty K0 ρ d` (piece 7: `pty_local`, `pty_faithful`);
-  records `Records.recCanon` from `knot_exists` (or `truth_exists`, OPEN: the `Prop`-sorted analogue of
-  `Records.lean`) at `K0` with `d`'s parameter types set, grammar from `grammar_of_checks`; the new
-  model sets both. `faithful` at `d`: from any extension `K`, `runT_congrA` (Δ, ρ: no embedded values),
-  `DecStable` (the decisions), `runT_congrN` (the model and globals; at `d` itself records agree only on
-  typed lists, which is all `.tind d` reads), the knot's conclusion and `fieldTy_knot`; parameter types
-  the same with `pty_faithful`; records `Records.recordsFaithful_canon` (`leafOk` OPEN). `par` is
-  `Records.par_canon`; `val` is `grammar_of_checks`' third conclusion; `rest` and the earlier stages
-  by `congr`. -/
-theorem inv_step (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm) :
+/-! ## An accepted inductive declaration -/
+
+open Classical in
+/-- A model with `d`'s parameter types replaced. -/
+noncomputable def setPty (dm : DataModel) (d : IndDecl) (P : Nat → List Sem → TyM) : DataModel :=
+  { dm with paramTy := fun M => if M = d then P else dm.paramTy M }
+
+/-- The build context of the declaration accepted at item `k`: the stage's model and globals, the
+whole list, the decisions after the declaration. -/
+noncomputable def ctx0 (dm : DataModel) (k : Nat) (st' : MState) : RunCtx :=
+  (stage D fuel items dm k).ctx dm D (indsOf {} fuel items) st'
+
+/-- The new declaration's parameter types (`Params.pty`, piece 7). -/
+noncomputable def ptyAt (dm : DataModel) (k : Nat) (st' : MState) (d : IndDecl) : Nat → List Sem → TyM :=
+  Params.pty (ctx0 D fuel items dm k st') (fun _ => .err) d
+
+/-- The build context with the new declaration's parameter types set: where its records are built. -/
+noncomputable def ctx1 (dm : DataModel) (k : Nat) (st' : MState) (d : IndDecl) : RunCtx :=
+  (stage D fuel items dm k).ctx (setPty dm d (ptyAt D fuel items dm k st' d)) D (indsOf {} fuel items) st'
+
+theorem paramsOk_typed {dm : DataModel} {d : IndDecl} {ps : List Sem} (h : paramsOk dm d ps) : ParamsTyped dm d ps :=
+  fun j hj => h j _ (List.getElem?_eq_getElem hj)
+
+/-- **The new declaration is faithful at every extension of the stage that accepts it.** -/
+theorem inv_ind_faithful (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+    (k : Nat) (hk : k < items.length) (dm : DataModel)
+    (st' : MState) (d0 d' : IndDecl) (hv : verdict fuel items k hk = .ok () st') (hit : items[k] = .ind d0)
+    (hI : st'.inds = (stage D fuel items dm k).inds ++ [d']) (hgl : st'.globals = (stage D fuel items dm k).globals)
+    (hfresh : d' ∉ (stage D fuel items dm k).inds) (hpnv : ParamsNoVal d') (hnv : Knot.FieldsNoVal d')
+    (S : KnotSpec) (Rc : List Sem → Rec)
+    (hagree : DeclStep.SpecAgree (ctx1 D fuel items dm k st' d') (fun _ => .err) d' S)
+    (hRc : ∀ ps, ParamsTyped (ctx1 D fuel items dm k st' d').dm d' ps → Rc ps = recK S ps)
+    (hrecF : ∀ K : RunCtx, K.dm.recOf d' = Rc → K.dm.paramTy d' = ptyAt D fuel items dm k st' d' →
+      RecordsFaithfulAt K d')
+    (hΓp : (stage D fuel items dm k).inds ++ [d'] <+: indsOf {} fuel items)
+    (hPi : (stage D fuel items dm k).inds = indsOf {} fuel (items.take k))
+    {dm' : DataModel} (hsk : stage D fuel items dm' k = stage D fuel items dm k)
+    (hagP : ∀ M ∈ (stage D fuel items dm k).inds, dm'.recOf M = dm.recOf M ∧ dm'.paramTy M = dm.paramTy M)
+    (hdm'_d : dm'.recOf d' = Rc ∧ dm'.paramTy d' = ptyAt D fuel items dm k st' d')
+    (K : RunCtx)
+    (hK : Extends D fuel items dm' { globals := st'.globals, inds := st'.inds, means := (stage D fuel items dm' k).means } K) :
+    DeclFaithful K d' := by
+  have hmeans : (stage D fuel items dm' k).means = (stage D fuel items dm k).means := by rw [hsk]
+  have hpP : (stage D fuel items dm k).inds <+: indsOf {} fuel items := (List.prefix_append _ _).trans hΓp
+  have hd' : d' ∈ st'.inds := by rw [hI]; exact List.mem_append_right _ (List.mem_singleton_self _)
+  have hKrec : K.dm.recOf d' = Rc := (hK.agree d' hd').1.trans hdm'_d.1
+  have hKpt : K.dm.paramTy d' = ptyAt D fuel items dm k st' d' := (hK.agree d' hd').2.trans hdm'_d.2
+  have hKM : ∀ M ∈ (stage D fuel items dm k).inds, K.dm.recOf M = dm.recOf M ∧ K.dm.paramTy M = dm.paramTy M :=
+    fun M hM =>
+      have hM' : M ∈ st'.inds := by rw [hI]; exact List.mem_append_left _ hM
+      ⟨(hK.agree M hM').1.trans (hagP M hM).1, (hK.agree M hM').2.trans (hagP M hM).2⟩
+  have hKgl : ∀ n, ((stage D fuel items dm k).means.find? (·.1 == n)).isSome = true →
+      K.C.global n = (stage D fuel items dm k).baseC.global n := fun n hn => by
+    have := hK.globals n (by show ((stage D fuel items dm' k).means.find? _).isSome = true; rw [hmeans]; exact hn)
+    rw [this]
+    simp only [ProgState.baseC, ProgState.globalMean, ProgState.globalTy, hmeans]
+  obtain ⟨st, h1, h2, h3, hKD⟩ := hK.dec
+  obtain ⟨hDSf, hDSp⟩ := hDS st' st h1 h3 d' hd'
+  have hlab : ∀ g, ((stage D fuel items dm k).baseC.global g).2.label = none :=
+    stage_label D fuel items dm k (by omega)
+  have hnames := (hN dm k hk st' hv).2 d0 d' hit hI
+  have hK1pt : (ctx1 D fuel items dm k st' d').dm.paramTy d' = ptyAt D fuel items dm k st' d' := by
+    simp [ctx1, ProgState.ctx, setPty]
+  -- the knot's context
+  let Kb : RunCtx := { ctx1 D fuel items dm k st' d' with dm := setRec (ctx1 D fuel items dm k st' d').dm d' (recK S) }
+  have hKbM : ∀ M ∈ (stage D fuel items dm k).inds, Kb.dm.recOf M = dm.recOf M ∧ Kb.dm.paramTy M = dm.paramTy M := by
+    intro M hM
+    have hMd : M ≠ d' := fun e => hfresh (e ▸ hM)
+    simp [Kb, ctx1, ProgState.ctx, setRec, setPty, hMd]
+  have hKbd : Kb.dm.recOf d' = recK S ∧ Kb.dm.paramTy d' = ptyAt D fuel items dm k st' d' := by
+    simp [Kb, ctx1, ProgState.ctx, setRec, setPty]
+  -- `d'`'s parameter types are faithful at the knot's context (what `FieldLevels` asks)
+  have hPFb : ParamsFaithfulAt Kb (fun _ => .err) d' := by
+    obtain ⟨-, hDSp'⟩ := hDS st' st' (List.prefix_refl _) (List.prefix_refl _) d' hd'
+    apply DeclStep.paramsFaithful_pty (ctx0 D fuel items dm k st') (fun _ => .err) d' hlab (hDL st') Kb _ hKbd.2
+    intro ps j hn Q hps hl hj
+    have hjl : j < d'.params.length := (List.getElem?_eq_some_iff.1 hj).1
+    have hQ : Knot.paramTerm d' j = Q := by simp [Knot.paramTerm, hj]
+    exact DeclStep.param_transfer (st := st') (st' := st') hQ (fun K' ρ' ps' mask => hDSp' K' ρ' ps' j mask hjl)
+      Kb (ctx0 D fuel items dm k st') rfl rfl rfl rfl rfl (stageNames (indsOf {} fuel items) (stage D fuel items dm k))
+      (agreeN_stage (K := { Kb with Δ := (ctx0 D fuel items dm k st').Δ, D := D st' }) _ rfl hpP
+        (fun M hM => ⟨(hKbM M hM).1.symm, (hKbM M hM).2.symm⟩) (fun _ _ => rfl))
+      (hQ ▸ hpnv j) (hQ ▸ hnames.2 j) _ _ ps _ hKbd.2
+  intro Δ ρ
+  refine ⟨?_, ?_, hrecF K hKrec hKpt⟩
+  · -- fields
+    have hrecT : ∀ ps, ParamsTyped K.dm d' ps → K.dm.recOf d' ps = recK S ps := fun ps hps => by
+      rw [hKrec]; exact hRc ps (DeclStep.paramsTyped_congr (hKpt.trans hK1pt.symm) hps)
+    apply DeclStep.fieldsFaithful_spec (ctx1 D fuel items dm k st' d') (fun _ => .err) d' S hagree { K with Δ := Δ } ρ
+      hrecT (hKpt.trans hK1pt.symm)
+    · intro ps c i e FT hl hps he hei hFT
+      refine DeclStep.field_transfer (st := st) (st' := st') (i := i) (fun K' ρ' ps' e' => hDSf K' ρ' ps' c i e' FT hFT)
+        { K with Δ := Δ } Kb hKD rfl hK.gamma hK.lam hK.cur
+        (fieldNames (indsOf {} fuel items) (stage D fuel items dm k) d') ?_ (hnv c i FT hFT) (hnames.1 c i FT hFT)
+        ρ _ ps e ?_ ?_
+      · exact agreeN_field (K := { { K with Δ := Δ } with Δ := Kb.Δ, D := D st' }) _ hK.gamma hΓp
+          (fun M hM => ⟨(hKbM M hM).1.trans (hKM M hM).1.symm, (hKbM M hM).2.trans (hKM M hM).2.symm⟩)
+          (hKbd.2.trans hKpt.symm)
+          (fun ps' hok => by rw [hKbd.1]; exact (hrecT ps' (paramsOk_typed hok)).symm)
+          (fun n hn => (hKgl n hn).symm)
+      · exact (hrecT ps hps).trans (congrFun hKbd.1.symm ps)
+      · exact hKpt.trans hKbd.2.symm
+    · intro ps c i e FT r s' hl hps he hei hFT hr
+      exact hFL dm k hk st' d0 d' hv hit hI Kb.dm (fun _ => .err) hPFb ps c i e FT r s'
+        (DeclStep.paramsTyped_congr (hKpt.trans hKbd.2.symm) hps)
+        (DeclStep.fieldsTyped_congr ((hrecT ps hps).trans (congrFun hKbd.1.symm ps)) he) hei hFT hr
+  · -- parameter types
+    apply DeclStep.paramsFaithful_pty (ctx0 D fuel items dm k st') (fun _ => .err) d' hlab (hDL st') { K with Δ := Δ } ρ hKpt
+    intro ps j hn Q hps hl hj
+    have hjl : j < d'.params.length := (List.getElem?_eq_some_iff.1 hj).1
+    have hQ : Knot.paramTerm d' j = Q := by simp [Knot.paramTerm, hj]
+    exact DeclStep.param_transfer (st := st) (st' := st') hQ (fun K' ρ' ps' mask => hDSp K' ρ' ps' j mask hjl)
+      { K with Δ := Δ } (ctx0 D fuel items dm k st') hKD rfl hK.gamma hK.lam hK.cur
+      (stageNames (indsOf {} fuel items) (stage D fuel items dm k))
+      (agreeN_stage (K := { { K with Δ := Δ } with Δ := (ctx0 D fuel items dm k st').Δ, D := D st' }) _ hK.gamma hpP
+        (fun M hM => ⟨(hKM M hM).1.symm, (hKM M hM).2.symm⟩) (fun n hn => (hKgl n hn).symm))
+      (hQ ▸ hpnv j) (hQ ▸ hnames.2 j) ρ _ ps _ hKpt
+
+/-- **The step at an accepted inductive declaration `d'`, for either sort**, given its records `Rc`
+and a spec `S` with `S`'s agreement at the build context, `Rc` the spec's records at well-typed
+parameters, `Rc` faithful as records, parametric (data-sorted) or monotone (`Prop`-sorted). The new
+model sets `d'`'s parameter types (`ptyAt`) and records (`Rc`). -/
+theorem inv_ind_core (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items)
+    (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm)
+    (st' : MState) (d0 d' : IndDecl) (hv : verdict fuel items k hk = .ok () st') (hit : items[k] = .ind d0)
+    (hI : st'.inds = (stage D fuel items dm k).inds ++ [d']) (hgl : st'.globals = (stage D fuel items dm k).globals)
+    (hfresh : d' ∉ (stage D fuel items dm k).inds) (hpnv : ParamsNoVal d') (hnv : Knot.FieldsNoVal d')
+    (S : KnotSpec) (Rc : List Sem → Rec)
+    (hagree : DeclStep.SpecAgree (ctx1 D fuel items dm k st' d') (fun _ => .err) d' S)
+    (hRc : ∀ ps, ParamsTyped (ctx1 D fuel items dm k st' d').dm d' ps → Rc ps = recK S ps)
+    (hrecF : ∀ K : RunCtx, K.dm.recOf d' = Rc → K.dm.paramTy d' = ptyAt D fuel items dm k st' d' →
+      RecordsFaithfulAt K d')
+    (hpar' : d'.sort ≠ 0 → ∀ n, RAgree (fun j => d'.nestable.getD j false) n Rc Rc)
+    (hmono' : d'.sort = 0 → ∀ ps ps', PropLe d' ps ps' → ∀ c i es, es.length = i →
+      ShapeLe (uShape d' (Rc ps) c i es) (uShape d' (Rc ps') c i es))
+    (hval' : ∀ j, nestOf d' j = true → d'.paramIsType j = true) :
     ∃ dm' : DataModel, Inv D fuel items (k + 1) dm' ∧
       ∀ d ∈ (stage D fuel items dm k).inds, dm'.recOf d = dm.recOf d ∧ dm'.paramTy d = dm.paramTy d := by
-  sorry
+  have hPi : (stage D fuel items dm k).inds = indsOf {} fuel (items.take k) := stage_inds D fuel items dm k
+  let PT := ptyAt D fuel items dm k st' d'
+  let dm' := setRec (setPty dm d' PT) d' Rc
+  have hdm'_ne : ∀ M, M ≠ d' → dm'.recOf M = dm.recOf M ∧ dm'.paramTy M = dm.paramTy M := by
+    intro M hM; simp [dm', setRec, setPty, hM]
+  have hdm'_d : dm'.recOf d' = Rc ∧ dm'.paramTy d' = PT := by simp [dm', setRec, setPty]
+  have hagP : ∀ M ∈ (stage D fuel items dm k).inds, dm'.recOf M = dm.recOf M ∧ dm'.paramTy M = dm.paramTy M :=
+    fun M hM => hdm'_ne M (fun e => hfresh (e ▸ hM))
+  obtain ⟨hcongr, hfaith⟩ := inv_carry D fuel items hIF (by omega) h (fun M hM => hagP M (hPi ▸ hM))
+  have hstage : ∀ dm'', stage D fuel items dm'' (k + 1) =
+      { globals := st'.globals, inds := st'.inds, means := (stage D fuel items dm'' k).means } := by
+    intro dm''
+    rw [stage_ok D fuel items dm'' k hk st' hv]
+    simp only [hit]
+  have hind : indsOf {} fuel (items.take (k + 1)) = (stage D fuel items dm k).inds ++ [d'] := by
+    rw [← stage_inds D fuel items dm (k + 1), hstage, hI]
+  have hsk : stage D fuel items dm' k = stage D fuel items dm k :=
+    h.congr k (Nat.le_refl _) dm' fun M hM => hagP M (hPi ▸ hM)
+  have hΓp : (stage D fuel items dm k).inds ++ [d'] <+: indsOf {} fuel items := by
+    rw [← hind]; exact hpre (k + 1) (by omega)
+  refine ⟨dm', ⟨fun d => h.covers d, ?_, ?_, ?_, ?_, ?_, ?_⟩, hagP⟩
+  · -- rest
+    intro M hM
+    rw [hind] at hM
+    have hMd : M ≠ d' := fun e => hM (e ▸ List.mem_append_right _ (List.mem_singleton_self _))
+    have hMP : M ∉ indsOf {} fuel (items.take k) := fun e => hM (List.mem_append_left _ (hPi ▸ e))
+    rw [(hdm'_ne M hMd).1, (hdm'_ne M hMd).2]
+    exact h.rest M hMP
+  · -- congr
+    intro k' hk' dm'' hag
+    rcases Nat.lt_or_ge k' (k + 1) with hl | hl
+    · exact hcongr k' (by omega) dm'' hag
+    · have : k' = k + 1 := by omega
+      subst this
+      rw [hstage dm'', hstage dm', hcongr k (Nat.le_refl _) dm'' fun d hd =>
+        hag d (by rw [hind]; exact List.mem_append_left _ (hPi ▸ hd))]
+  · -- faithful
+    intro k' hk' d hd K hK
+    rcases Nat.lt_or_ge k' (k + 1) with hl | hl
+    · exact hfaith k' (by omega) d hd K hK
+    have : k' = k + 1 := by omega
+    subst this
+    rw [hind] at hd
+    rw [hstage dm'] at hK
+    rcases List.mem_append.1 hd with hd | hd
+    · refine hfaith k (Nat.le_refl _) d (hPi ▸ hd) K (extends_of_more D fuel items hK ?_ ?_ ⟨[], by simp⟩)
+      · show (stage D fuel items dm' k).inds <+: st'.inds
+        rw [hsk, hI]; exact List.prefix_append _ _
+      · show (stage D fuel items dm' k).globals <+: st'.globals
+        rw [hsk, hgl]; exact List.prefix_refl _
+    rw [List.mem_singleton] at hd
+    subst hd
+    exact inv_ind_faithful D fuel items hN hFL hDL hDS k hk dm st' d0 d hv hit hI hgl hfresh hpnv hnv S Rc hagree hRc
+      hrecF hΓp hPi hsk hagP hdm'_d K hK
+  · -- par
+    intro M hM hMs n
+    rw [hind] at hM
+    rcases List.mem_append.1 hM with hM | hM
+    · rw [(hagP M hM).1]; exact h.par M (hPi ▸ hM) hMs n
+    · rw [List.mem_singleton] at hM; subst hM; rw [hdm'_d.1]; exact hpar' hMs n
+  · -- mono
+    intro M hM hMs
+    rw [hind] at hM
+    rcases List.mem_append.1 hM with hM | hM
+    · rw [(hagP M hM).1]; exact h.mono M (hPi ▸ hM) hMs
+    · rw [List.mem_singleton] at hM; subst hM; rw [hdm'_d.1]; exact hmono' hMs
+  · -- val
+    intro M hM
+    rw [hind] at hM
+    rcases List.mem_append.1 hM with hM | hM
+    · exact h.val M (hPi ▸ hM)
+    · rw [List.mem_singleton] at hM; subst hM; exact hval'
 
-theorem inv_all : ∀ k, k ≤ items.length → ∃ dm, Inv D fuel items k dm
+/-- **The step** (exists10). From the invariant at stage `k` for a model, the invariant at stage `k + 1`
+for a model agreeing with it at stage `k`'s declarations. By the `k`-th item's verdict:
+* not accepted: the stage is unchanged, the same model (`inv_reject`);
+* an accepted definition: the same model; the new meaning reads it only at the stage's declarations
+  (`NamesFact`, `defMeaning_congrN`) (`inv_defn`);
+* an accepted inductive declaration `d'` (`ItemFacts`: one new entry passing `IndChecks`): the
+  parameter types `ptyAt` (piece 7) at the build context `ctx0` (the stage's model and globals, the
+  decisions after `d'`); at `ctx1` (with them set) the records: a data-sorted `d'`'s the knot's at the
+  canonical parameters (`Records.recCanon`, hypotheses `Knot.ParHyp` from `par`, `rest` and
+  `grammar_of_checks`' `TopSortOk`), a `Prop`-sorted one's the truth spec's (`Records.recCanonP`,
+  hypothesis `hmono` from `mono` and `rest`). `d'` is faithful at every extension (`inv_ind_faithful`,
+  through `DeclStep`'s transfers: `DecStable`, `Knot.runT_congrN` with `NamesFact`, no embedded value;
+  the field types' level by `FieldLevels`). -/
+theorem inv_step (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items)
+    (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm) :
+    ∃ dm' : DataModel, Inv D fuel items (k + 1) dm' ∧
+      ∀ d ∈ (stage D fuel items dm k).inds, dm'.recOf d = dm.recOf d ∧ dm'.paramTy d = dm.paramTy d := by
+  cases hv : verdict fuel items k hk with
+  | fail f => exact ⟨dm, inv_reject D fuel items k hk dm h (fun st' e => by rw [hv] at e; cases e), fun _ _ => ⟨rfl, rfl⟩⟩
+  | exhausted m => exact ⟨dm, inv_reject D fuel items k hk dm h (fun st' e => by rw [hv] at e; cases e), fun _ _ => ⟨rfl, rfl⟩⟩
+  | ok u st' =>
+  cases u
+  cases hit : items[k] with
+  | defn d => exact ⟨dm, inv_defn D fuel items hIF hN hpre k hk dm h st' d hv hit, fun _ _ => ⟨rfl, rfl⟩⟩
+  | ind d0 =>
+  have hv' := hv
+  rw [verdict_eq D fuel items dm k hk] at hv'
+  obtain ⟨d', hI, hchk, hnv, hpnv, hfree, hgl⟩ := (hIF _ _ _ _ hv').1 d0 hit
+  have hI' : st'.inds = (stage D fuel items dm k).inds ++ [d'] := hI
+  have hgl' : st'.globals = (stage D fuel items dm k).globals := hgl
+  have hPi : (stage D fuel items dm k).inds = indsOf {} fuel (items.take k) := stage_inds D fuel items dm k
+  have hfresh : d' ∉ (stage D fuel items dm k).inds := fun hm => by
+    have := List.find?_eq_none.1 hchk.fresh d' hm
+    simp at this
+  have hΓp : (stage D fuel items dm k).inds ++ [d'] <+: indsOf {} fuel items := by
+    have := hpre (k + 1) (by omega)
+    rw [← stage_inds D fuel items dm (k + 1), stage_ok D fuel items dm k hk st' hv] at this
+    rw [← hI']; exact this
+  obtain ⟨rest, hrest⟩ := hΓp
+  have hΓ : indsOf {} fuel items = (stage D fuel items dm k).inds ++ d' :: rest := by
+    rw [← hrest]; simp
+  have hval0 : ∀ M ∈ (stage D fuel items dm k).inds, ∀ j, Knot.nestOf M j = true → M.paramIsType j = true :=
+    fun M hM => h.val M (hPi ▸ hM)
+  obtain ⟨hgram, hpgram, hval', htop⟩ := Knot.grammar_of_checks hchk hnv hval0 rest
+  rw [← hΓ] at hgram hpgram htop
+  let K1 := ctx1 D fuel items dm k st' d'
+  have hK1Γ : K1.Γ = indsOf {} fuel items := rfl
+  have hdΓ : d' ∈ K1.Γ := by rw [hK1Γ, hΓ]; simp
+  have hK1pt : K1.dm.paramTy d' = ptyAt D fuel items dm k st' d' := by simp [K1, ctx1, ProgState.ctx, setPty]
+  have hK1rec : ∀ M, K1.dm.recOf M = dm.recOf M := fun M => rfl
+  have hpty : ParamTyLocalD K1.dm d' := by
+    intro j ps ps' h1 h2 h3 h4
+    rw [hK1pt]
+    exact Params.pty_local _ _ _ j ps ps' h1 h2 h3 h4
+  have hD : FrameLocal.DecLocal K1.D := hDL st'
+  have hK : ∀ g, (K1.C.global g).2.label = none := stage_label D fuel items dm k (by omega)
+  have hTyP : ∀ j qs, d'.paramIsType j = true → ∀ (A : Type) (c : Code0 A) (v : Sem), K1.dm.paramTy d' j qs = .t0 A c →
+      ¬ v ∈ₛ[K1.dm.read] .t0 A c := fun j qs hj A c v hT => by
+    rw [hK1pt] at hT
+    exact Params.pty_type (ctx0 D fuel items dm k st') (fun _ => .err) d' j qs hj A c v hT
+  by_cases hs : d'.sort = 0
+  · -- a `Prop`-sorted declaration: the truth spec
+    have hpspine : ∀ c i FT, fieldTerm d' c i = some FT → Knot.PSpine K1.Γ d' c FT :=
+      fun c i FT hFT => Knot.pspineB_sound (hpgram hs c i FT hFT)
+    have hmono : ∀ M ∈ K1.Γ, M ≠ d' → M.sort = 0 → ∀ qs qs', PropLe M qs qs' → ∀ c i es, es.length = i →
+        ShapeLe (uShape M (K1.dm.recOf M qs) c i es) (uShape M (K1.dm.recOf M qs') c i es) := by
+      intro M hM hMd hMs qs qs' hq c i es hes
+      show ShapeLe (uShape M (dm.recOf M qs) c i es) (uShape M (dm.recOf M qs') c i es)
+      by_cases hMP : M ∈ indsOf {} fuel (items.take k)
+      · exact h.mono M hMP hMs qs qs' hq c i es hes
+      · rw [(h.rest M hMP).1]; exact .inl rfl
+    let G : Knot.TruthHyp K1 d' := ⟨hs, hdΓ, hpspine, hmono, hpty⟩
+    let T := Knot.truthP K1 (fun _ => .err) d'
+    refine inv_ind_core D fuel items hIF hN hFL hDL hDS hpre k hk dm h st' d0 d' hv hit hI' hgl' hfresh hpnv hnv
+      (Knot.truthSpec K1 (fun _ => .err) d' T) (Records.recCanonP K1 (fun _ => .err) d' T)
+      (Knot.truth_agree K1 (fun _ => .err) d' G (Knot.steadyAt_spec K1 (fun _ => .err) d' _ hD hK)) ?_ ?_
+      (fun hs' => absurd hs hs') ?_ hval'
+    · intro ps hps
+      show recK _ (Records.canonPs _ _ _ ps) = _
+      rw [Records.canonPs_typed _ _ _ ps hps]
+    · intro K hrec hpt
+      exact Records.recordsFaithful_canonP K1 (fun _ => .err) d' T hdΓ hpspine hpty hTyP hfree K hrec (hpt.trans hK1pt.symm)
+    · intro _ ps ps' hp c i es hes
+      exact Records.mono_canonP K1 (fun _ => .err) d' T hpty (fun _ _ hq => Knot.truthRec_mono G hq) ps ps' hp c i es hes
+  · -- a data-sorted declaration: the knot
+    have hspine : ∀ c i FT, fieldTerm d' c i = some FT → Knot.Spine K1.Γ d' c FT :=
+      fun c i FT hFT => Knot.spineB_sound (hgram hs c i FT hFT)
+    have hpar : Knot.ParHyp K1 d' := by
+      refine ⟨fun M hM hMd hMs n => ?_, htop hs⟩
+      show RAgree _ n (dm.recOf M) (dm.recOf M)
+      by_cases hMP : M ∈ indsOf {} fuel (items.take k)
+      · exact h.par M hMP hMs n
+      · rw [(h.rest M hMP).1]; intro ps ps' _ q _; rfl
+    refine inv_ind_core D fuel items hIF hN hFL hDL hDS hpre k hk dm h st' d0 d' hv hit hI' hgl' hfresh hpnv hnv
+      (Knot.knotK K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty) (Records.recCanon K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty)
+      (Knot.knotK_agree K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty
+        (Knot.steadyAt_knotK K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty hD hK)) ?_ ?_
+      (fun _ n => Records.par_canon K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty n) (fun hs' => absurd hs' hs) hval'
+    · intro ps hps
+      show recK _ (Records.canonPs _ _ _ ps) = _
+      rw [Records.canonPs_typed _ _ _ ps hps]
+    · intro K hrec hpt
+      exact Records.recordsFaithful_canon K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty hTyP hfree K hrec
+        (hpt.trans hK1pt.symm)
+
+theorem inv_all (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
+    ∀ k, k ≤ items.length → ∃ dm, Inv D fuel items k dm
   | 0, _ => ⟨_, inv_zero D fuel items⟩
   | k + 1, hk => by
-    obtain ⟨dm, h⟩ := inv_all k (by omega)
-    obtain ⟨dm', h', -⟩ := inv_step D fuel items k (by omega) dm h
+    obtain ⟨dm, h⟩ := inv_all hIF hN hFL hDL hDS hpre k (by omega)
+    obtain ⟨dm', h', -⟩ := inv_step D fuel items hIF hN hFL hDL hDS hpre k (by omega) dm h
     exact ⟨dm', h'⟩
 
 /-- `exists_dataModel`, from the step (and the prefix fact `hpre`). -/
-theorem exists_dataModel' (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
+theorem exists_dataModel' (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+    (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D)
+    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → Ochr.Meaning.Assembly.DataFaithful dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
-  obtain ⟨dm, h⟩ := inv_all D fuel items items.length (Nat.le_refl _)
+  obtain ⟨dm, h⟩ := inv_all D fuel items hIF hN hFL hDL hDS hpre items.length (Nat.le_refl _)
   exact ⟨dm, exists_of_inv D fuel items h hpre⟩
 
 end
