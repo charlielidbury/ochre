@@ -2266,7 +2266,11 @@ def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) 
   let wantHere0 := (← get).wantHere
   -- static ends: whether this term is in tail position of the body being run (one-shot)
   let tail := (← get).tailNext
-  modify fun s => { s with headEval := false, tailDecl := none, wantTy := false, wantHere := want }
+  -- D130: whether this term is a `let`'s right-hand side call whose type is deferred (one-shot), and
+  -- the record of a deferred call's type, which only the call this evaluation makes may leave
+  let defer := (← get).deferCallTy
+  modify fun s => { s with headEval := false, tailDecl := none, wantTy := false, wantHere := want,
+                           deferCallTy := false, deferHere := defer, callTyLater := none }
   modify fun s => { s with tailNext := false, curTail := tail }
   let d? ← if !head && !(t matches .val _) then
       match hinted with
@@ -2434,11 +2438,12 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     let du ← withLive true (declOf fuel' false [] [] u)
     demand true      -- D82: `h` is bound at its right-hand side's type
     let isCall := !typed && (u matches .call _ _ _)
-    if isCall then modify fun s => { s with deferCallTy := true, callTyLater := none }
+    -- D130: the flag is consumed when `u`'s evaluation starts, which also clears the record
+    if isCall then modify fun s => { s with deferCallTy := true }
     let (v, T) ← eval fuel' typed u
     let later0 := (← get).callTyLater
     let later := if isCall && T.isNone then later0 else none
-    modify fun s => { s with deferCallTy := false, callTyLater := none }
+    modify fun s => { s with callTyLater := none }
     let du' ← refineDecl du
     -- `h` is a proof iff `u` is, or its declared type is a proposition (P1; `u` may be an
     -- embedded value, `⋆` in a sealed program's bindings, which the pre-pass does not read)
@@ -2973,8 +2978,8 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
   if f matches .place _ then modify fun s => { s with inPlace := true }
   -- D82: the head's type is the call's declared Π-type (`piTy`), read whatever the call is
   let want ← wanted
-  let defer := (← get).deferCallTy
-  modify fun s => { s with deferCallTy := false }
+  -- D130: read from the copy `evalAt` made for this evaluation (it consumed the flag)
+  let defer := (← get).deferHere
   demand true
   let (fv, fT) ← eval fuel' typed f
   modify fun s => { s with inPlace := false }
@@ -4400,8 +4405,9 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   -- `B` (`declKind`). `&` is never produced by computation (D48), so the two agree
   unless (res matches .ref _) == ((← kindOf fuel' B) == .ref) do
     err s!"INTERNAL [static ends] the match's declared type and its type {B} disagree on whether it is a borrow (please report)"
-  -- the block's type is `B`; its call's is not read (D82)
-  modify fun s => { s with wantHere := false }
+  -- the block's type is `B`; its call's is not read (D82), nor deferred (D130: the copy is the
+  -- evaluation's that `evalAt` started, not this call's)
+  modify fun s => { s with wantHere := false, deferHere := false }
   -- D104: the block's call holds its head and arguments at the block's function type and domains
   let (v, _) ← evalCall fuel' false (.val anon) args.toList false (some (if allProof then 2 else 0)) (some res)
     (given := some (.tPi [] (.pi hints.toList domTs (.val B)) rd.toList, doms.toList))

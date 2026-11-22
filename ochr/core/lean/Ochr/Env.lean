@@ -218,10 +218,13 @@ structure MState where
   run computes a term's type only then; typing always does. -/
   wantTy : Bool := false
   wantHere : Bool := false                -- D82: whether the term being evaluated must give its type
-  /-- D82: the next call is a `let`'s right-hand side, whose binding takes its type lazily
-  (one-shot, consumed by `evalCall`) -/
+  /-- D82: the next `eval` is a `let`'s right-hand side call, whose binding takes its type lazily
+  (one-shot, consumed by `evalAt`, D130) -/
   deferCallTy : Bool := false
-  /-- D82: the Π-type and arguments of the call just made, when its `let` defers its type -/
+  /-- D130: ... and the term being evaluated is (read by `evalCall`) -/
+  deferHere : Bool := false
+  /-- D82: the Π-type and arguments of the call just made, when its `let` defers its type (cleared
+  when an evaluation starts, D130, so a run that makes no call leaves none) -/
   callTyLater : Option (Value × List Value) := none
   erasedDepth : Nat := 0                  -- D53: > 0 while evaluating an erased term, whose reads copy
   /-- > 0 inside a private copy (`inStatement`, `privately`): what the run does there is
