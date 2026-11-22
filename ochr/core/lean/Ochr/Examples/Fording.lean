@@ -576,7 +576,8 @@ fixed point per parameter value for a `Type₀` inductive, a subsingleton for a 
 rejected for the reason given below. `TT0` is an incompleteness Lean shares: a proposition with two
 constructors never eliminates into data, even where one is impossible. -/
 ochr InductiveModel uses Lists {
-  -- (I1) a parameter's type cannot mention the type being declared (it would need all of its parameters)
+  -- (I1) a parameter's type cannot mention the type being declared (it would need all of its parameters; since
+  -- D133 its own name is not declared there)
   reject inductive PD (A : Type) (x : PD(A)) := MkPD
   -- (E3) an equation field over a type parameter of sort Type₁ is an equation between types; it holds only by conversion
   inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
@@ -613,7 +614,7 @@ ochr InductiveModel uses Lists {
 }
 
 #guard (run "InductiveModel" InductiveModel).rejectedWith [
-  ("PD", "PD takes 2 parameters, given 1"),
+  ("PD", "[D133] PD is not declared in its own parameters' types"),
   ("teBad", "field h of MkTEq has type ⊤, expected Eq(Type, Word, Unit)"),
   ("LateEq", "[Ind] field h of MkLE: its type mentions x, which is not an earlier field"),
   ("InfLoop", "[Rec] at InfLoop(Succ(σ0)): the argument in the decreasing position is not a strict subterm"),

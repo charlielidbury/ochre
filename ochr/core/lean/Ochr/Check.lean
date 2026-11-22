@@ -168,14 +168,17 @@ by its call). Without it, a name in code that no run reaches (the other arm of a
 constructor, a statement's dead arm, a type function's unapplied arm) was never looked up, so
 `def H4 : Nat := (let z = 0; match z { Z => 0, S n => NoSuchName })` was accepted while the same
 name in a live arm was rejected. -/
-def undeclaredCheck (self : Option String) (ts : List Term) : M Unit := do
+def undeclaredCheck (self : Option String) (ts : List Term) (own : Option String := none) : M Unit := do
   let s ← get
   let okC := fun m => s.globals.any (·.name == m)
-  let okT := fun m => self == some m || s.inds.any (·.name == m)
+  -- `own`: the name of the inductive type whose parameter types these are, not in Σ yet (D133)
+  let okT := fun m => self == some m || (own != some m && s.inds.any (·.name == m))
   match Term.undeclaredList okC okT ts with
   | none => pure ()
   | some (path, m, isConst) =>
-    let msg := if isConst then s!"unknown constant {m}" else s!"unknown inductive type {m}"
+    let msg := if isConst then s!"unknown constant {m}"
+      else if own == some m then s!"[D133] {m} is not declared in its own parameters' types: an inductive type's own name may stand in its fields only"
+      else s!"unknown inductive type {m}"
     let at? := if s.locs.on then path.findSome? (s.locs.table.get? <| termAddr ·) else none
     throw (.error msg at?)
 
@@ -571,9 +574,13 @@ def checkInd (d : IndDecl) : M Unit := do
     let sc' := sc ++ fields.reverse.map fun _ => DeclInfo.other
     let ns' := ns ++ fields.reverse.map (·.1)
     for (_, FT) in fields do discard (typePos (← fuelLeft) true sc' ns' FT)
-  -- D118: every name its parameter and field types mention is declared (its own name aside),
-  -- read from syntax and Σ, before anything runs (after the declared readings, as in `checkDef`)
-  undeclaredCheck (some n) (d.params.map (·.2) ++ d.ctors.flatMap (·.2.map (·.2)))
+  -- D118: every name its parameter and field types mention is declared, read from syntax and Σ,
+  -- before anything runs (after the declared readings, as in `checkDef`). D133: its own name only in
+  -- its fields; in a parameter's type it is not declared yet (a parameter is checked before the type
+  -- exists, and evaluating `Q3(A, n, n)` in `Q3`'s own parameter `x` re-entered its own parameters
+  -- without end)
+  undeclaredCheck none (d.params.map (·.2)) (own := some n)
+  undeclaredCheck (some n) (d.ctors.flatMap (·.2.map (·.2)))
   let mut ps := #[]
   for (h, PT) in d.params do
     let A ← evalType (← fuelLeft) PT

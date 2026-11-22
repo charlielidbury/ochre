@@ -973,3 +973,44 @@ ochr Undeclared uses Nats {
   ("Later1", "unknown constant LaterC"), ("LT2", "unknown inductive type LateT"),
   ("LT3", "unknown inductive type LateT"),
   ("Bad", "unknown constant NoSuchAtAll"), ("UsesBad", "unknown constant Bad")]
+
+/-! ## An inductive type's own name stands in its fields only (D133)
+
+D118's check that a declaration names only declared things let an inductive declaration's own
+name through in its parameters' types as well as in its fields: `Q6`, with its own name in a dead
+arm of a parameter's type, was accepted. The type does not exist while its parameters are
+checked, so since D133 its name is not declared there. Each position, rejected: a dead arm, bare
+and applied, under a `let`, in an earlier parameter's type, inside a `Π`, a type function's
+argument, an equation, a box. Written live, the name was rejected before for its arity (`QD`,
+`QDa`, `QPD`), or, applied to all its parameters, made the checker run away (`Q3`, `Q3b`:
+evaluating `Q3(A, n, n)` checked its arguments against `Q3`'s parameter types, among them
+`Q3(A, n, n)` again; fuel bounded the depth, but every level kept a copy of the state, and the run
+exhausted the machine's memory first); the name check runs before anything is evaluated, so each
+is now rejected at once. The own name in the fields stays (`QF`, `QFB`), as does another type's in
+a parameter's type (`QO`); another undeclared name keeps D118's message (`QU`). -/
+
+ochr OwnName uses Boxes {
+  def TFid (A : Type) : Type := A
+  reject inductive Q6 (A : Type) (x : (let z = Z; match z { Z => A, S(k) => Q6 })) := MkQ6
+  reject inductive Q6a (A : Type) (x : (let z = Z; match z { Z => A, S(k) => Q6a(A, A) })) := MkQ6a
+  reject inductive QL (A : Type) (x : (let z = Z; let T = match z { Z => A, S(k) => QL }; T)) := MkQL
+  reject inductive QE (x : (let z = Z; match z { Z => Nat, S(k) => QE })) (B : Type) := MkQE
+  reject inductive QP (f : Π(y : (let z = Z; match z { Z => Nat, S(k) => QP })). Nat) := MkQP
+  reject inductive QT (x : (let z = Z; match z { Z => Nat, S(k) => TFid(QT) })) := MkQT
+  reject inductive QQ (h : Eq(Type, Nat, (let z = Z; match z { Z => Nat, S(k) => QQ }))) := MkQQ
+  reject inductive QBx (x : (let z = Z; match z { Z => Nat, S(k) => Box(QBx) })) := MkQBx
+  reject inductive QD (x : QD) := MkQD
+  reject inductive QDa (A : Type) (x : QDa(A)) := MkQDa
+  reject inductive QPD (A : Type) (x : Box(QPD(A))) := MkQPD
+  reject inductive Q3 (A : Type) (n : Nat) (x : Q3(A, n, n)) := MkQ3
+  reject inductive Q3b (A : Type) (x : Q3b(A, A)) := MkQ3b
+  inductive QF (A : Type) := QN | QC(x : QF(A))
+  inductive QFB (A : Type) := QFBN | QFBC(x : Box(QFB(A)))
+  inductive QO (x : (let z = Z; match z { Z => Nat, S(k) => Box(Nat) })) := MkQO
+  reject inductive QU (x : (let z = Z; match z { Z => Nat, S(k) => NoSuchQ })) := MkQU
+}
+
+#guard (run "OwnName" OwnName).rejectedWith
+  ((["Q6", "Q6a", "QL", "QE", "QP", "QT", "QQ", "QBx", "QD", "QDa", "QPD", "Q3", "Q3b"].map fun n =>
+    (n, s!"[D133] {n} is not declared in its own parameters' types: an inductive type's own name may stand in its fields only")) ++
+   [("QU", "unknown constant NoSuchQ")])
