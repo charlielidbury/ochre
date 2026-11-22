@@ -420,12 +420,13 @@ noncomputable def recCanon : List Sem → Rec :=
 
 /-- **Piece 6 for a data-sorted declaration**: the records `recCanon` are faithful (`types`, `values`,
 `smallOnly`) at any context whose model has them and the same parameter types at `d`. Assumes, besides
-the knot's: `hTyP` (a type parameter's type is not a level-0 code; the run-defined parameter types
-read `Type`/`Prop`), `hfree` (`VaryValFree`, a fact about the checker), and `hleaf`, the clause
+the knot's: `hTyP` (a type parameter's type has no level-0 member; the run-defined parameter types
+read a universe, `Params.pty_type`), `hfree` (`VaryValFree`, a fact about the checker), and `hleaf`, the clause
 `leafOk` itself (OPEN: the knot's field types at members are never the raw code of a `Prop`-sorted
 declaration; a property of the run, see docs/34 §18.14). -/
 theorem recordsFaithful_canon
-    (hTyP : ∀ j qs, d.paramIsType j = true → ∀ (A : Type) (c : Code0 A), K.dm.paramTy d j qs ≠ .t0 A c)
+    (hTyP : ∀ j qs, d.paramIsType j = true → ∀ (A : Type) (c : Code0 A) (v : Sem), K.dm.paramTy d j qs = .t0 A c →
+      ¬ v ∈ₛ[K.dm.read] .t0 A c)
     (hfree : VaryValFree d) (K' : RunCtx)
     (hrec : K'.dm.recOf d = recCanon K ρ d hs hdΓ hspine hpar hpty) (hpt : K'.dm.paramTy d = K.dm.paramTy d)
     (hleaf : ∀ ps, ps.length = d.params.length → ParamsTyped K'.dm d ps → K'.dm.RecLeafOk d (K'.dm.recOf d ps)) :
@@ -445,7 +446,7 @@ theorem recordsFaithful_canon
     have hty : d.paramIsType j = false := by
       cases e : d.paramIsType j
       · rfl
-      · exact absurd (hpt ▸ hT) (hTyP j _ e A c)
+      · exact absurd hv (hTyP j _ e A c v (hpt ▸ hT))
     simp [knotK, pEntryV, hty, List.getD_eq_getElem?_getD, hj]
   case smallOnly =>
     intro ps ps' hps hl hrel
@@ -473,7 +474,7 @@ theorem recordsFaithful_canon
           have hty : d.paramIsType j = false := by
             cases e : d.paramIsType j
             · rfl
-            · exact absurd hT (hTyP j _ e A c)
+            · exact absurd hm (hTyP j _ e A c _ hT)
           simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj, List.getElem?_eq_getElem hj',
             Option.getD_some]
           exact ⟨hv, hty, hsm.symm, mem_t0_small K.dm c hm⟩
