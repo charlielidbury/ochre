@@ -1,5 +1,6 @@
 import Ochr.Meaning.Steps.Machine.CallJLeaves
 import Ochr.Meaning.Steps.Machine.EvalInv
+import Ochr.Meaning.Steps.Machine.HintKeep
 
 /-!
 # `eval` around `evalCore` at a call whose pre-pass reads data (machine8; for `CallJInv`)
@@ -335,7 +336,8 @@ theorem evalCall_J_inv {k : Nat} {s s' : MState} {bh : Nat} {r : Value × Option
   clear hloop
   obtain ⟨nc, s₈, b₈, hnc, h8⟩ := Runs.bind_inv hstep
   clear hstep
-  obtain ⟨rfl, rfl⟩ := runs_needsCtx_zero hnc
+  -- D124: the argument's hint is guarded by `readsHint`, computed first (it reads only); `Z` is no hinted form
+  have := runs_keep (keep_readsHint _ _ _ _) hnc; subst s₈
   simp only [Bool.and_false, Bool.not_true, Bool.false_and, Bool.or_false, Bool.false_eq_true, if_false] at h8
   peel h8
   obtain ⟨wT, s₉, b₉, hw, h9⟩ := Runs.bind_inv h8

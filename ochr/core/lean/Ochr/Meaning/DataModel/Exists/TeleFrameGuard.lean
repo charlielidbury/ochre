@@ -12,7 +12,8 @@ it binds field `i`, every binding of the frame it evaluated in. Each `#guard` co
 with the expected one, so the build fails if the checker's frame changes.
 
 How each binding corresponds to `teleFrame`'s (`name : type = value [reading]`):
-* an earlier field `j < i`: `some T` at the value given, `T` the field's type the checker computed
+* an earlier field `j < i`: `some T` at the value given (D117: what it stands for, each live loan resolved to its
+  borrow's content, `resolveLoans`, as `fieldTypesOf` binds it), `T` the field's type the checker computed
   (`dm.fieldTy … j (e.take j)`), read `prop` exactly when `fieldTermIsProp` says so
   (`fieldProof`), `other` else;
 * the field being typed and every later one: no type, value `⊥`, read `other` (`err`, `moved`,
@@ -80,7 +81,26 @@ def snap (n : String) (ps : List Value) (c i : Nat) (fs : List Value) : String :
         let fr := s.env.back!
         let below := (s.env.toList.dropLast.map (·.binds.size)).foldl (· + ·) 0
         err (s!"frames {s.env.size} ({below} below): " ++ "; ".intercalate (fr.binds.toList.map showB))
-      pure (fs.getD j .bot)
+      -- D117 (main, merged by machine9): `fieldTypesOf` binds what each earlier field stands for, `resolveLoans`
+      resolveLoans 100000 (fs.getD j .bot)
+  match runM x st with
+  | .error m => m
+  | .ok _ => "no snapshot"
+
+/-- `snap` with a borrow `r ↦ borrow₀ held` bound first (in the frame below), so an earlier field's value can be the
+loan `loan₀` it lends: D117's case. -/
+def snapLent (n : String) (c i : Nat) (fs : List Value) (held : Value) : String :=
+  let st : MState := { globals := sigma.1, inds := sigma.2 }
+  let d := declNamed n
+  let x : M (List (String × Value × Value)) := do
+    pushBind ⟨"r"⟩ (some (.tRef .tNat)) (.borrow 0 held)
+    fieldTele 100000 d [] c fun j _ => do
+      if j = i then
+        let s ← get
+        let fr := s.env.back!
+        let below := (s.env.toList.dropLast.map (·.binds.size)).foldl (· + ·) 0
+        err (s!"frames {s.env.size} ({below} below): " ++ "; ".intercalate (fr.binds.toList.map showB))
+      resolveLoans 100000 (fs.getD j .bot)
   match runM x st with
   | .error m => m
   | .ok _ => "no snapshot"
@@ -101,6 +121,14 @@ def snap (n : String) (ps : List Value) (c i : Nat) (fs : List Value) : String :
 -- the proof field `e` (its type `Eq(Nat, 0, 0)` evaluates to `⊤`) is read `prop` once bound
 #guard snap "Three" [.tNat] 0 2 [.zero, .proof] ==
   "frames 2 (1 below): a : Nat = 0 [other]; e : ⊤ = ⋆ [prop]; b : none = ⊥ [other]; A : Type = Nat [sort 1]"
+
+/-! ## D117: a lent earlier field is bound as what its loan stands for
+
+`n` holds `loan₀`, lent to the borrow `r ↦ borrow₀ 1` below: the frame that types `x` binds `n` at `1`, the borrow's
+content, not the loan (before D117 it bound `loan₀`, a second occurrence of the loan, and the type's read of `n`
+ended `r`'s borrow from inside the private copy). `teleFrame` binds an earlier field at the value it is given:
+the existence lane's reading of a lent field's value must be the borrow's content (finding for that lane). -/
+#guard snapLent "V" 0 1 [.loan 0] (.succ .zero) == "frames 2 (1 below): n : Nat = 1 [other]; x : none = ⊥ [other]"
 
 -- the record is produced only by stopping at field `i` (not a vacuous match)
 #guard snap "V" [] 0 2 [.succ .zero, .unit] == "no snapshot"

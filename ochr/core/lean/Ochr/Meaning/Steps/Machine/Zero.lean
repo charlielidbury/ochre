@@ -379,6 +379,11 @@ theorem zero_declCallType :
   intro piTy ws
   unfold Ochr.declCallType; grows_go
 
+theorem zero_forceHint :
+    ∀ (hint : Option Value), GrowsIn tb (Ochr.forceHint 0 hint) := by
+  intro hint
+  unfold Ochr.forceHint; grows_go
+
 theorem zero_paramTypes :
     ∀ (piTy : Value) (ws : List Value) (need : List Nat), GrowsIn tb (Ochr.paramTypes 0 piTy ws need) := by
   intro piTy ws need

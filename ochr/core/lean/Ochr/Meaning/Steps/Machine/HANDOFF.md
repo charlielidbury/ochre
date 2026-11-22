@@ -446,6 +446,33 @@ Then `FixRunI` (checkDef → checkFix → checkTail → locatedTail → checkTai
 evalType Nat; new: `absAt`, `modelSignature`, `borrowParamCheck`, `markCapRec`, `markLastRec`, `popFrameRaw`, a
 `locatedTail` inversion), `VarNumAInv` and `InvNumA` (machine7's notes above), `BodyLazyInv` in full.
 
+### machine9 (2026-11-22): the nine column facts read TRUE; main merged (D117, D122, D124)
+
+READ (against the proof line's checker at f6c59f58, before this merge): `SplitPInv`, `FixRunP`, `SplitRInv`,
+`FixRunR`, `CallJ2Inv`, `BlockQInv`, `FixRunQ`, `BodyWInv`, `BodyKInv` all TRUE as stated (reasons field by field in
+the lane report). Points for the proofs: `catchStuck`'s handler runs from the state AT THE CALL POINT (Lean's
+`StateT` `tryCatch`), so a stuck callee leaves nothing, counters included; `recCheck` only rewrites `recStack` or
+rejects; `exitWorld` keeps `nextAbs`, `nextLoan`, `absDecl` and `absTy`'s new tail, which is all `KeepsAtZ` needs;
+`readPlace` moves a borrow before reading the copy or in-place flags.
+
+MERGE (branch `spine-machine10`, origin/spine b54f9c83 + origin/main e0b73bce, no conflict): the checker gained
+`forceHint` inside the mutual block (D124's deferred hint), and `readsHint`, `hintLater`, `resolveLoans` outside it.
+Regenerated with the scripts (their paths name the worktree `ochre-machine`: copy them to a scratch directory and
+`sed` the path; `regen.py`'s groups now list `forceHint` under `StepCall`); `IH.lean` gained the `forceHint` field;
+`MachineLeaves.lean` the grows leaves of `readsHint`, `resolveLoans`; `HintKeep.lean` their `Keep` lemmas. Repairs:
+- the typed `let`/`;` tail's hint is now `if typed || !tail then none else hint`: `simp only [Bool.true_or, …]` at
+  `StepInv`, `SeqInv`, `FragEnds`, `MasterDepth`, `MasterSeq`;
+- an assignment's and a call argument's hint test now runs `readsHint` first (a nested `←` is lifted before the
+  `if`, typed runs included): one `Runs.bind_inv` + `runs_keep keep_readsHint` at `AssignDerefInv`, `FragAssign` (two
+  sites), `CallJEval` (`runs_needsCtx_zero` no longer used there);
+- the untyped inversions `SeqInvDU`, `LetInvDUn`, `LetCallInvU` (`Steps/MasterUntyped.lean`) RESTATED: the tail runs
+  at `if st.curTail then hint else none` (they said `hint`, false out of tail position since D124); consumers take
+  them at `none` and `rw [ite_self]`.
+- `runBodyCore`'s hint is now `readsHint fuel' true false body` (then `hintLater` unless a borrow argument), not
+  `needsCtx`: the `CallJInv` plan's step 4 needs `readsHint … bodyI = false` in place of `runs_needsCtx_bodyI`.
+PROVED (`HintFacts.lean`): `HintSites.UntypedLetTailNoHint`, `UntypedSeqTailNoHint`, `UntypedMatchNatArmNoHint`,
+`UntypedMatchIndArmNoHint` (`runMachineL` of the two runs equal past the tail flag's read), `ClonePeekPlace`.
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed

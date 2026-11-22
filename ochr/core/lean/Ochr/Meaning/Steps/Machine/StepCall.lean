@@ -57,6 +57,11 @@ theorem step_declCallType (ih : MachineGrows tb nf) :
   intro piTy ws
   unfold Ochr.declCallType; grows_go ih
 
+theorem step_forceHint (ih : MachineGrows tb nf) :
+    ∀ (hint : Option Value), GrowsIn tb (Ochr.forceHint ((nf + 1)) hint) := by
+  intro hint
+  unfold Ochr.forceHint; grows_go ih
+
 theorem step_paramTypes (ih : MachineGrows tb nf) :
     ∀ (piTy : Value) (ws : List Value) (need : List Nat), GrowsIn tb (Ochr.paramTypes ((nf + 1)) piTy ws need) := by
   intro piTy ws need

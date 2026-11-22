@@ -130,6 +130,7 @@ theorem machineGrows_zero : MachineGrows tb 0 where
   funType := zero_funType
   callType := zero_callType
   declCallType := zero_declCallType
+  forceHint := zero_forceHint
   paramTypes := zero_paramTypes
   bindTy? := zero_bindTyQ
   endBorrowArgs := zero_endBorrowArgs
@@ -249,6 +250,7 @@ theorem machineGrows_succ (nf : Nat) (ih : MachineGrows tb nf) : MachineGrows tb
   funType := step_funType ih
   callType := step_callType ih
   declCallType := step_declCallType ih
+  forceHint := step_forceHint ih
   paramTypes := step_paramTypes ih
   bindTy? := step_bindTyQ ih
   endBorrowArgs := step_endBorrowArgs ih

@@ -189,8 +189,12 @@ theorem assignVarInv : AssignVarInv := by
   obtain ⟨rfl, hs3⟩ := runs_lentProofAssign_var hlp
   subst s₃
   simp only at h₂
-  obtain ⟨hu, s₄, b₅, hh, h₃⟩ := Runs.ite_bind_inv h₂
+  -- D124: `readsHint` is computed before the hint's `if` (the nested `←` is lifted); it reads only
+  obtain ⟨rh, s₃', b₄', hrh, h₂'⟩ := Runs.bind_inv h₂
   clear h₂
+  have := runs_keep (keep_readsHint _ _ _ _) hrh; subst s₃'
+  obtain ⟨hu, s₄, b₅, hh, h₃⟩ := Runs.ite_bind_inv h₂'
+  clear h₂'
   have hs4 : s₄ = st := by
     rcases hh with hh | hh
     · exact (runs_placeTypeQ_var_gen hty hh).2
@@ -376,8 +380,12 @@ theorem assignDerefInvF : AssignDerefInvF := by
   obtain ⟨rfl, hs3⟩ := runs_lentProofAssign_deref hlp
   subst s₃
   simp only at h₂
-  obtain ⟨hu, s₄, b₅, hh, h₃⟩ := Runs.ite_bind_inv h₂
+  -- D124: `readsHint` is computed before the hint's `if` (the nested `←` is lifted); it reads only
+  obtain ⟨rh, s₃', b₄', hrh, h₂'⟩ := Runs.bind_inv h₂
   clear h₂
+  have := runs_keep (keep_readsHint _ _ _ _) hrh; subst s₃'
+  obtain ⟨hu, s₄, b₅, hh, h₃⟩ := Runs.ite_bind_inv h₂'
+  clear h₂'
   have hs4 : s₄ = st := by
     rcases hh with hh | hh
     · exact (runs_placeTypeQ_deref hty hh).2

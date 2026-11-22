@@ -118,7 +118,7 @@ theorem seqInvR : SeqInvR := by
   clear h₁
   unfold demand at h₂
   peel h₂
-  simp only [if_true] at h₂
+  simp only [Bool.true_or, if_true] at h₂
   simp only at hdv
   refine ⟨_, s₃, { s₄ with tailDecl := _, tailNext := _, wantTy := _ }, v₀, T₀, _, b₄, Form.Kern.rfl' _, hm, htn, htd,
     .inr rfl, hu, ?_, fun hb hl => ?_, rfl, h₂⟩

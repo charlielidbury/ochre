@@ -5,19 +5,21 @@ import Ochr.Meaning.Steps.HintSites
 # The master induction's UNTYPED `;` and `let`, out of tail position, in general (lead25, 2026-11-22; docs/31 D176)
 
 An untyped run (a callee's body at a call, `runBody`; a type's computation) of `u; w` or `let x = u; w`. The checker's
-untyped `evalCore` runs the first term with no hint, as the typed one does, and hands the tail the HINT at every tail
-flag (the reference: `tailHint`, the hint in tail position only, D156). Out of tail position the two differ, and
-main's D124 (ruled) makes the checker hand none there: until it lands each step states that site's named fact
-(`HintSites.UntypedSeqTailNoHint`, `UntypedLetTailNoHint`; FALSE today, pinned). In tail position the tail runs at
+untyped `evalCore` runs the first term with no hint, as the typed one does, and since main's D124 (merged by
+machine9) hands the tail the hint in tail position only, as the reference does (`tailHint`, D156); before the merge it
+handed it at every tail flag. Each step states that site's named fact (`HintSites.UntypedSeqTailNoHint`,
+`UntypedLetTailNoHint`), TRUE since the merge and PROVED (`Machine.untypedSeqTailNoHint`, `Machine.untypedLetTailNoHint`);
+the inversions `SeqInvDU`, `LetInvDUn`, `LetCallInvU` were restated at the merge to run the tail at
+`if st.curTail then hint else none`. In tail position the tail runs at
 the hint on both sides, after the first sub-run's extension of the assignment; moving the tail's run back needs the
 hint's unknowns below the counter, which `EvalAt` does not yet say (change of form asked): those halves wait.
 
 * `seqInvDU` (a fact about the checker alone, PROVED here: `seqInvD`'s proof at an untyped run);
 * the step `seq_coreU` / `stepSeq_untyped`, for states out of tail position: ASSUMES `UntypedSeqTailNoHint` (checker,
-  false today) and the typed step's three (`SeqTailDecl`, `DropValueG`, `ValsCongrA`) and `FundCtx`;
+  proved: `Machine.untypedSeqTailNoHint`) and the typed step's three (`SeqTailDecl`, `DropValueG`, `ValsCongrA`) and `FundCtx`;
 * `letInvDUn` (PROVED: `letInvD`'s proof at an untyped run, the right-hand side not a call);
 * the step `letIn_coreU` / `stepLetIn_untyped`, out of tail position, the right-hand side not a call: ASSUMES
-  `UntypedLetTailNoHint` (checker, false today) and the typed step's four (`LetTailDecl`, `LetPushG`, `LetDropG`,
+  `UntypedLetTailNoHint` (checker, proved: `Machine.untypedLetTailNoHint`) and the typed step's four (`LetTailDecl`, `LetPushG`, `LetDropG`,
   `ValsCongrA`) and `FundCtx`;
 * a call's right-hand side may have its type deferred (`lazyTy`, D82): its inversion `LetCallInvU` (checker) and push
   `LetLazyPushG` (mixed) are STATED, the step for it not built.
@@ -27,6 +29,12 @@ namespace Ochr.Meaning.Steps.Machine
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.DecideScope Ochr.Meaning.Steps.Slice
 open Ochr.Meaning.Steps.Form
+
+/-- D124 (main, merged by machine9): the untyped run's tail hint, `if typed || !tail then none else hint` at an
+untyped run, is the hint in tail position and none out of it. -/
+theorem untypedTailHint_eq (c : Bool) (hint : Option Value) :
+    (if (false || !c) = true then none else hint) = (if c = true then hint else none) := by
+  cases c <;> rfl
 
 /-- **`evalCore` of an UNTYPED `u; w`, the discard exposed**: as `SeqInvD`, the tail run at the hint. -/
 def SeqInvDU : Prop :=
@@ -38,7 +46,7 @@ def SeqInvDU : Prop :=
       Runs (Ochr.eval n false u none) st bh₁ (v₀, T₀) st₁ ∧ DecTab D st₁ ∧
       Runs (Ochr.dropValue n v₀ T₀) st₁ bh₃ () s₄ ∧ DecTab D s₄ ∧
       Form.Kern s₄ stW ∧ Form.ModeEq s₄ stW ∧ stW.tailDecl = st.curDecl ∧ stW.tailNext = st.curTail ∧
-      Runs (Ochr.eval n false w hint) stW bh₂ (v, T?) st'
+      Runs (Ochr.eval n false w (if st.curTail then hint else none)) stW bh₂ (v, T?) st'
 
 /-- **`SeqInvDU`, PROVED** (`seqInvD`'s proof). -/
 theorem seqInvDU : SeqInvDU := by
@@ -56,7 +64,8 @@ theorem seqInvDU : SeqInvDU := by
   clear h₁
   unfold demand at h₂
   peel h₂
-  simp only [Bool.false_eq_true, if_false] at h₂
+  -- D124: the tail's hint is the sequence's only in tail position
+  rw [untypedTailHint_eq] at h₂
   simp only at hdv
   have hD₄ : DecTab D s₄ := DecTab.back hD ((TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)).trans
     (Runs.grows (grows_eval _ _ _ _) h₂))
@@ -80,7 +89,7 @@ def LetInvDUn : Prop :=
       D.declOf (DecideScope.topReadings st) u = du ∧
       Kern { st₁ with env := Env.pushBindE st₁.env h T₀ v₀ p du } stB ∧ Form.ModeEq st₁ stB ∧
       stB.tailNext = st.curTail ∧
-      Runs (Ochr.eval n false w hint) stB bh₂ (r, T?) st₂ ∧
+      Runs (Ochr.eval n false w (if st.curTail then hint else none)) stB bh₂ (r, T?) st₂ ∧
       Runs (Ochr.dropTopBind n) (st₂.withTempT r T?) bh₃ () st₃ ∧
       Kern st₃ (st'.withTempT v T?) ∧ Form.ModeEq st₃ st' ∧
       DecTab D st₁ ∧ DecTab D st₂
@@ -131,6 +140,8 @@ theorem letInvDUn : LetInvDUn := by
   rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
   peel h₅
   try simp only [if_true, ite_true, Bool.false_eq_true, if_false] at h₅
+  -- D124: the tail's hint is the `let`'s only in tail position
+  rw [untypedTailHint_eq] at h₅
   obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
   clear h₅
   obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆
@@ -192,7 +203,7 @@ def LetCallInvU : Prop :=
       (lz = none ∨ T₀ = none) ∧
       Kern { st₁ with env := (Env.pushBindE st₁.env h T₀ v₀ p du).setLazyTop lz } stB ∧ Form.ModeEq st₁ stB ∧
       stB.tailNext = st.curTail ∧
-      Runs (Ochr.eval n false w hint) stB bh₂ (r, T?) st₂ ∧
+      Runs (Ochr.eval n false w (if st.curTail then hint else none)) stB bh₂ (r, T?) st₂ ∧
       Runs (Ochr.dropTopBind n) (st₂.withTempT r T?) bh₃ () st₃ ∧
       Kern st₃ (st'.withTempT v T?) ∧ Form.ModeEq st₃ st' ∧
       DecTab D st₁ ∧ DecTab D st₂
@@ -247,10 +258,11 @@ theorem seq_coreU (hNH : HintSites.UntypedSeqTailNoHint) (hST : SeqTailDecl K.D)
   intro st st' typed hint v T? s π hP hty hm _ htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
   subst hty
   obtain ⟨hne, hct⟩ := hP
-  -- D124 at `;` (named, false today): out of tail position the run at the hint is the run at none
+  -- D124 at `;` (named; proved since the merge, `Machine.untypedSeqTailNoHint`): out of tail position the run at the hint is the run at none
   have h0 : Runs (Ochr.evalCore (m + 1) false (.seq u w) none) st bh (v, T?) st' := (hNH m u w hint st st' bh _ hct).1 h
   obtain ⟨st₁, s₄, stW, v₀, T₀, bh₁, bh₃, bh₂, hru, hD₁, hdv, -, hkW, hmeW, htdW, htnW, hrw⟩ :=
     Machine.seqInvDU m u w none st st' bh v T? K.D hD h0
+  rw [ite_self] at hrw
   have habu : u.absBelow st.absTy.size := fun σ hσ => hab σ (by simp [Term.anyAtom, hσ])
   have habw : w.absBelow st.absTy.size := fun σ hσ => hab σ (by simp [Term.anyAtom, hσ])
   have hnhu : u.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.1
@@ -310,8 +322,8 @@ theorem seq_coreU (hNH : HintSites.UntypedSeqTailNoHint) (hST : SeqTailDecl K.D)
   rw [hth]; exact hxw'
 
 /-- **The step for an untyped `;` out of tail position, the table reading it as decided data, in general**, with
-what the run keeps. ASSUMES 4 facts: `HintSites.UntypedSeqTailNoHint` (checker, FALSE today, true after main's
-D124), `SeqTailDecl` (table), `DropValueG` (part checker, part model), `ValsCongrA` (model); and `Strict.FundCtx K`.
+what the run keeps. ASSUMES 4 facts: `HintSites.UntypedSeqTailNoHint` (checker, proved since main's
+D124 was merged: `Machine.untypedSeqTailNoHint`), `SeqTailDecl` (table), `DropValueG` (part checker, part model), `ValsCongrA` (model); and `Strict.FundCtx K`.
 The class: an `eval`-level state with a frame and its tail flag clear. -/
 theorem stepSeq_untyped (hNH : HintSites.UntypedSeqTailNoHint) (hST : SeqTailDecl K.D) (hDV : DropValueG)
     (hVC : ValsCongrA) (hc : Strict.FundCtx K) :
@@ -344,11 +356,12 @@ theorem letIn_coreU (hNH : HintSites.UntypedLetTailNoHint) (hLT : LetTailDecl K.
   intro st st' typed hint v T? s π hP hty hm _ htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
   subst hty
   obtain ⟨hne, hct⟩ := hP
-  -- D124 at a `let` (named, false today): out of tail position the run at the hint is the run at none
+  -- D124 at a `let` (named; proved since the merge, `Machine.untypedLetTailNoHint`): out of tail position the run at the hint is the run at none
   have h0 : Runs (Ochr.evalCore (m + 1) false (.letIn x u w) none) st bh (v, T?) st' :=
     (hNH m x u w hint st st' bh _ hct).1 h
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hdu,
     hkB, hmeB, htnB, hrw, hrd, hk₃, hme₃', hD₁, hD₂⟩ := Machine.letInvDUn m x u w none st st' bh v T? K.D hnc htn htd hD h0
+  rw [ite_self] at hrw
   obtain ⟨habu, habw⟩ := absBelow_letIn hab
   have hnhu : u.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.1
   have hnhw : w.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.2
@@ -441,7 +454,7 @@ theorem letIn_coreU (hNH : HintSites.UntypedLetTailNoHint) (hLT : LetTailDecl K.
 
 /-- **The step for an untyped `let` out of tail position whose right-hand side is not a call, the table reading
 it as decided data, in general**, with what the run keeps. ASSUMES 5 facts: `HintSites.UntypedLetTailNoHint`
-(checker, FALSE today, true after main's D124), `LetTailDecl` (table), `LetPushG`, `LetDropG` (each part checker,
+(checker, proved since main's D124 was merged: `Machine.untypedLetTailNoHint`), `LetTailDecl` (table), `LetPushG`, `LetDropG` (each part checker,
 part model), `ValsCongrA` (model); and `Strict.FundCtx K`. The inversion (`Machine.letInvDUn`) is proved. -/
 theorem stepLetIn_untyped (hNH : HintSites.UntypedLetTailNoHint) (hLT : LetTailDecl K.D) (hPu : LetPushG)
     (hDr : LetDropG) (hVC : ValsCongrA) (hc : Strict.FundCtx K) :

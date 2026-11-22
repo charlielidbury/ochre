@@ -106,6 +106,14 @@ theorem growsIn_hasDependent_both :
   induction fuel generalizing t with
   | zero => unfold needsCtx; grows_go
   | succ n ih => unfold needsCtx; grows_go
+@[grows] theorem growsIn_readsHint fuel tl tr t : GrowsIn G (readsHint fuel tl tr t) := by
+  induction fuel generalizing tl tr t with
+  | zero => unfold readsHint; grows_go
+  | succ n ih => unfold readsHint; grows_go
+@[grows] theorem growsIn_resolveLoans fuel v : GrowsIn G (resolveLoans fuel v) := by
+  induction fuel generalizing v with
+  | zero => unfold resolveLoans; grows_go
+  | succ n ih => unfold resolveLoans; grows_go
 
 /-! ## [Rec]'s check: a read of the state, a loop that keeps it, a write of the state read -/
 

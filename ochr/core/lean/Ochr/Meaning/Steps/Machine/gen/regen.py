@@ -16,7 +16,7 @@ groups=[
  ('StepTypes',"values' types, fields, captures",'packedErr,convVal,valType?,valType,sealedType?,fieldDeclType,fieldTele,fieldTypes,fieldTypesOf,fieldsGeneric,fieldTypeAt,indValType?,bindDataFields,piSort,evalType,capture'),
  ('StepConv','the comparison','conv,convList,convTList,convPi,convT,convFn,convFnRun'),
  ('StepEval','evaluation','mkEqM,rewriteGoal,expectTy,eval,evalAt,evalCore,lentProofAssign,evalTInd,evalParams,checkParams,evalCtor'),
- ('StepCall','calls','unknownLent,lentLeafCheck,stmtCallee,evalCall,argHint,funType?,funType,callType,declCallType,paramTypes,bindTy?,endBorrowArgs,runBody,runBodyCore,callFn,closeCall'),
+ ('StepCall','calls','unknownLent,lentLeafCheck,stmtCallee,evalCall,argHint,funType?,funType,callType,declCallType,forceHint,paramTypes,bindTy?,endBorrowArgs,runBody,runBodyCore,callFn,closeCall'),
  ('StepMatch','matches, refinement, generalisation','refine,evalMatch,natScrutinee,generalizeNeutral,sealedResultType?,renormAll,renormV,renormT,splitThenClose,splitArmsThenClose,ctorRefinement,scrutType,evalMatchByType,evalMatchInd,etaInPlace,etaPlace,movedPlace'),
  ('StepJoin','the join and stuck blocks','staticJoin,joinDrop,joinCont,joinEnds,blockEntry,entryAccess,dropAtJoin,blockCaptures,closeBlock'),
  ('StepTail','observations, Id, tail position, [Fix]','observe,idType,stuckScrutinee,findSplit,generalizeFound,splitTarget,checkTail,checkTailAt,checkFix'),

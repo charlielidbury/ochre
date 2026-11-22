@@ -58,7 +58,7 @@ theorem seqInvD : SeqInvD := by
   clear h₁
   unfold demand at h₂
   peel h₂
-  simp only [if_true] at h₂
+  simp only [Bool.true_or, if_true] at h₂
   simp only at hdv
   have hD₄ : DecTab D s₄ := DecTab.back hD ((TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)).trans
     (Runs.grows (grows_eval _ _ _ _) h₂))

@@ -294,7 +294,7 @@ theorem letInvR : LetInvR := by
   simp only [Bool.not_true, Bool.false_and, Bool.false_eq_true, if_false] at h₅
   rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
   peel h₅
-  simp only [if_true, ite_true] at h₅
+  simp only [Bool.true_or, if_true, ite_true] at h₅
   obtain ⟨⟨r, R⟩, s₇, b₈, hw', h₆⟩ := Runs.bind_inv h₅
   clear h₅
   obtain ⟨fl, s₈, b₉, hgf, h₇⟩ := Runs.bind_inv h₆

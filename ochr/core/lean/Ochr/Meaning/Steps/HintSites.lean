@@ -6,14 +6,16 @@ import Ochr.Meaning.Steps.MasterGuards
 The table of every sub-run of the reference's `runT`, with the hint each side hands down, is docs/31 D172. Pinned
 here, every verdict by running the checker:
 
-**The untyped tail out of tail position (main's D124, ruled (1): to land, then this pin FLIPS).** Today the untyped
-`evalCore` hands a `let`'s tail, a `;`'s tail and both matches' arms the hint at every tail flag; the typed run hands
-none (out of tail position), and so does the reference (`Run.tailHint`, D156). Smallest run: `let y = Z; N` with
+**The untyped tail out of tail position (main's D124, MERGED by machine9: the pins below FLIPPED).** Before the merge
+the untyped `evalCore` handed a `let`'s tail, a `;`'s tail and both matches' arms the hint at every tail flag; the
+typed run hands none (out of tail position), and so does the reference (`Run.tailHint`, D156); since D124 the untyped
+run hands none there too. Smallest run: `let y = Z; N` with
 `inductive L (A : Type) := N`, untyped, out of tail position, at the hint `L(Nat)`: the tail's bare `N` records the
-hint's parameter (`N` at `[Nat]`); at no hint it records none; the typed run rejects it ("cannot infer"). After
-main's D124 the untyped run at the hint records `[]` too. The untyped steps state it as named checker facts, one
-per site (`UntypedLetTailNoHint`, `UntypedSeqTailNoHint`, `UntypedMatchNatArmNoHint`,
-`UntypedMatchIndArmNoHint`): FALSE today (the pins below), true after D124.
+hint's parameter (`N` at `[Nat]`) before D124; at no hint it records none; the typed run rejects it ("cannot
+infer"). Since D124 the untyped run at the hint records `[]` too. The untyped steps state it as named checker facts,
+one per site (`UntypedLetTailNoHint`, `UntypedSeqTailNoHint`, `UntypedMatchNatArmNoHint`,
+`UntypedMatchIndArmNoHint`): TRUE since the merge, PROVED (`Machine.untypedLetTailNoHint` and its three siblings,
+`Steps/Machine/HintFacts.lean`).
 
 **`split` has no reference clause (finding).** `split f in u` and `split f { … }` (D61) are accepted in tail position;
 `runT` has no clause for them (`.prim _ _ => SM.fail`), so the reference's run of every body ending in one fails
@@ -119,9 +121,13 @@ def tLetN : Term := .letIn ⟨"y"⟩ .zero (.ctor "L" 0 ⟨"N"⟩ [] [])
 
 -- not in tail position
 #guard stL.curTail == false && stL.tailNext == false
--- TODAY (flips after main's D124): the untyped run at the hint `L(Nat)` hands the tail the hint, and `N` records `Nat`
-#guard Value.exact (outVal (Ochr.eval 100 false tLetN (some (.tInd "L" [.tNat]))) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [.tNat] [])
-#guard !Value.exact (outVal (Ochr.eval 100 false tLetN (some (.tInd "L" [.tNat]))) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [] [])
+-- FLIPPED at main's D124 (merged by machine9): out of tail position the untyped run at the hint `L(Nat)` hands the
+-- tail NO hint, and `N` records nothing, as at no hint (before the merge it recorded `Nat`)
+#guard Value.exact (outVal (Ochr.eval 100 false tLetN (some (.tInd "L" [.tNat]))) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [] [])
+#guard !Value.exact (outVal (Ochr.eval 100 false tLetN (some (.tInd "L" [.tNat]))) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [.tNat] [])
+-- in tail position it hands the hint, as the typed check hands the goal
+#guard Value.exact (outVal (Ochr.eval 100 false tLetN (some (.tInd "L" [.tNat]))) { stL with tailNext := true } 100000).1
+  (.ind "L" 0 ⟨"N"⟩ [.tNat] [])
 -- at no hint it records nothing
 #guard Value.exact (outVal (Ochr.eval 100 false tLetN none) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [] [])
 #guard !Value.exact (outVal (Ochr.eval 100 false tLetN none) stL 100000).1 (.ind "L" 0 ⟨"N"⟩ [.tNat] [])
@@ -147,14 +153,19 @@ def nNat : Value := .ind "L" 0 ⟨"N"⟩ [.tNat] []
 def nNil : Value := .ind "L" 0 ⟨"N"⟩ [] []
 
 #guard stLx.curTail == false && stLx.tailNext == false
--- TODAY (each flips after main's D124 at its site): the untyped run at the hint `L(Nat)` hands the tail or arm the hint
+-- FLIPPED at main's D124 (merged by machine9), each at its site: out of tail position the untyped run at the hint
+-- `L(Nat)` hands the tail or arm NO hint (before the merge it handed it, and `N` recorded `Nat`)
 -- (`Value.exact` reads the recorded parameters; `==` (`Value.beq`) ignores them; each pin is beside its negation)
-#guard Value.exact (outVal (Ochr.eval 100 false tSeqN (some (.tInd "L" [.tNat]))) stL 100000).1 nNat
-#guard !Value.exact (outVal (Ochr.eval 100 false tSeqN (some (.tInd "L" [.tNat]))) stL 100000).1 nNil
-#guard Value.exact (outVal (Ochr.eval 100 false tMatchNatN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNat
-#guard !Value.exact (outVal (Ochr.eval 100 false tMatchNatN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNil
-#guard Value.exact (outVal (Ochr.eval 100 false tMatchIndN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNat
-#guard !Value.exact (outVal (Ochr.eval 100 false tMatchIndN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNil
+#guard Value.exact (outVal (Ochr.eval 100 false tSeqN (some (.tInd "L" [.tNat]))) stL 100000).1 nNil
+#guard !Value.exact (outVal (Ochr.eval 100 false tSeqN (some (.tInd "L" [.tNat]))) stL 100000).1 nNat
+#guard Value.exact (outVal (Ochr.eval 100 false tMatchNatN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNil
+#guard !Value.exact (outVal (Ochr.eval 100 false tMatchNatN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNat
+#guard Value.exact (outVal (Ochr.eval 100 false tMatchIndN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNil
+#guard !Value.exact (outVal (Ochr.eval 100 false tMatchIndN (some (.tInd "L" [.tNat]))) stLx 100000).1 nNat
+-- in tail position each hands the hint
+#guard Value.exact (outVal (Ochr.eval 100 false tSeqN (some (.tInd "L" [.tNat]))) { stL with tailNext := true } 100000).1 nNat
+#guard Value.exact (outVal (Ochr.eval 100 false tMatchNatN (some (.tInd "L" [.tNat]))) { stLx with tailNext := true } 100000).1 nNat
+#guard Value.exact (outVal (Ochr.eval 100 false tMatchIndN (some (.tInd "L" [.tNat]))) { stLx with tailNext := true } 100000).1 nNat
 -- at no hint each records nothing
 #guard Value.exact (outVal (Ochr.eval 100 false tSeqN none) stL 100000).1 nNil
 #guard !Value.exact (outVal (Ochr.eval 100 false tSeqN none) stL 100000).1 nNat
@@ -164,31 +175,33 @@ def nNil : Value := .ind "L" 0 ⟨"N"⟩ [] []
 #guard !Value.exact (outVal (Ochr.eval 100 false tMatchIndN none) stLx 100000).1 nNat
 
 /-! The four sites of main's D124, ONE named fact each (the lead's ruling (b), lead25's brief: kept separate so
-each is discharged when its change lands). Each is FALSE today (the pins above; `tLetN` for the `let`), true after: out of tail position (`curTail = false`) the untyped `evalCore` of the former at any hint runs
-exactly as at no hint. In tail position the untyped run, the typed check and the reference all hand the hint. -/
+each is discharged when its change lands). Each was FALSE before the merge (the pins above, flipped; `tLetN` for the
+`let`) and is PROVED since (`Steps/Machine/HintFacts.lean`): out of tail position (`curTail = false`) the untyped
+`evalCore` of the former at any hint runs exactly as at no hint. In tail position the untyped run, the typed check
+and the reference all hand the hint. -/
 
-/-- **D124 at a `let`'s tail** (FALSE today, pin `tLetN`). -/
+/-- **D124 at a `let`'s tail** (pin `tLetN`; PROVED, `Machine.untypedLetTailNoHint`). -/
 def UntypedLetTailNoHint : Prop :=
   ∀ (n : Nat) (x : Hint) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
     st.curTail = false →
     (Runs (Ochr.evalCore (n + 1) false (.letIn x u w) hint) st bh r st' ↔
       Runs (Ochr.evalCore (n + 1) false (.letIn x u w) none) st bh r st')
 
-/-- **D124 at a `;`'s tail** (FALSE today, pin `tSeqN`). -/
+/-- **D124 at a `;`'s tail** (pin `tSeqN`; PROVED, `Machine.untypedSeqTailNoHint`). -/
 def UntypedSeqTailNoHint : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
     st.curTail = false →
     (Runs (Ochr.evalCore (n + 1) false (.seq u w) hint) st bh r st' ↔
       Runs (Ochr.evalCore (n + 1) false (.seq u w) none) st bh r st')
 
-/-- **D124 at a match on a number's arms** (FALSE today, pin `tMatchNatN`). -/
+/-- **D124 at a match on a number's arms** (pin `tMatchNatN`; PROVED, `Machine.untypedMatchNatArmNoHint`). -/
 def UntypedMatchNatArmNoHint : Prop :=
   ∀ (n : Nat) (p : Place) (z u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
     st.curTail = false →
     (Runs (Ochr.evalCore (n + 1) false (.matchNat p z u) hint) st bh r st' ↔
       Runs (Ochr.evalCore (n + 1) false (.matchNat p z u) none) st bh r st')
 
-/-- **D124 at a match on a declared inductive's arms** (FALSE today, pin `tMatchIndN`). -/
+/-- **D124 at a match on a declared inductive's arms** (pin `tMatchIndN`; PROVED, `Machine.untypedMatchIndArmNoHint`). -/
 def UntypedMatchIndArmNoHint : Prop :=
   ∀ (n : Nat) (p : Place) (ty : String) (arms : List (Hint × Term)) (hint : Option Value) (st st' : MState) (bh : Nat)
     (r : Value × Option Value),
@@ -213,12 +226,12 @@ ochr JHint {
 -- TODAY: the stuck path hands `P(a)` (JL accepted), the computing path none (JL2 rejected)
 #guard (Ochr.Test.runWith (some Prelude) "JHint" JHint {} (located := false)).allAsExpected
 
-/-! ## `clone`/`peek` of a place (the lead's (e); main's D122, landed on main, not merged into this line) -/
+/-! ## `clone`/`peek` of a place (the lead's (e); main's D122, merged into this line by machine9) -/
 
-/-- **`clone` and `peek` take a place** (a fact about the checker; FALSE on this line's checker, true after main's
-D122 is merged): every successful `evalCore` of `clone(u)` or `peek(u)` has a place operand. Pin, to flip:
-`MasterGuards`' `isOk (checkDef defCL)` (`let x = S(Z); let y = clone(S(x)); x` accepted today). The `prim` step
-states it, counted, until the merge. -/
+/-- **`clone` and `peek` take a place** (a fact about the checker; FALSE on this line's checker before the merge of
+main's D122, PROVED since: `Machine.clonePeekPlace`, `Steps/Machine/HintFacts.lean`): every successful `evalCore` of
+`clone(u)` or `peek(u)` has a place operand. Pin, FLIPPED at the merge: `MasterGuards`' `checkDef defCL`
+(`let x = S(Z); let y = clone(S(x)); x`, accepted before, rejected since). -/
 def ClonePeekPlace : Prop :=
   ∀ (n : Nat) (typed : Bool) (f : String) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat)
     (r : Value × Option Value),

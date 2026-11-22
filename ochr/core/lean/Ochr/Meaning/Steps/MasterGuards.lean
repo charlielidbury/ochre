@@ -5,8 +5,9 @@ import Ochr.Meaning.Steps.RecGuards
 
 Every `#guard` runs the checker.
 
-**`clone` of a term that is not a place.** The surface produces `clone` only of a place (`Surface.lean`:
-"clone takes a place"), but the core checker accepts `clone(u)` for every `u`: it runs `u` in copying
+**`clone` of a term that is not a place** (FIXED by main's D122, merged into this line by machine9: the core checker
+now rejects `clone` and `peek` of anything but a place; the pin below flipped). The surface produces `clone` only of a
+place (`Surface.lean`: "clone takes a place"), but the core checker accepted `clone(u)` for every `u`: it ran `u` in copying
 mode (`withCopying`), where every read of a place leaves it in place. The reference's `clone` clause
 reads a place operand in place too, but runs any other operand by its plain run (`runT false hint u`),
 whose read of a number variable MOVES it (the table's copy decision of a `let`-bound number is `.other`'s,
@@ -72,8 +73,9 @@ def bodyCL : Term :=
 
 def defCL : Def := { name := "CL", hs := [], doms := [], cod := .nat, dec := none, body := bodyCL }
 
--- the core checker accepts it: `S(x)` under `clone` copies `x`
-#guard isOk (checkDef defCL) {} 100000
+-- main's D122 (merged by machine9, spine-machine10): the core checker REJECTS it, "clone takes a place"; before the
+-- merge it accepted it (`S(x)` under `clone` copied `x`), which was this finding. `HintSites.ClonePeekPlace` is now true
+#guard !isOk (checkDef defCL) {} 100000
 
 /-- The same without `clone`. -/
 def bodyNC : Term := .letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ (.succ (.place (.var 0))) (.place (.var 1)))

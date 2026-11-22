@@ -117,6 +117,7 @@ structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
   funType : ∀ (fv : Value) (fT : Option Value), GrowsIn tb (Ochr.funType nf fv fT)
   callType : ∀ (piTy : Value) (ws : Array Value) (tys : Array (Option Value)), GrowsIn tb (Ochr.callType nf piTy ws tys)
   declCallType : ∀ (piTy : Value) (ws : Array Value), GrowsIn tb (Ochr.declCallType nf piTy ws)
+  forceHint : ∀ (hint : Option Value), GrowsIn tb (Ochr.forceHint nf hint)
   paramTypes : ∀ (piTy : Value) (ws : List Value) (need : List Nat), GrowsIn tb (Ochr.paramTypes nf piTy ws need)
   bindTy? : ∀ (pos : Pos), GrowsIn tb (Ochr.bindTy? nf pos)
   endBorrowArgs : ∀ (n : Nat), GrowsIn tb (Ochr.endBorrowArgs nf n)
