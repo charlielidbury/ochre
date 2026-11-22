@@ -489,6 +489,47 @@ After the merge (same branch, commits da155db36, 1d97ac932):
   holds `⊥`, bland). `checkFix`'s inversion (for `FixRunI`, `FixRunP`, `FixRunR`, `FixRunQ`, shared): the steps are
   listed in machine8's plan above.
 
+### machine10 (2026-11-22): main merged (D125, D126, D124 for J and for an embedded value); step 1 found six facts false; eight proofs
+
+Branch `spine-machine11` (worktree `ochre-machine5`). Merge: origin/spine 36c6f669 + main up to 021ca7cd5, no
+conflict; one new block function, `jMotiveAt` (regen.py lists it under StepEval; IH, Zero, All gained its lines).
+Guards flipped, all in `Steps/HintSites.lean`: SplitData's braces form is `split IsZ(n) { … }` and H/H2/H3 are
+accepted (D125); the untyped run of `split` runs its term; JHint.JL2 is accepted.
+
+READ (step 1; reasons in the lane report, scratchpad `reports/machine10.md`):
+- FALSE: `ItemFacts` (twice: an embedded value in an arbitrary item's field type, `EV := MkEV(x : L(⟨0⟩))`;
+  `VaryValFree` on the surface program `TL (A : Type) (B : (let z = A; Type)) := MkTL(x : B)`, because
+  `paramIsType` is syntactic while D55 reads the declared reading); `DecLocal.join` (the join regrains entry
+  places: a CHECKER BUG, `f3`/`h` in `reports/machine10-JoinRegrain.lean` falsely rejected; fix: grain only the
+  places the arms add); `DecStable` (unconstrained `st0`); `SuccFlightG` (untyped, a borrow under `S`, WF1);
+  `LetPushG` (the binding's reading unconstrained, `ShapeFacts.fits`).
+- TRUE: `inds_prefix`, `NamesFact` (resolved items), `FieldLevels`' checker part, `DecLocal`'s caps/rep/inv,
+  `ReadInvD`, `PlaceInvD`, `EvalInvDT`, the checker parts of `PlaceTypeG`, `AccessG`, `SuccStrictG`, `LetDropG`,
+  `DropValueG`.
+
+PROVED (standard axioms, root-imported):
+- `EvalInvT.lean`: `evalInvDT`; `PlaceInv.lean`: `placeInvD`, `stepPlace_direct5` (`stepPlace_direct` assuming 5).
+- `CheckItem.lean`: `runs_checkInd_tables`, `runs_checkDef_tables`, `checkItem_tables` (what an accepted item does
+  to the declarations and globals), `indsOf_take_prefix` (= `Consistency.inds_prefix` with no hypothesis; the lead
+  lane can replace that `sorry` by it after importing CheckItem), Keep/grows lemmas for checkInd's checks.
+- `CheckIndChecks.lean`: `runs_forIn_all`, `runs_fieldTele_vals`, `firstOrder_foB`, `readViolation_rvB`.
+
+NOT DONE: `CheckIndGivesChecks`'s assembly (the plan is in CheckIndChecks.lean's docstring: re-peel `checkInd` as
+`runs_checkInd_tables` does, keeping `declared`'s answer for `fresh`, the [Ind] loop's `late.isEmpty` for `TeleOk`
+via `runs_forIn_all` twice, and through `runs_forIn_all` + `runs_fieldTele_vals` the continuation's run at each
+field: peel its ifs, `firstOrder_foB`/`readViolation_rvB` at a state whose declarations are `declEnv Γ0 d'`
+(TablesGrow from the stub write), and `sortNestViolation` = none; `nest` by `nestableSet` not reading `nestable`).
+`ReadInvD` needs "the access keeps the mode" (copying/inPlace), which no lemma gives yet (a mode analogue of
+`machineGrows` would). Then the predecessor's list: `checkDef`/`checkFix` down to the end-of-body check,
+`InvPushType`, `InvMoveBorrow`.
+
+TRAPS found here: (1) `MachineMono.lean` declares a `grows_go` MACRO (for `GrowsM`) beside `Tactic.lean`'s
+elaborator; a module importing both gets the macro, which does nothing on `GrowsIn`: use `grows_goI` (declared in
+CheckItem.lean). (2) `lake env lean` does not run imported `initialize`, so `@[grows]` is empty there: test with
+`lake build <module>`. (3) After `unfold f at h`, `dsimp only at h` reduces instance projections and breaks the
+`@[grows]` lookup; use `dsimp (config := { proj := false }) only at h`. (4) `split at h` on a large `if` exceeds
+simp's step limit: `cases`/`by_cases` the condition and `rw [if_pos …]`/`rw [if_neg …]`.
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed
