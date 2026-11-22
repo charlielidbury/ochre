@@ -61,14 +61,19 @@ theorem runT_tl_indep {K : RunCtx} {ρ : Assignment} {φ : Future} (t : Term) (h
 machine lane; guarded below): the run is `eval` of the term, typed, two fuel down, with the goal as its
 hint, from a state with the same kernel, mode, handed-down reading, tail flag and goal (the editor's
 `locatedTail` touches none of them), returning a type, followed by the continuation on the value and
-that type, which ends the run. -/
+that type, which ends the run UP TO THE EDITOR'S FIELDS: `located` puts back the editor's argument ranges and
+innermost range (`locs.callArgs`, `locs.here`) after the continuation, so the run's end is the continuation's
+end with `locs` replaced. RESTATED by machine9 (2026-11-22): it said the continuation ends at `st'` itself,
+false where the editor's table is not empty (counterexample in `TailGuards` below: a continuation that reads
+`locs.callArgs`). -/
 def TailOtherInv : Prop :=
   ∀ (n : Nat) (t : Term) (k : Value → Value → M Unit) (st st' : MState) (bh : Nat),
     tailShaped t = false → Runs (Ochr.checkTail n t k) st bh () st' →
-    ∃ (m : Nat) (st₀ st₁ : MState) (v T : Value) (b₁ b₂ : Nat),
+    ∃ (m : Nat) (st₀ st₁ st₂ : MState) (v T : Value) (b₁ b₂ : Nat),
       m + 2 ≤ n ∧ Kern st st₀ ∧ ModeEq st st₀ ∧ st₀.tailDecl = st.tailDecl ∧ st₀.tailNext = st.tailNext ∧
       st₀.goal = st.goal ∧
-      Runs (Ochr.eval m true t st.goal) st₀ b₁ (v, some T) st₁ ∧ Runs (k v T) st₁ b₂ () st'
+      Runs (Ochr.eval m true t st.goal) st₀ b₁ (v, some T) st₁ ∧ Runs (k v T) st₁ b₂ () st₂ ∧
+      { st₂ with locs := st'.locs } = st'
 
 namespace TailGuards
 
@@ -85,6 +90,21 @@ def kOne : Value → Value → M Unit := fun v T => if v == .succ .zero && T == 
 #guard tailShaped (.succ .zero) == false && tailShaped (.prim "clone" [.place (.var 0)]) == false &&
   tailShaped (.letIn ⟨"x"⟩ .zero .zero) == true && tailShaped (.prim "rewrite" [.zero, .zero]) == true
 
+/-- A continuation that succeeds exactly where the editor's argument ranges are empty. -/
+def kLocs : Value → Value → M Unit := fun _ _ => do
+  if (← get).locs.callArgs.isEmpty then pure () else err "k"
+
+/-- A state whose editor table is not empty (one unrelated address) and whose argument ranges are set. -/
+def tblE : Std.HashMap USize Loc := ({} : Std.HashMap USize Loc).insert 12345 ⟨0, 1⟩
+def stE : MState := { env := #[{}], goal := some .tNat, locs := { table := tblE, callArgs := #[some ⟨3, 4⟩] } }
+
+-- the counterexample to `TailOtherInv`'s first form (the continuation ending at the run's end): `located` clears
+-- the argument ranges while the term and the continuation run, and puts them back after, so `kLocs` succeeds
+-- inside the run, the run ends with the ranges set, and `kLocs` fails from every state with them set
+#guard isOk (Ochr.checkTail 100 .zero kLocs) stE 100000
+#guard (Ochr.Meaning.Regress.GenNeutralContent.outSt (Ochr.checkTail 100 .zero kLocs) stE 100000).locs.callArgs.size == 1
+#guard !isOk (kLocs .zero .tNat) (Ochr.Meaning.Regress.GenNeutralContent.outSt (Ochr.checkTail 100 .zero kLocs) stE 100000) 100000
+
 end TailGuards
 
 /-! ## The step -/
@@ -94,8 +114,12 @@ context and future. ASSUMES 1 fact about the checker, `TailOtherInv`; the model 
 `runT_tl_indep`, is proved. -/
 theorem tStepOther (hT : TailOtherInv) (K : RunCtx) (φ : Future) : TStepOther K φ := by
   intro n ih Δ ρ t ht st k s π bh st' hm htn hne htd hk hp hr hS hv hab hnh hD hrun
-  obtain ⟨m, st₀, st₁, v, T, b₁, b₂, hmn, hk₀, hme₀, htd₀, htn₀, hg₀, hev, hkr⟩ := hT n t k st st' bh ht hrun
-  have hD₁ : DecTab K.D st₁ := hD.back (hk v T st₁ b₂ () st' hkr)
+  obtain ⟨m, st₀, st₁, st₂, v, T, b₁, b₂, hmn, hk₀, hme₀, htd₀, htn₀, hg₀, hev, hkr, hst₂⟩ :=
+    hT n t k st st' bh ht hrun
+  -- the run's end is the continuation's but for the editor's fields, which no table reads
+  have hD₂ : DecTab K.D st₂ :=
+    DecTab.of_kern (by rw [← hst₂]; exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hD
+  have hD₁ : DecTab K.D st₁ := hD₂.back (hk v T st₁ b₂ () st₂ hkr)
   have hab₀ : t.absBelow st₀.absTy.size := by rw [← hk₀.absTy]; exact hab
   -- the hint handed down is the state's goal, whose unknowns `Pre`'s (WF6) bounds (`Refd.goal`; docs/31 D179)
   have hgb : HintBelow st.goal st₀.absTy.size := fun G hG σ hσ => by
@@ -104,7 +128,7 @@ theorem tStepOther (hT : TailOtherInv) (K : RunCtx) (φ : Future) : TStepOther K
   have hO := (ih m (by omega) Δ ρ).1 t st₀ st₁ true st.goal v (some T) s π (hm.of_modeEq hme₀)
     (fun _ => htn₀.trans htn) (by rw [← ColumnC.size_of_erase hk₀.env]; exact hne)
     (Or.inl (htd₀.trans htd)) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv hab₀ hgb hnh (fun e => by cases e) hD₁ b₁ hev
-  refine ⟨st₁, v, T, ⟨b₂, st', hkr⟩, ?_, (Kept.of_kern hk₀ hme₀).trans hO.2⟩
+  refine ⟨st₁, v, T, ⟨b₂, st₂, hkr⟩, ?_, (Kept.of_kern hk₀ hme₀).trans hO.2⟩
   rw [runT_tl_indep t ht true st₀.tailNext]
   exact Out.of_kern hk₀ (Kern.rfl' _) hO.1
 
