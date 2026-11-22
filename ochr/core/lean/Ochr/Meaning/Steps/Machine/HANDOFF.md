@@ -473,6 +473,22 @@ Regenerated with the scripts (their paths name the worktree `ochre-machine`: cop
 PROVED (`HintFacts.lean`): `HintSites.UntypedLetTailNoHint`, `UntypedSeqTailNoHint`, `UntypedMatchNatArmNoHint`,
 `UntypedMatchIndArmNoHint` (`runMachineL` of the two runs equal past the tail flag's read), `ClonePeekPlace`.
 
+After the merge (same branch, commits da155db36, 1d97ac932):
+- READ: `TailOtherInv` FALSE as stated (`located` restores `locs.callArgs`/`locs.here` after the continuation when the
+  editor's table is non-empty; counterexample `MasterTail.TailGuards.stE`/`kLocs`); restated (`∃ st₂, Runs (k v T)
+  st₁ b₂ () st₂ ∧ { st₂ with locs := st'.locs } = st'`) and PROVED (`TailOther.lean`: `Runs.locatedTail_inv`, then
+  `checkTailAt`'s default case; `tStepOther_free`). `SplitNotInv`, `CallKInv`, `InvMoveBorrow`, `InvPushType`,
+  `CheckIndGivesChecks` read TRUE (reasons in the commit message of da155db36).
+- Tools for the next proofs: `Runs.locatedTail_inv` (any `checkTail` run reaches its `checkTailAt` from a `LocsEq`
+  state and ends `LocsEq`); `tailOtherInv` turns any `checkTail` of a non-tail-shaped body into its typed `eval` at
+  the goal (so `FixRunI`/`FixRunQ` reduce to inverting `checkDef`/`checkFix` down to `checkTail`).
+- NOT DONE, with the obstacle: `InvPushType` needs `Value.Bland`/`Simple` (InvEnv) widened to the atoms `Nat`/`Unit`
+  (`PosRel`'s fwd/bwd and `inv_step`'s per-value condition use them; every lemma destructing them gets two cases);
+  `InvMoveBorrow` needs `PosRel`'s moved-borrow clause (`NumBorrow`, `w.Num`) widened to a borrow of a `NumAt`
+  numeral (K's `borrow₀ σ0`), with `τ` the swap of the binding and the new temporary (injective; the binding then
+  holds `⊥`, bland). `checkFix`'s inversion (for `FixRunI`, `FixRunP`, `FixRunR`, `FixRunQ`, shared): the steps are
+  listed in machine8's plan above.
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed
