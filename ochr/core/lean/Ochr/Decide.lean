@@ -1112,7 +1112,8 @@ termination_by structural fuel
 net of that arm's refills. So is every variable a function in any arm captures (K1(a)) and
 every borrow variable an arm reads or assigns whole (K1(b)), as the block takes them. Each is
 taken at its grain (`jdGrain`): a move under the fields of an unknown constructor is a move of
-the scrutinee whole, Rust's "maybe partly moved"; and a place the match uses whole, part of which
+the scrutinee whole, Rust's "maybe partly moved"; a place already moved at entry is carried as
+it is (D129); and a place the match uses whole, part of which
 is moved, is moved whole (K1(g)). So the join is exactly what the block takes by move. -/
 def jdMatch (fuel : Nat) (sc : List DeclInfo) (al : List (Option Place)) (t : Term) (arms : List Term)
     (acc : List Place) : M (List Place) := do
@@ -1127,8 +1128,12 @@ def jdMatch (fuel : Nat) (sc : List DeclInfo) (al : List (Option Place)) (t : Te
       if i ≥ c' + c && (k == .read || k == .assign) then
         let o := i - c'
         if (← placeDecl fuel' sc (.var o)) matches .ref _ then u := jdAdd u (.var (o - c))
+  -- D129: only the places the arms add are taken at their grain; the places already moved at
+  -- entry (`acc`) are carried as they are. They were moved exactly, on every path, before the
+  -- match; re-grained, a moved `x.n` of a type with several constructors came back as the whole
+  -- `x`, and the join dropped `x.m` with it
   let mut grained : List Place := []
-  for m in u do grained := jdAdd grained (← jdGrain fuel' m)
+  for m in u do grained := jdAdd grained (← if acc.contains m then pure m else jdGrain fuel' m)
   -- K1(g): a place the match uses whole (not as a scrutinee), part of which some arm moves, is
   -- taken whole by the block, so it is moved whole: the shortest such prefix of each moved place
   let mut wholes : List Place := []
