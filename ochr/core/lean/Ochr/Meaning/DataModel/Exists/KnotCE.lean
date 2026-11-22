@@ -14,7 +14,7 @@ carries the knot's record (`Sem.dat d.name r c fs`). So an earlier record may re
 through a value parameter, at any depth, and put what it reads at a short path; `hpar` does not
 forbid it, and then the knot's record must equal its own flip at some path.
 
-The declarations (both accepted by the checker, asserted natively below):
+The declarations (both accepted by the checker when this file was written; `D2` is rejected since D120, asserted natively below):
 `Pt (A : Type) (a : A) := MkPt` and `D2 := D2Leaf | D2Node(x : D2, p : Pt(D2, x))`. Field `p`'s
 type is `Pt` at the code of `D2` and at the earlier field `x`, a member of `D2` at the knot's record.
 
@@ -68,12 +68,14 @@ def ceDecls : List IndDecl := [ptD, d2D]
 open Ochr.Test in
 ochr KnotCEA {
   inductive Pt (A : Type) (a : A) := MkPt
-  inductive D2 := D2Leaf | D2Node(x : D2, p : Pt(D2, x))
+  -- rejected since D120 (the counterexample below is why); accepted when this file was written
+  reject inductive D2 := D2Leaf | D2Node(x : D2, p : Pt(D2, x))
 }
 
 open Ochr.Test in
--- both declarations are accepted
-#guard (Ochr.Test.run "KnotCEA" KnotCEA).rejectedWith []
+-- `Pt` is accepted; `D2` is rejected by D120 (a variable mentions what its declared type mentions)
+#guard (Ochr.Test.run "KnotCEA" KnotCEA).rejectedWith [
+  ("D2", "field p of D2Node : Pt(D2, x): the argument at the value parameter a of Pt reads x, whose declared type D2 mentions D2")]
 
 /-- The block's items, after the library's. -/
 def ceItems : List Item :=
@@ -81,9 +83,10 @@ def ceItems : List Item :=
     | .ok it => some it
     | .error _ => none
 
--- after the library and the block, the checker's last two inductive declarations are `ceDecls`
+-- after the library and the block, the checker's last inductive declaration is `ptD`; `d2D` is `D2`
+-- as the checker stored it before D120 (it stores nothing for `D2` now)
 #guard let inds := (globalsAfter {} ceItems).2
-  inds.length == 6 && ((inds.drop 4).zip ceDecls).all fun ab => sameDecl ab.1 ab.2
+  inds.length == 5 && sameDecl (inds.getD 4 default) ptD
 
 /-! ## The model -/
 

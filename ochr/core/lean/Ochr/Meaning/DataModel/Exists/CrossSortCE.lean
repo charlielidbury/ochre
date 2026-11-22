@@ -3,7 +3,7 @@ import Ochr.Meaning.DataModel.Exists.Knot.Agree
 import Ochr.Test
 
 /-!
-# Nesting across sorts: accepted by the checker, rejected by Lean (exists6, 2026-11-22)
+# Nesting across sorts: accepted by the checker, rejected by Lean (exists6, 2026-11-22; rejected by the checker too since D121)
 
 Rule (A) (docs/34 §18.6) checks, at an occurrence `M(…d…)` of a data-sorted `d`, that `M` is
 data-sorted. It does not follow the parameter on: `M` may pass it to a declaration of the other sort.
@@ -39,37 +39,43 @@ open Ochr Ochr.Test
 ochr CrossSort {
   inductive PP (A : Type) : Prop := MkPP(x : A)
   inductive E (A : Type) := MkE(p : PP(A))
-  inductive D := MkD(e : E(D))
+  reject inductive D := MkD(e : E(D))
   inductive Wrap (P : Prop) := MkWrap(h : P)
-  inductive QW : Prop := MkQW(w : Wrap(QW))
+  reject inductive QW : Prop := MkQW(w : Wrap(QW))
   inductive E2 (P : Prop) : Prop := MkE2(w : Wrap(P))
-  inductive Q : Prop := MkQ(e : E2(Q))
+  reject inductive Q : Prop := MkQ(e : E2(Q))
 }
 
--- all seven are accepted
-#guard (Ochr.Test.run "CrossSort" CrossSort).rejectedWith []
+-- all seven were accepted when this file was written; since D121 (rule (A*) in the checker) `D`, `QW`
+-- and `Q` are rejected
+#guard (Ochr.Test.run "CrossSort" CrossSort).rejectedWith [
+  ("D", "field e of MkD : E(D): D occurs at the parameter A of E, which is not nestable in E: E passes it to a declaration of the other sort"),
+  ("QW", "field w of MkQW : Wrap(QW): QW, a proposition, occurs inside an argument of Wrap, a type of data"),
+  ("Q", "field e of MkQ : E2(Q): Q occurs at the parameter P of E2, which is not nestable in E2: E2 passes it to a declaration of the other sort")]
 
 def items : List Item :=
   (Prelude.decls ++ CrossSort.decls).filterMap fun d => match Surface.resolveProgram (Prelude.decls ++ CrossSort.decls) d with
     | .ok it => some it
     | .error _ => none
 
--- `PP`'s, `E`'s, `Wrap`'s and `E2`'s parameters are stored nestable
+-- `PP`'s and `Wrap`'s parameters are stored nestable; `E`'s and `E2`'s were when this file was
+-- written, and are not since D121 (each passes its parameter to a declaration of the other sort)
 #guard ((globalsAfter {} items).2.filter (fun d => ["PP", "E", "Wrap", "E2"].contains d.name)).map
-  (fun d => (d.name, d.nestable)) == [("PP", [true]), ("E", [true]), ("Wrap", [true]), ("E2", [true])]
+  (fun d => (d.name, d.nestable)) == [("PP", [true]), ("E", [false]), ("Wrap", [true]), ("E2", [false])]
 
-/-! ## Rule (A*) on these declarations, as the checker stores them today -/
+/-! ## Rule (A*) on these declarations, as the checker stores them today
+
+Before D121 (A*) failed at `E` and `E2` by (ii) (their stored nestable parameter was passed to a
+declaration of the other sort) and at `QW` by (i) (it occurs in the data-sorted `Wrap`); `D` and `Q`
+passed (A*) at themselves and were excluded only because `E`'s and `E2`'s parameters stop being
+nestable under (ii). With D121 in the checker, (A*) holds at every declaration it stores, and `D`,
+`QW`, `Q` are not stored. -/
 
 open Ochr.Meaning.DataModel.Exists.Knot in
--- (A*) holds at `PP`, `Wrap`; fails at `E` and `E2` by (ii) (their stored nestable parameter is
--- passed to a declaration of the other sort), at `QW` by (i) (it occurs in the data-sorted `Wrap`).
--- `D` and `Q` pass (A*) at themselves; they are excluded because `E`'s and `E2`'s parameters stop
--- being nestable under (ii), so K4's nesting check rejects their occurrences.
 #guard let inds := (globalsAfter {} items).2
-  let ok (n : String) : Bool := match inds.find? (·.name == n) with
-    | some M => AStarOk inds M
-    | none => false
-  [ok "PP", ok "E", ok "D", ok "Wrap", ok "QW", ok "E2", ok "Q"] == [true, false, true, true, false, false, true]
+  let ok (n : String) : Option Bool := (inds.find? (·.name == n)).map (AStarOk inds)
+  [ok "PP", ok "E", ok "D", ok "Wrap", ok "QW", ok "E2", ok "Q"] ==
+    [some true, some true, none, some true, none, some true, none]
 
 /-! ## The canonical record of `E` is parametric and faithful (the corrected claim) -/
 
@@ -83,9 +89,10 @@ def eD : IndDecl :=
   { name := "E", params := [(hn "A", .sort 1)], sort := 1, ctors := [("MkE", [("p", .tind "PP" [.place (.var 0)])])],
     nestable := [true] }
 
--- the checker stores `PP` and `E` so (after the library's four)
+-- the checker stores `PP` so, and `E` so but for its parameter's nestability (after the library's
+-- four); `eD` is `E` as stored before D121, whose canonical record is shown parametric below
 #guard let inds := (globalsAfter {} items).2
-  sameDecl (inds.getD 4 default) ppD && sameDecl (inds.getD 5 default) eD
+  sameDecl (inds.getD 4 default) ppD && sameDecl (inds.getD 5 default) { eD with nestable := [false] }
 
 theorem semAgree_head {N : Nat → Bool} {n : Nat} {ps ps' : List Sem} (hN : N 0 = true) (hp : ParAgree N n ps ps') :
     SemAgree n (ps.getD 0 .err) (ps'.getD 0 .err) := by

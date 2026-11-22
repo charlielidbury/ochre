@@ -323,6 +323,12 @@ def NestSortB (Γ : List IndDecl) (M : IndDecl) : Bool :=
 def AStarOk (Γ : List IndDecl) (d : IndDecl) : Bool :=
   (d.ctors.all fun cs => cs.2.all fun f => occSortB Γ d f.2) && NestSortB Γ d
 
+/-- Rule (A*) at `Prop`-sorted declarations only: the lead's fallback variant (rule (A) for data-sorted
+declarations, the same-sort rule for `Prop`-sorted ones). It is all the truth-first construction
+assumes (`General.truth_exists`'s `hstar`); the uniform rule (`AStarOk` everywhere) implies it. The knot
+(`knot_exists`) assumes neither. -/
+def AStarPropOk (Γ : List IndDecl) (d : IndDecl) : Bool := d.sort != 0 || AStarOk Γ d
+
 /-! ## The grammar for a `Prop`-sorted declaration (truth first)
 
 `PSpine` is `Spine` with (A) read for `Prop`: a varying type argument (one that mentions `d` or a

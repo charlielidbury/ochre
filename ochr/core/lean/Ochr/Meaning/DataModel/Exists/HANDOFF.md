@@ -35,6 +35,13 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `CrossSortCE.lean`: the checker accepts nesting across sorts that Lean rejects. Rule (A*) ADOPTED by the lead (subject to measurement); its predicates are `Knot/Grammar.lean`'s `occSortB`/`NestSortB`/`AStarOk` (checker6's spec: keep them exact). My first claim that `hpar` is false for `E` was WRONG: `hpar_E`/`fields_E` check that E's canonical record is parametric and faithful; the knot does not need (A*); truth-first does.
 - `TruthCE.lean`: `truth_exists` as written is false (kernel-checked; no hypothesis on earlier records). `PropMono.lean`: `mono_prop` proved (its content is its hypothesis).
 
+## Which grammar predicate each theorem assumes (the lead's instruction, 2026-11-22)
+
+`checker6` measures two variants: the uniform rule (A*), and the fallback (rule (A) for data-sorted declarations, the same-sort rule for `Prop`-sorted ones only). Either must discharge both constructions, so keep their hypotheses separate and minimal:
+- `Knot.knot_exists` (data-sorted): `GrammarOk K.Γ d` only (`spineB`: first-order grammar, (A), (B), (B2)). NO same-sort predicate (`occSortB`, `NestSortB`, `AStarOk` are not assumed; `CrossSortCE.hpar_E` shows the knot does not need them).
+- `General.truth_exists` (`Prop`-sorted, restated, `sorry`): `PGrammarOk K.Γ d` (`pspineB`: the grammar with (A) read for `Prop`, which includes (A*)(i) at `d`'s own occurrences) and `AStarOk K.Γ M` for `Prop`-sorted `M` only (`hstar`; `Grammar.AStarPropOk` is the per-declaration form); `hmono` likewise only at `Prop`-sorted `M`.
+- `mono_prop`, `lfpP_fixed`, `runT_congrR`: no grammar predicate.
+
 ## Next: the truth-first construction (`General.truth_exists`, restated, `sorry`)
 
 Done for it: `PropMono.mono_prop` (generalized to `ShapeLe`: equal shapes, weaker proposition leaves, or `Prop`-sorted sub-records with inhabitation implied), `Truth.lean` (`lfpP`, `lfpP_fixed`: the least fixed point of a monotone operator, impredicative), the restated statement (hypotheses `hstar` (rule (A*)), `hmono` (earlier records `ShapeLe`-monotone), `hpty`, `hD`, `hK`; conclusions: the truth predicate, `d`'s own records `ShapeLe`-monotone (for the induction), faithfulness with members as earlier fields).

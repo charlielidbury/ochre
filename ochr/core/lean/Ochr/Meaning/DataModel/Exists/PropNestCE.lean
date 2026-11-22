@@ -27,14 +27,16 @@ namespace Ochr.Meaning.DataModel.Exists.PropNestCE
 ochr DMXPropNest uses Nats {
   inductive Q : Prop := MkQ(h : And(Q, True))
   inductive BoxP (A : Prop) := MkBP(x : A)
-  inductive P : Prop := MkP(b : BoxP(P))
+  -- rejected since D121 (a proposition nested through a type of data); accepted when this file was written
+  reject inductive P : Prop := MkP(b : BoxP(P))
   inductive Ev (n : Nat) : Prop := EvZ(h : Eq(Nat, n, 0)) | EvSS(m : Nat, h : Ev(m), e : Eq(Nat, n, S(S(m))))
   inductive EvB (n : Nat) : Prop := MkEvB(h : And(EvB(n), Ev(n))) | StopB(h : Ev(n))
   def evb : EvB(0) := StopB[0](EvZ[0](refl))
 }
 
--- every declaration of the block is accepted
-#guard (run "DMXPropNest" DMXPropNest).rejectedWith []
+-- every declaration of the block but `P` is accepted; `P` is rejected by D121
+#guard (run "DMXPropNest" DMXPropNest).rejectedWith [
+  ("P", "field b of MkP : BoxP(P): P, a proposition, occurs inside an argument of BoxP, a type of data")]
 
 open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 
