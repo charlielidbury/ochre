@@ -1508,7 +1508,9 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
   | .zero => pure (.el0 Nat 0, .plain TyM.nat)
   | .tt => pure (.el0 Unit (), .plain TyM.unit)
   | .succ u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.succ u)) (SM.strictS K.dm.read (do
-    let (v, _) ← runT false (.plain TyM.nat) u
+    -- the argument runs with no hint, as the TYPED checker runs it (`evalCore`'s `.succ`: `eval fuel' typed u`;
+    -- docs/31 D171, missed by D119, which handed it `Nat`)
+    let (v, _) ← runT false (.plain TyM.err) u
     pure (v.succ, .plain TyM.nat))) s
   | .eq A a b => SM.onCopy do
     let (TA, _) ← runT false (.plain TyM.err) A

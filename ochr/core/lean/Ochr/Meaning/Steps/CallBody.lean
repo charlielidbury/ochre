@@ -159,7 +159,7 @@ theorem bodyLazy_out (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd :
   have hco : contentOf K φ (.var 0) s = some ((.el0 Nat m, s.tyAt (.bind f j), .bind f j, []), s) := by
     unfold contentOf; rw [hres]; simp only; rw [hacc]; simp [Sem.follow, hval]
   have hrg : ReadGood K.dm.read (s.tyAt (.bind f j)).m (.el0 Nat m) := .inl (by rw [htyN]; exact ⟨m, rfl⟩)
-  have hrun0 : runT K ρ φ false (.plain TyM.nat) (.place (.var 0)) s =
+  have hrun0 : runT K ρ φ false (.plain TyM.err) (.place (.var 0)) s =
       readPlace K φ (.var 0) (K.D.copy (K.D.placeDecl R (.var 0))) s := by
     have hcok : ContentOk K φ (.var 0) s := by
       unfold ContentOk; rw [hres]; exact accessOk_noSites (rel_noSites_at hr hns)
@@ -172,7 +172,7 @@ theorem bodyLazy_out (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd :
     intro s₁ hrd
     unfold bodyI
     rw [runT_succ _ _ _ s hfl]
-    have hb' : (runT K ρ φ false (.plain TyM.nat) (.place (.var 0)) >>= fun x : Res => match x with
+    have hb' : (runT K ρ φ false (.plain TyM.err) (.place (.var 0)) >>= fun x : Res => match x with
         | (v, _) => (pure (v.succ, TyS.plain TyM.nat) : SM Res)) s = some (((Sem.el0 Nat m).succ, .plain TyM.nat), s₁) := by
       simp only [Bind.bind]; rw [hrun0, hrd]; rfl
     unfold SM.strictS

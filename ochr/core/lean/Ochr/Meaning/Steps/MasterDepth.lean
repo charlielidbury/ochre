@@ -143,4 +143,50 @@ theorem letInvD : LetInvD := by
         (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
   · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
 
+/-- **`evalCore` of `S(u)`, at any erased depth** (lead24): the machine lane's `SuccInvR` with `ModeR` for `Mode` and
+the mode at `u`'s entry the entry's (`ModeEq`) where `SuccInvR` concludes `Mode`. -/
+def SuccInvD : Prop :=
+  ∀ (n : Nat) (typed : Bool) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
+    (T? : Option Value),
+    st.tailNext = false → st.tailDecl = none →
+    Runs (Ochr.evalCore (n + 1) typed (.succ u) hint) st bh (v, T?) st' →
+    ∃ (st₀ st₁ : MState) (v₀ : Value) (T₀ : Option Value) (bh₁ : Nat), Kern st st₀ ∧ Form.ModeEq st st₀ ∧
+      st₀.tailNext = false ∧ st₀.tailDecl = none ∧ Runs (Ochr.eval n typed u none) st₀ bh₁ (v₀, T₀) st₁ ∧
+      v = .succ v₀ ∧ T? = some .tNat ∧ Quiet st₁ st' ∧ Form.ModeEq st₁ st' ∧ (∀ D, DecTab D st' → DecTab D st₁) ∧
+      (typed = true → ∃ (st₂ : MState) (bh₂ : Nat),
+        Runs (Ochr.expectTy n "the argument of S" T₀ .tNat) st₁ bh₂ () st₂ ∧ Kern st₂ st')
+
+set_option maxHeartbeats 4000000 in
+/-- **`SuccInvD`, PROVED**: `succInvR`'s proof with the mode free (`evalCore`'s `S` reads no depth). -/
+theorem succInvD : SuccInvD := by
+  intro n typed u hint st st' bh v T? htn htd h
+  unfold Ochr.evalCore at h
+  obtain ⟨b₁, h⟩ := Runs.tick_bind h
+  obtain ⟨w, s₁, b₂, hw, h⟩ := Runs.bind_inv (runs_get_bind.mp h)
+  obtain ⟨-, rfl⟩ := runs_wanted_inv hw
+  change Runs (do
+    let (v, T) ← Ochr.eval n typed u
+    if typed then Ochr.expectTy n "the argument of S" T .tNat
+    pure (Value.succ v, some Value.tNat)) _ _ _ _ at h
+  obtain ⟨⟨v₀, T₀⟩, s₂, b₃, he, h₂⟩ := Runs.bind_inv h
+  clear h
+  cases typed with
+  | false =>
+    simp only [if_false, Bool.false_eq_true] at h₂
+    peel h₂
+    obtain ⟨hvt, rfl⟩ := runs_pure_inv h₂
+    simp only [Prod.mk.injEq] at hvt
+    obtain ⟨rfl, rfl⟩ := hvt
+    exact ⟨_, _, v₀, T₀, _, Kern.rfl' _, Form.ModeEq.rfl' _, htn, htd, he, rfl, rfl, Quiet.refl _,
+      ⟨rfl, rfl, rfl, rfl⟩, fun _ hd => hd, fun e => by cases e⟩
+  | true =>
+    simp only [if_true] at h₂
+    obtain ⟨_, s₃, b₄, hx, h₃⟩ := Runs.bind_inv h₂
+    obtain ⟨hvt, rfl⟩ := runs_pure_inv h₃
+    simp only [Prod.mk.injEq] at hvt
+    obtain ⟨rfl, rfl⟩ := hvt
+    obtain ⟨hq, hme⟩ := expectTy_inv hx
+    exact ⟨_, _, v₀, T₀, _, Kern.rfl' _, Form.ModeEq.rfl' _, htn, htd, he, rfl, rfl, hq, modeEq_form hme,
+      fun _ hd => DecTab.back hd (Runs.grows (grows_expectTy _ _ _ _) hx), fun _ => ⟨_, _, hx, Kern.rfl' _⟩⟩
+
 end Ochr.Meaning.Steps.Machine
