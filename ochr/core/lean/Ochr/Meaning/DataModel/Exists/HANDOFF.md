@@ -1,6 +1,6 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists8` (origin/spine 67051c78 + spine-lead24, the model with D172), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.5 frame locality, §18.6 the knot). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists8`.
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists9` (from `spine-lead25` b54f9c83: the one-list ruling, D174/D177), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.5 frame locality, §18.6 the knot). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists9`.
 
 ## Rulings (made by the lead 2026-11-22)
 
@@ -48,6 +48,22 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - Merged spine-lead24 (D172: the reference runs every parameter of `D(ā)` and of a constructor with no hint). Guard/TruthMono: a value argument's value agrees outright; the truth interpreter `argSemP` runs at no hint too.
 - (B2) REMOVED (docs/34 §18.10 outcome; main's D123 WITHDRAWN by the lead): `SpineArgs.value`/`PSpineArgs.value` have no hint field; `GrammarHintOk`, `HintSteady`, the `*CoreB` copies are deleted. `HintShapes.run_cons_noHint`: the reference's run of DK's bare `Cons(0, Nil[Nat])` with no hint equals its run at `List(Nat)` (parameter solved from the fields).
 
+## Done (exists9), default build, standard axioms (docs/34 §18.14)
+
+- `Knot/CongrN.lean` `runT_congrN`/`meanV_congrN`: the run at any two models and two global tables agreeing at the names a term mentions (`NameOk`, `AgreeN`), embedded values included. Replaces `runT_congrR` for the assembly (gaps (a), (b) of §18.13).
+- Knot restated: `pEntryV` (value parameters kept small; `knotK`, `truthSpec`); `hpty : ParamTyLocalD K.dm d` (the declaration's own parameter types, weak form) in `knot_exists`, `truth_exists` and everything under them. `hint_eq`/`hint_eqP` still take the old `ParamTyLocal` and are dead.
+- `Records.lean` (piece 6, data-sorted): `canonPs` and its lemmas; `ftyK_psAt`, `recK_congr` (the knot reads a varying value parameter only small, given `VaryValFree`); `recCanon`, `recordsFaithful_canon` (`types`, `values`, `smallOnly`; `leafOk` is the hypothesis `hleaf`, OPEN), `par_canon`.
+- `Params.lean` (piece 7): `frameP`, `pty` (masked frame for non-varying parameters), `pty_local`, `pty_faithful` (frame locality), `pty_type`.
+- `Assembly.lean` (outside the build): `Extends`/`Inv` at one list (`rest` added, `pty` gone), `exists_of_inv`, `inv_zero`; the step's facts stated: `ItemFacts`, `DecStable` (piece 8), `NamesOk`; `inv_step`'s docstring is the recipe.
+- `Scratch/VaryValSweep.lean` (untracked): `VaryValFree` and "parameter types hold no embedded value" at all 300 stored declarations: all pass.
+
+## Next (exists9's successor), in order of risk
+
+1. `leafOk` for the knot's records (`hleaf` of `recordsFaithful_canon`): the knot's field type at members is never the raw data code of a `Prop`-sorted declaration. Attack: the knot's agreement (`knotK_agree`) makes it the run's value where the run is defined; elsewhere the interpreter's own value (`itpT`: `.data` along the spine, the run's value at steady nodes). Either prove the run never builds such a code from members (type parameters that are members of a universe have a level, the raw code has none), or ask the lead whether `RecordsFaithful.leafOk` can be restricted to keys where the run is defined.
+2. The `Prop`-sorted analogue of `Records.lean`: `ftyP` versions of `semT_psAt`/`itpT_psAt`/`ftyK_psAt` (copy, `TruthInterp.lean`'s `semP`/`itpP`), `recordsFaithful_canon` for `truthSpec`, and `mono` from `truth_exists`' second conclusion through `canonPs_propLe`.
+3. The step's glue, following `inv_step`'s docstring. Pieces: the build context `K0`; `K0`'s model with `d`'s parameter types `pty`; the transfer of `knot_exists`' conclusion to an extension (`runT_congrA`, `DecStable`, `runT_congrN` with `NamesOk`, `teleFrame` reads the model only at `d`'s field types and parameter types); `congr` for a definition (`runT_congrN` on its `fix` term or body and `meanV_congrN` on its stored type); `faithful` at old declarations by `Extends` monotonicity; `ItemFacts` for the stage structure; `Nodup` of the list's names (from `IndChecks.fresh` and `inds_prefix`). Also needed: `NamesOk`'s tests pass on field types (`Term.nok`), from a checker fact (names declared) plus "no constructor of `d` in its own field types" (from `Spine`/`PSpine`: off-spine nodes avoid `d`).
+4. Restate `exists_dataModel` (`Consistency.lean`, approved): hypotheses `ItemFacts`, `NamesOk` per stage, `DecLocal`, `DecStable`, `inds_prefix`; repair `consistencyBounded_assembled`.
+
 ## Which grammar predicate each theorem assumes
 
 - `GrammarOk` / `PGrammarOk` (exists7's `GrammarCoreOk` / `PGrammarCoreOk`): a fact about the checker, enforced since main's D120/D121, to be derived from its checks (step 2).
@@ -60,7 +76,7 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 
 `CtxFaithful K` quantifies `∀ Δ ρ`, but `knotK`/`truthSpec` take `ρ` (the interpreter's `valOf` runs under `ρ`). The assembly must build records that do not depend on `ρ`: either show a declared field type's run does not read `ρ` (declared types hold no hole or unknown), or fix `ρ` and prove the run's congruence in `ρ` for such terms.
 
-## Next
+## Earlier plan (exists8; superseded by the section above)
 
 1. Step 2 DONE (exists8; docs/34 §18.12): `Knot.grammar_of_checks` (FromChecks.lean): `IndChecks Γ0 d` (Checks.lean: fresh name, stored nestable = `nestableSet`, `TeleOk`, mirrors `foB`/`rvB` and `sortNestViolation` at every field) + `FieldsNoVal d` (resolution) + `hval` (earlier value parameters not nestable; the theorem's third conclusion, for the assembly) give `GrammarOk`/`PGrammarOk` at `Γ0 ++ d :: rest`. `NestLoop.nestableSet_spec` proved. The bridge `CheckIndGivesChecks` (checker run ⇒ `IndChecks`) is a named fact for the machine lane. `Scratch/ChecksSweep.lean` (untracked; `SWEEP_FROM`/`SWEEP_TO` env vars, prints per block): `IndChecks` and the other two hold at every stored declaration of blocks 0..130 (286 declarations); the case studies 131..143 (run in the background, about 25 minutes): 14 more, all pass. 300 in all.
 2. `globals_typed`: NOT NEEDED (exists8): no consumer is left (`knot_exists` and `truth_exists` stopped using `GlobalsTyped` in exists6/exists7; `RecordsFaithful.leafOk` is the records' `dataView`). Pieces 6 (`RecordsFaithful` of the knot's and truth records) and 7 (parameter types by the run, `ParamsFaithful`) are still to do; both sit inside `inv_step`.
