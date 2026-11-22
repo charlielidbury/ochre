@@ -82,6 +82,10 @@ def _root_.Ochr.Binding.KindAt (b : Binding) : Prop :=
   (∀ l c, b.val = .borrow l c → ∀ T, b.ty = some T → ∃ A, T = .tRef A) ∧
   (b.val.isFnVal = true → ∀ T, b.ty = some T → T.piWritten = true)
 
+/-- (K) for a value and the type it is held at, if any: what a binder pushing `v` at `T?` keeps. -/
+def _root_.Ochr.Value.KindOf (v : Value) (T? : Option Value) : Prop :=
+  ∀ T, T? = some T → (∀ l c, v = .borrow l c → ∃ A, T = .tRef A) ∧ (v.isFnVal = true → T.piWritten = true)
+
 /-- **(K) A binding's stored type has its value's kind** (the lead's ruling, docs/31 D188), about the checker's state
 alone:
 * a binding holding a borrow (`borrow_ℓ c`; a loan `loan_ℓ` and a lent mark `lent_ℓ c` are the LENDER's side and are

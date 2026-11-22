@@ -62,7 +62,8 @@ def FitsAt (D : Decisions) (Γ : List IndDecl) (sc : List DeclInfo) (du : DeclIn
     (GrainOk D Γ (du :: sc) p → v.follow p.steps.2 = some .proof → D.copy (D.placeDecl (du :: sc) p) = true)
 
 /-- **The value a typed evaluation returns fits the table's reading of its term** (checker, NEW, lead27, docs/31 D185;
-UNREAD): at the class the `let` runs its right-hand side at (typed, no hint, not in tail position, no reading handed
+READ FALSE by machine11, FALSE until main's D131: `Steps/Machine/FitProofCE.lean`, a `J` of a type function returning
+`Prop` read as data): at the class the `let` runs its right-hand side at (typed, no hint, not in tail position, no reading handed
 down, any erased depth), from a state meeting the checker's invariant, the value fits the table's reading of the term
 in the state's scope (`FitsAt`). What the push needs of the invariant's shape clauses at the new binding. Guarded on
 concrete programs in `Steps/FitGuards.lean`. -/
@@ -73,7 +74,8 @@ def EvalFitsT : Prop :=
     Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ →
     FitsAt D Γ (DecideScope.topReadings st₀) (D.declOf (DecideScope.topReadings st₀) u) v₀
 
-/-- **The value an UNTYPED evaluation returns fits the table's reading of its term, where the reference's run of the
+/-- (READ FALSE by machine11, FALSE until main's D131, as `EvalFitsT`; its two links are `TableSoundL1` and
+`MemShapeL2` below, docs/31 D189.) **The value an UNTYPED evaluation returns fits the table's reading of its term, where the reference's run of the
 term succeeds** (mixed, NEW, lead27, docs/31 D185; UNREAD): at the class an untyped `let` runs its right-hand side at,
 from related states, the reference's run of the term succeeding (the untyped `let`'s entry condition gives it). The
 checker's untyped run tests nothing of the value's shape, so the fit comes from the reference: its strict tests make
@@ -91,6 +93,45 @@ def EvalFitsU : Prop :=
     Runs (Ochr.eval n false u none) st₀ bh (v₀, T₀) st₁ →
     FitsAt K.D K.Γ (DecideScope.topReadings st₀) (K.D.declOf (DecideScope.topReadings st₀) u) v₀
 
+/-! ### The two links `EvalFitsU` needs (lead28, docs/31 D189; machine11's reading)
+
+`EvalFitsT` and `EvalFitsU` are FALSE today on one accepted program (`Steps/Machine/FitProofCE.lean`: the table reads
+the `J` of a type function returning `Prop` as data, `other`, while its value is `⋆`), until main's D131 (a binding's
+reading must agree with its type). Both stay as stated. The checker's untyped run tests nothing of a value's shape, so
+`EvalFitsU`'s fit must come from the reference: the strict run makes its result a member of its type, the value means
+the result (`Out`), and these two links carry membership to `FitsAt`. Each is stated at a reference result `ru` (its
+meaning `ru.1` at its type `ru.2`) followed along a path (`Sem.follow`). -/
+
+/-- The reference's type is a proposition. -/
+def _root_.Ochr.Meaning.TyM.IsPropCode : TyM → Prop
+  | .t0 _ (.prop _) => True
+  | _ => False
+
+/-- **(L1) The table is sound against the reference at every place under the binding** (a statement about the TABLE,
+mixed: the decisions against the reference's result type; NEW, lead28, docs/31 D189; UNREAD): where the reference's
+run of `u` succeeds with `ru` and `du` is the table's reading of `u`, at every place `p` rooted at the new binding, if
+the table reads `p` as an inductive `n` of `Γ` then the reference's type there is `n`'s data code; and at the join's
+grain, if the reference's type there is a proposition then the table reads `p` as a copy. FALSE today at the `J` above
+(the reference's type `⊤`, the table's reading `other`), until main's D131. -/
+def TableSoundL1 : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (sc : List DeclInfo) (u : Term) (s s₁ : SState) (ru : Res),
+    runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) →
+    ∀ p : Place, p.steps.1 = 0 → ∀ s' T', Sem.follow K.dm K.Γ ru.2 ru.1 p.steps.2 = some (s', T') →
+      (∀ n args, K.D.placeDecl (K.D.declOf sc u :: sc) p = .ind n args → (K.Γ.find? (·.name == n)).isSome →
+        (T'.m.dataRec?).map Prod.fst = some n) ∧
+      (GrainOk K.D K.Γ (K.D.declOf sc u :: sc) p → T'.m.IsPropCode → K.D.copy (K.D.placeDecl (K.D.declOf sc u :: sc) p) = true)
+
+/-- **(L2) A member's checker value has its type's shape** (a statement about the MODEL: the meaning of checker values;
+NEW, lead28, docs/31 D189; UNREAD): a checker value whose meaning at a data type `n`'s code is a member is, at every
+sub-path, a constructor of `n` or a stand-in (`fitsInd n`) where the reference's type is `n`'s code there; and a
+checker value `⋆` at a sub-path means a proof only where the reference's type is a proposition. -/
+def MemShapeL2 : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (ψ : Future) (R : TyS) (v : Value),
+    meanV K ρ ψ R v ∈ₛ[K.dm.read] R.m →
+    ∀ (path : List Step) (w : Value) (s' : Sem) (T' : TyS), v.follow path = some w →
+      Sem.follow K.dm K.Γ R (meanV K ρ ψ R v) path = some (s', T') →
+      (∀ n r, T'.m.dataRec? = some (n, r) → w.fitsInd n = true) ∧ (w = .proof → T'.m.IsPropCode)
+
 /-- The fit a sub-run gives, moved to the scope after it (its readings kept) and the reading the `let` names. -/
 theorem fitsAt_of_eval {D : Decisions} {Γ : List IndDecl} {st st₀ st₁ : MState} {u : Term} {du : DeclInfo} {v₀ : Value}
     (hk₀ : Kern st st₀) (htop : DecideScope.topReadings st₁ = DecideScope.topReadings st₀)
@@ -100,11 +141,25 @@ theorem fitsAt_of_eval {D : Decisions} {Γ : List IndDecl} {st st₀ st₁ : MSt
   rw [htop, ← hdu, ColumnC.topReadings_kern hk₀]
   exact h
 
+/-- **A typed or wanted run's value has its type's kind** (checker, NEW, lead28, docs/31 D188; UNREAD): from a state
+meeting the invariant, a run whose type is computed (typed, or untyped with the type wanted, as a `let` runs its
+right-hand side) returns a borrow only at a borrow type and a function value only at a function type written as one,
+where it returns a type at all. What the binding a `let` pushes owes the invariant's clause (K) (`LetPushG`'s
+hypothesis `v₀.KindOf T₀`). Read off the code as `EvalKindT` (`Steps/MasterKind.lean`, its typed half with "a type is
+returned"); the sweep's clause on temporaries (D104, every call depth) finds no borrow in flight at a type that is not
+a borrow type. -/
+def EvalKindW : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (n : Nat) (typed : Bool) (u : Term) (hint : Option Value) (st₀ st₁ : MState)
+    (bh : Nat) (v : Value) (T? : Option Value),
+    Pre K ρ st₀ → (typed = true ∨ st₀.wantTy = true) → Runs (Ochr.eval n typed u hint) st₀ bh (v, T?) st₁ →
+    v.KindOf T?
+
 /-- **The push of a `let`'s binding, on both sides** (NEW; the fragment's `push_frag` for every value): from
 the checker's state with the right-hand side's value `v₀` in flight at `T₀`, meeting `Pre` and related to the
 reference's state after the right-hand side, whose result `ru` the value means and the type agrees with,
 and which (I) makes good: the state with the value moved into a new top binding (read `du`) meets `Pre` and is
-related to the reference's state with the result bound (`pushBindShaped`, read `du`). -/
+related to the reference's state with the result bound (`pushBindShaped`, read `du`). Since lead28 (docs/31 D188) also: the value has its type's kind
+(`v₀.KindOf T₀`, what the invariant's clause (K) asks of the new binding; from `EvalKindW` at the right-hand side). -/
 def LetPushG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st₁ stB : MState) (v₀ : Value)
     (T₀ : Option Value) (x : Hint) (p : Bool) (du : DeclInfo) (ru : Res) (s₁ : SState),
@@ -113,7 +168,7 @@ def LetPushG : Prop :=
     meanV K ρ (fun l => φ (π l)) ru.2 v₀ = ru.1 → (∀ T, T₀ = some T → StrAgree K ρ T ru.2) →
     ru.2.label = (Value.heldLabel v₀).map π →
     Strict.GoodRes K.dm.read ru → Strict.LabOk K.dm s₁ ru → LoU s₁ ru.2.label →
-    FitsAt K.D K.Γ (DecideScope.topReadings st₁) du v₀ →
+    FitsAt K.D K.Γ (DecideScope.topReadings st₁) du v₀ → v₀.KindOf T₀ →
     Kern { st₁ with env := Env.pushBindE st₁.env x T₀ v₀ p du } stB →
     Pre K ρ stB ∧ Rel K ρ φ π stB (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du })
 
@@ -225,7 +280,7 @@ variable {K : RunCtx} {φ : Future}
 
 /-- **A typed, unerased `let`, at `evalCore`, in general.** From the induction hypothesis at the fuel of the
 `let`'s `eval` and the facts above. -/
-theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
+theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hDr : LetDropG)
     (hVC : ValsCongrA) (hFT : EvalFitsT) (hc : Strict.FundCtx K) {ρ : Assignment} {m : Nat} {x : Hint} {u w : Term} (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.letIn x u w) (fun st => 0 < st.env.size) (· = true) := by
   intro st st' typed hint v T? s π hne hty hm hctl htn htd hcd hp hr hS hv hab hhb hnh hfl _ hD bh h
@@ -253,7 +308,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
     (hFT K.D K.Γ m u st₀ st₁ bh₁ v₀ T₀ (hp.of_kern hk₀).inv hD₁ (hm.of_modeEq hm₀) htn₀ htd₀ hru)
   -- the push, on both sides
   obtain ⟨hpB, hrB⟩ := hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau hlu
-    hgu hlabu hlouu hfit hkB
+    hgu hlabu hlouu hfit (hEK K ρ m true u none st₀ st₁ bh₁ v₀ T₀ (hp.of_kern hk₀) (.inl rfl) hru) hkB
   have hSB : Strict.SGood K.dm K.Γ φ (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) := by
     by_cases hs₁ : s₁.env = []
     · rw [Strict.pushBindShaped_nil _ _ hs₁]; exact hS₁
@@ -319,7 +374,7 @@ hypothesis, at every fuel, `Δ` and assignment, for every right-hand side and bo
 runs from a state with a frame where the table reads the `let` as neither `.any` nor a proof, so it leaves it
 unerased), with what the run keeps (`EvalSimK`). ASSUMES 4 facts: `LetTailDecl` (table), `ValsCongrA` (model),
 `LetPushG` and `LetDropG` (each part checker, part model); and `Strict.FundCtx K` of the context. -/
-theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
+theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hDr : LetDropG)
     (hVC : ValsCongrA) (hFT : EvalFitsT) (hc : Strict.FundCtx K) :
     ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (x : Hint) (u w : Term),
       EvalSimK { K with Δ := Δ } ρ φ n (.letIn x u w)
@@ -333,7 +388,7 @@ theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.letIn x u w)
       (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
         (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) (· = true) :=
-    fun st st' typed hint v T? s π hP => letIn_core (K := { K with Δ := Δ }) hLT hPu hDr hVC hFT ⟨hc.globals, hc.sorts⟩ ih
+    fun st st' typed hint v T? s π hP => letIn_core (K := { K with Δ := Δ }) hLT hPu hEK hDr hVC hFT ⟨hc.globals, hc.sorts⟩ ih
       st st' typed hint v T? s π hP.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
     (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
