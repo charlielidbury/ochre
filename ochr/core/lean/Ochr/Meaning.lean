@@ -170,6 +170,8 @@ import Ochr.Meaning.Steps.FrameJ2
 import Ochr.Meaning.Steps.FormTail
 import Ochr.Meaning.Steps.Master
 import Ochr.Meaning.Steps.MasterGuards
+import Ochr.Meaning.Steps.MasterLeaf
+import Ochr.Meaning.Steps.MasterTail
 import Ochr.Meaning.Steps.SplitP
 import Ochr.Meaning.Steps.SplitGuards
 import Ochr.Meaning.Steps.ColumnPRun

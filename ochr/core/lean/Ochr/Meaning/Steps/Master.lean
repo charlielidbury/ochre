@@ -76,12 +76,14 @@ def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : P
     ∀ bh, Runs (Ochr.eval n typed t hint) st bh (v, T?) st' →
     Out K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T?
 
-/-- **The tail step at fuel `n`, for one term**: `Form.TailSim` for `t` with every continuation, from a
-state in the plain mode with no reading handed down, for a term the strict run accepts the embedded
-values of, holding the state's unknowns and no hole; the table aligned at the run's end. -/
+/-- **The tail step at fuel `n`, for one term**: `Form.TailSim` for `t` with every continuation that only
+extends the tables (`GrowsM`: so the table aligned at the run's end, after the continuation, is aligned at
+each leaf, `DecTab.back`; `checkFix`'s continuation and every one `checkTail` builds from it are machine
+code), from a state in the plain mode with no reading handed down, for a term the strict run accepts the
+embedded values of, holding the state's unknowns and no hole. -/
 def TailAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState),
-    Mode st → st.tailDecl = none →
+    Mode st → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     DecTab K.D st' →

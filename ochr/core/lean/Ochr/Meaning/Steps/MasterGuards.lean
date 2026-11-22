@@ -15,6 +15,24 @@ strict run fails at the last read (`x` moved): the general `prim` step is false 
 non-place unless the core checker rejects it or the reference copies inside it.
 -/
 
+open Ochr.Test
+
+/- A bare constructor of a declaration with a parameter, as the tail of a `let` ending a function's body: the
+typed checker in tail position (`checkTailAt`'s `.letIn` case, then its default case) evaluates the tail with
+the GOAL as its hint, which gives the constructor its parameter; the reference's `.letIn` clause runs its tail
+with no hint (`.plain TyM.err`), and a bare constructor of a declaration with parameters and no record fails
+(`runT`'s `.ctor` clause). Accepted (the block elaborates only if the checker accepts every definition: a rejected one is an elaboration error,
+checked on `def H : L(Nat) := let x = Z; N`, a constant, whose body `eval` runs, rejected for want of the
+parameter). The same for a match's arms (`F2`) and a sequence's tail (`F3`). -/
+
+ochr MasterProbeTailHint {
+  inductive L (A : Type) := N | C(h : A, t : L(A))
+  def F (n : Nat) : L(Nat) := let x = n; N
+  def G (n : Nat) : L(Nat) := N
+  def F2 (n : Nat) : L(Nat) := match n { Z => N, S(m) => N }
+  def F3 (n : Nat) : L(Nat) := (n; N)
+}
+
 namespace Ochr.Meaning.Steps.Form.MasterGuards
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps.Form
