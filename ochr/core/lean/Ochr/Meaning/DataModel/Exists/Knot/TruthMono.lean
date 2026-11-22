@@ -84,7 +84,7 @@ theorem itpP_quiet {T T' : List Sem → Prop} {ps ps' : List Sem} {s : SState} (
 /-- **A field that does not vary has the same field type at every truth predicate**, and at parameters
 equal where they do not vary. -/
 theorem ftyP_quiet (hspine : ∀ c i FT, fieldTerm d c i = some FT → PSpine K.Γ d c FT)
-    (hpty : ParamTyLocal K.dm K.Γ) (hdΓ : d ∈ K.Γ) {T T' : List Sem → Prop} {ps ps' : List Sem}
+    (hpty : ParamTyLocalD K.dm d) (hdΓ : d ∈ K.Γ) {T T' : List Sem → Prop} {ps ps' : List Sem}
     (hl : ps.length = ps'.length) (hps : PsSteady d ps ps') :
     ∀ (i : Nat) (es : List Small), fieldVaries d c i = false →
       ftyP K ρ d T ps c i es = ftyP K ρ d T' ps' c i es := by
@@ -192,7 +192,7 @@ structure MonoHyp (K : RunCtx) (d : IndDecl) (T T' : List Sem → Prop) (ps ps' 
   hp : PropLe d ps ps'
   hmono : ∀ M ∈ K.Γ, M ≠ d → M.sort = 0 → ∀ qs qs', PropLe M qs qs' → ∀ c i es, es.length = i →
     ShapeLe (uShape M (K.dm.recOf M qs) c i es) (uShape M (K.dm.recOf M qs') c i es)
-  hpty : ParamTyLocal K.dm K.Γ
+  hpty : ParamTyLocalD K.dm d
 
 section
 variable {K : RunCtx} {ρ : Assignment} {d : IndDecl} {c : Nat}
@@ -370,7 +370,7 @@ structure TruthHyp (K : RunCtx) (d : IndDecl) : Prop where
   hspine : ∀ c i FT, fieldTerm d c i = some FT → PSpine K.Γ d c FT
   hmono : ∀ M ∈ K.Γ, M ≠ d → M.sort = 0 → ∀ qs qs', PropLe M qs qs' → ∀ c i es, es.length = i →
     ShapeLe (uShape M (K.dm.recOf M qs) c i es) (uShape M (K.dm.recOf M qs') c i es)
-  hpty : ParamTyLocal K.dm K.Γ
+  hpty : ParamTyLocalD K.dm d
 
 variable {K ρ d}
 

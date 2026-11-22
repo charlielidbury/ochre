@@ -261,6 +261,7 @@ import Ochr.Meaning.DataModel.Exists.Knot.Interp
 import Ochr.Meaning.DataModel.Exists.Knot.Guard
 import Ochr.Meaning.DataModel.Exists.Knot.Agree
 import Ochr.Meaning.DataModel.Exists.Knot.Congr
+import Ochr.Meaning.DataModel.Exists.Knot.CongrN
 import Ochr.Meaning.DataModel.Exists.Knot.Steady
 import Ochr.Meaning.DataModel.Exists.Knot.Exists
 import Ochr.Meaning.DataModel.Exists.CrossSortCE
@@ -278,6 +279,8 @@ import Ochr.Meaning.DataModel.Exists.Knot.FromChecker
 import Ochr.Meaning.DataModel.Exists.Knot.Checks
 import Ochr.Meaning.DataModel.Exists.Knot.NestLoop
 import Ochr.Meaning.DataModel.Exists.Knot.FromChecks
+import Ochr.Meaning.DataModel.Exists.Records
+import Ochr.Meaning.DataModel.Exists.Params
 import Ochr.Meaning.DataModel.Exists.ScopeCE
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs

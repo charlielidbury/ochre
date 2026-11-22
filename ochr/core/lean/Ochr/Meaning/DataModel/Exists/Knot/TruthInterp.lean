@@ -168,10 +168,10 @@ noncomputable def truthSpec (T : List Sem → Prop) : KnotSpec where
   d := d
   N := fun _ => false
   fty := fun _ ps c i es => ftyP K ρ d T ps c i es
-  pEntry := pEntryTy
+  pEntry := pEntryV d
   guarded := fun _ _ _ _ _ _ hp _ _ _ => by
     rw [parAgree_none_eq hp]; exact FTyAgree.refl _ _
-  pEntry_agree := fun _ _ _ hp j => pEntryTy_agree hp j
+  pEntry_agree := fun _ _ _ hp j => pEntryV_agree hp j
 
 /-- The record a truth predicate gives. -/
 noncomputable def truthRec (T : List Sem → Prop) : List Sem → Rec := recK (truthSpec K ρ d T)

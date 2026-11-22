@@ -2,6 +2,8 @@ import Ochr.Meaning.Consistency
 import Ochr.Meaning.DataModel.Exists.Knot.Exists
 import Ochr.Meaning.DataModel.Exists.Knot.TruthExists
 import Ochr.Meaning.DataModel.Exists.Knot.FromChecks
+import Ochr.Meaning.DataModel.Exists.Params
+import Ochr.Meaning.DataModel.Exists.Knot.CongrN
 
 /-!
 # The assembly: the induction's invariant (exists8; OUTSIDE the default build, it has `sorry`)
@@ -44,30 +46,50 @@ at the whole program's declaration list (`indsOf`, the one-list ruling, docs/31 
 noncomputable abbrev stage (dm : DataModel) (k : Nat) : ProgState :=
   progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)
 
-/-- **A run context extends a stage** (for the model `dm`): the same records and parameter types at
-the stage's declarations, a declaration list with them as a prefix, the stage's globals meaning the
-same, and the checker's decisions at a state over a prefix of that list (docs/31 D174: the checker's
-state at a stage holds a prefix of the one list) extending the stage's globals. -/
-structure Extends (dm : DataModel) (P : ProgState) (K : RunCtx) : Prop where
-  agree : ∀ d ∈ P.inds, K.dm.recOf d = dm.recOf d ∧ K.dm.paramTy d = dm.paramTy d
-  gamma : P.inds <+: K.Γ
-  globals : ∀ n, (P.means.find? (·.1 == n)).isSome → K.C.global n = P.baseC.global n
-  dec : ∃ st : MState, st.inds <+: K.Γ ∧ P.globals <+: st.globals ∧ K.D = D st
+/-- The model at the declarations no stage has reached yet: records `none`, parameter types `err`
+(constant, so parametric, monotone and local whatever the declaration). -/
+def dm0 : DataModel := { covers := fun _ => True, recOf := fun _ _ _ => .none, paramTy := fun _ _ _ => TyM.err }
 
-/-- **The induction's invariant at stage `k`** (see the module docstring). -/
+/-- **A run context extends a stage** (for the model `dm`), at the ONE list (docs/31 D174, docs/34
+§18.13). What an extension may change, and what it may not:
+* the declaration list: NOT changed; it is the whole program's (`gamma`);
+* the model: the same records and parameter types at the stage's declarations (`agree`); anything at
+  the later declarations of the list and at declarations off it;
+* the globals: the same meaning and type at every global the stage has a meaning for (`globals`);
+  anything at the later ones (a later stage has more);
+* the decisions: the checker's at any state over more declarations and more globals, within the
+  whole list (`dec`): the field-type runs are asked not to depend on which (piece 8, a named fact);
+* Δ: anything (`DeclFaithful` quantifies it); Λ and the definition being checked: as the program
+  meaning's contexts have them (`lam`, `cur`). -/
+structure Extends (dm : DataModel) (P : ProgState) (K : RunCtx) : Prop where
+  gamma : K.Γ = indsOf {} fuel items
+  agree : ∀ d ∈ P.inds, K.dm.recOf d = dm.recOf d ∧ K.dm.paramTy d = dm.paramTy d
+  globals : ∀ n, (P.means.find? (·.1 == n)).isSome → K.C.global n = P.baseC.global n
+  dec : ∃ st : MState, P.inds <+: st.inds ∧ st.inds <+: indsOf {} fuel items ∧ P.globals <+: st.globals ∧ K.D = D st
+  lam : K.Λ = fun _ => .plain .err
+  cur : K.cur = none
+
+/-- **The induction's invariant at stage `k`**, at the one list (exists9). Against exists8's:
+`Extends` fixes the list; `rest` says the model is still `dm0` at every declaration the stage has not
+reached (so the next construction's hypotheses about the earlier records hold at the later ones too:
+`knot_exists` and `truth_exists` quantify over the whole list); `pty` is gone (the knot reads only the
+declaration's OWN parameter types locally, docs/34 §18.14). -/
 structure Inv (k : Nat) (dm : DataModel) : Prop where
   covers : ∀ d, dm.covers d
+  rest : ∀ M, M ∉ indsOf {} fuel (items.take k) → dm.recOf M = dm0.recOf M ∧ dm.paramTy M = dm0.paramTy M
   congr : ∀ k' ≤ k, ∀ dm' : DataModel,
-    (∀ d ∈ (stage D fuel items dm k').inds, dm'.recOf d = dm.recOf d ∧ dm'.paramTy d = dm.paramTy d) →
+    (∀ d ∈ indsOf {} fuel (items.take k'), dm'.recOf d = dm.recOf d ∧ dm'.paramTy d = dm.paramTy d) →
     stage D fuel items dm' k' = stage D fuel items dm k'
-  faithful : ∀ k' ≤ k, ∀ d ∈ (stage D fuel items dm k').inds, ∀ K : RunCtx,
-    Extends D dm (stage D fuel items dm k') K → DeclFaithful K d
-  par : ∀ M ∈ (stage D fuel items dm k).inds, ∀ n,
+  faithful : ∀ k' ≤ k, ∀ d ∈ indsOf {} fuel (items.take k'), ∀ K : RunCtx,
+    Extends D fuel items dm (stage D fuel items dm k') K → DeclFaithful K d
+  par : ∀ M ∈ indsOf {} fuel (items.take k), ∀ n,
     RAgree (fun j => M.nestable.getD j false) n (dm.recOf M) (dm.recOf M)
-  mono : ∀ M ∈ (stage D fuel items dm k).inds, M.sort = 0 → ∀ ps ps', PropLe M ps ps' → ∀ c i es,
+  mono : ∀ M ∈ indsOf {} fuel (items.take k), M.sort = 0 → ∀ ps ps', PropLe M ps ps' → ∀ c i es,
     es.length = i → ShapeLe (uShape M (dm.recOf M ps) c i es) (uShape M (dm.recOf M ps') c i es)
-  pty : ParamTyLocal dm (stage D fuel items dm k).inds
-  val : ∀ M ∈ (stage D fuel items dm k).inds, ∀ j, nestOf M j = true → M.paramIsType j = true
+  val : ∀ M ∈ indsOf {} fuel (items.take k), ∀ j, nestOf M j = true → M.paramIsType j = true
+
+theorem stage_inds (dm : DataModel) (k : Nat) : (stage D fuel items dm k).inds = indsOf {} fuel (items.take k) :=
+  progMeaning_inds _ _ _ _ _ _ _
 
 /-- **The invariant at the last stage gives the existence statement**, at the one list (docs/31 D174),
 assuming that every stage's declarations are a prefix of the whole program's (`hpre`: a fact of the
@@ -78,44 +100,83 @@ theorem exists_of_inv {dm : DataModel} (h : Inv D fuel items items.length dm)
       ∀ k, k ≤ items.length → Ochr.Meaning.Assembly.DataFaithful dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
   refine ⟨fun d _ => h.covers d, fun k hk st hst hgl d hd => ?_⟩
-  have hd' : d ∈ (stage D fuel items dm k).inds := hd
+  have hd' : d ∈ indsOf {} fuel (items.take k) := by rw [← stage_inds D fuel items dm k]; exact hd
   have hp : (stage D fuel items dm k).inds <+: indsOf {} fuel items := by
-    show (progMeaning _ _ _ _ _ _ _).inds <+: _
-    rw [progMeaning_inds]; exact hpre k hk
-  refine h.faithful k hk d hd' _ ⟨fun _ _ => ⟨rfl, rfl⟩, hp, fun _ _ => rfl, ⟨st, ?_, hgl, rfl⟩⟩
-  show st.inds <+: indsOf {} fuel items
-  rw [hst]; exact hp
+    rw [stage_inds]; exact hpre k hk
+  refine h.faithful k hk d hd' _ ⟨rfl, fun _ _ => ⟨rfl, rfl⟩, fun _ _ => rfl, ⟨st, ?_, ?_, hgl, rfl⟩, rfl, rfl⟩
+  · show (stage D fuel items dm k).inds <+: st.inds
+    rw [hst]; exact List.prefix_refl _
+  · show st.inds <+: indsOf {} fuel items
+    rw [hst]; exact hp
 
-/-- **The invariant holds at stage 0**, for the model that covers everything and keeps nothing. -/
-theorem inv_zero : Inv D fuel items 0 { covers := fun _ => True, recOf := fun _ _ _ => .none, paramTy := fun _ _ _ => TyM.err } := by
+/-- **The invariant holds at stage 0**, for `dm0`. -/
+theorem inv_zero : Inv D fuel items 0 dm0 := by
   have h0 : ∀ dm : DataModel, stage D fuel items dm 0 = {} := fun dm => by
     simp [stage, progMeaning, progMeaningFrom]
-  refine ⟨fun _ => trivial, fun k' hk' dm' _ => ?_, fun k' hk' d hd => ?_, ?_, ?_, ?_, ?_⟩
+  have hi : indsOf {} fuel (items.take 0) = [] := by simp [indsOf, sigAfterFrom]
+  refine ⟨fun _ => trivial, fun _ _ => ⟨rfl, rfl⟩, fun k' hk' dm' _ => ?_, fun k' hk' d hd => ?_, ?_, ?_, ?_⟩
   · have : k' = 0 := by omega
     subst this; rw [h0, h0]
   · have : k' = 0 := by omega
-    subst this; rw [h0] at hd; cases hd
-  all_goals (intro M hM; rw [h0] at hM; cases hM)
+    subst this; rw [hi] at hd; cases hd
+  all_goals (intro M hM; rw [hi] at hM; cases hM)
 
-/-- **The step** (OPEN). From the invariant at stage `k` for a model, the invariant at stage `k + 1`
-for a model that agrees with it at stage `k`'s declarations. By the `k`-th item's verdict:
-* not accepted: the stage is unchanged (`ProgState.step`), the same model;
-* an accepted definition: the same model; the declarations are unchanged (a named machine fact:
-  `checkDef` leaves `inds` alone); `congr` at `k + 1` needs the run's congruence in the model at the
-  stage's declarations (piece 1, `Decomposition.runT_congrDM`, for definition bodies and the stored
-  type's `Value.tyS`);
-* an accepted inductive declaration `d` (`CheckIndGivesChecks`: one new entry, passing `IndChecks`):
-  its parameter types by the run (piece 7), then its records by `knot_exists` (data-sorted) or
-  `truth_exists` (`Prop`-sorted) at a context of the new stage, with the grammar from
-  `grammar_of_checks`; the new model is the old one with `d`'s records and parameter types set.
-  `faithful` at `d` then needs the transfer from that context to EVERY context extending the new
-  stage: the assignment and Δ by `runT_congrA` (`FieldsNoVal`); the model at later declarations by
-  the model congruence (`Congr.runT_congrR`, extended to parameter types); the globals by a
-  congruence at the constants a field type names; the decisions by a named machine fact (piece 8:
-  the field-type runs do not change with the state's later globals and declarations); and the
-  declaration list, which the run reads not only at the names a term mentions but at the name a
-  strong-updated tree carries (`DataModel.readTy`'s `ownTy`, through `Sem.follow` only: `Sem.updAt`
-  does not read the list; `ScopeCE.run_differs`): the open point of the assembly (docs/34 §18.13). -/
+/-! ## The facts the step rests on, stated (exists9)
+
+Each is named in the honest count (docs/34 §18.14). The first three are about the checker; `DecStable`
+is an obligation on the decisions (piece 8). -/
+
+/-- **One accepted item, as the checker stores it** (about the checker, enforced but not derived; an
+extension of `CheckIndGivesChecks` to `checkItem`, whose `seedHoles` comes first): an accepted inductive
+declaration appends one entry passing `IndChecks` and leaves the globals; an accepted definition leaves
+the declarations and appends its globals. -/
+def ItemFacts : Prop :=
+  ∀ (it : Item) (st st' : MState) (fuel : Nat), (runMachine (checkItem it) st fuel).1 = .ok () st' →
+    (∀ d, it = .ind d → ∃ d', st'.inds = st.inds ++ [d'] ∧ Knot.IndChecks st.inds d' ∧ Knot.FieldsNoVal d' ∧
+      Records.VaryValFree d' ∧ st'.globals = st.globals) ∧
+    (∀ d, it = .defn d → st'.inds = st.inds ∧ st.globals <+: st'.globals)
+
+/-- **Piece 8 (an obligation on the decisions, for the machine lane)**: a declared field type and a
+declared parameter type of a declaration of the state `st0` run the same, in the frames the checker
+types them in, under the decisions at `st0` and at any state over more declarations and more globals. -/
+def DecStable (D : MState → Decisions) : Prop :=
+  ∀ (st0 st : MState), st0.inds <+: st.inds → st0.globals <+: st.globals → ∀ d ∈ st0.inds,
+    (∀ (K : RunCtx) (ρ : Assignment) (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term), fieldTerm d c i = some FT →
+      run { K with D := D st } ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm (D st) d ps c e) =
+        run { K with D := D st0 } ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm (D st0) d ps c e)) ∧
+    (∀ (K : RunCtx) (ρ : Assignment) (ps : List Sem) (j : Nat) (mask : Bool), j < d.params.length →
+      run { K with D := D st } ρ noFuture (.plain (TyM.univ 2)) (Knot.paramTerm d j) (Params.frameP d (K.dm.paramTy d) (D st) mask ps) =
+        run { K with D := D st0 } ρ noFuture (.plain (TyM.univ 2)) (Knot.paramTerm d j) (Params.frameP d (K.dm.paramTy d) (D st0) mask ps))
+
+/-- **The names a stage's code mentions are the stage's** (about the checker: resolution and D118):
+every field type and parameter type of a stored declaration, every accepted definition's body, domains,
+codomain and stored type name only types the state declares and globals the stage has a meaning for,
+and hold no embedded value (field and parameter types; a definition's code may hold values, whose names
+are tested the same way, `Knot.Value.nok`). Stated per stage through `Knot.NameOk`. -/
+def NamesOk (Γ : List IndDecl) (P : ProgState) : Knot.NameOk where
+  ty n := P.inds.any (·.name == n) && (Γ.find? (·.name == n)).isSome
+  rc n := P.inds.any (·.name == n)
+  gl n := (P.means.find? (·.1 == n)).isSome
+
+/-- **The step** (OPEN; exists9's plan, docs/34 §18.14). From the invariant at stage `k` for a model, the
+invariant at stage `k + 1` for a model agreeing with it at stage `k`'s declarations. By the `k`-th item's
+verdict (`ItemFacts`):
+* not accepted: the stage is unchanged, the same model;
+* an accepted definition: the same model; `congr` at `k + 1` is `Knot.runT_congrN`/`meanV_congrN` for the
+  definition's body and stored type at models agreeing at the stage's declarations (`NamesOk`);
+  `faithful` at `k + 1` from `k`: an extension of stage `k + 1` extends stage `k` (more means, more
+  globals, the same declarations);
+* an accepted inductive declaration `d` (`ItemFacts`: one new entry passing `IndChecks`): the build
+  context `K0` (the whole list, the model at stage `k`, the stage's globals, the decisions at the stage's
+  state `st0`, `ρ = err`); parameter types `Params.pty K0 ρ d` (piece 7: `pty_local`, `pty_faithful`);
+  records `Records.recCanon` from `knot_exists` (or `truth_exists`, OPEN: the `Prop`-sorted analogue of
+  `Records.lean`) at `K0` with `d`'s parameter types set, grammar from `grammar_of_checks`; the new
+  model sets both. `faithful` at `d`: from any extension `K`, `runT_congrA` (Δ, ρ: no embedded values),
+  `DecStable` (the decisions), `runT_congrN` (the model and globals; at `d` itself records agree only on
+  typed lists, which is all `.tind d` reads), the knot's conclusion and `fieldTy_knot`; parameter types
+  the same with `pty_faithful`; records `Records.recordsFaithful_canon` (`leafOk` OPEN). `par` is
+  `Records.par_canon`; `val` is `grammar_of_checks`' third conclusion; `rest` and the earlier stages
+  by `congr`. -/
 theorem inv_step (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm) :
     ∃ dm' : DataModel, Inv D fuel items (k + 1) dm' ∧
       ∀ d ∈ (stage D fuel items dm k).inds, dm'.recOf d = dm.recOf d ∧ dm'.paramTy d = dm.paramTy d := by

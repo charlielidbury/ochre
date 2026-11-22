@@ -37,7 +37,7 @@ theorem truth_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.
     (hgram : PGrammarOk K.Γ d)
     (hmono : ∀ M ∈ K.Γ, M ≠ d → M.sort = 0 → ∀ ps ps', PropLe M ps ps' → ∀ c i es, es.length = i →
       ShapeLe (uShape M (K.dm.recOf M ps) c i es) (uShape M (K.dm.recOf M ps') c i es))
-    (hpty : ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
+    (hpty : ParamTyLocalD K.dm d) (hD : FrameLocal.DecLocal K.D)
     (hK : ∀ g, (K.C.global g).2.label = none) :
     ∃ (S : KnotSpec) (T : List Sem → Prop), S.d = d ∧
       (∀ ps, uTyR d (recK S ps) = TyM.prop (T ps)) ∧

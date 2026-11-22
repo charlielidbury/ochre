@@ -303,6 +303,35 @@ theorem parTy_agree {N : Nat → Bool} {n : Nat} {ps ps' : List Sem} (hp : ParAg
 theorem pEntryTy_agree {N : Nat → Bool} {n : Nat} {ps ps' : List Sem} (hp : ParAgree N n ps ps') (j : Nat) :
     pEntryTy ps j = pEntryTy ps' j := (parTy_agree hp j).1
 
+/-- **A parameter's entry, value parameters kept small** (exists9): a type parameter's kind
+(`pEntryTy`), a value parameter's small reading, which `RecordsFaithful.values` asks a record to keep at
+`paramKey` (`pEntryTy` there gives `.none`: a value is no type). -/
+noncomputable def pEntryV (d : IndDecl) (ps : List Sem) (j : Nat) : Entry :=
+  if d.paramIsType j then pEntryTy ps j else .small (ps.getD j .err).small
+
+/-- Agreeing parameters have the same entries: at a value parameter they are equal, or, at a nestable
+one, two type codes (both read small as `other`). -/
+theorem pEntryV_agree {d : IndDecl} {N : Nat → Bool} {n : Nat} {ps ps' : List Sem} (hp : ParAgree N n ps ps')
+    (j : Nat) : pEntryV d ps j = pEntryV d ps' j := by
+  unfold pEntryV
+  split
+  · exact pEntryTy_agree hp j
+  · congr 1
+    rcases e : ps[j]? with _ | v
+    · have e' : ps'[j]? = none := by
+        rw [List.getElem?_eq_none_iff] at e ⊢; rw [← hp.1]; exact e
+      simp [List.getD_eq_getElem?_getD, e, e']
+    · obtain ⟨v', e'⟩ : ∃ v', ps'[j]? = some v' := by
+        have : j < ps'.length := by rw [← hp.1]; exact (List.getElem?_eq_some_iff.1 e).1
+        exact ⟨_, List.getElem?_eq_getElem this⟩
+      have h := hp.2 j v v' e e'
+      simp only [List.getD_eq_getElem?_getD, e, e', Option.getD_some]
+      split at h
+      · rcases h with rfl | ⟨_, _, _, _, rfl, rfl, _⟩
+        · rfl
+        · rfl
+      · rw [h]
+
 /-- A data type at records agreeing below `n`. -/
 theorem data_agree {n : Nat} (d : IndDecl) {r r' : Rec} (h : RecAgree n r r') :
     FTyAgree n (.data d r) (.data d r') := ⟨rfl, h⟩

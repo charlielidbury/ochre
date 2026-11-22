@@ -115,6 +115,18 @@ def ParamTyLocal (dm : DataModel) (Γ : List IndDecl) : Prop :=
     (∀ u ∈ (paramTerm M j).freeVars, u < j → ps[j - 1 - u]? = ps'[j - 1 - u]?) →
       dm.paramTy M j ps = dm.paramTy M j ps'
 
+/-- **The declaration's own parameter types are local in its varying parameters** (exists9; what the
+knot reads, `canFrame_eq`): a parameter that does not vary has the same type at two lists of earlier
+parameters that agree at every parameter that does not vary. Weaker than `ParamTyLocal` at `d`, which
+asks agreement only at the parameters the type term mentions and which faithful parameter types need
+not meet: a mentioned parameter's binding type may read an unmentioned one (`(n : Nat) (v : Fin(n))
+(h : P(v))`), and the run reads a parameter strictly at its binding type. The run-defined parameter
+types meet this one by frame locality: a parameter that does not vary mentions only parameters that do
+not vary, whose bindings are then the same. -/
+def ParamTyLocalD (dm : DataModel) (d : IndDecl) : Prop :=
+  ∀ (j : Nat) (ps ps' : List Sem), ps.length = j → ps'.length = j → paramVaries d j = false →
+    (∀ u, u < j → paramVaries d u = false → ps[u]? = ps'[u]?) → dm.paramTy d j ps = dm.paramTy d j ps'
+
 /-! ## The grammar as a decidable check (what the checker is to enforce)
 
 `spineB` decides `Spine` from syntax, the declarations `Γ` and the declared parameter type terms
