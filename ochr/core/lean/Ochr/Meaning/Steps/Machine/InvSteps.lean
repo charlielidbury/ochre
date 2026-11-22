@@ -85,10 +85,10 @@ theorem pushTempE_of_empty (h : E.size = 0) : Env.pushTempE E v = E := by
 end PushTemp
 
 theorem tabSame_env (s : MState) (e : Env) : TabSame s { s with env := e } :=
-  ⟨Nat.le_refl _, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  ⟨Nat.le_refl _, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem tabSame_env' (s : MState) (e : Env) : TabSame { s with env := e } s :=
-  ⟨Nat.le_refl _, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  ⟨Nat.le_refl _, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- A bland temporary pushed keeps `Inv`, and popped too. -/
 theorem inv_pushTemp {D : Decisions} {Γ : List IndDecl} {s : MState} {v : Value} (hv : v.Bland) :
@@ -106,11 +106,13 @@ theorem inv_pushTemp {D : Decisions} {Γ : List IndDecl} {s : MState} {v : Value
       (fun p w h => .inl (by rw [← ckContent_pushTempE s.env v]; exact h))
     exact inv_of_posRel hi (posRel_pushTemp s.env v fr hfr hne hv) (tabSame_env _ _)
       (fun f i bb h => .inl ⟨f, i, bb, by rw [← binds_pushTempE s.env v]; exact h, rfl, rfl⟩) hf hp
+      (kindFrom_of_binds rfl (fun f i => binds_pushTempE s.env v f i))
   · intro hi
     obtain ⟨hf, hp⟩ := readClauses_of (b := s) hi hR.symm
       (fun p w h => .inl (by rw [ckContent_pushTempE s.env v]; exact h))
     exact inv_of_posRel hi (posRel_popTemp s.env v fr hfr hne hv) (tabSame_env' _ _)
       (fun f i bb h => .inl ⟨f, i, bb, by rw [binds_pushTempE s.env v]; exact h, rfl, rfl⟩) hf hp
+      (kindFrom_of_binds rfl (fun f i => (binds_pushTempE s.env v f i).symm))
 
 theorem invPushInert : InvPushInert := by
   intro D Γ st v T? hv hi
@@ -180,6 +182,50 @@ theorem binds_setAtE_from {k i : Nat} {bb : Binding}
         | some ba => rw [e] at h; cases h; exact ⟨ba, rfl, rfl, rfl⟩
       · exact ⟨bb, h, rfl, rfl⟩
     · exact ⟨bb, h, rfl, rfl⟩
+
+/-- `binds_setAtE_from` with the values: the binding written holds `w`, which reads as its old value (`VEq`). -/
+theorem binds_setAtE_veq (hve : VEq (valAt E (.bind f j)) w) {k i : Nat} {bb : Binding}
+    (h : (Env.setAtE E (.bind f j) w)[k]?.bind (fun fr : Frame => fr.binds[i]?) = some bb) :
+    ∃ ba, E[k]?.bind (fun fr : Frame => fr.binds[i]?) = some ba ∧ VEq ba.val bb.val ∧ ba.ty = bb.ty ∧
+      ba.lazyTy = bb.lazyTy := by
+  rw [frame_setAtE] at h
+  cases hk : E[k]? with
+  | none => rw [hk] at h; cases h
+  | some fr =>
+    rw [hk] at h
+    simp only [Option.map_some, Option.bind_some] at h ⊢
+    split at h
+    · rw [Array.getElem?_modify] at h
+      split at h
+      · cases e : fr.binds[i]? with
+        | none => rw [e] at h; cases h
+        | some ba =>
+          rw [e] at h; cases h
+          refine ⟨ba, rfl, ?_, rfl, rfl⟩
+          subst_vars
+          rw [valAt_bind_lookup, hk, Option.bind_some, e] at hve
+          exact hve
+      · exact ⟨bb, h, .inl rfl, rfl, rfl⟩
+    · exact ⟨bb, h, .inl rfl, rfl, rfl⟩
+
+/-- A binding after a write at `.bind f j` is an old one, or holds the value written. -/
+theorem binds_setAtE_cases {k i : Nat} {bb : Binding}
+    (h : (Env.setAtE E (.bind f j) w)[k]?.bind (fun fr : Frame => fr.binds[i]?) = some bb) :
+    E[k]?.bind (fun fr : Frame => fr.binds[i]?) = some bb ∨ bb.val = w := by
+  rw [frame_setAtE] at h
+  cases hk : E[k]? with
+  | none => rw [hk] at h; cases h
+  | some fr =>
+    rw [hk] at h
+    simp only [Option.map_some, Option.bind_some] at h ⊢
+    split at h
+    · rw [Array.getElem?_modify] at h
+      split at h
+      · cases e : fr.binds[i]? with
+        | none => rw [e] at h; cases h
+        | some ba => rw [e] at h; cases h; exact .inr rfl
+      · exact .inl h
+    · exact .inl h
 
 theorem valAt_setAtE_self {E : Env} {f j : Nat} {w : Value} (hp : Pos.bind f j ∈ allPos E) :
     valAt (Env.setAtE E (.bind f j) w) (.bind f j) = w := by
@@ -286,6 +332,7 @@ theorem inv_setAt {D : Decisions} {Γ : List IndDecl} {s : MState} {f j : Nat} {
     · exact .inl h)
   exact inv_of_posRel hi (posRel_setAtE s.env f j w hve) (tabSame_env _ _)
     (fun k i bb h => let ⟨ba, h1, h2, h3⟩ := binds_setAtE_from s.env f j w h; .inl ⟨k, i, ba, h1, h2, h3⟩) hf hp
+    ⟨rfl, fun k i bb h => let ⟨ba, h1, h2, h3, h4⟩ := binds_setAtE_veq s.env f j w hve h; .inr ⟨k, i, ba, h1, h2, h3, h4⟩⟩
 
 /-- Under `PlaceLocal`, no place rooted at a binding read `r` reads an inductive, for `r` one of the
 three readings the fragment binds. -/
@@ -421,13 +468,14 @@ theorem posRel_pushBind (hne : 0 < E.size) (hv : v.Bland ∨ v.NumBorrow) :
 end PushBind
 
 theorem tabSame_envs (s : MState) (e₁ e₂ : Env) : TabSame { s with env := e₁ } { s with env := e₂ } :=
-  ⟨Nat.le_refl _, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  ⟨Nat.le_refl _, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- **A binding pushed with the value in flight** (a number at `Nat` read `.other`, or a borrow of a
 number at `&Nat` read `.ref .other`) keeps `Inv`, the decisions local to the root. -/
 theorem inv_pushBind {D : Decisions} {Γ : List IndDecl} {s : MState} {h : Hint} {ty : Option Value} {v : Value}
     {pf : Bool} {d : DeclInfo} (hL : PlaceLocal D) (hne : 0 < s.env.size) (hv : v.Num ∨ v.NumBorrow ∨ v = .unit)
     (hd : d = .other ∨ d = .ref .other ∨ d = .unit) (hty : ty = some .tNat ∨ ty = some (.tRef .tNat) ∨ ty = some .tUnit)
+    (hkb : ∀ l c, v = .borrow l c → ty = some (.tRef .tNat))
     (hi : Inv D Γ { s with env := Env.pushTempE s.env v }) :
     Inv D Γ { s with env := Env.pushBindE s.env h ty v pf d } := by
   obtain ⟨fr, hfr⟩ : ∃ fr, s.env[s.env.size - 1]? = some fr := ⟨_, Array.getElem?_eq_getElem (by omega)⟩
@@ -470,13 +518,26 @@ theorem inv_pushBind {D : Decisions} {Γ : List IndDecl} {s : MState} {h : Hint}
         rw [this] at hb'; cases hb'; rfl)
   refine inv_of_posRel hi (posRel_pushBind s.env h ty v pf d fr hfr hne
     (hv.elim (fun h => .inl (.inl h)) (fun h => h.elim .inr (fun h => .inl (.inr (.inl h)))))) (tabSame_envs _ _ _) (fun k i bb hbb => ?_) hf hp
-  by_cases e : Pos.bind k i = .bind (s.env.size - 1) fr.binds.size
-  · cases e
-    rw [bind_pushBindE_new s.env h ty v pf d fr hfr] at hbb
-    cases hbb
-    exact .inr ⟨rfl, hty⟩
-  · rw [bind_pushBindE_ne s.env h ty v pf d fr hfr k i e] at hbb
-    exact .inl ⟨k, i, bb, by rw [binds_pushTempE]; exact hbb, rfl, rfl⟩
+    ⟨rfl, fun k i bb hbb => ?_⟩
+  · by_cases e : Pos.bind k i = .bind (s.env.size - 1) fr.binds.size
+    · cases e
+      rw [bind_pushBindE_new s.env h ty v pf d fr hfr] at hbb
+      cases hbb
+      exact .inr ⟨rfl, hty⟩
+    · rw [bind_pushBindE_ne s.env h ty v pf d fr hfr k i e] at hbb
+      exact .inl ⟨k, i, bb, by rw [binds_pushTempE]; exact hbb, rfl, rfl⟩
+  · -- (K): the new binding pairs a borrow with `&Nat` (`hkb`), and holds no function value
+    by_cases e : Pos.bind k i = .bind (s.env.size - 1) fr.binds.size
+    · cases e
+      rw [bind_pushBindE_new s.env h ty v pf d fr hfr] at hbb
+      cases hbb
+      refine .inl ⟨fun l c ev T hT => ⟨.tNat, by rw [hkb l c ev] at hT; cases hT; rfl⟩, fun hf => ?_⟩
+      rcases hv with hv | ⟨l, w, rfl, -⟩ | rfl
+      · rw [hv.not_fn] at hf; cases hf
+      · cases hf
+      · cases hf
+    · rw [bind_pushBindE_ne s.env h ty v pf d fr hfr k i e] at hbb
+      exact .inr ⟨k, i, bb, by rw [binds_pushTempE]; exact hbb, .inl rfl, rfl, rfl⟩
 
 /-- `InvBindNum` with the fix (machine3): the decisions local to the root. -/
 theorem invBindNum' (D : Decisions) (Γ : List IndDecl) (st : MState) (h : Hint) (v : Value) (T? : Option Value) (p : Bool)
@@ -485,7 +546,7 @@ theorem invBindNum' (D : Decisions) (Γ : List IndDecl) (st : MState) (h : Hint)
   rw [norm_withTempT] at hi
   rw [norm_withEnv, erase_pushBindE]
   exact inv_pushBind (s := st.norm) hL (by show 0 < (Env.erase st.env).size; rw [Env.erase_size]; exact hne)
-    (.inl hv) (.inl rfl) (.inl rfl) hi
+    (.inl hv) (.inl rfl) (.inl rfl) (fun l c e => absurd e (hv.not_borrow l c)) hi
 
 /-- `InvBindBorrow` with the fix (machine3): the decisions local to the root. -/
 theorem invBindBorrow' (D : Decisions) (Γ : List IndDecl) (st : MState) (h : Hint) (l : Nat) (w : Value)
@@ -495,7 +556,7 @@ theorem invBindBorrow' (D : Decisions) (Γ : List IndDecl) (st : MState) (h : Hi
   rw [norm_withTempT] at hi
   rw [norm_withEnv, erase_pushBindE]
   exact inv_pushBind (s := st.norm) hL (by show 0 < (Env.erase st.env).size; rw [Env.erase_size]; exact hne)
-    (.inr (.inl ⟨l, w, rfl, hw⟩)) (.inr (.inl rfl)) (.inr (.inl rfl)) hi
+    (.inr (.inl ⟨l, w, rfl, hw⟩)) (.inr (.inl rfl)) (.inr (.inl rfl)) (fun _ _ _ => rfl) hi
 
 /-! ## The top binding popped -/
 
@@ -552,6 +613,7 @@ theorem inv_popBind {D : Decisions} {Γ : List IndDecl} {s : MState} (hs : s.env
     (fun p x hp _ => absurd hp (Nat.not_lt_zero _))
   have hpe : allPos (Env.popBindE s.env) = A ++ B := h2
   refine inv_of_posRel hi ⟨fun p hp => ?_, fun q hq => ?_, fun _ _ _ _ e => e⟩ (tabSame_env _ _) (fun k i bb hbb => ?_) hf hp
+    ⟨rfl, fun k i bb hbb => ?_⟩
   · rw [hpe] at hp
     have hne' : p ≠ .bind (s.env.size - 1) (fr.binds.size - 1) := fun e => ho (e ▸ hp)
     exact .inr ⟨by rw [h1]; rcases List.mem_append.mp hp with h | h
@@ -575,6 +637,15 @@ theorem inv_popBind {D : Decisions} {Γ : List IndDecl} {s : MState} (hs : s.env
     · rw [show (Env.popBindE s.env) = s.env.modify (s.env.size - 1) popTop from rfl,
         bind_popTop_ne s.env fr hfr k i e] at hbb
       exact .inl ⟨k, i, bb, hbb, rfl, rfl⟩
+  · -- (K): every binding left is an old one
+    by_cases e : Pos.bind k i = .bind (s.env.size - 1) (fr.binds.size - 1)
+    · cases e
+      have := bind_popTop_old s.env fr hfr
+      rw [show (Env.popBindE s.env) = s.env.modify (s.env.size - 1) popTop from rfl, this] at hbb
+      cases hbb
+    · rw [show (Env.popBindE s.env) = s.env.modify (s.env.size - 1) popTop from rfl,
+        bind_popTop_ne s.env fr hfr k i e] at hbb
+      exact .inr ⟨k, i, bb, hbb, .inl rfl, rfl, rfl⟩
 
 end PopBind
 
@@ -632,11 +703,12 @@ theorem inv_lend {D : Decisions} {Γ : List IndDecl} {s : MState} {f j : Nat} {b
     unfold topReadings; exact congrArg (fun x => (x.getD []).reverse) (back_setAtE s.env f j _)
   have hc1 := ckContent_setAtE s.env f j (.loan s.nextLoan)
   have hb1 := @binds_setAtE_from s.env f j (.loan s.nextLoan)
+  have hb1c := @binds_setAtE_cases s.env f j (.loan s.nextLoan)
   have hvs : valAt (Env.setAtE s.env (.bind f j) (.loan s.nextLoan)) (.bind f j) = .loan s.nextLoan :=
     valAt_setAtE_self hfj
   have hvo : ∀ p, p ≠ .bind f j → valAt (Env.setAtE s.env (.bind f j) (.loan s.nextLoan)) p = valAt s.env p :=
     fun p e => valAt_setAtE_other s.env _ _ _ e
-  generalize Env.setAtE s.env (.bind f j) (.loan s.nextLoan) = E1 at hne hP1 hR1 hc1 hb1 hvs hvo ⊢
+  generalize Env.setAtE s.env (.bind f j) (.loan s.nextLoan) = E1 at hne hP1 hR1 hc1 hb1 hb1c hvs hvo ⊢
   obtain ⟨fr1, hfr1⟩ : ∃ fr, E1[E1.size - 1]? = some fr := ⟨_, Array.getElem?_eq_getElem (by omega)⟩
   have hP : allPos (Env.pushTempE E1 (.borrow s.nextLoan bv)) = allPos s.env ++ [.temp (E1.size - 1) fr1.temps.size] := by
     rw [allPos_pushTempE E1 _ fr1 hfr1 hne, hP1]
@@ -696,8 +768,9 @@ theorem inv_lend {D : Decisions} {Γ : List IndDecl} {s : MState} {f j : Nat} {b
       | nil => rw [e] at h; cases h; exact ⟨fun e => (by cases e), fun _ _ _ _ => rfl⟩
       | cons st ss => rw [e] at h; cases st <;> simp [Value.follow, stepV] at h
     · exact .inl h)
-  refine inv_step hi ⟨Nat.le_succ _, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ (fun v hv => ?_) (fun l hl => ?_)
+  refine inv_step hi ⟨Nat.le_succ _, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ (fun v hv => ?_) (fun l hl => ?_)
     (fun k i bb h => ?_) (fun p hp q hq l h h' => ?_) ⟨fun v hv l hl => ?_, fun l => ?_⟩ ?_ ?_ (fun v hv l hl => ?_) hf hp
+    ⟨rfl, fun k i bb h => ?_⟩
   · obtain ⟨p, hp, rfl⟩ := mem_values_iff.mp hv
     rcases hcls p hp with ⟨-, e⟩ | ⟨-, e⟩ | ⟨hp', e⟩
     · exact .inr (Value.NumBorrow.simple ⟨_, bv, e, hbv⟩)
@@ -762,6 +835,11 @@ theorem inv_lend {D : Decisions} {Γ : List IndDecl} {s : MState} {f j : Nat} {b
     · rw [e] at hl; simp [Value.loans, hbv.loans] at hl
     · rw [e] at hl; simp [Value.loans] at hl; rw [hl]; exact (hlive _).mpr rfl
     · rw [e, hoL p hp'] at hl; cases hl
+  · -- (K): the lender now holds a loan; every other binding is old
+    rw [hbinds2] at h
+    rcases hb1c h with h' | e
+    · exact .inr ⟨k, i, bb, h', .inl rfl, rfl, rfl⟩
+    · exact .inl ⟨fun l c ev => (by rw [e] at ev; cases ev), fun hf => (by rw [e] at hf; cases hf)⟩
 
 theorem mem_allPos_of_binding {E : Env} {f j : Nat} {b : Binding}
     (h : E[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b) : Pos.bind f j ∈ allPos E := by
@@ -798,6 +876,8 @@ theorem inv_of_allBland {D : Decisions} {Γ : List IndDecl} {a b : MState} (hi :
     (fun p hp _ _ l h _ => ?_) ⟨fun v hv l hl => ?_, fun l => by rw [hfl]; simp⟩
     (fun k _ hk => by rw [hnl k] at hk; cases hk) (fun _ _ _ l hl => by rw [hnl l] at hl; cases hl)
     (fun v hv l hl => by rw [(hall v hv).loans] at hl; cases hl) hfits hpc
+    ⟨ht.globals.symm, fun f i bb h => .inl (kindAt_of_bland (hall _ (mem_values_iff.mpr
+      ⟨.bind f i, mem_allPos_of_binding h, by rw [valAt_bind_lookup, h]; rfl⟩)))⟩
   · rw [(hall v hv).anyAtom rfl (fun _ => rfl) rfl rfl] at h; cases h
   · rw [shape_eq_shapeOf, (hall' p hp).shapeOf] at h; cases h
   · rw [(hall v hv).outerLoans] at hl; cases hl

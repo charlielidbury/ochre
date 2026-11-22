@@ -56,7 +56,7 @@ theorem invBindUnit : InvBindUnit := by
   rw [norm_withTempT] at hi
   rw [norm_withEnv, erase_pushBindE]
   exact inv_pushBind (s := st.norm) hL (by show 0 < (Env.erase st.env).size; rw [Env.erase_size]; exact hne)
-    (.inr (.inr rfl)) (.inr (.inr rfl)) (.inr (.inr rfl)) hi
+    (.inr (.inr rfl)) (.inr (.inr rfl)) (.inr (.inr rfl)) (fun _ _ e => by cases e) hi
 
 /-! ## `Inv` at an environment of fragment values -/
 
@@ -143,7 +143,7 @@ theorem inv_of_fval {D : Decisions} {Γ : List IndDecl} {a b : MState} (hi : Inv
     (hfits : ∀ p v n args, ckContent b.env p = some v → D.placeDecl (topReadings b) p = .ind n args →
       (Γ.find? (·.name == n)).isSome → v.fitsInd n = true)
     (hpc : ∀ p, GrainOk D Γ (topReadings b) p → ckContent b.env p = some .proof →
-      D.copy (D.placeDecl (topReadings b) p) = true) : Inv D Γ b := by
+      D.copy (D.placeDecl (topReadings b) p) = true) (hK : KindFrom a b) : Inv D Γ b := by
   have hsites : ∀ l x, x ∈ Env.sitesOf b.env l → ∃ p ∈ allPos b.env, valAt b.env p = .loan l ∧ x = ⟨p, [], false⟩ := by
     intro l x hx
     obtain ⟨p, hp, hx'⟩ := List.mem_flatMap.mp hx
@@ -152,7 +152,7 @@ theorem inv_of_fval {D : Decisions} {Γ : List IndDecl} {a b : MState} (hi : Inv
     · rename_i e; exact ⟨p, hp, e, List.mem_singleton.mp hx'⟩
     · cases hx'
   refine inv_step hi ht (fun v hv => .inr (by obtain ⟨p, hp, rfl⟩ := mem_values_iff.mp hv; exact (hs p hp).simple))
-    hocc hb ?_ ⟨fun v hv l hl => ?_, fun l => ?_⟩ ?_ ?_ (fun v hv l hl => ?_) hfits hpc
+    hocc hb ?_ ⟨fun v hv l hl => ?_, fun l => ?_⟩ ?_ ?_ (fun v hv l hl => ?_) hfits hpc hK
   · intro p hp q hq l h h'
     rw [shape_eq_shapeOf] at h h'
     obtain ⟨w, e⟩ := shapeOf_some h
@@ -313,7 +313,20 @@ theorem inv_endE {D : Decisions} {Γ : List IndDecl} {a : MState} {px ph : Pos} 
     · subst e2; rw [hvh] at e; subst e; exact .inl fun m e => by cases e
     exact .inr ⟨e1, e2, by rw [← hval p e1 e2]; exact e⟩
   refine inv_of_fval hi (tabSame_env _ _) (fun k i bb h => ?_) (fun p hp => ?_) (fun l' ⟨v, hv', h⟩ => ?_)
-    (fun p hp q hq m ep eq => ?_) (fun p hp q hq m w w' ep eq => ?_) (fun p hp m ep => ?_) hf hp
+    (fun p hp q hq m ep eq => ?_) (fun p hp q hq m w w' ep eq => ?_) (fun p hp m ep => ?_) hf hp ⟨rfl, fun k i bb h => ?_⟩
+  rotate_right
+  · -- (K): the lender now holds a number, the holder `⊥`; every other binding is old
+    have hbv : valAt (endE a.env px ph c) (.bind k i) = bb.val := by rw [valAt_bind_lookup, h]; rfl
+    unfold endE at h
+    obtain ⟨b1, h1, h2, h3⟩ := binds_setAtE_any _ _ _ h
+    obtain ⟨b0, h0, h2', h3'⟩ := binds_setAtE_any _ _ _ h1
+    have hav : valAt a.env (.bind k i) = b0.val := by rw [valAt_bind_lookup, h0]; rfl
+    by_cases e1 : Pos.bind k i = px
+    · rw [e1, hvx] at hbv; exact .inl (kindAt_of_bland (by rw [← hbv]; exact .inl hcN))
+    by_cases e2 : Pos.bind k i = ph
+    · rw [e2, hvh] at hbv; exact .inl (kindAt_of_bland (by rw [← hbv]; exact .inr (.inr rfl)))
+    · rw [hval _ e1 e2, hav] at hbv
+      exact .inr ⟨k, i, b0, h0, .inl hbv, h2'.trans h2, h3'.trans h3⟩
   · unfold endE at h
     obtain ⟨b1, h1, h2, h3⟩ := binds_setAtE_any _ _ _ h
     obtain ⟨b0, h0, h2', h3'⟩ := binds_setAtE_any _ _ _ h1
@@ -385,7 +398,7 @@ theorem inv_lendG {D : Decisions} {Γ : List IndDecl} {a : MState} {f j : Nat} (
     (hd : ∀ b, a.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .other)
     (hs : ∀ q ∈ allPos a.env, FVal (valAt a.env q)) (hi : Inv D Γ a) :
     Inv D Γ { a with env := Env.pushTempE (Env.setAtE a.env (.bind f j) (.loan a.nextLoan)) (.borrow a.nextLoan (valAt a.env (.bind f j))), nextLoan := a.nextLoan + 1 } := by
-  have wocc : ∀ l, a.Occurs l → l < a.nextLoan := hi.2.2.2.2.2.2.2.2.2.2.2.2.2
+  have wocc : ∀ l, a.Occurs l → l < a.nextLoan := hi.2.2.2.2.2.2.2.2.2.2.2.2.2.1
   generalize hE' : Env.setAtE a.env (.bind f j) (.loan a.nextLoan) = E'
   generalize hw : valAt a.env (.bind f j) = w at hn
   have hsz : E'.size = a.env.size := by rw [← hE']; exact size_setAtE _ _ _ _
@@ -451,8 +464,15 @@ theorem inv_lendG {D : Decisions} {Γ : List IndDecl} {a : MState} {f j : Nat} (
         | nil => cases h'
         | cons s ss => cases s <;> simp [Value.follow, stepV] at h'
       · exact .inl h')
-  refine inv_of_fval hi ⟨Nat.le_succ _, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ (fun k i bb h => ?_) (fun q hq => ?_)
+  refine inv_of_fval hi ⟨Nat.le_succ _, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ (fun k i bb h => ?_) (fun q hq => ?_)
     (fun l ⟨v, hv', h⟩ => ?_) (fun p hp q hq m ep eq => ?_) (fun p hp q hq m w₁ w₂ ep eq => ?_) (fun p hp m ep => ?_) hf hpc
+    ⟨rfl, fun k i bb h => ?_⟩
+  rotate_right
+  · -- (K): the lender now holds a loan; every other binding is old
+    rw [binds_pushTempE, ← hE'] at h
+    rcases binds_setAtE_cases _ _ _ _ h with h' | e
+    · exact .inr ⟨k, i, bb, h', .inl rfl, rfl, rfl⟩
+    · exact .inl (kindAt_of_loan e)
   · rw [binds_pushTempE, ← hE'] at h
     obtain ⟨ba, h1, h2, h3⟩ := binds_setAtE_from _ _ _ _ h
     exact .inl ⟨k, i, ba, h1, h2, h3⟩

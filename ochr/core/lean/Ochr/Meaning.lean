@@ -186,6 +186,7 @@ import Ochr.Meaning.Steps.MasterUntyped
 import Ochr.Meaning.Steps.FitGuards
 import Ochr.Meaning.Steps.LetCallGuards
 import Ochr.Meaning.Steps.MasterPlace
+import Ochr.Meaning.Steps.MasterKind
 import Ochr.Meaning.Steps.LaterGuards
 import Ochr.Meaning.Steps.SplitP
 import Ochr.Meaning.Steps.SplitGuards

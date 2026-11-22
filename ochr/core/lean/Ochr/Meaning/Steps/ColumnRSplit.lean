@@ -510,7 +510,8 @@ theorem inv_envT {D : Decisions} {st : MState} {t : Value} (ht : t ∈ TVals) (h
     (hn : st.absTy.size = st.nextAbs)
     (hrefs : ∀ σ r, (σ, r) ∈ st.refs → σ < st.absTy.size ∧ ∀ τ, r.hasAbs τ = true → τ < st.absTy.size)
     (hg : st.goal = some .tNat) (hneu : st.neutrals = []) (heta : st.etaRefs = [])
-    (hdecl : ∀ (σ l : Nat), st.absDecl[σ]? ≠ some (DeclInfo.sort l)) : Inv D [] st := by
+    (hdecl : ∀ (σ l : Nat), st.absDecl[σ]? ≠ some (DeclInfo.sort l))
+    (hglob : ∀ g ∈ st.globals, g.val.isFnVal = true → g.ty.piWritten = true) : Inv D [] st := by
   have hvals : ∀ v ∈ Env.values st.env, v = .gfn "R" ∨ v = .bot ∨ v = .zero ∨ v = vR := fun v hv => by
     rw [he] at hv; exact mem_values_envT ht hv
   have hpos : ∀ p ∈ allPos st.env, p = .bind 1 0 ∨ p = .bind 1 1 ∨ p = .temp 1 0 := fun p hp => by
@@ -523,7 +524,7 @@ theorem inv_envT {D : Decisions} {st : MState} {t : Value} (ht : t ∈ TVals) (h
     rintro l ⟨v, hv, h⟩
     rcases hvals v hv with rfl | rfl | rfl | rfl <;> exact Bool.false_ne_true h
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
-    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_⟩
   -- (WF1)
   · intro p hp
     rcases hpos p hp with rfl | rfl | rfl <;> rw [he]
@@ -586,6 +587,11 @@ theorem inv_envT {D : Decisions} {st : MState} {t : Value} (ht : t ∈ TVals) (h
   · intro σ l h; exact absurd h (hdecl σ l)
   -- the label counter
   · intro l h; exact absurd h (hocc l)
+  -- (K): `R`'s own binding at `Π(n : Nat). Nat`, the parameter `⊥`
+  · refine ⟨fun f i b hb => ?_, hglob⟩
+    rcases hbind hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+    · exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
+    · exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
 
 /-- World `Z`'s leaf with `Z` in flight (the kernel; `leafZR.withTempT Z (some Nat)` but for the temporary's
 stored type). -/
@@ -665,6 +671,7 @@ theorem pre_lzTR (hGl : G.2.label = none) (hMB : ∀ Δ, MemBelow (KR dm D Δ G 
   · exact inv_envT hz rfl (by simp [lzT]) (.inr rfl) rfl
       (fun σ r h => by simp [lzT] at h; obtain ⟨rfl, rfl⟩ := h; exact ⟨by decide, fun τ hτ => by cases hτ⟩)
       rfl rfl rfl (fun σ l => by rcases σ with _ | σ <;> simp [lzT])
+      (fun g hg _ => by simp only [lzT, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; rfl)
   · refine ⟨⟨fun σ h => absurd h (hnr σ), ?_, ?_, ?_⟩, fun σ h => absurd h (hnr σ), ?_, fun σ h => absurd h (hnr σ)⟩
     · intro n σ h; simp [lzT] at h
     · intro σ v h; simp [lzT] at h
@@ -695,6 +702,7 @@ theorem pre_lsTR (hGl : G.2.label = none) (hMB : ∀ Δ, MemBelow (KR dm D Δ G 
         simp [lsT] at h; obtain ⟨rfl, rfl⟩ := h
         exact ⟨by decide, fun τ hτ => by have := abs_hasAbs_eq hτ; subst this; decide⟩)
       rfl rfl rfl (fun σ l => by rcases σ with _ | _ | σ <;> simp [lsT])
+      (fun g hg _ => by simp only [lsT, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; rfl)
   · refine ⟨⟨fun σ h _ => ?_, ?_, ?_, ?_⟩, fun σ h _ => ?_, ?_, fun σ h _ => ?_⟩
     · rw [absTyM_nat _ _ (hty σ (hlt σ h))]; obtain ⟨m, hm⟩ := hmem σ (hlt σ h); exact ⟨m, hm.symm⟩
     · intro n σ h; simp [lsT] at h

@@ -242,7 +242,7 @@ theorem Asg.of_quiet {K : RunCtx} {ρ : Assignment} {st st' : MState} (hq : Quie
 
 theorem Inv.wf6 {D : Decisions} {Γ : List IndDecl} {st : MState} (h : Inv D Γ st) : WF6 st := h.2.2.2.2.1
 theorem Inv.labels {D : Decisions} {Γ : List IndDecl} {st : MState} (h : Inv D Γ st) :
-    ∀ l, st.Occurs l → l < st.nextLoan := h.2.2.2.2.2.2.2.2.2.2.2.2.2
+    ∀ l, st.Occurs l → l < st.nextLoan := h.2.2.2.2.2.2.2.2.2.2.2.2.2.1
 
 /-- The labels that occur in a state are below its counter (`Inv`, read off the kernel). -/
 theorem Pre.labels {K : RunCtx} {ρ : Assignment} {st : MState} (hp : Pre K ρ st) :
@@ -363,7 +363,7 @@ theorem succ_core (hS : SuccInv) (hI : InvSteps) {n : Nat} {u : Term} {P Pu : MS
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, -, hDb, hty⟩ :=
     hS n true u hint st st' bh v T? hm htn htd h
   obtain ⟨st₂, bh₂, hx₂, hk₂⟩ := hty rfl
-  obtain ⟨hv₀, hTy⟩ := hnum st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) (hp.of_kern hk₀).inv.2.2.2.2.2.2.2.2.2.2.2.2.2 hm₀ htd₀ (hDb K.D hD) hu₀
+  obtain ⟨hv₀, hTy⟩ := hnum st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) (hp.of_kern hk₀).inv.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hm₀ htd₀ (hDb K.D hD) hu₀
   have hO := hu st₀ st₁ true none v₀ T₀ s π (hPu st st₀ hk₀ hPst) rfl hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hSg hv
     (by rw [← hk₀.absTy]; exact hab) hnh (by rw [scopeOf_rel hr]; exact hflu st hPst)

@@ -91,7 +91,7 @@ theorem ctxS_stC : CtxS (KC dm D) stC where
 program's; `stC` holds no value, so no clause reads it). -/
 theorem inv_stC {Γ : List IndDecl} : Inv D Γ stC := by
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
-    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_⟩
   -- (WF1)
   · intro p hp; simp [allPos_stC] at hp
   · intro p hp; simp [allPos_stC] at hp
@@ -137,6 +137,8 @@ theorem inv_stC {Γ : List IndDecl} : Inv D Γ stC := by
   · intro σ l h; simp [stC] at h
   -- the label counter
   · intro l h; exact absurd h (occurs_stC l)
+  -- (K): no binding, no global
+  · exact ⟨fun f i b hb => by simp [bind_stC] at hb, fun g hg => by simp [stC] at hg⟩
 
 theorem asg_stC : Asg (KC dm D) ρ stC := by
   refine ⟨⟨?_, ?_, ?_, ?_⟩, ?_, ?_, ?_⟩

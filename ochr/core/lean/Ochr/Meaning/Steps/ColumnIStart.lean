@@ -162,7 +162,7 @@ theorem shape_stI (p : Pos) : Env.shape stI.env p = none := by
 
 theorem inv_stI : Inv D [] stI := by
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
-    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_⟩
   -- (WF1)
   · intro p hp; rcases mem_allPos hp with rfl | rfl <;> exact Bool.false_ne_true
   · intro p _ q _ l h; rw [shape_stI] at h; cases h
@@ -210,6 +210,18 @@ theorem inv_stI : Inv D [] stI := by
   · intro σ l h; rcases σ with _ | σ <;> simp [stI] at h
   -- the label counter
   · intro l h; exact absurd h (occurs_stI l)
+  -- (K): `I`'s own binding and global at `Π(n : Nat). Nat`; the parameter an unknown
+  · refine ⟨fun f i b hb => ?_, fun g hg => ?_⟩
+    · rcases f with _ | _ | f
+      · simp [stI] at hb
+      · rcases i with _ | _ | i
+        · simp only [stI] at hb; cases hb
+          exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
+        · simp only [stI] at hb; cases hb
+          exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
+        · simp [stI] at hb
+      · simp [stI] at hb
+    · simp only [stI, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; intro _; rfl
 
 theorem find_gI {n : String} {g : GDef} (h : stI.globals.find? (·.name == n) = some g) : n = "I" ∧ g = gI := by
   simp only [stI, List.find?_cons, List.find?_nil] at h

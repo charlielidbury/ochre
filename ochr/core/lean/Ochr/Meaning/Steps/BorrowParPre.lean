@@ -114,7 +114,7 @@ theorem not_refd_ge {σ : Nat} (h : stW.Refd σ) : σ < 1 := by
 
 theorem inv_stW (D : Decisions) : Inv D [] stW := by
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
-    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_⟩
   -- (WF1)
   · intro p hp; rcases mem_allPos hp with rfl | rfl | rfl <;> exact Bool.false_ne_true
   · intro p _ q _ l h1 h2; rw [shape_stW] at h1 h2
@@ -183,6 +183,20 @@ theorem inv_stW (D : Decisions) : Inv D [] stW := by
   · intro σ l h; rcases σ with _ | σ <;> simp [stW] at h
   -- the label counter
   · intro l h; rw [occurs_stW h]; decide
+  -- (K): the cell a loan, `W`'s own binding at its Π-type, the borrow parameter at `&Nat`
+  · refine ⟨fun f i b hb => ?_, fun g hg => ?_⟩
+    · rcases f with _ | _ | f
+      · rcases i with _ | i
+        · simp only [stW] at hb; cases hb; exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
+        · simp [stW] at hb
+      · rcases i with _ | _ | i
+        · simp only [stW] at hb; cases hb
+          exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
+        · simp only [stW] at hb; cases hb
+          exact ⟨fun l c e T hT => ⟨.tNat, by cases hT; rfl⟩, fun hf => (nomatch hf)⟩
+        · simp [stW] at hb
+      · simp [stW] at hb
+    · simp only [stW, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; intro _; rfl
 
 end Pre'
 

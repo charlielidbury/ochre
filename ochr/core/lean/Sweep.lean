@@ -1415,8 +1415,79 @@ def tempLive : Clause where
     | some (.tRef _), _ => some ⟨"a temporary at a borrow type holds a value that is not a borrow", s!"{posName st.env p} = {clip v.pp}"⟩
     | _, _ => none
 
+/-- A function type written as one: a Π-type value whose code is a `pi` term (what `callFn`'s `let` takes as a deferred
+call's record, and what `callType`/`declCallType` accept). -/
+def piWritten : Value → Bool
+  | .tPi _ (.pi ..) _ => true
+  | _ => false
+
+/-- A function value: a global function or a closure. -/
+def isFnVal : Value → Bool
+  | .gfn _ | .clo .. => true
+  | _ => false
+
+/-- The deferred type of the binding at `.bind f i`, evaluated as a read evaluates it (`Machine.bindTy?`). -/
+def lazyEval (st : MState) (f i : Nat) : Option Value :=
+  -- the one-shot readings a recorded state may carry from the term it was recorded at are cleared, as a read's own
+  -- `evalAt` clears them for its sub-runs
+  match (runMachine (Ochr.bindTy? 1000 (.bind f i))
+      { st with tailDecl := none, headEval := false, tailNext := false } 200000).1 with
+  | .ok T _ => T
+  | _ => none
+
+/-- (K) the invariant clause `Form.KindTyped` (lead28, docs/31 D188), mirrored EXACTLY on its two parts: a binding
+holding a borrow stores a borrow type (`ty = some (&A)`, never deferred); a binding holding a function value (a global
+function, a closure) stores a function type written as one (`ty = some (.tPi _ (.pi …) _)`) or a deferred type; and a
+global whose value is a function value has a stored type written as one. A binding with no stored type is asked
+nothing; a deferred type is checked further by evaluating it (`bindTy?`), as kinds of their own marked "(not the
+clause)": a borrow's must evaluate to `&A`, a function value's to a Π written as one. The deferred case is checked further by
+evaluating the deferred type as a read does (`bindTy?`): a violation kind of its own, NOT part of the clause. -/
+def kindTyped : Clause where
+  name := "(K) a binding holding a borrow, if its type is stored, stores &A; one holding a function value a Π written as one"
+  premises := [
+    ("a binding holds a borrow", fun st => (bindings st.env).any fun (_, _, b) => b.val.isBorrow),
+    ("... in an untyped run", fun st => !st.typing && (bindings st.env).any fun (_, _, b) => b.val.isBorrow),
+    ("... at a binding with no stored and no deferred type (asked nothing)", fun st => (bindings st.env).any fun (_, _, b) =>
+      b.val.isBorrow && b.ty.isNone && b.lazyTy.isNone),
+    ("... at a deferred type", fun st => (bindings st.env).any fun (_, _, b) => b.val.isBorrow && b.ty.isNone && b.lazyTy.isSome),
+    ("a binding holds a function value", fun st => (bindings st.env).any fun (_, _, b) => isFnVal b.val),
+    ("... at a deferred type", fun st => (bindings st.env).any fun (_, _, b) => isFnVal b.val && b.ty.isNone && b.lazyTy.isSome),
+    ("... at a binding with no stored and no deferred type (asked nothing)", fun st => (bindings st.env).any fun (_, _, b) =>
+      isFnVal b.val && b.ty.isNone && b.lazyTy.isNone),
+    ("a global's value is a function value", fun st => st.globals.any fun g => isFnVal g.val)]
+  check st :=
+    ((bindings st.env).filterMap fun (f, i, b) =>
+      if b.val.isBorrow then match b.ty with
+        | some (.tRef _) => none
+        | some T => some ⟨"a borrow at a stored type that is not a borrow type", s!"{posName st.env (.bind f i)} : {clip T.pp 120} = {clip b.val.pp}"⟩
+        | none => if b.lazyTy.isNone then none else match lazyEval st f i with
+          | some (.tRef _) => none
+          | some T => some ⟨"(not the clause) a borrow whose deferred type evaluates to a type that is not a borrow type", s!"{posName st.env (.bind f i)} : {clip T.pp 120} = {clip b.val.pp}"⟩
+          | none => some ⟨"(not the clause) a borrow whose deferred type does not evaluate", s!"{posName st.env (.bind f i)} = {clip b.val.pp}"⟩
+      else if isFnVal b.val then match b.ty, b.lazyTy with
+        | some T, _ => if piWritten T then none else
+            some ⟨"a function value at a stored type not written as a Π", s!"{posName st.env (.bind f i)} : {clip T.pp 120} = {clip b.val.pp}"⟩
+        | none, none => none
+        | none, some _ => match lazyEval st f i with
+          | some T => if piWritten T then none else
+              some ⟨"(not the clause) a function value whose deferred type evaluates to a type not written as a Π", s!"{posName st.env (.bind f i)} : {clip T.pp 120} = {clip b.val.pp}"⟩
+          | none => some ⟨"(not the clause) a function value whose deferred type does not evaluate", s!"{posName st.env (.bind f i)} = {clip b.val.pp}"⟩
+      else none) ++
+    (st.globals.filterMap fun g =>
+      if isFnVal g.val && !piWritten g.ty then some ⟨"a global function value at a type not written as a Π", s!"{g.name} : {clip g.ty.pp 120}"⟩ else none)
+
+/-- REPORT: a deferred call's record (`callTyLater`) whose function type is not written as one (the `let` then binds no
+type and defers none: `LetCallInvU`'s gap, docs/31 D187). -/
+def laterPi : Clause where
+  name := "(report) a deferred call's record whose type is not written as a Π"
+  report := true
+  premises := [("a deferred call's record is set", fun st => st.callTyLater.isSome)]
+  check st := match st.callTyLater with
+    | some (P, _) => if piWritten P then [] else [⟨"a record not written as a Π", clip P.pp 160⟩]
+    | none => []
+
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, tempTyped, tempShape, tempNoLoan,
+  [kindTyped, laterPi, wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, tempTyped, tempShape, tempNoLoan,
    tempLive, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, etaOlder, recordNamesEmpty, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
 
 /-! ## The sweep -/

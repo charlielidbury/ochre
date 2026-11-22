@@ -367,7 +367,7 @@ theorem ckContent_envBT {v t : Value} (hv : v ∈ CVals) {p : Place} {w : Value}
 theorem inv_envBT {D : Decisions} {rest : List IndDecl} (hdec : DecNot D) {st : MState} {v t : Value}
     (hv : v ∈ CVals) (ht : t ∈ CVals) (he : st.env = envBT v t) (hA : st.absTy = #[tyB]) (hn : st.nextAbs = 1)
     (hrefs : st.refs = [(0, v)]) (hg : st.goal = some tyB) (hneu : st.neutrals = []) (heta : st.etaRefs = [])
-    (hd : st.absDecl = #[.other]) : Inv D (declB :: rest) st := by
+    (hd : st.absDecl = #[.other]) (hglob : st.globals = [gNot]) : Inv D (declB :: rest) st := by
   have hv' := hv; have ht' := ht
   simp only [CVals, List.mem_cons, List.not_mem_nil, or_false] at hv' ht'
   have hvals : ∀ w ∈ Env.values st.env, w = .gfn "Not" ∨ w = vT ∨ w = vF := fun w hw => by
@@ -402,7 +402,7 @@ theorem inv_envBT {D : Decisions} {rest : List IndDecl} (hdec : DecNot D) {st : 
       have := hAT T (Array.mem_toList_iff.mpr (Array.mem_of_getElem? h)); subst this
       exact (Bool.false_ne_true hσ).elim
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
-    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_⟩
   -- (WF1)
   · intro p hp
     rcases hpos p hp with rfl | rfl | rfl <;> rw [he]
@@ -476,6 +476,16 @@ theorem inv_envBT {D : Decisions} {rest : List IndDecl} (hdec : DecNot D) {st : 
   · intro σ l h; rw [hd] at h; rcases σ with _ | σ <;> simp at h
   -- the label counter
   · intro l h; exact absurd h (hocc l)
+  -- (K): `Not`'s own binding at its Π-type, the parameter a constructor of `B`
+  · refine ⟨fun f i b hb => ?_, fun g hg => ?_⟩
+    · rcases hbind hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+      · exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
+      · refine ⟨fun l c e => ?_, fun hf => ?_⟩ <;> rcases hv' with rfl | rfl
+        · exact nomatch e
+        · exact nomatch e
+        · exact nomatch hf
+        · exact nomatch hf
+    · rw [hglob] at hg; simp only [List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; intro _; rfl
 
 /-- World `T`'s leaf with `F` in flight (the kernel; `leafT.withTempT F (some B)` but for the temporary's stored
 type). -/
@@ -535,7 +545,7 @@ theorem pre_leafB (hdm : DataModelB dm D rest) (hdec : DecNot D) (Δ : Nat → T
       · simp at h
   refine ⟨?_, ?_, ?_⟩ <;> rw [hnorm]
   · exact ctxS_Not hdm Δ hgl hi
-  · exact inv_envBT hdec hv ht he hA hn hrefs hg hneu heta hd
+  · exact inv_envBT hdec hv ht he hA hn hrefs hg hneu heta hd hgl
   · refine ⟨⟨fun σ h => absurd h (hnr σ), ?_, ?_, ?_⟩, fun σ h => absurd h (hnr σ), ?_, fun σ h => absurd h (hnr σ)⟩
     · intro n σ h; rw [hneu] at h; cases h
     · intro σ w h; rw [heta] at h; cases h

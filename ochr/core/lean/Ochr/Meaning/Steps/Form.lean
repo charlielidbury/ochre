@@ -65,16 +65,57 @@ structure CtxS (K : RunCtx) (st : MState) : Prop where
   noLabel : ∀ n, (K.C.global n).2.label = none
   globals : GlobalsOk K st
 
+/-- A function type written as one: a Π-type value whose code is a `pi` term. What `callType` and `declCallType` take
+apart, and what the `let` of a deferred call takes as its record (`if let .tPi _ (.pi …) _`). -/
+def _root_.Ochr.Value.piWritten : Value → Bool
+  | .tPi _ (.pi ..) _ => true
+  | _ => false
+
+/-- A function value: a global function or a closure (not an unknown, a sealed program or `⋆` at a function type). -/
+def _root_.Ochr.Value.isFnVal : Value → Bool
+  | .gfn _ | .clo .. => true
+  | _ => false
+
+/-- (K) at one binding: if its type is stored, a borrow is at a borrow type and a function value at a function type
+written as one. -/
+def _root_.Ochr.Binding.KindAt (b : Binding) : Prop :=
+  (∀ l c, b.val = .borrow l c → ∀ T, b.ty = some T → ∃ A, T = .tRef A) ∧
+  (b.val.isFnVal = true → ∀ T, b.ty = some T → T.piWritten = true)
+
+/-- **(K) A binding's stored type has its value's kind** (the lead's ruling, docs/31 D188), about the checker's state
+alone:
+* a binding holding a borrow (`borrow_ℓ c`; a loan `loan_ℓ` and a lent mark `lent_ℓ c` are the LENDER's side and are
+  asked nothing: a lender stores its content's type) whose type is stored stores a borrow type `&A`;
+* a binding holding a function value (a global function, a closure) whose type is stored stores a function type
+  written as one (`.tPi _ (.pi …) _`);
+* a binding with no stored type is asked nothing: a DEFERRED type (`lazyTy`) is a type term evaluated when it is read
+  (`bindTy?`), so what it evaluates to is a fact about that run, not about the state (a parameter `f : FT(Z)`, `FT` a
+  type function returning a Π-type, defers the term `FT(Z)`, which is not written as a Π; a sealed program's re-run
+  defers the type of its head call even when the call returns a borrow, `callFn`'s `res` being `.other` for a head
+  call: `r : (deferred: codomain of Π(n : Nat) (x : &Nat) (y : &Nat). &Nat) = borrow_8 σ1`, ClosingOff's
+  `AddToOneZero''`, docs/31 D188, so the checker's docstring "a borrow's type is never deferred" is false); and a
+  binding with neither (a private copy's slot its guards keep unread, `paramTypes`) is asked nothing either;
+* a global whose value is a function value has a stored type written as one (what `funType` reads for a global
+  function whose type was not handed in).
+Temporaries are not positions of this clause: `Inv` reads the kernel (`MState.norm`), which erases their stored types
+(main's D104: written, never read). The checker keeps it: every binder stores the type of what it bound (a `let` its
+right-hand side's, a parameter its declared type, `self` its function's own, a capture its recorded one), `&p` returns
+`&T`, typed code calls only at a Π-type (`callType`). Checked on the checker's own states (`lake exe sweep`, its clause
+(K); docs/31 D188). -/
+def KindTyped (st : MState) : Prop :=
+  (∀ (f i : Nat) (b : Binding), st.env[f]?.bind (fun fr => fr.binds[i]?) = some b → b.KindAt) ∧
+  ∀ g ∈ st.globals, g.val.isFnVal = true → g.ty.piWritten = true
+
 /-- The checker's syntactic invariant: the clauses of well-formedness (part (c)) that read no meaning
 (all but (WF7) and (WF9), which read types' meanings and join `Asg` when a step needs them), the
-checker's typing of places, and the label counter above every label that occurs (borrows included;
+checker's typing of places, the label counter above every label that occurs (borrows included;
 (WF6) bounds the loans: a step whose private computation advances the counter keeps the relation by
-it). Read off the checker and swept; its preservation is a fact about the
+it), and (K), a binding's stored type has its value's kind (`KindTyped`, docs/31 D188). Read off the checker and swept; its preservation is a fact about the
 checker alone, given the decisions (`D`) and the declarations (`Γ`), which no extension changes. -/
 def Inv (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop :=
   WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF8 st ∧ WF10 Γ st ∧ WF11 st ∧
     WF12 st.env ∧ WF14 st.env ∧ WF15 st.env ∧ WF16 Γ st ∧ ShapeFacts D Γ st ∧
-    (∀ l, st.Occurs l → l < st.nextLoan)
+    (∀ l, st.Occurs l → l < st.nextLoan) ∧ KindTyped st
 
 /-- The meaning-level facts about the unknowns of the checker's state: the assignment is typed and on
 the path condition, the unknowns' types and the goal have levels, and `Δ` is the state's. -/

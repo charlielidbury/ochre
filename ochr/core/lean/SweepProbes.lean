@@ -199,9 +199,56 @@ ochr OpenJoin uses ArrayLemmas, Options, DepVec {
   )
 }
 
+/-! ## (K): a binding's stored type has its value's kind (lead28, docs/31 D188)
+
+The invariant clause `Form.KindTyped`: a binding holding a borrow stores a borrow type, and one holding a function value
+a function type written as one (or a deferred type). The three programs the lead named (a borrow parameter, a closure
+in a binding, a lazily typed binding) and the attacks on it: a borrow of a place whose type is an unknown refined later,
+a borrow moved through an ascription, a returned borrow rebound (typed and in an untyped body), a function bound at a
+type-function call returning a function type (typed, at an instance, at a generic call), a borrow-returning function
+behind a type function, a recursive type function. Run with `lake exe sweep --deep KindAttacks` (and `--deep-private`)
+for the states inside called bodies. -/
+
+ochr KindAttacks uses Nats {
+  def Idn (n : Nat) : Nat := n
+  def Kb (r : &Nat) : &Nat := r
+  def BP (r : &Nat) : Nat := clone(*r)
+  def UseBP : Nat := (let x = S(Z); BP(&x))
+  def CL (n : Nat) : Nat := (let f = (λ(m : Nat) : Nat => S(m)); f(n))
+  def HO (f : Π(m : Nat). Nat) (x : Nat) : Nat := (let y = f(x); y)
+  def UseHO : Nat := HO(Idn, Z)
+  def UseHOClo : Nat := HO((λ(m : Nat) : Nat => S(m)), Z)
+  def TN (n : Nat) : Type := match n { Z => Nat, S _ => Nat }
+  def BU (n : Nat) (x : TN(n)) : Unit := (let r = &x; match n { Z => (), S _ => () })
+  def UseBU : Unit := BU(Z, Z)
+  def BA (x : Nat) : Nat := (let r = (&x : &Nat); clone(*r))
+  def UseBA : Nat := BA(S(Z))
+  def RB : Nat := (let x = S(Z); let y = Kb(&x); let z = y; clone(*z))
+  def RB2 (n : Nat) : Nat := (let x = n; let y = Kb(&x); let z = y; clone(*z))
+  def UseRB2 : Nat := RB2(Z)
+  def FT (n : Nat) : Type := Π(m : Nat). Nat
+  def UseFT (f : FT(Z)) (x : Nat) : Nat := (let y = f(x); y)
+  def CallFT : Nat := UseFT(Idn, Z)
+  def BindFT (x : Nat) : Nat := (let f = (Idn : FT(Z)); let y = f(x); y)
+  def UseBindFT : Nat := BindFT(Z)
+  def FT2 (n : Nat) : Type := match n { Z => Π(m : Nat). Nat, S _ => Π(m : Nat). Nat }
+  def UseFT2 (n : Nat) (f : FT2(n)) (x : Nat) : Nat := match n { Z => (let y = f(x); y), S _ => (let y = f(x); y) }
+  def CallFT2 : Nat := UseFT2(Z, Idn, Z)
+  def GenFT2 (k : Nat) (g : FT2(k)) : Nat := UseFT2(k, g, Z)
+  def KT (n : Nat) : Type := Π(r : &Nat). &Nat
+  def UseKT (f : KT(Z)) (x : Nat) : Nat := (let y = f(&x); clone(*y))
+  def CallKT : Nat := UseKT(Kb, S(Z))
+  def RT (n : Nat) : Type by n := match n { Z => Π(m : Nat). Nat, S k => RT(k) }
+  def UseRT (f : RT(S(Z))) (x : Nat) : Nat := (let y = f(x); y)
+  def CallRT : Nat := UseRT(Idn, Z)
+  def MkF (n : Nat) : (Π(m : Nat). Nat) := Idn
+  def UseMkF (n : Nat) : Nat := (let f = MkF(clone(n)); let y = f(n); y)
+  def CallMkF : Nat := UseMkF(Z)
+}
+
 namespace Sweep
 
 /-- The probe blocks (`lake exe sweep --probes`). -/
-def probes : List (String × Ochr.Surface.Block) := [("LentUnder", LentUnder), ("OpenJoin", OpenJoin)]
+def probes : List (String × Ochr.Surface.Block) := [("LentUnder", LentUnder), ("OpenJoin", OpenJoin), ("KindAttacks", KindAttacks)]
 
 end Sweep

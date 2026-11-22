@@ -17,11 +17,6 @@ namespace Ochr.Meaning.Steps.Machine
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.DecideScope
 open Ochr.Meaning.Steps.Form
 
-/-- Two values every label-reading clause reads alike: equal, both bland, or borrows of numbers
-with one label. -/
-def VEq (u v : Value) : Prop :=
-  u = v ∨ (u.Bland ∧ v.Bland) ∨ ∃ l w w', u = .borrow l w ∧ v = .borrow l w' ∧ w.Num ∧ w'.Num
-
 structure PosRel (a b : Env) (τ : Pos → Pos) : Prop where
   fwd : ∀ p ∈ allPos b, (valAt b p).Bland ∨
     (τ p ∈ allPos a ∧ VEq (valAt a (τ p)) (valAt b p) ∧ (τ p = p ∨ (valAt b p).NumBorrow))
@@ -240,11 +235,11 @@ theorem inv_of_posRel {D : Decisions} {Γ : List IndDecl} {a b : MState} {τ : P
     (hfits : ∀ p v n args, ckContent b.env p = some v → D.placeDecl (topReadings b) p = .ind n args →
       (Γ.find? (·.name == n)).isSome → v.fitsInd n = true)
     (hpc : ∀ p, GrainOk D Γ (topReadings b) p → ckContent b.env p = some .proof →
-      D.copy (D.placeDecl (topReadings b) p) = true) : Inv D Γ b := by
+      D.copy (D.placeDecl (topReadings b) p) = true) (hK : KindFrom a b) : Inv D Γ b := by
   have hi' := hi
   obtain ⟨⟨-, w1b⟩, w2, -, -, -, -, -, -, w12, w14, -, -, sf, -⟩ := hi'
   exact inv_step hi ht hr.values (fun l h => .inl (hr.occurs l h)) hb (hr.shape w1b) (hr.wf2 w2) (hr.wf12 w12)
-    (hr.wf14 w14) (hr.loansLive sf.loans) hfits hpc
+    (hr.wf14 w14) (hr.loansLive sf.loans) hfits hpc hK
 
 /-- The readings' two clauses where the readings are kept and every changed content fits what its
 place is read as and is no proof. -/

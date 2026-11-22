@@ -137,6 +137,7 @@ structure TabSame (a b : MState) : Prop where
   etaRefs : a.etaRefs = b.etaRefs
   goal : a.goal = b.goal
   neutrals : a.neutrals = b.neutrals
+  globals : a.globals = b.globals
 
 /-- Every binding of `b` has the stored and deferred types of a binding of `a`, or is new, stored at
 `Nat` or `&Nat`, nothing deferred. -/
@@ -211,6 +212,67 @@ theorem refd_of_step {a b : MState} (ht : TabSame a b)
   | eta σ' v he h => exact .eta σ' v (ht.etaRefs ▸ he) h
   | dep σ' T _ hT h ih => exact .dep σ' T ih (ht.absTy ▸ hT) h
 
+/-! ## (K), a binding's stored type has its value's kind (lead28, docs/31 D188) -/
+
+/-- Two values every label-reading clause reads alike: equal, both bland, or borrows of numbers
+with one label. -/
+def VEq (u v : Value) : Prop :=
+  u = v ∨ (u.Bland ∧ v.Bland) ∨ ∃ l w w', u = .borrow l w ∧ v = .borrow l w' ∧ w.Num ∧ w'.Num
+
+/-- What a change owes (K): the globals kept, and every binding after it either meets (K) by itself or is a binding
+before it with the same types and a value every label-reading clause reads alike (`VEq`: equal, both bland, or borrows
+of numbers with one label). -/
+def KindFrom (a b : MState) : Prop :=
+  b.globals = a.globals ∧ ∀ (f i : Nat) (bb : Binding), b.env[f]?.bind (fun fr : Frame => fr.binds[i]?) = some bb →
+    bb.KindAt ∨ ∃ (f' i' : Nat) (ba : Binding), a.env[f']?.bind (fun fr : Frame => fr.binds[i']?) = some ba ∧
+      VEq ba.val bb.val ∧ ba.ty = bb.ty ∧ ba.lazyTy = bb.lazyTy
+
+theorem _root_.Ochr.Value.Num.not_fn {v : Value} (h : v.Num) : v.isFnVal = false := by
+  cases h <;> rfl
+
+theorem _root_.Ochr.Value.Bland.not_borrow {v : Value} (h : v.Bland) (l : Nat) (c : Value) : v ≠ .borrow l c := by
+  rcases h with h | rfl | rfl
+  · exact h.not_borrow l c
+  all_goals simp
+
+theorem _root_.Ochr.Value.Bland.not_fn {v : Value} (h : v.Bland) : v.isFnVal = false := by
+  rcases h with h | rfl | rfl
+  · exact h.not_fn
+  all_goals rfl
+
+/-- A binding holding a bland value meets (K) whatever its types. -/
+theorem kindAt_of_bland {b : Binding} (h : b.val.Bland) : b.KindAt :=
+  ⟨fun l c e => absurd e (h.not_borrow l c), fun e => by rw [h.not_fn] at e; cases e⟩
+
+/-- A binding holding a loan (the lender's side) meets (K) whatever its types. -/
+theorem kindAt_of_loan {b : Binding} {l : Nat} (h : b.val = .loan l) : b.KindAt :=
+  ⟨fun _ _ e => (by rw [h] at e; cases e), fun e => (by rw [h] at e; cases e)⟩
+
+/-- (K) carries along `VEq` at the same types. -/
+theorem kindAt_of_veq {ba bb : Binding} (hk : ba.KindAt) (hv : VEq ba.val bb.val) (hty : ba.ty = bb.ty)
+    (hlz : ba.lazyTy = bb.lazyTy) : bb.KindAt := by
+  rcases hv with e | ⟨-, hb⟩ | ⟨l, w, w', e1, e2, -, -⟩
+  · obtain ⟨k1, k2⟩ := hk
+    refine ⟨fun l c h => ?_, fun h => ?_⟩
+    · intro T hT; exact k1 l c (e.trans h) T (hty.trans hT)
+    · rw [← hty]; exact k2 (e ▸ h)
+  · exact kindAt_of_bland hb
+  · exact ⟨fun _ _ _ T hT => hk.1 l w e1 T (hty.trans hT), fun h => by rw [e2] at h; cases h⟩
+
+/-- **(K) across a change**: from `a`'s and what the change owes (`KindFrom`). -/
+theorem kindTyped_of_from {a b : MState} (hk : KindTyped a) (h : KindFrom a b) : KindTyped b := by
+  refine ⟨fun f i bb hbb => ?_, fun g hg => ?_⟩
+  · rcases h.2 f i bb hbb with h' | ⟨f', i', ba, hba, hv, hty, hlz⟩
+    · exact h'
+    · exact kindAt_of_veq (hk.1 f' i' ba hba) hv hty hlz
+  · rw [h.1] at hg; exact hk.2 g hg
+
+/-- A change that keeps every binding (the frames' bindings and the globals) owes (K) nothing new. -/
+theorem kindFrom_of_binds {a b : MState} (hg : b.globals = a.globals)
+    (hb : ∀ (f i : Nat), b.env[f]?.bind (fun fr : Frame => fr.binds[i]?) = a.env[f]?.bind (fun fr : Frame => fr.binds[i]?)) :
+    KindFrom a b :=
+  ⟨hg, fun f i bb hbb => .inr ⟨f, i, bb, by rw [← hb]; exact hbb, .inl rfl, rfl, rfl⟩⟩
+
 /-- **`Inv` across a change that writes only simple values** (the generic half of every `InvSteps`
 lemma): the clauses that read Ω value by value follow from `a`'s; the position-reading ones, (L), and
 the readings' two are hypotheses. -/
@@ -223,13 +285,13 @@ theorem inv_step {D : Decisions} {Γ : List IndDecl} {a b : MState} (hi : Inv D 
     (hfits : ∀ p v n args, ckContent b.env p = some v → D.placeDecl (topReadings b) p = .ind n args →
       (Γ.find? (·.name == n)).isSome → v.fitsInd n = true)
     (hpc : ∀ p, GrainOk D Γ (topReadings b) p → ckContent b.env p = some .proof →
-      D.copy (D.placeDecl (topReadings b) p) = true) : Inv D Γ b := by
+      D.copy (D.placeDecl (topReadings b) p) = true) (hK : KindFrom a b) : Inv D Γ b := by
   obtain ⟨⟨w1a, -⟩, -, w3, w4, ⟨w6a, w6b, w6c, w6d, w6e⟩, ⟨w8a, w8b, w8c, w8d⟩, w10, ⟨w11a, w11b, w11c, w11d, w11e⟩,
-    -, -, w15, w16, sf, wocc⟩ := hi
+    -, -, w15, w16, sf, wocc, wk⟩ := hi
   have hlt : ∀ l, b.Occurs l → l < b.nextLoan := fun l hl =>
     (hocc l hl).elim (fun h => Nat.lt_of_lt_of_le (wocc l h) ht.nextLoan) id
   refine ⟨⟨fun p hp => ?_, h1⟩, h2, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, h12, h14,
-    ?_, ?_, ⟨hfits, hL, ?_, hpc, ?_, ?_, ?_⟩, hlt⟩
+    ?_, ?_, ⟨hfits, hL, ?_, hpc, ?_, ?_, ?_⟩, hlt, kindTyped_of_from wk hK⟩
   · -- (WF1), first half
     rcases hv _ (mem_values_iff.mpr ⟨p, hp, rfl⟩) with ha | hs
     · obtain ⟨q, hq, e⟩ := mem_values_iff.mp ha

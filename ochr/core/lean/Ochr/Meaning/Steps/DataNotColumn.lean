@@ -183,7 +183,7 @@ theorem inv_stNot {D : Decisions} {rest : List IndDecl} (hdec : DecNot D) : Inv 
   have hbind : ∀ {f i b}, stNot.env[f]?.bind (fun fr => fr.binds[i]?) = some b →
       (f = 1 ∧ i = 0 ∧ b = selfNot) ∨ (f = 1 ∧ i = 1 ∧ b = bB (.abs 0)) := fun hb => bind_stNot hb
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
-    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_⟩
   · intro p hp; rcases hpos p hp with rfl | rfl <;> exact Bool.false_ne_true
   · intro p _ q _ l h; rw [stNot_env, shape_envB ha] at h; cases h
   · intro v hv l hl; rcases hvals v hv with rfl | rfl <;> cases hl
@@ -222,6 +222,12 @@ theorem inv_stNot {D : Decisions} {rest : List IndDecl} (hdec : DecNot D) : Inv 
   · intro σ r h; simp [stNot] at h
   · intro σ l h; rcases σ with _ | σ <;> simp [stNot] at h
   · intro l h; exact absurd h (occurs_envB ha stNot stNot_env l)
+  -- (K): the function's own binding at its Π-type, the parameter holds no borrow and no function
+  · refine ⟨fun f i b hb => ?_, fun g hg => ?_⟩
+    · rcases hbind hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+      · exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
+      · exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
+    · simp only [stNot, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; intro _; rfl
 
 section
 variable {dm : DataModel} {D : Decisions} {φ : Future} {rest : List IndDecl}

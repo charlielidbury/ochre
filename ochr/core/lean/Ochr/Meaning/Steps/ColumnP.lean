@@ -173,7 +173,7 @@ theorem inv_stP (D : Decisions) : Inv D [] stP := by
   have hbind : ∀ {f i b}, stP.env[f]?.bind (fun fr => fr.binds[i]?) = some b →
       (f = 1 ∧ i = 0 ∧ b = selfP) ∨ (f = 1 ∧ i = 1 ∧ b = nB) := fun hb => bind_envN hb
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
-    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_⟩
   · intro p hp; rcases hpos p hp with rfl | rfl <;> exact Bool.false_ne_true
   · intro p _ q _ l h; rw [shape_stP] at h; cases h
   · intro v hv l hl; rcases hvals v hv with rfl | rfl <;> cases hl
@@ -209,6 +209,12 @@ theorem inv_stP (D : Decisions) : Inv D [] stP := by
   · intro σ r h; simp [stP] at h
   · intro σ l h; rcases σ with _ | σ <;> simp [stP] at h
   · intro l h; exact absurd h (occurs_envN ha stP stP_env l)
+  -- (K): the function's own binding at its Π-type, the parameter holds no borrow and no function
+  · refine ⟨fun f i b hb => ?_, fun g hg => ?_⟩
+    · rcases hbind hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+      · exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
+      · exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
+    · simp only [stP, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; intro _; rfl
 
 section
 variable {dm : DataModel} {D : Decisions} {φ : Future}

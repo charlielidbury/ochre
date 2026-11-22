@@ -102,7 +102,7 @@ theorem frag_run_wide {D : Decisions} (hf : FragFacts D) (dm : DataModel) (Γ : 
       T? = some A.ty ∧ r.2.m = A.tyM ∧ r.1 ∈ₛ[dm.read] r.2.m := by
   have hP : FSt [] st := fst_stC.kern hk
   obtain ⟨hT, hv, -⟩ := hf.run [] t A n hint st st' bh v T? hty hP
-    ((pre_stCw dm D Γ ρ hcov).of_kern hk).inv.2.2.2.2.2.2.2.2.2.2.2.2.2 hm (.inl htd) hD h
+    ((pre_stCw dm D Γ ρ hcov).of_kern hk).inv.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hm (.inl htd) hD h
   have hfl : D.flags (scopeOf (SM' (KCw dm D Γ) ρ stC)) t = (false, false) := by
     rw [scopeOf_sstate']; exact (hf.dec [] t A stC hty fst_stC).1
   obtain ⟨ρ', Δ', π', r, s', -, hx, hmean, hagree, -, -, -⟩ :=

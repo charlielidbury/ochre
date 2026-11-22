@@ -344,7 +344,7 @@ theorem inv_stCJ2 (D : Decisions) : Inv D [] stCJ2 := by
   have hpos : ∀ p ∈ allPos stCJ2.env, p = .bind 0 0 ∨ p = .bind 1 0 ∨ p = .bind 1 1 := fun p hp => by
     rw [allPos_stCJ2] at hp; simpa using hp
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ⟨?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_,
-    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+    ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, ?_⟩
   · intro p hp; rcases hpos p hp with rfl | rfl | rfl <;> exact Bool.false_ne_true
   · intro p _ q _ l h; rw [shape_stCJ2] at h; cases h
   · intro v hv l hl; rcases hvals v hv with rfl | rfl | rfl <;> cases hl
@@ -384,6 +384,13 @@ theorem inv_stCJ2 (D : Decisions) : Inv D [] stCJ2 := by
   · intro σ r h; simp [stCJ2] at h
   · intro σ l h; simp [stCJ2] at h
   · intro l h; exact absurd h (occurs_stCJ2 l)
+  -- (K): the caller's `x` a number slot, the callee's `self` at `Π(n : Nat). Nat`, its parameter a number
+  · refine ⟨fun f i b hb => ?_, fun g hg => ?_⟩
+    · rcases bind_stCJ2 hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+      · exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
+      · exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
+      · exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
+    · simp only [stCJ2, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; intro _; rfl
 
 section
 variable {K : RunCtx} {ρ : Assignment}
