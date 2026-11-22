@@ -1,5 +1,6 @@
 import Ochr.Meaning.DataModel.Exists.KnotCE
 import Ochr.Meaning.DataModel.CtorMem
+import Ochr.Meaning.DataModel.Exists.Knot.Congr
 
 /-!
 # Weakening in the declaration list needs a scope invariant (exists8, the lead's ruling (a))
@@ -119,5 +120,18 @@ theorem run_differs (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h 
     runT { K with Γ := [] } ρ φ tl h (.place px) (sx K.dm) = none ∧
       runT { K with Γ := [declL] } ρ φ tl h (.place px) (sx K.dm) = some ((tL, .plain (K.dm.rawTy declL recL)), sx K.dm) :=
   ⟨run_nil { K with Γ := [] } ρ φ tl h rfl hD, run_L { K with Γ := [declL] } ρ φ tl h rfl hD hcp⟩
+
+/-! ## At ONE list, two models differing at `L`'s records: the same run (the lead's ruling, point 2)
+
+With the declaration list fixed at the whole program's, a later declaration's records change between
+stages, not the list. The read of `x.0` through the tree of `L` reads `L`'s declaration from the list
+and its type at the record the TREE carries (`DataModel.rawTy`, the universal signature's carrier),
+never `L`'s record in the model: `Knot.runT_congrR` (no hypothesis on the state) gives the same run
+under the two models. -/
+theorem run_models_same (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS)
+    (R : List Sem → Rec) (s : SState) :
+    runT { K with Γ := [declL] } ρ φ tl h (.place px) s =
+      runT { K with Γ := [declL], dm := setRec K.dm declL R } ρ φ tl h (.place px) s :=
+  Knot.runT_congrR { K with Γ := [declL] } declL R ρ φ tl (.place px) h s ⟨rfl, rfl⟩
 
 end Ochr.Meaning.DataModel.Exists.ScopeCE

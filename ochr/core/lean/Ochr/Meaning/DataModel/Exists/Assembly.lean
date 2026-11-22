@@ -175,4 +175,32 @@ theorem exists_dataModel' :
 
 end
 
+/-! ## The statement at ONE declaration list (the lead's ruling, 2026-11-22)
+
+The reference's declaration list is the whole program's at every stage. `exists_dataModel` as it
+stands asks faithfulness at each prefix's own list (`DataFaithful` reads `ProgState.ctx`, whose list is
+the checker state's). Restated: at the whole program's list `Γ`, with the stage's globals and the
+checker's decisions at a state of the stage; and only for the declarations the stage has declared
+(`DeclsFaithful`): a later declaration's field types may call globals the stage does not have yet,
+which its context means as `err`, and a step at stage `k` names only declarations of the stage (D118).
+-/
+
+/-- Faithfulness at one context for the declarations `ds` only. -/
+def DeclsFaithful (K : RunCtx) (ds : List IndDecl) : Prop := ∀ d ∈ ds, DeclFaithful K d
+
+/-- **The data model is faithful at stage `P`, at the one list `Γ`.** -/
+def DataFaithfulOne (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (P : ProgState) : Prop :=
+  ∀ st : MState, st.inds = P.inds → P.globals <+: st.globals →
+    DeclsFaithful { dm, Γ := Γ, C := P.baseC, D := D st } P.inds
+
+/-- **`exists_dataModel` at the one list** (the restatement the lead approved; to replace
+`Assembly.exists_dataModel` once the program meaning and the simulation's link carry the one list:
+docs/34 §18.13). -/
+def ExistsDataModelOne (D : MState → Decisions) (fuel : Nat) (items : List Item) : Prop :=
+  ∃ dm : DataModel,
+    (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm ∧
+    ∀ k, k ≤ items.length →
+      DataFaithfulOne dm D (progMeaning dm D (fun _ => .err) {} fuel items).inds
+        (progMeaning dm D (fun _ => .err) {} fuel (items.take k))
+
 end Ochr.Meaning.DataModel.Exists.Assembly

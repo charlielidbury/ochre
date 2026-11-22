@@ -40,4 +40,12 @@ def GlobalsTyped (dm : DataModel) (P : ProgState) : Prop :=
     callOf dm.read (P.baseC.global n) args s = some (r, s') →
       ∃ (A : Type) (c : Code0 A), r.1 = .ty (.t0 A c) ∧ (c.level = some 1 ∨ c.level = some 0)
 
+/-- **A name a prefix declares is found identically in the longer list** (the one-line lemma the
+simulation's link needs once it says "the checker's declarations are a prefix of the context's list";
+docs/34 §18.13). -/
+theorem find_of_prefix {Γ₀ Γ : List IndDecl} (h : Γ₀ <+: Γ) {n : String} {d : IndDecl}
+    (hd : Γ₀.find? (·.name == n) = some d) : Γ.find? (·.name == n) = some d := by
+  obtain ⟨t, rfl⟩ := h
+  rw [List.find?_append, hd]; rfl
+
 end Ochr.Meaning.DataModel.Exists
