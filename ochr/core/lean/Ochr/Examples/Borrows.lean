@@ -402,16 +402,22 @@ ochr Moves uses Nats, WordType {
   reject def ThroughLocal (q0 : Nat × Nat) (n1 : Nat) : Nat × Nat := (
     let a = match n1 { Z => 0, S _ => (let r = &q0; match *r { Mk(u, _) => u }) }; q0)
 
-  -- A borrow passed to a call that closes off, or to an erased call, must be whole: [Close]
-  -- seals the borrowed content (hiding the hole), and an erased call's writes vanish at
-  -- runtime, so neither makes it whole before the borrow ends (fuzz-port P). A call that
-  -- runs may (`TakeRefill`).
+  -- A borrow whose content is moved out, wholly or partly, is not read at all (D127): it is not
+  -- passed to a call, returned or moved to another name until its content is whole again, so a
+  -- helper cannot be handed it to refill (`TakeRefill`, accepted before D127, when a call that
+  -- runs could refill it). Refill it through the borrow in the same function, by an assignment,
+  -- which is a write and not a read (`TakeAssign`), or before handing it on (`RefillFirst`).
+  -- Before D127 the same rule held only where the call is not run: a call that closes off seals
+  -- the borrowed content (hiding the hole), and an erased call's writes vanish at runtime
+  -- (fuzz-port P; `P1`, `P2`).
   def G1 (x : &Nat) (n : Nat) : Unit := match n { Z => (), S _ => *x := 0 }
   def F5 (x : &Nat) : Prop := (*x := 5; ⊤)
   def Refill (x : &Nat) (v : Nat) : Unit := *x := v
   reject def P1 (x0 : &Nat) : Unit := (let a3 = *x0; G1(x0, a3))
   reject def P2 (x1 : &Nat) : Unit := ((let a0 = *x1; match a0 { Z => (), S _ => F5(x1); () }); ())
-  def TakeRefill (x : &Nat) : Unit := (let v = *x; Refill(x, v))
+  reject def TakeRefill (x : &Nat) : Unit := (let v = *x; Refill(x, v))
+  def TakeAssign (x : &Nat) : Unit := (let v = *x; *x := v)
+  def RefillFirst (x : &Nat) : Unit := (let v = *x; *x := 0; Refill(x, v))
   -- reviewer-7's attacks (§4.1): a borrow moved whole, or partly, out of before a call that
   -- closes off; `Thm1` was a false equation about an accepted program (`FullMove(&3, 0)`
   -- errs when run)
@@ -435,6 +441,153 @@ ochr Moves uses Nats, WordType {
   def DataSplit (n : Nat) (h : Id(Nat × Nat, (match n { Z => (clone(n), n), S p => (clone(p), p) }), (match n { Z => (0, 0), S p => (clone(p), p) }))) : Nat := (
     match n { Z => 0, S _ => 1 })
 }
+
+#guard (run "Moves" Moves).rejectedWith [
+  ("TakeRefill", "[Read] x is a borrow whose content was moved out: refill it through x (*x := …) before reading x (D127)"),
+  ("P1", "[Read] x0 is a borrow whose content was moved out: refill it through x0 (*x0 := …) before reading x0 (D127)"),
+  ("P2", "[Read] x1 is a borrow whose content was moved out: refill it through x1 (*x1 := …) before reading x1 (D127)"),
+  ("FullMove", "[Read] x is a borrow whose content was moved out: refill it through x (*x := …) before reading x (D127)"),
+  ("TailMove", "[Read] t is a borrow whose content was moved out: refill it through t (*t := …) before reading t (D127)"),
+  ("ReturnMovedBorrow", "[Read] y is a borrow whose content was moved out: refill it through y (*y := …) before reading y (D127)"),
+  ("RetMoved", "[Read] y10 is a borrow whose content was moved out: refill it through y10 (*y10 := …) before reading y10 (D127)"),
+  ("B3", "[Read] x0 is a borrow whose content was moved out: refill it through x0 (*x0 := …) before reading x0 (D127)")]
+
+/-! ### A borrow whose content is partly moved out is not read (D127)
+
+Before D127 a place holding a borrow was read (moved to another name, passed to a call, assigned,
+returned) whatever its content held, so a borrow whose content was partly moved out could be
+handed on, as long as whoever received it wrote the moved part back before reading it: a callee
+that runs was checked on the actual state (`CallFillP`). The consistency proof's model defines a
+function on the members of its parameter types, and such a borrow is not a member of `&T`, so it
+is no longer read at all: the content is restored first, through the same borrow (`…W`, each
+beside its `…P`). A partly moved place is not read by copy either (`clone`, an erased read:
+`CloneDP`, `CloneOP`, `EqOP`, `EqDP`). The hunt, kept: every route by which such a borrow could
+flow (a `let`, a call that runs and one that closes off, a result, an assignment, a capture, a
+match through it, a reborrow, a stuck block's arm, `clone`), each `…P` beside its `…W`. Before
+D127 the `…P` rows `MB2`, `LetF`, `CallFillP`, `CallFill0P`, `AsgP`, `ParP`, `ParCallP`, `NestP`,
+`CloneDP`, `CloneOP`, `EqOP`, `EqDP` were accepted, every one restoring the hole before any read
+of it, and every route that read the hole was already rejected. -/
+
+ochr MovedBorrows uses Nats {
+  inductive Box := MkBox(n : Nat)
+  def Fill (q : &Pair(Box, Nat)) : Unit := *q := (MkBox(Z), Z)
+  def Fill0 (q : &Pair(Box, Nat)) : Unit := (*q).0 := MkBox(Z)
+  def ReadB (q : &Pair(Box, Nat)) : Nat := clone((*q).1)
+  def ReadAR (q : &Pair(Box, Nat)) : Nat := (let MkBox(m) = clone((*q).0); m)
+  def FillK (q : &Pair(Box, Nat)) (k : Nat) : Unit := match k { Z => *q := (MkBox(Z), Z), S j => *q := (MkBox(Z), Z) }
+  def ReadK (q : &Pair(Box, Nat)) (k : Nat) : Nat := match k { Z => (let MkBox(m) = clone((*q).0); m), S j => 0 }
+  def PassOn (q : &Pair(Box, Nat)) : &Pair(Box, Nat) := q
+  -- the lead's three
+  def MB1 (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; *r := (MkBox(Z), Z); ())
+  reject def MB2 (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = r; *r2 := (MkBox(Z), Z); ())
+  reject def MB3 (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; ())
+  def MB2W (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); let r2 = r; *r2 := (MkBox(Z), Z); ())
+  -- a let, the hole restored through the new name by a field write
+  reject def LetF (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = r; (*r2).0 := MkBox(Z); ())
+  -- a let, no restore
+  reject def LetN (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = r; ())
+  -- a let, then a read of the hole through the new name
+  reject def LetR (a : Nat) (b : Nat) : Nat := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = r; let MkBox(m) = clone((*r2).0); m)
+  -- a call that runs: the callee restores whole / restores the field / reads the other field / reads the hole
+  reject def CallFillP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; Fill(r))
+  def CallFillW (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); Fill(r))
+  reject def CallFill0P (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; Fill0(r))
+  reject def CallReadBP (a : Nat) (b : Nat) : Nat := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; ReadB(r))
+  reject def CallReadARP (a : Nat) (b : Nat) : Nat := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; ReadAR(r))
+  def CallReadARW (a : Nat) (b : Nat) : Nat := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); ReadAR(r))
+  -- a call that closes off (k unknown), and its instances
+  reject def CallFillKP (a : Nat) (b : Nat) (k : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; FillK(r, k))
+  def CallFillKW (a : Nat) (b : Nat) (k : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); FillK(r, k))
+  reject def CallReadKP (a : Nat) (b : Nat) (k : Nat) : Nat := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; ReadK(r, k))
+  def CallReadKW (a : Nat) (b : Nat) (k : Nat) : Nat := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); ReadK(r, k))
+  reject def CallReadKPI : Eq(Nat, CallReadKP(1, 2, 0), 0) := refl
+  reject def CallFillKPI : Eq(Unit, CallFillKP(1, 2, 0), ()) := refl
+  -- a function's result
+  reject def RetP (x : &Pair(Box, Nat)) : &Pair(Box, Nat) := (let y = (*x).0; x)
+  def RetW (x : &Pair(Box, Nat)) : &Pair(Box, Nat) := (let y = (*x).0; (*x).0 := MkBox(Z); x)
+  reject def RetPassP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = PassOn(r); *r2 := (MkBox(Z), Z); ())
+  -- an assignment's right-hand side (re-pointing a borrow binding)
+  reject def AsgP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let x2 = (MkBox(Z), Z); let r = &x; let r2 = &x2; let y = (*r).0; r2 := r; *r2 := (MkBox(Z), Z); ())
+  def AsgW (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let x2 = (MkBox(Z), Z); let r = &x; let r2 = &x2; let y = (*r).0; (*r).0 := MkBox(Z); r2 := r; *r2 := (MkBox(Z), Z); ())
+  -- a closure's capture
+  reject def CapP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let c = (λ(u : Unit) : Unit => (let z = r; ())); *r := (MkBox(Z), Z); ())
+  -- a match's scrutinee through the borrow, the moved field unused / used
+  def MatchP (a : Nat) (b : Nat) : Nat := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let v = match *r { Mk(p, q) => clone(q) }; *r := (MkBox(Z), Z); v)
+  reject def MatchUseP (a : Nat) (b : Nat) : Nat := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let v = match *r { Mk(p, q) => (let MkBox(m) = clone(p); m) }; *r := (MkBox(Z), Z); v)
+  -- a reborrow
+  reject def ReP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = &*r; *r2 := (MkBox(Z), Z); ())
+  def ReW (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); let r2 = &*r; *r2 := (MkBox(Z), Z); ())
+  -- clone and peek of it
+  reject def CloneP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = clone(r); *r := (MkBox(Z), Z); ())
+  reject def CloneDP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let c = clone(*r); *r := (MkBox(Z), Z); ())
+  -- a statement (erased): Eq of the borrow's content and of a read of the borrow
+  def StmtP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let e : Eq(Nat, clone((*r).1), clone((*r).1)) = refl; *r := (MkBox(Z), Z); ())
+  reject def StmtRP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let e : Eq(Nat, ReadB(r), clone((*r).1)) = refl; *r := (MkBox(Z), Z); ())
+  -- a parameter borrow, passed on partly moved inside a function that restores later (the generic call)
+  reject def ParP (q : &Pair(Box, Nat)) : Unit := (let y = (*q).0; let q2 = q; *q2 := (MkBox(Z), Z); ())
+  reject def ParCallP (q : &Pair(Box, Nat)) : Unit := (let y = (*q).0; Fill(q))
+  reject def ParReadAP (q : &Pair(Box, Nat)) : Nat := (let y = (*q).0; ReadAR(q))
+  reject def ParCallI (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); ParCallP(&x))
+  def ParW (q : &Pair(Box, Nat)) : Unit := (let y = (*q).0; (*q).0 := MkBox(Z); let q2 = q; *q2 := (MkBox(Z), Z); ())
+  def ParCallW (q : &Pair(Box, Nat)) : Unit := (let y = (*q).0; (*q).0 := MkBox(Z); Fill(q))
+  def CallFill0W (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); Fill0(r))
+  def LetFW (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); let r2 = r; (*r2).0 := MkBox(Z); ())
+  -- a nested borrow: the hole one level down, read through a borrow of the outer pair
+  reject def NestP (a : Nat) (b : Nat) (c : Nat) : Unit := (let x = ((MkBox(a), b), c); let r = &x; let y = ((*r).0).0; let r2 = r; *r2 := ((MkBox(Z), Z), Z); ())
+  -- the borrow read in place: a reborrow passed and the original kept (a call that runs)
+  -- a stuck block (k unknown) whose arm reads the borrow, out of tail position and in it; an instance
+  reject def BlkP (a : Nat) (b : Nat) (k : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let u = match k { Z => (let r2 = r; *r2 := (MkBox(Z), Z); ()), S j => (*r := (MkBox(Z), Z); ()) }; ())
+  def BlkW (a : Nat) (b : Nat) (k : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); let u = match k { Z => (let r2 = r; *r2 := (MkBox(Z), Z); ()), S j => (*r := (MkBox(Z), Z); ()) }; ())
+  reject def BlkTP (a : Nat) (b : Nat) (k : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; match k { Z => (let r2 = r; *r2 := (MkBox(Z), Z); ()), S j => (*r := (MkBox(Z), Z); ()) })
+  reject def BlkPI : Eq(Unit, BlkP(1, 2, 0), ()) := refl
+  -- the copying read (clone, an erased read) of a partly moved place, owned or through a borrow
+  def CloneDW (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; (*r).0 := MkBox(Z); let c = clone(*r); *r := (MkBox(Z), Z); ())
+  reject def CloneOP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let y = x.0; let c = clone(x); ())
+  def CloneOW (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let y = x.0; x.0 := MkBox(Z); let c = clone(x); ())
+  def CloneOF (a : Nat) (b : Nat) : Nat := (let x = (MkBox(a), b); let y = x.0; clone(x.1))
+  reject def EqOP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let y = x.0; let e : Eq(Pair(Box, Nat), clone(x), clone(x)) = refl; ())
+  def EqOW (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let y = x.0; x.0 := MkBox(Z); let e : Eq(Pair(Box, Nat), clone(x), clone(x)) = refl; ())
+  reject def EqDP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let e : Eq(Pair(Box, Nat), clone(*r), clone(*r)) = refl; *r := (MkBox(Z), Z); ())
+  reject def CloneUse (a : Nat) (b : Nat) : Nat := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let c = clone(*r); *r := (MkBox(Z), Z); let MkBox(m) = c.0; m)
+  reject def RebP (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; Fill(&*r); ())
+}
+
+#guard (run "MovedBorrows" MovedBorrows).rejectedWith [
+  ("MB2", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("MB3", "[D53] a borrow ends while its content is partly moved out ((⊥, σ1))"),
+  ("LetF", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("LetN", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("LetR", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("CallFillP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("CallFill0P", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("CallReadBP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("CallReadARP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("CallFillKP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("CallReadKP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("CallReadKPI", "unknown constant CallReadKP"),
+  ("CallFillKPI", "unknown constant CallFillKP"),
+  ("RetP", "[Read] x is a borrow whose content is partly moved out ((⊥, σ2)): restore it before reading x (D127)"),
+  ("RetPassP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("AsgP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("CapP", "a closure or Π-type captures the borrow r (closures capture no borrows, RULES §1)"),
+  ("MatchUseP", "[Read] (*r).fst was moved out or its borrow ended (reading ⊥)"),
+  ("ReP", "[Borrow] *r was partly moved out (D53)"),
+  ("CloneP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("CloneDP", "[Read] *r was partly moved out, and is not copied either (D127)"),
+  ("StmtRP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("ParP", "[Read] q is a borrow whose content is partly moved out ((⊥, σ2)): restore it before reading q (D127)"),
+  ("ParCallP", "[Read] q is a borrow whose content is partly moved out ((⊥, σ2)): restore it before reading q (D127)"),
+  ("ParReadAP", "[Read] q is a borrow whose content is partly moved out ((⊥, σ2)): restore it before reading q (D127)"),
+  ("ParCallI", "unknown constant ParCallP"),
+  ("NestP", "[Read] r is a borrow whose content is partly moved out (((⊥, σ1), σ2)): restore it before reading r (D127)"),
+  ("BlkP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("BlkTP", "[Read] r is a borrow whose content is partly moved out ((⊥, σ1)): restore it before reading r (D127)"),
+  ("BlkPI", "unknown constant BlkP"),
+  ("CloneOP", "[Read] x was partly moved out, and is not copied either (D127)"),
+  ("EqOP", "[Read] x was partly moved out, and is not copied either (D127)"),
+  ("EqDP", "[Read] *r was partly moved out, and is not copied either (D127)"),
+  ("CloneUse", "[Read] *r was partly moved out, and is not copied either (D127)"),
+  ("RebP", "[Borrow] *r was partly moved out (D53)")]
 
 
 /-! ## The frame property (notes/frame-model.md)

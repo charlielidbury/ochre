@@ -1240,10 +1240,25 @@ def readPlace (fuel : Nat) (p : Place) : M Value := do
       if (← lookupInd g.ty).dependent g.ctor && (← fieldIsProof g) then
         err s!"[Open] {← ppPlace p} is a proof field invalidated by a write to a field its type mentions: assign it a new proof first"
     err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
-  | .borrow _ _ => logEffect p "moves"; setPlace p .bot; pure v
+  | .borrow _ c =>
+    -- D127: a borrow is read whole as any value is (D53): one whose content is partly moved out is
+    -- not a member of `&T` (the model reads only whole members), and could reach code that
+    -- assumes its content whole; restore the content through it first. In every mode of the read
+    -- (moving, copying, in place: this branch is taken in each)
+    if c == .bot then
+      err s!"[Read] {← ppPlace p} is a borrow whose content was moved out: refill it through {← ppPlace p} (*{← ppPlace p} := …) before reading {← ppPlace p} (D127)"
+    if c.hasHole then
+      err s!"[Read] {← ppPlace p} is a borrow whose content is partly moved out ({c}): restore it before reading {← ppPlace p} (D127)"
+    logEffect p "moves"; setPlace p .bot; pure v
   | _ =>
     if v == .proof then return v
-    if (← get).copying then return v
+    -- D127: a partly moved place is not read by copy either (`clone`, `peek`, an erased read). A
+    -- place of a copy type is never moved, so never partly moved: the `⊥` it can hold is inside a
+    -- stuck proposition (D68, below), and it is read whole
+    if (← get).copying then
+      if v.hasHole && !(← copyRead fuel' p) then
+        err s!"[Read] {← ppPlace p} was partly moved out, and is not copied either (D127)"
+      return v
     -- read in place: not consumed, but it must be there (D53: a call's head, the Fn rule;
     -- a stuck block's read-only capture, as the match inspects its place)
     if inPlace then
