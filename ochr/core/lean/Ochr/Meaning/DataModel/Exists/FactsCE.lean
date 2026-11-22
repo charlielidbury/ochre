@@ -6,8 +6,10 @@ import Ochr.Meaning.DataModel.Exists.Assembly
 machine10 read the six facts `Assembly.exists_dataModel` assumed against the checker's code and
 found some false as stated, so the theorem held only vacuously. Each old form's counterexample is
 here, run on this line's checker by the kernel (`decide +kernel`, no `native_decide`; one acceptance
-natively by `#guard`). When main's D128 and D129 reach this line, `tlAccepted` and `join_regrains`
-stop holding and the build fails here: that is the sign the two facts became true, and those parts go.
+natively by `#guard`). When main's D128 reaches this line, `tlAccepted` stops holding and the build
+fails here: that is the sign the two facts it refutes became true, and those parts go. (Main's D129 has
+reached it, machine11: `join_regrains` failed, and the join's part is kept below as a pin of the new
+answer.)
 
 * `ItemFacts` concluded, at every item and state, that the stored entry holds no embedded value
   (`Term.val`) in a field or parameter type. The checker accepts core declarations holding one,
@@ -23,10 +25,12 @@ stop holding and the build fails here: that is the sign the two facts became tru
 * `Assembly.FieldHeads` (the checker's part of exists10's `FieldLevels`) asks a parameter heading a
   field type to be written at a sort; `TL`'s `B` is written at a `let` (`fieldHeads_false`). False
   until main's D128.
-* `DecLocal.join` (`FrameLocal/Setup.lean`) is false at a state with `B2 := A0(n : Nat) | A1`: the
-  join of `match k { Z => Z, S => Z }` at the entry `[x.n]` is `[x]` (`join_regrains`,
-  `decLocal_false`), a checker bug (the join re-grains places already moved), to be fixed by main's
-  D129. `DecLocal` is left as stated.
+* HISTORICAL (a state of the old checker): `DecLocal.join` (`FrameLocal/Setup.lean`) was false at a
+  state with `B2 := A0(n : Nat) | A1`: the join of `match k { Z => Z, S => Z }` at the entry `[x.n]`
+  was `[x]`, a checker bug (the join re-grained places already moved). Main's D129 (merged by
+  machine11) carries the entry's places as they are; the join is now `[x.n]` (`join_keeps_entry`), and
+  the old refutation (`join_regrains`, `decLocal_false`) no longer holds, so it is gone. `DecLocal` is
+  as stated; machine11 read its join part TRUE against the new `jdMatch`.
 * `DecStable` asked its equation at ANY earlier state; at `st0 = {inds := [E]}` with
   `E := MkE(x : F(Z))` and the later state with the global `F : Π(n : Nat). Prop`, the flags the
   decisions give the call `F(Z)` differ (`flags_differ`, `decStableOld_flags`), and the run's call
@@ -150,7 +154,12 @@ theorem fieldHeads_false (hacc : tlAccepted = true) : ¬ Assembly.FieldHeads 300
     cases hl
   · cases hacc
 
-/-! ## `DecLocal.join`: the join re-grains a place already moved -/
+/-! ## `DecLocal.join`: the join kept the entry's places (main's D129)
+
+Before D129 the join of `tB2` at the entry `[x.n]` answered the whole `x` (neither in the entry nor
+free in the term), which refuted `DecLocal.join` (exists11's `join_regrains`, `decLocal_false`, a
+state of the old checker). Since D129 the entry's places are carried as they are: the pin below is
+the new answer. -/
 
 /-- `B2 := A0(n : Nat) | A1`. -/
 def dB2 : IndDecl := { name := "B2", ctors := [("A0", [("n", Term.nat)]), ("A1", [])] }
@@ -162,35 +171,14 @@ def scB2 : List DeclInfo := [.ind "B2" [], .other]
 def entryB2 : List Place := [.field gN (.var 0)]
 def tB2 : Term := .matchNat (.var 1) .zero .zero
 
-/-- The join answers a place rooted at `x` with no step (the whole `x`): not in the entry, and `x`
-is not free in the term. -/
-def joinBad : Bool :=
+/-- The join's answer at `stB2`, if it succeeds. -/
+def joinAt : Option (List Place) :=
   match (runMachine (joinMovesD entryB2 tB2 50) (scopeState stB2 scB2) 100000).1 with
-  | .ok ps _ => ps.any fun q => q.root == 0 && q.steps.2.isEmpty
-  | _ => false
+  | .ok ps _ => some ps
+  | _ => none
 
-theorem join_regrains : joinBad = true := by decide +kernel
-
-/-- **`DecLocal` is false at `stB2`**, where the decisions' join reads the machine's answer (that
-the machine's answers agree across fuels is the machine lane's `decide_fuel_agree`). -/
-theorem decLocal_false (fuel : Nat) (hag : FuelAgree (joinMovesD entryB2 tB2) (scopeState stB2 scB2)) :
-    ¬ FrameLocal.DecLocal (chainDecisions fuel stB2) := by
-  intro H
-  have hj := join_regrains
-  unfold joinBad at hj
-  split at hj
-  · rename_i ps st'' hrun
-    have hR := Steps.Machine.runs_of_runMachine_fst hrun
-    have hrd : (chainDecisions fuel stB2).joinMoves scB2 entryB2 tB2 = ps := readDecisionFF_of_runs hag hR
-    obtain ⟨q, hq, hq0⟩ := List.any_eq_true.1 hj
-    simp only [Bool.and_eq_true, beq_iff_eq, List.isEmpty_iff] at hq0
-    rcases H.join scB2 entryB2 tB2 q (by rw [hrd]; exact hq) with h | h
-    · simp only [entryB2, List.mem_singleton] at h
-      subst h
-      simp [Place.steps] at hq0
-    · rw [hq0.1] at h
-      exact absurd h (by decide +kernel)
-  · cases hj
+/-- **The join keeps the entry `[x.n]` as it is** (main's D129; before it, `[x]`). -/
+theorem join_keeps_entry : (joinAt == some entryB2) = true := by decide +kernel
 
 /-! ## `DecStable` at an arbitrary earlier state: the pair `E`, `F` -/
 

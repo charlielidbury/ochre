@@ -4,13 +4,13 @@ import Ochr.Examples.Nat
 /-!
 # The read of a place: pins (lead26, 2026-11-22; docs/31 D181, D182)
 
-**A borrow whose content is partly moved out is read (moved) by the checker** (FINDING; RULED (A), D182: the checker
-will reject it, main's D127; until then the named checker fact `Master.BorrowReadWhole` is FALSE, and the pins below
-flip when it lands). `MB2`
+**A borrow whose content is partly moved out was read (moved) by the checker** (FINDING; RULED (A), D182: the checker
+rejects it since main's D127, merged by machine11; the pins below are flipped, and `Master.BorrowReadWhole` reads TRUE
+against the new `readPlace`). `MB2`
 moves `x`'s first field out through `r` (D53 (h): allowed if the content is whole again when the borrow ends),
-then reads `r` whole (`let r2 = r`, a move of the borrow), then makes the content whole through `r2`: ACCEPTED.
-`readPlace`'s borrow branch moves a borrow before its `hasHole` check, which every other value meets ("[Read] …
-was partly moved out", D53). The reference reads a borrow as its content (`meanV`'s `.borrow` clause), and its
+then reads `r` whole (`let r2 = r`, a move of the borrow), then makes the content whole through `r2`: ACCEPTED before
+D127, REJECTED since. Before D127 `readPlace`'s borrow branch moved a borrow before its `hasHole` check, which every
+other value meets ("[Read] … was partly moved out", D53); D127 tests the borrow's content in that branch. The reference reads a borrow as its content (`meanV`'s `.borrow` clause), and its
 `readPlace` returns nothing for a value that is not whole (`Sem.whole`: a record with a `moved` field is not), so
 its run of `MB2`'s body fails at `r`: the typed place step is FALSE as the two stand (by reading the reference,
 which is not computable; the checker's verdicts are pinned here). `MB1` (the content restored through `r` itself)
@@ -22,11 +22,11 @@ open Ochr.Test
 ochr PlaceMB uses Nats {
   inductive Box := MkBox(n : Nat)
   def MB1 (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; *r := (MkBox(Z), Z); ())
-  def MB2 (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = r; *r2 := (MkBox(Z), Z); ())
+  reject def MB2 (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = r; *r2 := (MkBox(Z), Z); ())
   reject def MB3 (a : Nat) (b : Nat) : Unit := (let x = (MkBox(a), b); let r = &x; let y = (*r).0; let r2 = r; ())
 }
 
--- TODAY: `MB2` is accepted (the pin flips if the checker rejects reading a partly moved borrow, main's D127)
+-- `MB2` is rejected since main's D127 (it was accepted before: the pin flipped at machine11's merge)
 #guard (Ochr.Test.runWith (some Prelude) "PlaceMB" PlaceMB {} (located := false)).allAsExpected
 
 -- the point before `let r2 = r`, as a hole (rejected: with nothing after the hole the borrow ends partly moved; the
@@ -72,10 +72,11 @@ def readR : Option Value :=
   | .ok v _ => some v
   | _ => none
 
--- TODAY: the read succeeds and returns a borrow whose content holds `⊥` (`BorrowReadWhole` is FALSE); after main's
--- D127 the read fails, and this pin flips
-#guard match readR with | some (.borrow _ w) => w.hasHole | _ => false
--- control: the content's second field is whole, its first is not
-#guard match readR with | some (.borrow _ (.ind _ _ _ _ [f0, f1])) => Value.exact f0 .bot && !f1.hasHole | _ => false
+-- since main's D127 the read fails (before it, it returned a borrow whose content held `⊥`; the pin flipped at
+-- machine11's merge)
+#guard readR.isNone
+-- control: the state is the one described: `r` holds a borrow whose content's first field is `⊥`, its second whole
+#guard match (runMachine (Ochr.content (.var 1)) stMB 100000).1 with
+  | .ok (.borrow _ (.ind _ _ _ _ [f0, f1])) _ => Value.exact f0 .bot && !f1.hasHole | _ => false
 
 end Ochr.Meaning.Steps.PlaceGuards
