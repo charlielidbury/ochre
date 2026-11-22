@@ -314,6 +314,7 @@ import Ochr.Meaning.Steps.Machine.FitProofCE
 import Ochr.Meaning.Steps.Machine.StoredTypeCE
 import Ochr.Meaning.Steps.Machine.NamesCE
 import Ochr.Meaning.Steps.Machine.BorrowRead
+import Ochr.Meaning.Steps.Machine.JoinLocal
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
