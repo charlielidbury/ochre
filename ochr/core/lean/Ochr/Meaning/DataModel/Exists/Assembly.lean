@@ -4,6 +4,7 @@ import Ochr.Meaning.DataModel.Exists.Knot.TruthExists
 import Ochr.Meaning.DataModel.Exists.Knot.FromChecks
 import Ochr.Meaning.DataModel.Exists.Params
 import Ochr.Meaning.DataModel.Exists.Knot.CongrN
+import Ochr.Meaning.DataModel.Exists.DeclStep
 
 /-!
 # The assembly: the induction's invariant (exists8; OUTSIDE the default build, it has `sorry`)
@@ -35,6 +36,62 @@ open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical Ochr.Meaning.
 /-! Faithfulness one declaration at a time (`FieldsFaithfulAt`, `ParamsFaithfulAt`, `RecordsFaithfulAt`,
 `DeclFaithful`, `ctxFaithful_of_decls`, `DeclsFaithful`) moved to `DataModel/Faithful.lean` (docs/31 D174),
 where the simulation's context reads it. -/
+
+/-! ## Name lookups in a prefix, and the congruences the step uses (exists10) -/
+
+/-- The name tests for code checked at stage `P`: applied types and constructors of the stage's
+declarations, globals the stage has a meaning for. -/
+def stageNames (Γ : List IndDecl) (P : ProgState) : Knot.NameOk where
+  ty n := P.inds.any (·.name == n) && (Γ.find? (·.name == n)).isSome
+  rc n := P.inds.any (·.name == n)
+  gl n := (P.means.find? (·.1 == n)).isSome
+
+/-- The name tests for the field types of `d`, added at stage `P`: applied types may also be `d`. -/
+def fieldNames (Γ : List IndDecl) (P : ProgState) (d : IndDecl) : Knot.NameOk where
+  ty n := (P.inds ++ [d]).any (·.name == n) && (Γ.find? (·.name == n)).isSome
+  rc n := P.inds.any (·.name == n)
+  gl n := (P.means.find? (·.1 == n)).isSome
+
+theorem find_in_prefix {Γ0 Γ : List IndDecl} (hp : Γ0 <+: Γ) {n : String} {M : IndDecl}
+    (ha : Γ0.any (·.name == n) = true) (hM : Γ.find? (·.name == n) = some M) : M ∈ Γ0 := by
+  obtain ⟨M', hM'⟩ : ∃ M', Γ0.find? (·.name == n) = some M' := by
+    cases h : Γ0.find? (·.name == n) with
+    | none =>
+      rw [List.find?_eq_none] at h
+      obtain ⟨x, hx, hxn⟩ := List.any_eq_true.1 ha
+      exact absurd hxn (h x hx)
+    | some M' => exact ⟨M', rfl⟩
+  rw [find_of_prefix hp hM'] at hM
+  cases hM
+  exact List.mem_of_find?_eq_some hM'
+
+/-- The models agree at the stage's declarations and the globals at the stage's: `AgreeN` for the
+stage's name tests. -/
+theorem agreeN_stage {K : RunCtx} {dm' : DataModel} {P : ProgState} (hp : P.inds <+: K.Γ)
+    (hag : ∀ M ∈ P.inds, dm'.recOf M = K.dm.recOf M ∧ dm'.paramTy M = K.dm.paramTy M)
+    {C' : CodeMeaning} (hgl : ∀ n, (P.means.find? (·.1 == n)).isSome = true → C'.global n = K.C.global n) :
+    Knot.AgreeN K dm' C' (stageNames K.Γ P) where
+  ty n M h hM := by
+    have hM' := find_in_prefix hp (by simp only [stageNames, Bool.and_eq_true] at h; exact h.1) hM
+    exact ⟨(hag M hM').2, fun ps _ => by rw [(hag M hM').1]⟩
+  rc n M h hM := by
+    have hM' := find_in_prefix hp h hM
+    exact ⟨(hag M hM').1, (hag M hM').2⟩
+  gl n h := hgl n h
+
+/-- **A definition's meaning reads the model only at the names its code mentions.** -/
+theorem defMeaning_congrN (K : RunCtx) (dm' : DataModel) (N : Knot.NameOk) (hA : Knot.AgreeN K dm' K.C N)
+    (ρ : Assignment) (d : Def) (T : Value) (h1 : Knot.Term.nok N d.body = true)
+    (h2 : Knot.Term.nok N (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body) = true) (h3 : Knot.Value.nok N T = true) :
+    defMeaning ρ { K with dm := dm' } d T = defMeaning ρ K d T := by
+  have hT : globalTyS ρ { K with dm := dm' } T = globalTyS ρ K T := by
+    unfold globalTyS Value.tyS
+    rw [meanV_eq_mean, meanV_eq_mean]
+    exact congrArg (fun v => TyS.plain v.asTy) (Knot.meanV_congrN K dm' K.C N ρ _ hA T _ h3).symm
+  unfold defMeaning
+  rw [hT]
+  dsimp only
+  rw [Knot.run_congrN K dm' K.C N ρ noFuture hA _ _ _ h1, Knot.run_congrN K dm' K.C N ρ noFuture hA _ _ _ h2]
 
 /-! ## Stages, and the contexts that extend one -/
 
@@ -82,7 +139,7 @@ structure Inv (k : Nat) (dm : DataModel) : Prop where
     stage D fuel items dm' k' = stage D fuel items dm k'
   faithful : ∀ k' ≤ k, ∀ d ∈ indsOf {} fuel (items.take k'), ∀ K : RunCtx,
     Extends D fuel items dm (stage D fuel items dm k') K → DeclFaithful K d
-  par : ∀ M ∈ indsOf {} fuel (items.take k), ∀ n,
+  par : ∀ M ∈ indsOf {} fuel (items.take k), M.sort ≠ 0 → ∀ n,
     RAgree (fun j => M.nestable.getD j false) n (dm.recOf M) (dm.recOf M)
   mono : ∀ M ∈ indsOf {} fuel (items.take k), M.sort = 0 → ∀ ps ps', PropLe M ps ps' → ∀ c i es,
     es.length = i → ShapeLe (uShape M (dm.recOf M ps) c i es) (uShape M (dm.recOf M ps') c i es)
@@ -90,6 +147,84 @@ structure Inv (k : Nat) (dm : DataModel) : Prop where
 
 theorem stage_inds (dm : DataModel) (k : Nat) : (stage D fuel items dm k).inds = indsOf {} fuel (items.take k) :=
   progMeaning_inds _ _ _ _ _ _ _
+
+/-- The checker's Σ after the first `k` items (`sigAfterFrom`): the stage's, whatever the model. -/
+def sig (k : Nat) : List GDef × List IndDecl := sigAfterFrom {} fuel ([], []) (items.take k)
+
+/-- The checker's state the `k`-th item is checked from. -/
+def stSt (k : Nat) : MState := { globals := (sig fuel items k).1, inds := (sig fuel items k).2, cfg := {} }
+
+theorem stage_sig (dm : DataModel) (k : Nat) :
+    (stage D fuel items dm k).globals = (sig fuel items k).1 ∧ (stage D fuel items dm k).inds = (sig fuel items k).2 := by
+  have h := progMeaningFrom_sigAfter dm D (indsOf {} fuel items) (fun _ => .err) {} fuel {} (items.take k)
+  simp only at h
+  exact ⟨congrArg Prod.fst h, congrArg Prod.snd h⟩
+
+/-- The `k`-th item's verdict. -/
+def verdict (k : Nat) (hk : k < items.length) : Outcome Unit := (runMachine (checkItem items[k]) (stSt fuel items k) fuel).1
+
+theorem stage_succ (dm : DataModel) (k : Nat) (hk : k < items.length) :
+    stage D fuel items dm (k + 1) =
+      ProgState.step dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (stage D fuel items dm k) items[k] := by
+  unfold stage progMeaning progMeaningFrom
+  rw [List.take_add_one, List.getElem?_eq_getElem hk, List.foldl_append]
+  rfl
+
+theorem stage_succ_eq (dm : DataModel) (k : Nat) (hk : k < items.length) :
+    stage D fuel items dm (k + 1) = match verdict fuel items k hk with
+      | .ok () st' => { globals := st'.globals, inds := st'.inds, means := match items[k] with
+          | .defn d => (stage D fuel items dm k).means ++ [(d.name,
+              (defMeaning (fun _ => .err)
+                ((stage D fuel items dm k).ctx dm D (indsOf {} fuel items) st') d
+                (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)).getD (.err, .plain .err))]
+          | .ind _ => (stage D fuel items dm k).means }
+      | _ => stage D fuel items dm k := by
+  rw [stage_succ D fuel items dm k hk]
+  unfold ProgState.step verdict stSt
+  obtain ⟨hg, hi⟩ := stage_sig D fuel items dm k
+  rw [hg, hi]
+  rfl
+
+theorem verdict_eq (dm : DataModel) (k : Nat) (hk : k < items.length) :
+    verdict fuel items k hk = (runMachine (checkItem items[k])
+      { globals := (stage D fuel items dm k).globals, inds := (stage D fuel items dm k).inds, cfg := {} } fuel).1 := by
+  obtain ⟨hg, hi⟩ := stage_sig D fuel items dm k
+  rw [hg, hi]; rfl
+
+theorem defMeaning_label (ρ : Assignment) (K : RunCtx) (d : Def) (T : Value) :
+    ((defMeaning ρ K d T).getD (.err, .plain .err)).2.label = none := by
+  unfold defMeaning
+  dsimp only
+  split
+  · cases run K ρ noFuture _ d.body (emptyState 0) <;> rfl
+  · cases run K ρ noFuture (.plain .err) _ (emptyState 0) <;> rfl
+
+/-- Every meaning the stage keeps has a type with no label. -/
+theorem stage_means_label (dm : DataModel) : ∀ k, k ≤ items.length → ∀ e ∈ (stage D fuel items dm k).means,
+    e.2.2.label = none
+  | 0, _, e, he => by simp [stage, progMeaning, progMeaningFrom] at he
+  | k + 1, hk, e, he => by
+    have ih := stage_means_label dm k (by omega)
+    rw [stage_succ_eq D fuel items dm k (by omega)] at he
+    split at he
+    · split at he
+      · rcases List.mem_append.1 he with he | he
+        · exact ih e he
+        · simp only [List.mem_singleton] at he
+          subst he
+          exact defMeaning_label _ _ _ _
+      · exact ih e he
+    · exact ih e he
+
+/-- Every global's type the stage knows carries no label. -/
+theorem stage_label (dm : DataModel) (k : Nat) (hk : k ≤ items.length) (g : String) :
+    ((stage D fuel items dm k).baseC.global g).2.label = none := by
+  show (ProgState.globalTy _ g).label = none
+  unfold ProgState.globalTy
+  split
+  · rename_i n v T hf
+    exact stage_means_label D fuel items dm k hk _ (List.mem_of_find?_eq_some hf)
+  · rfl
 
 /-- **The invariant at the last stage gives the existence statement**, at the one list (docs/31 D174),
 assuming that every stage's declarations are a prefix of the whole program's (`hpre`: a fact of the
@@ -126,6 +261,9 @@ theorem inv_zero : Inv D fuel items 0 dm0 := by
 Each is named in the honest count (docs/34 §18.14). The first three are about the checker; `DecStable`
 is an obligation on the decisions (piece 8). -/
 
+/-- A declared parameter type holds no embedded value (resolution, as `Knot.FieldsNoVal`). -/
+def ParamsNoVal (d : IndDecl) : Prop := ∀ j, (Knot.paramTerm d j).anyAtom (fun _ => true) = false
+
 /-- **One accepted item, as the checker stores it** (about the checker, enforced but not derived; an
 extension of `CheckIndGivesChecks` to `checkItem`, whose `seedHoles` comes first): an accepted inductive
 declaration appends one entry passing `IndChecks` and leaves the globals; an accepted definition leaves
@@ -133,7 +271,7 @@ the declarations and appends its globals. -/
 def ItemFacts : Prop :=
   ∀ (it : Item) (st st' : MState) (fuel : Nat), (runMachine (checkItem it) st fuel).1 = .ok () st' →
     (∀ d, it = .ind d → ∃ d', st'.inds = st.inds ++ [d'] ∧ Knot.IndChecks st.inds d' ∧ Knot.FieldsNoVal d' ∧
-      Records.VaryValFree d' ∧ st'.globals = st.globals) ∧
+      ParamsNoVal d' ∧ Records.VaryValFree d' ∧ st'.globals = st.globals) ∧
     (∀ d, it = .defn d → st'.inds = st.inds ∧ st.globals <+: st'.globals)
 
 /-- **Piece 8 (an obligation on the decisions, for the machine lane)**: a declared field type and a
@@ -148,15 +286,199 @@ def DecStable (D : MState → Decisions) : Prop :=
       run { K with D := D st } ρ noFuture (.plain (TyM.univ 2)) (Knot.paramTerm d j) (Params.frameP d (K.dm.paramTy d) (D st) mask ps) =
         run { K with D := D st0 } ρ noFuture (.plain (TyM.univ 2)) (Knot.paramTerm d j) (Params.frameP d (K.dm.paramTy d) (D st0) mask ps))
 
-/-- **The names a stage's code mentions are the stage's** (about the checker: resolution and D118):
-every field type and parameter type of a stored declaration, every accepted definition's body, domains,
-codomain and stored type name only types the state declares and globals the stage has a meaning for,
-and hold no embedded value (field and parameter types; a definition's code may hold values, whose names
-are tested the same way, `Knot.Value.nok`). Stated per stage through `Knot.NameOk`. -/
-def NamesOk (Γ : List IndDecl) (P : ProgState) : Knot.NameOk where
-  ty n := P.inds.any (·.name == n) && (Γ.find? (·.name == n)).isSome
-  rc n := P.inds.any (·.name == n)
-  gl n := (P.means.find? (·.1 == n)).isSome
+/-- **The names an accepted item's code mentions are the stage's** (about the checker: resolution
+and D118, `undeclaredCheck`; not derived): an accepted definition's body, its `fix` term and its stored
+type name only the stage's declarations and globals; an accepted inductive declaration's field types
+name only the stage's declarations and itself (as an applied type), its constructors only the stage's
+declarations', and its globals the stage's; its parameter types only the stage's. Stated at any model
+(the names do not depend on it). -/
+def NamesFact : Prop :=
+  ∀ (dm : DataModel) (k : Nat) (hk : k < items.length) (st' : MState),
+    verdict fuel items k hk = .ok () st' →
+    (∀ d, items[k] = .defn d →
+      Knot.Term.nok (stageNames (indsOf {} fuel items) (stage D fuel items dm k)) d.body = true ∧
+      Knot.Term.nok (stageNames (indsOf {} fuel items) (stage D fuel items dm k))
+        (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body) = true ∧
+      Knot.Value.nok (stageNames (indsOf {} fuel items) (stage D fuel items dm k))
+        (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = true) ∧
+    (∀ d0 d', items[k] = .ind d0 → st'.inds = (stage D fuel items dm k).inds ++ [d'] →
+      (∀ c i FT, fieldTerm d' c i = some FT →
+        Knot.Term.nok (fieldNames (indsOf {} fuel items) (stage D fuel items dm k) d') FT = true) ∧
+      ∀ j, Knot.Term.nok (stageNames (indsOf {} fuel items) (stage D fuel items dm k)) (Knot.paramTerm d' j) = true)
+
+/-- A field type runs, at well-typed parameters and earlier fields, to a code of carrier level 0. -/
+def FieldLevel0 (K : RunCtx) (ρ : Assignment) (d : IndDecl) : Prop :=
+  ∀ ps c i e FT r s', ParamsTyped K.dm d ps → FieldsTyped K.dm d ps c e → e.length = i → fieldTerm d c i = some FT →
+    run K ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm K.D d ps c e) = some (r, s') →
+    ∃ (B : Type) (cd : Code0 B), r.1.asTy = .t0 B cd
+
+/-- **The checker's field-level check is sound** (about the checker, not derived: `checkInd` rejects
+a field whose type, evaluated at generic parameters and fields, has `sortOf` above 1, "its type must be
+in Prop or Type"). At the context of the stage that accepts `d`, for any model whose parameter types of
+`d` are the run's readings of its declared ones, a field type of `d` runs at members to a code of
+carrier level 0 (not `Type₁` or above as a value): what `FieldsFaithful` needs, since the model's field
+types are level-0 codes. -/
+def FieldLevels : Prop :=
+  ∀ (dm : DataModel) (k : Nat) (hk : k < items.length) (st' : MState) (d0 d' : IndDecl),
+    verdict fuel items k hk = .ok () st' → items[k] = .ind d0 → st'.inds = (stage D fuel items dm k).inds ++ [d'] →
+    ∀ (dm'' : DataModel) (ρ : Assignment),
+      ParamsFaithfulAt ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d' →
+      FieldLevel0 ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d'
+
+/-! ## The step's bookkeeping (exists10) -/
+
+include D in
+theorem inds_succ (hIF : ItemFacts) (k : Nat) (hk : k < items.length) :
+    indsOf {} fuel (items.take k) <+: indsOf {} fuel (items.take (k + 1)) := by
+  rw [← stage_inds D fuel items dm0 k, ← stage_inds D fuel items dm0 (k + 1), stage_succ_eq D fuel items dm0 k hk]
+  split
+  · rename_i st' hv
+    rw [verdict_eq D fuel items dm0 k hk] at hv
+    obtain ⟨hI, hD⟩ := hIF _ _ _ _ hv
+    cases hit : items[k] with
+    | ind d =>
+      obtain ⟨d', h1, -⟩ := hI d hit
+      show _ <+: st'.inds
+      rw [h1]; exact List.prefix_append _ _
+    | defn d =>
+      show _ <+: st'.inds
+      rw [(hD d hit).1]; exact List.prefix_refl _
+  · exact List.prefix_refl _
+
+include D in
+theorem inds_mono (hIF : ItemFacts) (k' : Nat) : ∀ k, k' ≤ k → k ≤ items.length →
+    indsOf {} fuel (items.take k') <+: indsOf {} fuel (items.take k)
+  | 0, hle, _ => by
+    have : k' = 0 := by omega
+    subst this; exact List.prefix_refl _
+  | k + 1, hle, hk => by
+    rcases Nat.lt_or_ge k' (k + 1) with h | h
+    · exact (inds_mono hIF k' k (by omega) (by omega)).trans (inds_succ D fuel items hIF k (by omega))
+    · have : k' = k + 1 := by omega
+      subst this; exact List.prefix_refl _
+
+/-- **The earlier stages carry over to a model agreeing at the stage's declarations.** -/
+theorem inv_carry (hIF : ItemFacts) {k : Nat} (hk : k ≤ items.length) {dm dm' : DataModel} (h : Inv D fuel items k dm)
+    (hag : ∀ d ∈ indsOf {} fuel (items.take k), dm'.recOf d = dm.recOf d ∧ dm'.paramTy d = dm.paramTy d) :
+    (∀ k' ≤ k, ∀ dm'' : DataModel,
+      (∀ d ∈ indsOf {} fuel (items.take k'), dm''.recOf d = dm'.recOf d ∧ dm''.paramTy d = dm'.paramTy d) →
+        stage D fuel items dm'' k' = stage D fuel items dm' k') ∧
+    (∀ k' ≤ k, ∀ d ∈ indsOf {} fuel (items.take k'), ∀ K : RunCtx,
+      Extends D fuel items dm' (stage D fuel items dm' k') K → DeclFaithful K d) := by
+  have hsub : ∀ k' ≤ k, ∀ d ∈ indsOf {} fuel (items.take k'), d ∈ indsOf {} fuel (items.take k) :=
+    fun k' hk' d hd => (inds_mono D fuel items hIF k' k hk' hk).subset hd
+  have hst : ∀ k' ≤ k, stage D fuel items dm' k' = stage D fuel items dm k' :=
+    fun k' hk' => h.congr k' hk' dm' fun d hd => hag d (hsub k' hk' d hd)
+  refine ⟨fun k' hk' dm'' h'' => ?_, fun k' hk' d hd K hK => ?_⟩
+  · rw [hst k' hk', h.congr k' hk' dm'' fun d hd =>
+      ⟨(h'' d hd).1.trans (hag d (hsub k' hk' d hd)).1, (h'' d hd).2.trans (hag d (hsub k' hk' d hd)).2⟩]
+  · rw [hst k' hk'] at hK
+    refine h.faithful k' hk' d hd K ⟨hK.gamma, fun d' hd' => ?_, hK.globals, hK.dec, hK.lam, hK.cur⟩
+    have hd'' : d' ∈ indsOf {} fuel (items.take k') := by rwa [stage_inds] at hd'
+    rw [(hK.agree d' hd').1, (hK.agree d' hd').2, (hag d' (hsub k' hk' d' hd'')).1, (hag d' (hsub k' hk' d' hd'')).2]
+    exact ⟨rfl, rfl⟩
+
+/-- **A rejected item**: the stage does not change. -/
+theorem inv_reject (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm)
+    (hv : ∀ st', verdict fuel items k hk ≠ .ok () st') : Inv D fuel items (k + 1) dm := by
+  have hst : ∀ dm', stage D fuel items dm' (k + 1) = stage D fuel items dm' k := fun dm' => by
+    rw [stage_succ_eq D fuel items dm' k hk]
+    split
+    · rename_i st' e; exact absurd e (hv st')
+    · rfl
+  have hind : indsOf {} fuel (items.take (k + 1)) = indsOf {} fuel (items.take k) := by
+    rw [← stage_inds D fuel items dm0, ← stage_inds D fuel items dm0, hst]
+  refine ⟨h.covers, ?_, fun k' hk' dm' hag => ?_, fun k' hk' d hd K hK => ?_, ?_, ?_, ?_⟩
+  · rw [hind]; exact h.rest
+  · rcases Nat.lt_or_ge k' (k + 1) with hl | hl
+    · exact h.congr k' (by omega) dm' hag
+    · have : k' = k + 1 := by omega
+      subst this
+      rw [hst, hst]; rw [hind] at hag; exact h.congr k (Nat.le_refl _) dm' hag
+  · rcases Nat.lt_or_ge k' (k + 1) with hl | hl
+    · exact h.faithful k' (by omega) d hd K hK
+    · have : k' = k + 1 := by omega
+      subst this
+      rw [hst] at hK; rw [hind] at hd; exact h.faithful k (Nat.le_refl _) d hd K hK
+  · rw [hind]; exact h.par
+  · rw [hind]; exact h.mono
+  · rw [hind]; exact h.val
+
+/-- The stage after an accepted item, at any model, read through its verdict. -/
+theorem stage_ok (dm : DataModel) (k : Nat) (hk : k < items.length) (st' : MState)
+    (hv : verdict fuel items k hk = .ok () st') :
+    stage D fuel items dm (k + 1) = { globals := st'.globals, inds := st'.inds, means := match items[k] with
+      | .defn d => (stage D fuel items dm k).means ++ [(d.name,
+          (defMeaning (fun _ => .err) ((stage D fuel items dm k).ctx dm D (indsOf {} fuel items) st') d
+            (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)).getD (.err, .plain .err))]
+      | .ind _ => (stage D fuel items dm k).means } := by
+  rw [stage_succ_eq D fuel items dm k hk]
+  split
+  · rename_i st'' e; rw [hv] at e; cases e; rfl
+  · rename_i hne; exact absurd hv (hne st')
+
+/-- An extension of a later stage with the same declarations, more meanings appended and more globals
+extends the earlier stage. -/
+theorem extends_of_more {dm : DataModel} {P P' : ProgState} {K : RunCtx} (hK : Extends D fuel items dm P' K)
+    (hi : P.inds <+: P'.inds) (hg : P.globals <+: P'.globals) (hm : ∃ xs, P'.means = P.means ++ xs) :
+    Extends D fuel items dm P K := by
+  obtain ⟨xs, hxs⟩ := hm
+  refine ⟨hK.gamma, fun d hd => hK.agree d (hi.subset hd), fun n hn => ?_, ?_, hK.lam, hK.cur⟩
+  · obtain ⟨y, hy⟩ := Option.isSome_iff_exists.1 hn
+    have e : P'.means.find? (·.1 == n) = some y := by rw [hxs, List.find?_append, hy]; rfl
+    rw [hK.globals n (by rw [e]; rfl)]
+    simp only [ProgState.baseC, ProgState.globalMean, ProgState.globalTy, e, hy]
+  · obtain ⟨st, h1, h2, h3, h4⟩ := hK.dec
+    exact ⟨st, hi.trans h1, h2, hg.trans h3, h4⟩
+
+/-- **An accepted definition**: the same model; the new meaning reads it only at the stage's
+declarations (`NamesFact`, `defMeaning_congrN`). -/
+theorem inv_defn (hIF : ItemFacts) (hN : NamesFact D fuel items)
+    (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items)
+    (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm)
+    (st' : MState) (d : Def) (hv : verdict fuel items k hk = .ok () st') (hit : items[k] = .defn d) :
+    Inv D fuel items (k + 1) dm := by
+  have hv' := hv
+  rw [verdict_eq D fuel items dm k hk] at hv'
+  obtain ⟨hi, hg⟩ := (hIF _ _ _ _ hv').2 d hit
+  have hi' : st'.inds = (stage D fuel items dm k).inds := hi
+  have hstage : ∀ dm', stage D fuel items dm' (k + 1) =
+      { globals := st'.globals, inds := st'.inds,
+        means := (stage D fuel items dm' k).means ++ [(d.name,
+          (defMeaning (fun _ => .err) ((stage D fuel items dm' k).ctx dm' D (indsOf {} fuel items) st') d
+            (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)).getD (.err, .plain .err))] } := by
+    intro dm'
+    rw [stage_ok D fuel items dm' k hk st' hv]
+    simp only [hit]
+  have hind : indsOf {} fuel (items.take (k + 1)) = indsOf {} fuel (items.take k) := by
+    rw [← stage_inds D fuel items dm (k + 1), ← stage_inds D fuel items dm k, hstage dm]
+    exact hi'
+  refine ⟨h.covers, ?_, fun k' hk' dm' hag => ?_, fun k' hk' d0 hd K hK => ?_, ?_, ?_, ?_⟩
+  · rw [hind]; exact h.rest
+  · rcases Nat.lt_or_ge k' (k + 1) with hl | hl
+    · exact h.congr k' (by omega) dm' hag
+    · have : k' = k + 1 := by omega
+      subst this
+      rw [hind] at hag
+      rw [hstage dm', hstage dm, h.congr k (Nat.le_refl _) dm' hag]
+      obtain ⟨h1, h2, h3⟩ := (hN dm k hk st' hv).1 d hit
+      have hA := agreeN_stage (K := (stage D fuel items dm k).ctx dm D (indsOf {} fuel items) st') (dm' := dm')
+        (P := stage D fuel items dm k) (by rw [stage_inds]; exact hpre k (by omega))
+        (fun M hM => hag M (by rw [← stage_inds D fuel items dm k]; exact hM)) (fun _ _ => rfl)
+      rw [show (stage D fuel items dm k).ctx dm' D (indsOf {} fuel items) st' =
+        { (stage D fuel items dm k).ctx dm D (indsOf {} fuel items) st' with dm := dm' } from rfl,
+        defMeaning_congrN _ dm' _ hA _ d _ h1 h2 h3]
+  · rcases Nat.lt_or_ge k' (k + 1) with hl | hl
+    · exact h.faithful k' (by omega) d0 hd K hK
+    · have : k' = k + 1 := by omega
+      subst this
+      rw [hind] at hd
+      rw [hstage dm] at hK
+      exact h.faithful k (Nat.le_refl _) d0 hd K (extends_of_more D fuel items hK (by rw [← hi']; exact List.prefix_refl _)
+        hg ⟨_, rfl⟩)
+  · rw [hind]; exact h.par
+  · rw [hind]; exact h.mono
+  · rw [hind]; exact h.val
 
 /-- **The step** (OPEN; exists9's plan, docs/34 §18.14). From the invariant at stage `k` for a model, the
 invariant at stage `k + 1` for a model agreeing with it at stage `k`'s declarations. By the `k`-th item's
