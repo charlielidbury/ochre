@@ -68,7 +68,8 @@ the plain mode (`Mode`) whose handed-down reading, if any, is the table's readin
 def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    Mode st → (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
+    Mode st → 0 < st.env.size →
+    (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
@@ -83,7 +84,7 @@ code), from a state in the plain mode with no reading handed down, for a term th
 embedded values of, holding the state's unknowns and no hole. -/
 def TailAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState),
-    Mode st → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
+    Mode st → 0 < st.env.size → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     DecTab K.D st' →
@@ -100,15 +101,15 @@ def IH (K : RunCtx) (φ : Future) (n : Nat) : Prop :=
 docstring). -/
 theorem evalAt_of_eval_sim {K : RunCtx} {ρ : Assignment} {φ : Future} {n : Nat} (h : eval_sim K ρ φ n)
     (t : Term) : EvalAt K ρ φ n t :=
-  fun st st' typed hint v T? s π _ _ hp hr hS hv hab hnh hok hD bh hrun =>
+  fun st st' typed hint v T? s π _ _ _ hp hr hS hv hab hnh hok hD bh hrun =>
     h st st' typed t hint v T? s π hp hr hS hv hab hnh hok hD bh hrun
 
 /-- `EvalAt` for a term the table leaves unerased is `Column.EvalSim` (the fragment's and the columns'
-form, with its trivial state and typing predicates). -/
+form) at states with a frame. -/
 theorem evalSim_of_evalAt {K : RunCtx} {ρ : Assignment} {φ : Future} {n : Nat} {t : Term}
-    (h : EvalAt K ρ φ n t) : EvalSim K ρ φ n t :=
-  fun st st' typed hint v T? s π _ _ hm htd hp hr hS hv hab hnh _ hok hD bh hrun =>
-    h st st' typed hint v T? s π hm htd hp hr hS hv hab hnh hok hD bh hrun
+    (h : EvalAt K ρ φ n t) : EvalSim K ρ φ n t (fun st => 0 < st.env.size) :=
+  fun st st' typed hint v T? s π hne _ hm htd hp hr hS hv hab hnh _ hok hD bh hrun =>
+    h st st' typed hint v T? s π hm hne htd hp hr hS hv hab hnh hok hD bh hrun
 
 /-! ## The shapes `checkTail` matches -/
 

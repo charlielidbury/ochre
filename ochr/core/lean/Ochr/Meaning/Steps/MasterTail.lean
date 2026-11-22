@@ -89,11 +89,12 @@ end TailGuards
 context and future. ASSUMES 1 fact about the checker, `TailOtherInv`; the model fact it uses,
 `runT_tl_indep`, is proved. -/
 theorem tStepOther (hT : TailOtherInv) (K : RunCtx) (φ : Future) : TStepOther K φ := by
-  intro n ih Δ ρ t ht st k s π bh st' hm htd hk hp hr hS hv hab hnh hD hrun
+  intro n ih Δ ρ t ht st k s π bh st' hm hne htd hk hp hr hS hv hab hnh hD hrun
   obtain ⟨m, st₀, st₁, v, T, b₁, b₂, hmn, hk₀, hme₀, htd₀, hg₀, hev, hkr⟩ := hT n t k st st' bh ht hrun
   have hD₁ : DecTab K.D st₁ := hD.back (hk v T st₁ b₂ () st' hkr)
   have hab₀ : t.absBelow st₀.absTy.size := by rw [← hk₀.absTy]; exact hab
   have hO := (ih m (by omega) Δ ρ).1 t st₀ st₁ true st.goal v (some T) s π (hm.of_modeEq hme₀)
+    (by rw [← ColumnC.size_of_erase hk₀.env]; exact hne)
     (Or.inl (htd₀.trans htd)) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv hab₀ hnh (fun e => by cases e) hD₁ b₁ hev
   refine ⟨st₁, v, T, ⟨b₂, st', hkr⟩, ?_⟩
   rw [runT_tl_indep t ht true st₀.tailNext]

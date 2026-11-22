@@ -98,7 +98,7 @@ end
 /-- **The step for `Z`, in general**: `StepZero` for every context and future. ASSUMES NOTHING (the facts
 about the checker it uses are the machine lane's proved `evalLow`, `evalInvR`, `zeroInv`, `invSteps`). -/
 theorem stepZero (K : RunCtx) (φ : Future) : StepZero K φ := by
-  intro n _ Δ ρ st st' typed hint v T? s π hm htd hp hr hS hv hab hnh hok hD bh h
+  intro n _ Δ ρ st st' typed hint v T? s π hm _ htd hp hr hS hv hab hnh hok hD bh h
   by_cases hn : n < 3
   · exact absurd h (evalLow n typed .zero hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
@@ -113,7 +113,7 @@ theorem stepZero (K : RunCtx) (φ : Future) : StepZero K φ := by
 
 /-- **The step for `()`, in general**: `StepTt` for every context and future. ASSUMES NOTHING. -/
 theorem stepTt (K : RunCtx) (φ : Future) : StepTt K φ := by
-  intro n _ Δ ρ st st' typed hint v T? s π hm htd hp hr hS hv hab hnh hok hD bh h
+  intro n _ Δ ρ st st' typed hint v T? s π hm _ htd hp hr hS hv hab hnh hok hD bh h
   by_cases hn : n < 3
   · exact absurd h (evalLow n typed .tt hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
