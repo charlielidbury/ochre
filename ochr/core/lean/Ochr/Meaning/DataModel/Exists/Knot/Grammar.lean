@@ -1,4 +1,5 @@
 import Ochr.Meaning.DataModel.Exists.Defs
+import Ochr.Meaning.DataModel.Exists.Knot.HintFree
 import Ochr.Check
 
 /-!
@@ -15,14 +16,19 @@ a ruling has been requested:
 * **(A)** `d` does not occur inside an argument at a `Prop` parameter. Stated with what typing
   gives: a varying type argument stands at a `Type` parameter and, when it is an applied
   declaration, that declaration is data-sorted (`SemAgree` compares data codes only).
-And one consequence of typing that the syntax must state: **(B2)** a value argument does not stand
-at a parameter whose declared type mentions an earlier parameter whose argument varies (its hint,
-the parameter's type, would vary).
+And one condition on value arguments: **(B2)** a value argument either stands at a parameter whose
+declared type mentions no earlier parameter whose argument varies (its hint, the parameter's type, is
+then the same between the knot's comparisons), or does not read its hint (`hintFreeB`: its head is not
+a constructor with its parameters left to the hint, an embedded value, or `clone`/`peek`/`inplace`;
+`HintFree.runT_hintFree`). The second disjunct is exists7's (docs/34 §18.10): it admits `NF(DF, 0, ())`
+with `NF (A : Type) (n : Nat) (f : NegF(A, n))`, which the checker and Lean accept. What it still
+excludes, a constructor with an unwritten parameter at a hint computed from `d`'s code, is
+`HintShapes.lean`'s `DK`.
 
 `Spine Γ d c t`: `t` is `Nat`, `Unit`, a parameter, an applied declaration `M(ā)` whose type
 arguments are again spines (varying ones only at `M`'s nestable parameters, and at `Type`
-parameters when they mention `d`) and whose value arguments are steady (B2 at each), or a steady
-call or equation.
+parameters when they mention `d`) and whose value arguments are steady (and (B2) at each), or a
+steady call or equation.
 -/
 
 namespace Ochr.Meaning.DataModel.Exists.Knot
@@ -80,7 +86,8 @@ def Steady (d : IndDecl) (c : Nat) (t : Term) : Prop :=
 /-- Whether `M`'s parameter `j` is nestable (as stored; `d`'s own read from `d`, which its name finds). -/
 def nestOf (M : IndDecl) (j : Nat) : Bool := M.nestable.getD j false
 
-/-- (B2) at a value argument: no earlier argument that `M`'s parameter `j`'s type mentions varies. -/
+/-- (B2)'s first disjunct at a value argument: no earlier argument that `M`'s parameter `j`'s type
+mentions varies. -/
 def HintSteady (d : IndDecl) (c : Nat) (M : IndDecl) (j : Nat) (pre : List Term) : Prop :=
   ∀ u ∈ (paramTerm M j).freeVars, u < j → ∀ a, pre[j - 1 - u]? = some a → Steady d c a
 
@@ -105,7 +112,7 @@ inductive SpineArgs (Γ : List IndDecl) (d : IndDecl) (c : Nat) : IndDecl → Na
         ∀ n' as' M', a = .tind n' as' → Γ.find? (·.name == n') = some M' → M'.sort ≠ 0)
       (hrest : SpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : SpineArgs Γ d c M j pre (a :: as)
   | value (M : IndDecl) (j : Nat) (pre : List Term) (a : Term) (as : List Term) (hty : M.paramIsType j = false)
-      (ha : Steady d c a) (hh : HintSteady d c M j pre)
+      (ha : Steady d c a) (hh : HintSteady d c M j pre ∨ hintFreeB Γ a = true)
       (hrest : SpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : SpineArgs Γ d c M j pre (a :: as)
 end
 
@@ -166,7 +173,7 @@ def spineArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat �
   | j, pre, a :: as =>
     (if M.paramIsType j then
       spineB Γ d c a && (steadyB d c a || (nestOf M j && isType1 (paramTerm M j) && notPropDecl Γ a))
-    else steadyB d c a && hintSteadyB d c M j pre) && spineArgsB Γ d c M (j + 1) (pre ++ [a]) as
+    else steadyB d c a && (hintSteadyB d c M j pre || hintFreeB Γ a)) && spineArgsB Γ d c M (j + 1) (pre ++ [a]) as
 termination_by structural _ _ as => as
 end
 
@@ -264,8 +271,8 @@ theorem spineArgsB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDec
             simp [notPropDecl, hM'] at hnp
             exact hnp
     · rw [if_neg hty] at h1
-      simp only [Bool.and_eq_true] at h1
-      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1.1) (hintSteadyB_sound h1.2)
+      simp only [Bool.and_eq_true, Bool.or_eq_true] at h1
+      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1.1) (h1.2.imp hintSteadyB_sound id)
         (spineArgsB_sound h2)
 end
 
@@ -360,7 +367,7 @@ inductive PSpineArgs (Γ : List IndDecl) (d : IndDecl) (c : Nat) : IndDecl → N
       (hA : ¬ Steady d c a → paramTerm M j = .sort 0 ∧ M.sort = 0)
       (hrest : PSpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : PSpineArgs Γ d c M j pre (a :: as)
   | value (M : IndDecl) (j : Nat) (pre : List Term) (a : Term) (as : List Term) (hty : M.paramIsType j = false)
-      (ha : Steady d c a) (hh : HintSteady d c M j pre)
+      (ha : Steady d c a) (hh : HintSteady d c M j pre ∨ hintFreeB Γ a = true)
       (hrest : PSpineArgs Γ d c M (j + 1) (pre ++ [a]) as) : PSpineArgs Γ d c M j pre (a :: as)
 end
 
@@ -384,7 +391,7 @@ def pspineArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat 
   | j, pre, a :: as =>
     (if M.paramIsType j then
       pspineB Γ d c a && (steadyB d c a || (nestOf M j && isType0 (paramTerm M j) && M.sort == 0))
-    else steadyB d c a && hintSteadyB d c M j pre) && pspineArgsB Γ d c M (j + 1) (pre ++ [a]) as
+    else steadyB d c a && (hintSteadyB d c M j pre || hintFreeB Γ a)) && pspineArgsB Γ d c M (j + 1) (pre ++ [a]) as
 termination_by structural _ _ as => as
 end
 
@@ -436,8 +443,8 @@ theorem pspineArgsB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDe
         · refine ⟨?_, by simpa using hsort⟩
           unfold isType0 at h0; split at h0 <;> simp_all
     · rw [if_neg hty] at h1
-      simp only [Bool.and_eq_true] at h1
-      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1.1) (hintSteadyB_sound h1.2)
+      simp only [Bool.and_eq_true, Bool.or_eq_true] at h1
+      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1.1) (h1.2.imp hintSteadyB_sound id)
         (pspineArgsB_sound h2)
 end
 

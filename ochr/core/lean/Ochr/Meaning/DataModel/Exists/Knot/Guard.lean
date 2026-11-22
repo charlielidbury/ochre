@@ -344,9 +344,13 @@ theorem itpArgs_agree (G : GuardHyp K d n R R' ps ps') {M : IndDecl} (hMΓ : M �
     have := itpArgs_agree G hMΓ hrest _ _ h' (by simp [hj])
     simpa [List.append_assoc] using this
   | _, _, _, .value _ j pre a as hty ha hh hrest, vs, vs', h, hj => by
-    have hhint : K.dm.paramTy M j vs = K.dm.paramTy M j vs' :=
-      hint_eq G.hpty hMΓ h hj (fun u hu hlt a' ha' => hh u hu hlt a' ha')
-    rw [itpArgs_cons, itpArgs_cons, argSem_eq, argSem_eq, if_neg (by simp [hty]), if_neg (by simp [hty]), hhint]
+    -- the value is the same at both hints: they are equal (B2), or the value does not read its hint
+    have hval : valOf K ρ s (.plain (K.dm.paramTy M j vs)) a = valOf K ρ s (.plain (K.dm.paramTy M j vs')) a := by
+      rcases hh with hh | hf
+      · rw [hint_eq G.hpty hMΓ h hj (fun u hu hlt a' ha' => hh u hu hlt a' ha')]
+      · unfold valOf
+        rw [runT_hintFree K ρ noFuture (.plain (K.dm.paramTy M j vs)) (.plain (K.dm.paramTy M j vs')) a hf]
+    rw [itpArgs_cons, itpArgs_cons, argSem_eq, argSem_eq, if_neg (by simp [hty]), if_neg (by simp [hty]), hval]
     have h' := h.snoc a (valOf K ρ s (.plain (K.dm.paramTy M j vs')) a) (valOf K ρ s (.plain (K.dm.paramTy M j vs')) a)
       (by split <;> first | exact .inl rfl | rfl) (fun _ => rfl)
     have := itpArgs_agree G hMΓ hrest _ _ h' (by simp [hj])
