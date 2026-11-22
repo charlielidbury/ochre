@@ -2437,7 +2437,15 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     let myD := (← get).curDecl
     let du ← withLive true (declOf fuel' false [] [] u)
     demand true      -- D82: `h` is bound at its right-hand side's type
-    let isCall := !typed && (u matches .call _ _ _)
+    -- D132: an untyped run defers the type of a right-hand side that is a call the pre-pass does not
+    -- erase. An erased call (one returning a type or a proof) runs as a statement on a private copy
+    -- (`evalAt`), which would discard the record of its deferred type with the copy and leave `h`
+    -- with no type; not deferred, its type is computed inside the statement and comes back with its
+    -- value. Decided from `u`'s declared reading, as `evalAt` decides the statement (`preFlags`)
+    let callU := !typed && (u matches .call _ _ _)
+    let erasedU ← if !callU || du matches .conflict then pure false
+      else pure (((← preFlags u du).map (·.1)).getD false)
+    let isCall := callU && !erasedU
     -- D130: the flag is consumed when `u`'s evaluation starts, which also clears the record
     if isCall then modify fun s => { s with deferCallTy := true }
     let (v, T) ← eval fuel' typed u
