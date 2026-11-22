@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.Master
+import Ochr.Meaning.Steps.MasterDepth
 import Ochr.Meaning.Steps.Machine.FragFree
 
 /-!
@@ -6,8 +6,8 @@ import Ochr.Meaning.Steps.Machine.FragFree
 
 `stepZero` and `stepTt`: the step statements `Master.StepZero` and `Master.StepTt`, for every context, every
 fuel, every state in the plain mode meeting `Pre`, every related good reference state, typed or not; no
-fragment invariant and no program's state. Each from the machine lane's proved facts about the checker
-(`evalLow`, `evalInvR`, `zeroInv`, `invSteps`) and one new one proved here (`ttInv`, by computation), and
+fragment invariant and no program's state, at any erased depth (D155). Each from proved facts about the checker
+(`evalLow`, `zeroInv`, `invSteps` the machine lane's; `evalInvD` at any depth, `zeroInvE`, `ttInvE` here), and
 the table's answers at the two terms, read off `DecTab` by running the checker's decision procedures (no
 fact assumed). So both steps ASSUME NOTHING.
 -/
@@ -52,11 +52,29 @@ theorem decTab_tt {D : Decisions} {st : MState} (hD : DecTab D st) :
 
 /-! ## `()` at `evalCore` -/
 
-/-- **`evalCore` of `()`** (a fact about the checker alone, PROVED by computation, as `zeroInv`): the value
-`()` at `Unit`, the state as it was. -/
-theorem ttInv (n : Nat) (typed : Bool) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
+/-- **`evalCore` of `Z`, its state** (a fact about the checker alone, PROVED by computation, as `zeroInv`): the
+value `Z` at `Nat`, the state as it was (so the kernel and the mode at any erased depth). -/
+theorem zeroInvE (n : Nat) (typed : Bool) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
+    (T? : Option Value) (h : Runs (Ochr.evalCore (n + 1) typed .zero hint) st bh (v, T?) st') :
+    v = .zero ∧ T? = some .tNat ∧ st' = st := by
+  obtain ⟨L, left, log, h⟩ := h
+  cases bh with
+  | zero =>
+    have e : runMachineL (Ochr.evalCore (n + 1) typed .zero hint) st 0 L = (.exhausted "out of fuel", 0, L) := rfl
+    rw [e] at h; cases h
+  | succ k =>
+    have e : runMachineL (Ochr.evalCore (n + 1) typed .zero hint) st (k + 1) L =
+        (.ok (.zero, some .tNat) st, k, L) := rfl
+    rw [e] at h
+    simp only [Prod.mk.injEq, Outcome.ok.injEq] at h
+    obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, -⟩ := h
+    exact ⟨rfl, rfl, rfl⟩
+
+/-- **`evalCore` of `()`** (a fact about the checker alone, PROVED by computation): the value `()` at `Unit`,
+the state as it was. -/
+theorem ttInvE (n : Nat) (typed : Bool) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
     (T? : Option Value) (h : Runs (Ochr.evalCore (n + 1) typed .tt hint) st bh (v, T?) st') :
-    v = .unit ∧ T? = some .tUnit ∧ Kern st st' ∧ (Mode st → Mode st') := by
+    v = .unit ∧ T? = some .tUnit ∧ st' = st := by
   obtain ⟨L, left, log, h⟩ := h
   cases bh with
   | zero =>
@@ -68,7 +86,7 @@ theorem ttInv (n : Nat) (typed : Bool) (hint : Option Value) (st st' : MState) (
     rw [e] at h
     simp only [Prod.mk.injEq, Outcome.ok.injEq] at h
     obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, -⟩ := h
-    exact ⟨rfl, rfl, Kern.rfl' _, id⟩
+    exact ⟨rfl, rfl, rfl⟩
 
 section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
@@ -77,26 +95,33 @@ theorem runT_tt (tl : Bool) (hint : TyS) (s : SState) :
     runT K ρ φ tl hint .tt s = some ((.el0 Unit (), .plain TyM.unit), s) := by
   rw [runT]; rfl
 
-/-- **`()`, at `evalCore`**, from every state meeting `Pre` and every related reference state. -/
-theorem tt_coreSim {n : Nat} {P : MState → Prop} {TY : Bool → Prop} : CoreSim K ρ φ (n + 1) .tt P TY := by
+/-- **`()`, at `evalCore`, at any erased depth**, from every state meeting `Pre` and every related reference
+state. -/
+theorem tt_coreSimK {n : Nat} {P : MState → Prop} {TY : Bool → Prop} : CoreSimK K ρ φ (n + 1) .tt P TY := by
   intro st st' typed hint v T? s π _ _ _ _ _ _ hp hr _ _ _ _ _ _ _ bh h
-  obtain ⟨rfl, rfl, hk, -⟩ := ttInv n typed hint st st' bh v T? h
-  have hinv : Inv K.D K.Γ (st'.withTempT .unit (some .tUnit)).norm :=
-    invSteps.pushInert K.D K.Γ st' .unit _ (.inr rfl) (by rw [← hk.norm]; exact hp.inv)
-  have hp' := hp.of_kern hk
-  refine ⟨ρ, K.Δ, π, (.el0 Unit (), .plain TyM.unit), s, ⟨?_, ?_, fun _ _ => ⟨rfl, rfl⟩, fun _ _ => rfl⟩,
-    runT_tt _ _ _, rfl, fun T hT => ?_, rfl, ⟨hp'.ctx.of_eq rfl rfl, hinv, asg_withTempT_inert hp'.asg Value.inert_unit _⟩,
-    rel_withTempT_inert (hr.of_kern hk) Value.inert_unit _⟩
-  · rw [hk.absTy]; exact Nat.le_refl _
-  · rw [hk.nextLoan]; exact Nat.le_refl _
-  · cases hT; rfl
+  obtain ⟨rfl, rfl, hst⟩ := ttInvE n typed hint st st' bh v T? h
+  subst st'
+  have hinv : Inv K.D K.Γ (st.withTempT .unit (some .tUnit)).norm :=
+    invSteps.pushInert K.D K.Γ st .unit _ (.inr rfl) hp.inv
+  refine ⟨⟨ρ, K.Δ, π, (.el0 Unit (), .plain TyM.unit), s, ⟨Nat.le_refl _, Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩,
+    fun _ _ => rfl⟩, runT_tt _ _ _, rfl, fun T hT => ?_, rfl, ⟨hp.ctx.of_eq rfl rfl, hinv,
+    asg_withTempT_inert hp.asg Value.inert_unit _⟩, rel_withTempT_inert hr Value.inert_unit _⟩, Kept.rfl' _⟩
+  cases hT; rfl
+
+/-- **`Z`, at `evalCore`, at any erased depth.** -/
+theorem zero_coreSimK {n : Nat} {P : MState → Prop} {TY : Bool → Prop} : CoreSimK K ρ φ (n + 1) .zero P TY := by
+  intro st st' typed hint v T? s π _ _ _ _ _ _ hp hr _ _ _ _ _ _ hD bh h
+  refine ⟨zero_core zeroInv invSteps s π hp hr hD h, ?_⟩
+  obtain ⟨-, -, hst⟩ := zeroInvE n typed hint st st' bh v T? h
+  subst st'
+  exact Kept.rfl' _
 
 end
 
 /-! ## The two steps -/
 
 /-- **The step for `Z`, in general**: `StepZero` for every context and future. ASSUMES NOTHING (the facts
-about the checker it uses are the machine lane's proved `evalLow`, `evalInvR`, `zeroInv`, `invSteps`). -/
+about the checker it uses are the machine lane's proved `evalLow`, `zeroInv`, `invSteps`, and `evalInvD`, `zeroInvE` proved here at any erased depth). -/
 theorem stepZero (K : RunCtx) (φ : Future) : StepZero K φ := by
   intro n _ Δ ρ st st' typed hint v T? s π hm _ htd hp hr hS hv hab hnh hok hD bh h
   by_cases hn : n < 3
@@ -106,11 +131,9 @@ theorem stepZero (K : RunCtx) (φ : Future) : StepZero K φ := by
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .zero ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .zero).isProof = false :=
     fun st _ => by rw [hdz]; exact ⟨(fun e => by cases e), rfl⟩
-  exact eval_of_coreK (K := { K with Δ := Δ }) evalInvR (P := fun _ => True) (TY := fun _ => True)
+  exact eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
-    hany (coreSimK_of (ColumnC.zero_coreSim zeroInv invSteps) fun typed hint st st' bh v T? hm h =>
-      let ⟨_, _, hk, hm'⟩ := zeroInv m typed hint st st' bh v T? h
-      Kept.of_kern hk (ModeEq.of_modes hm (hm' hm)))
+    hany zero_coreSimK
     st st' typed hint v T? s π trivial trivial hm htd hp hr hS hv hab hnh (hfz _) hok hD bh h
 
 /-- **The step for `()`, in general**: `StepTt` for every context and future. ASSUMES NOTHING. -/
@@ -123,11 +146,9 @@ theorem stepTt (K : RunCtx) (φ : Future) : StepTt K φ := by
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .tt ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .tt).isProof = false :=
     fun st _ => by rw [hdt]; exact ⟨(fun e => by cases e), rfl⟩
-  exact eval_of_coreK (K := { K with Δ := Δ }) evalInvR (P := fun _ => True) (TY := fun _ => True)
+  exact eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
-    hany (coreSimK_of tt_coreSim fun typed hint st st' bh v T? hm h =>
-      let ⟨_, _, hk, hm'⟩ := ttInv m typed hint st st' bh v T? h
-      Kept.of_kern hk (ModeEq.of_modes hm (hm' hm)))
+    hany tt_coreSimK
     st st' typed hint v T? s π trivial trivial hm htd hp hr hS hv hab hnh (hft _) hok hD bh h
 
 end Ochr.Meaning.Steps.Form.Master

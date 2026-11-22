@@ -18,7 +18,7 @@ itself (`master`) is proved with no `sorry`; it ASSUMES the 32 step statements, 
 for one term, with TWO more hypotheses (ruling (a) of docs/31 D150; `eval_sim` is deleted, D154), without which
 the statement is false:
 
-* `Mode st` (no head evaluation, not copying, not in place). `Pre` reads the state's kernel (`MState.norm`),
+* `ModeR st` (no head evaluation, not copying, not in place; the erased depth free, D155). `Pre` reads the state's kernel (`MState.norm`),
   which forgets the mode, so `eval_sim` quantified over every mode; but in copying mode (inside `clone`) or in
   place (a call's head) the checker's read of a place of a non-copy type leaves the place as it was, where the
   reference's plain run of the same term moves it, and the states after are not related. Smallest program:
@@ -58,11 +58,11 @@ continuation runs (`TailOutK`).
 * The decision table: `DecTab K.D st'` at the END of each sub-run, which every step gets from its own
   end by `DecTab.back` (the checker's runs only extend the tables), the callee's body in place included.
 
-What the hypothesis does NOT cover, and the steps that meet it (docs/31 D150): a sub-run in a mode other
-than the plain one. `evalAt` runs an erased term's `evalCore` under `inStatement` (`erasedDepth + 1`);
-`clone`/`peek` run their operand under `withCopying` and `withErased`; a function whose calls are erased
-runs its body under `withErasedIf`. Those steps need either the hypothesis at `erasedDepth > 0` (the
-checker reads the depth only in `atRuntime` and the capture-move check) or their own statement.
+The erased depth (ruling (b) of D150, applied in D155): the statements hold at EVERY erased depth (`ModeR`), so
+the hypothesis covers the sub-runs one depth down: an erased term's `evalCore` (`inStatement`), the body of a
+function whose calls are erased (`withErasedIf`), `clone`/`peek`'s operand (`withErased`). What it does NOT cover:
+a sub-run in copying mode or in place (`clone`/`peek`'s operand under `withCopying`, a call's head); those steps
+need their own statement (`clone`/`peek` of a place reads in place on both sides).
 -/
 
 namespace Ochr.Meaning.Steps.Form.Master
@@ -85,6 +85,22 @@ theorem _root_.Ochr.Meaning.Steps.Form.ModeEq.of_modes {a b : MState} (ha : Mode
   ⟨ha.headEval.trans hb.headEval.symm, ha.copying.trans hb.copying.symm, ha.inPlace.trans hb.inPlace.symm,
     ha.erased.trans hb.erased.symm⟩
 
+/-- **The mode at any erased depth** (ruling (b) of docs/31 D150; D155): no head evaluation, not copying, not in
+place; the erased depth is FREE. `EvalAt` and `TailAt` are stated at it, because the checker runs every erased
+term (`inStatement`), a function body whose calls are erased (`withErasedIf`) and `clone`'s operand one depth
+down, and the hypothesis must cover those sub-runs. The checker reads the depth only in the runtime checks K2/K3
+(`atRuntime`) and the capture-move checks (`readPlace`, `capture`), each of which rejects at depth `0` only; the
+reference reads none of them (D155). -/
+structure ModeR (st : MState) : Prop where
+  headEval : st.headEval = false
+  copying : st.copying = false
+  inPlace : st.inPlace = false
+
+theorem _root_.Ochr.Meaning.Steps.Form.Mode.toR {st : MState} (h : Mode st) : ModeR st := ⟨h.headEval, h.copying, h.inPlace⟩
+
+theorem ModeR.of_modeEq {a b : MState} (hm : ModeR a) (h : ModeEq a b) : ModeR b :=
+  ⟨h.headEval ▸ hm.headEval, h.copying ▸ hm.copying, h.inPlace ▸ hm.inPlace⟩
+
 /-- **What a successful run keeps** (docs/31 D154; ruling (e) of D150): the mode it started in, its frames
 (their number), and the top frame's readings. A conjunct of `EvalAt`'s conclusion beside `Out`, and of
 `TailAt`'s at the leaf: each step proves it from its own facts and its sub-runs' induction hypotheses. -/
@@ -104,14 +120,15 @@ theorem Kept.of_kern {a b : MState} (hk : Kern a b) (hm : ModeEq a b) : Kept a b
 
 /-! ## The statements -/
 
-/-- **The evaluation step at fuel `n`, for one term**: from a state in the plain mode (`Mode`) with a frame,
+/-- **The evaluation step at fuel `n`, for one term**: from a state in the plain mode at any erased depth
+(`ModeR`) with a frame,
 whose handed-down reading, if any, is the table's reading of `t`, meeting `Pre`, related to a good reference
 state, the checker's successful run of `eval` makes the reference's run of `t` succeed (`Out`), and the run
 keeps the mode, the frames and the top frame's readings (`Kept`). -/
 def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    Mode st → 0 < st.env.size →
+    ModeR st → 0 < st.env.size →
     (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
@@ -135,11 +152,11 @@ theorem TailOutK.tailOut {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
 /-- **The tail step at fuel `n`, for one term**: `Form.TailSim` for `t` with every continuation that only
 extends the tables (`GrowsM`: so the table aligned at the run's end, after the continuation, is aligned at
 each leaf, `DecTab.back`; `checkFix`'s continuation and every one `checkTail` builds from it are machine
-code), from a state in the plain mode with no reading handed down, for a term the strict run accepts the
+code), from a state in the plain mode at any erased depth with no reading handed down, for a term the strict run accepts the
 embedded values of, holding the state's unknowns and no hole; the leaf keeps what `Kept` asks. -/
 def TailAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState),
-    Mode st → 0 < st.env.size → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
+    ModeR st → 0 < st.env.size → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     DecTab K.D st' →
@@ -157,19 +174,20 @@ form) at states with a frame. -/
 theorem evalSim_of_evalAt {K : RunCtx} {ρ : Assignment} {φ : Future} {n : Nat} {t : Term}
     (h : EvalAt K ρ φ n t) : EvalSim K ρ φ n t (fun st => 0 < st.env.size) :=
   fun st st' typed hint v T? s π hne _ hm htd hp hr hS hv hab hnh _ hok hD bh hrun =>
-    (h st st' typed hint v T? s π hm hne htd hp hr hS hv hab hnh hok hD bh hrun).1
+    (h st st' typed hint v T? s π hm.toR hne htd hp hr hS hv hab hnh hok hD bh hrun).1
 
 /-! ## The column's forms with what a run keeps
 
-`CoreSimK` and `EvalSimK` are `Column.CoreSim` and `Column.EvalSim` with `Kept` beside `Out`: the forms a
-general step proves for a class of states before it is closed into `EvalAt`. -/
+`CoreSimK` and `EvalSimK` are `Column.CoreSim` and `Column.EvalSim` at any erased depth (`ModeR` for `Mode`)
+with `Kept` beside `Out`: the forms a general step proves for a class of states before it is closed into
+`EvalAt`. -/
 
-/-- `Column.CoreSim` with `Kept`. -/
+/-- `Column.CoreSim` at any erased depth, with `Kept`. -/
 def CoreSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True)
     (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    P st → TY typed → Mode st → st.tailNext = false → st.tailDecl = none →
+    P st → TY typed → ModeR st → st.tailNext = false → st.tailDecl = none →
     st.curDecl = some (K.D.declOf (DecideScope.topReadings st) t) → Pre K ρ st → Rel K ρ φ π st s →
     Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
@@ -179,12 +197,12 @@ def CoreSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     ∀ bh, Runs (Ochr.evalCore n typed t hint) st bh (v, T?) st' →
     Out K ρ φ π st st' s (runT K ρ φ st.curTail (hintM K ρ hint) t) v T? ∧ Kept st st'
 
-/-- `Column.EvalSim` with `Kept`. -/
+/-- `Column.EvalSim` at any erased depth, with `Kept`. -/
 def EvalSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True)
     (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    P st → TY typed → Mode st →
+    P st → TY typed → ModeR st →
     (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
@@ -194,10 +212,23 @@ def EvalSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     ∀ bh, Runs (Ochr.eval n typed t hint) st bh (v, T?) st' →
     Out K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T? ∧ Kept st st'
 
-/-- **`eval` around `evalCore`, with what the run keeps**: `Column.eval_of_core` carrying `Kept`. The mode at
-the end is the plain one (`EvalInv`: the mode at `evalCore`'s end is carried to `eval`'s), the frames and
-readings by the kernel. -/
-theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInv) {n : Nat} {t : Term}
+/-- **`eval` around `evalCore`, at any erased depth** (a fact about the checker alone; `Machine.EvalInvR` with
+`ModeR` for `Mode` and the mode's equalities for its `Mode` conclusions; PROVED, `MasterDepth.evalInvD`, by
+`EvalInvR`'s proof: `evalAt`'s code reads no depth). -/
+def EvalInvD : Prop :=
+  ∀ (n : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
+    (T? : Option Value) (D : Decisions),
+    ModeR st → DecTab D st' → (∀ w, t ≠ .val w) → (∀ f as h, t ≠ .call f as h) →
+    D.declOf (DecideScope.topReadings st) t ≠ .any → (D.declOf (DecideScope.topReadings st) t).isProof = false →
+    (st.tailDecl = none ∨ st.tailDecl = some (D.declOf (DecideScope.topReadings st) t)) →
+    Runs (Ochr.eval (n + 2) typed t hint) st bh (v, T?) st' →
+    ∃ (st₀ st₁ : MState) (bh' : Nat), Kern st st₀ ∧ ModeEq st st₀ ∧ st₀.curTail = st.tailNext ∧
+      st₀.tailNext = false ∧ st₀.tailDecl = none ∧ st₀.curDecl = some (D.declOf (DecideScope.topReadings st₀) t) ∧
+      Runs (Ochr.evalCore n typed t hint) st₀ bh' (v, T?) st₁ ∧ Kern st₁ st' ∧ ModeEq st₁ st'
+
+/-- **`eval` around `evalCore`, with what the run keeps**: `Column.eval_of_core` at any erased depth, carrying
+`Kept` (the mode by `EvalInvD`'s equalities, the frames and readings by the kernel). -/
+theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInvD) {n : Nat} {t : Term}
     {P : MState → Prop} {TY : Bool → Prop}
     (hP : ∀ a b, Kern a b → P a → P b) (ht : ∀ w, t ≠ .val w) (hcall : ∀ f as h, t ≠ .call f as h)
     (hany : ∀ st, P st → K.D.declOf (DecideScope.topReadings st) t ≠ .any ∧
@@ -206,25 +237,11 @@ theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInv
   intro st st' typed hint v T? s π hPs hty hm htd hp hr hS hv hab hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, h₀, hk₁, hm₁⟩ :=
     hE n typed t hint st st' bh v T? K.D hm hD ht hcall (hany st hPs).1 (hany st hPs).2 htd h
-  obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty hm₀ htn htd₀ hcd₀ (hp.of_kern hk₀)
+  obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty (hm.of_modeEq hm₀) htn htd₀ hcd₀ (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS hv
     (by rw [← hk₀.absTy]; exact hab) hnh hfl (by rw [hct]; exact hok) (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'
-  have hm' : Mode st' := hm₁ (hm₀.of_modeEq hkp.mode)
-  exact ⟨Out.of_kern hk₀ hk₁ hc',
-    ((Kept.of_kern hk₀ (ModeEq.of_modes hm hm₀)).trans hkp).trans
-      (Kept.of_kern hk₁ (ModeEq.of_modes (hm₀.of_modeEq hkp.mode) hm'))⟩
-
-/-- `Column.CoreSim` gives `CoreSimK` where every run of `evalCore` on the term from the plain mode keeps what
-`Kept` asks. -/
-theorem coreSimK_of {K : RunCtx} {ρ : Assignment} {φ : Future} {n : Nat} {t : Term} {P : MState → Prop}
-    {TY : Bool → Prop} (hc : CoreSim K ρ φ n t P TY)
-    (hk : ∀ (typed : Bool) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value),
-      Mode st → Runs (Ochr.evalCore n typed t hint) st bh (v, T?) st' → Kept st st') :
-    CoreSimK K ρ φ n t P TY :=
-  fun st st' typed hint v T? s π hP hty hm htn htd hcd hp hr hS hv hab hnh hfl hok hD bh h =>
-    ⟨hc st st' typed hint v T? s π hP hty hm htn htd hcd hp hr hS hv hab hnh hfl hok hD bh h,
-      hk typed hint st st' bh v T? hm h⟩
+  exact ⟨Out.of_kern hk₀ hk₁ hc', ((Kept.of_kern hk₀ hm₀).trans hkp).trans (Kept.of_kern hk₁ hm₁)⟩
 
 /-! ## The shapes `checkTail` matches -/
 

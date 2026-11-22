@@ -153,19 +153,19 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
   intro st st' typed hint v T? s π hne hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hdu,
-    hkB, hmeB, htnB, hrw, hrd, hk₃, hme₃', hD₁, hD₂⟩ := letInv m x u w hint st st' bh v T? K.D hm htn htd hD h
+    hkB, hmeB, htnB, hrw, hrd, hk₃, hme₃', hD₁, hD₂⟩ := Machine.letInvD m x u w hint st st' bh v T? K.D htn htd hD h
   obtain ⟨habu, habw⟩ := absBelow_letIn hab
   have hnhu : u.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.1
   have hnhw : w.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.2
   have hsz₀ : st₀.env.size = st.env.size := (ColumnC.size_of_erase hk₀.env).symm
   -- the step for `u`
-  have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ true none v₀ T₀ s π hm₀ (by omega) (.inl htd₀)
+  have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ true none v₀ T₀ s π (hm.of_modeEq hm₀) (by omega) (.inl htd₀)
     (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) hnhu (fun e => by cases e) hD₁ bh₁ hru
   rw [htn₀] at hOu
   obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
   obtain ⟨hgu, hlabu, hlouu, hS₁⟩ := Strict.fund_all hc u hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
-  have hm₁ : Mode st₁ := hm₀.of_modeEq hK₁.mode
+  have hm₁ : ModeR st₁ := (hm.of_modeEq hm₀).of_modeEq hK₁.mode
   have hsz₁ := hK₁.size
   have htop₁ := hK₁.top
   have hne₁ : 0 < st₁.env.size := by omega
@@ -213,7 +213,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
       ((he₂.grow hga hgl).congr rfl rfl (by rw [hk₃.absTy]; rfl) (by rw [hk₃.nextLoan]; rfl))
   have hW : ModeEq st₂ (st₂.withTempT v T?) := ⟨rfl, rfl, rfl, rfl⟩
   have hkept : Kept st st' := by
-    refine ⟨(ModeEq.of_modes hm hm₀).trans (hK₁.mode.trans (hmeB.trans (hK₂.mode.trans
+    refine ⟨hm₀.trans (hK₁.mode.trans (hmeB.trans (hK₂.mode.trans
       (hW.trans (hme₃.trans hme₃'))))), ?_, ?_⟩
     · have e1 := ColumnC.size_of_erase hk₃.env
       rw [size_withTempT] at e1 hsz₃
@@ -249,7 +249,7 @@ theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG
         (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) (· = true) :=
     fun st st' typed hint v T? s π hP => letIn_core (K := { K with Δ := Δ }) hLT hPu hDr hVC ⟨hc.globals, hc.sorts⟩ ih
       st st' typed hint v T? s π hP.1
-  exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvR
+  exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
     (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'

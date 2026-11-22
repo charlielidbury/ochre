@@ -169,6 +169,7 @@ import Ochr.Meaning.Steps.CallBody
 import Ochr.Meaning.Steps.FrameJ2
 import Ochr.Meaning.Steps.FormTail
 import Ochr.Meaning.Steps.Master
+import Ochr.Meaning.Steps.MasterDepth
 import Ochr.Meaning.Steps.MasterGuards
 import Ochr.Meaning.Steps.MasterLeaf
 import Ochr.Meaning.Steps.MasterTail

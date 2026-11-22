@@ -33,6 +33,33 @@ ochr MasterProbeTailHint {
   def F3 (n : Nat) : L(Nat) := (n; N)
 }
 
+/- **What the erased depth gates** (ruling (b) of docs/31 D150; D155). The checker reads `erasedDepth` in exactly
+three places (`Machine.lean`): `atRuntime` (K2's `unsizedCheck`; K3's `abstractMatchCheck` and the constructor of
+an abstract type in `evalCore`'s `evalCtor`), `readPlace`'s capture-move check and `capture`'s; each rejects at
+depth `0` only. The smallest programs the checker accepts only above depth `0`, each beside its twin at depth `0`
+(rejected by that check and nothing else): a function returning a type runs its body one depth down
+(`withErasedIf` in `checkFix`), so its body is an erased position. -/
+
+ochr DepthProbe {
+  -- D53: a closure's body moves a captured value out
+  reject def Cap0 (n : Nat) : Nat := ((λ(m : Nat) : Nat => n); Z)
+  def CapE (n : Nat) : Type := ((λ(m : Nat) : Nat => n); Nat)
+  -- D53: a closure captures, by move, a captured value
+  reject def Nest0 (n : Nat) : Nat := ((λ(m : Nat) : Nat => ((λ(k : Nat) : Nat => clone(n)); Z)); Z)
+  def NestE (n : Nat) : Type := ((λ(m : Nat) : Nat => ((λ(k : Nat) : Nat => clone(n)); Z)); Nat)
+  -- K3: a constructor of an abstract type
+  abstract inductive A := MkA(k : Nat)
+  reject def Ctor0 (n : Nat) : Nat := (MkA(n); Z)
+  def CtorE (n : Nat) : Type := (MkA(n); Nat)
+  -- K3: a match with the constructors of an abstract type
+  reject def Match0 (a : &A) : Nat := match *a { MkA(k) => clone(k) }
+  def MatchE (a : &A) : Type := match *a { MkA(k) => Nat }
+  -- K2: a read of a place of an unsized type
+  unsized abstract inductive V := MkV(k : Nat)
+  reject def Read0 (v : &V) : Nat := (clone(*v); Z)
+  def ReadE (v : &V) : Type := (clone(*v); Nat)
+}
+
 namespace Ochr.Meaning.Steps.Form.MasterGuards
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps.Form
@@ -76,5 +103,25 @@ open Ochr.Meaning.Regress.GenNeutralContent (outSt) in
 open Ochr.Meaning.Regress.GenNeutralContent (outSt) in
 #guard isOk (Ochr.eval 100 true (.place (.var 0)) none) stX 100000 &&
   (outSt (Ochr.eval 100 true (.place (.var 0)) none) stX 100000).env[0]!.binds[0]!.val == .bot
+
+/-! ## What the erased depth gates (D155) -/
+
+/-- The checker's verdict on one definition of `DepthProbe`: `""` if accepted, else the message. -/
+def depthVerdict (nm : String) : String :=
+  match ((Ochr.Test.runWith none "DepthProbe" DepthProbe {} (located := false)).rows.find? (·.name == nm)) with
+  | some r => match r.verdict with
+    | Ochr.Verdict.accepted => ""
+    | Ochr.Verdict.rejected m _ => m
+    | Ochr.Verdict.undecided _ => "?"
+  | none => "?"
+
+-- every definition as marked: each `…E` accepted, each `…0` rejected
+#guard (Ochr.Test.runWith none "DepthProbe" DepthProbe {} (located := false)).allAsExpected
+-- each twin at depth `0` is rejected by the depth-gated check and nothing else
+#guard (depthVerdict "Cap0").startsWith "[D53] a closure's body moves a captured value out"
+#guard (depthVerdict "Nest0").startsWith "[D53] a closure's body moves a captured value (κ) into a closure"
+#guard (depthVerdict "Ctor0").startsWith "[K3] the constructor MkA of the abstract type A at runtime"
+#guard (depthVerdict "Match0").startsWith "[K3] a match on *a with the constructors of the abstract type A at runtime"
+#guard (depthVerdict "Read0").startsWith "[K2] *v, of the unsized type V, is cloned at runtime"
 
 end Ochr.Meaning.Steps.Form.MasterGuards
