@@ -1,4 +1,20 @@
-# Lead handoff (twenty-eighth lead, lead28, 2026-11-22; twenty-seventh lead, lead27, 2026-11-22; twenty-sixth lead, lead26, 2026-11-22; twenty-fifth lead, lead25, 2026-11-22; twenty-fourth lead, lead24, 2026-11-22; twenty-third lead, lead23, 2026-11-22; twenty-second lead, lead22, 2026-11-22; twenty-first lead, lead21, 2026-11-22; twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+# Lead handoff (twenty-ninth lead, lead29, 2026-11-22; twenty-eighth lead, lead28, 2026-11-22; twenty-seventh lead, lead27, 2026-11-22; twenty-sixth lead, lead26, 2026-11-22; twenty-fifth lead, lead25, 2026-11-22; twenty-fourth lead, lead24, 2026-11-22; twenty-third lead, lead23, 2026-11-22; twenty-second lead, lead22, 2026-11-22; twenty-first lead, lead21, 2026-11-22; twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+
+## TWENTY-NINTH LEAD (lead29, 2026-11-22; `spine-lead29`, branched from `spine-machine13` 5a136494)
+
+**Built (docs/31 D200; in the default build, no `sorry`, statements only).**
+- `Steps/MasterCall.lean`: `StepCallG` (a call of a global, `EvalAt` at `.call (.const g) as hd`), `refCall` (the reference's call after head and arguments), `CallPt` (related call points: temporaries, `Pre`/`Rel`/`SGood`, each argument's meaning, label, type), `CallFlags`; the phases `CallHeadArgsG` (mixed), `CallFnG` (mixed), `EvalInvDCall` (checker), `ErasedCallG` (D158 at a call), `EvalAtIf` with `evalAt_of_split` (PROVED); the context clauses `RetKindG` (R3, model; both directions), `RecRankG` (entry condition), `RecCheckedG` (checker, FALSE today); `StepCallGFrom` (the statement to prove).
+- `Steps/CallGAttack.lean`: the attack at `CallAtk.At`'s hole (in place, closed off, borrow argument, borrow result; `keptOk`), and `RecAtk.HAt`: an in-place run of a recursive callee during its own check makes an unchecked recursive call (`holeΩ`), rejected only later (`recVerdict "H"`).
+
+**Asked of the lead (D200):** (A) the checker runs `recCheck` at every call of a function on the [Rec] stack, typed or not (recommended), or (B).
+
+**Not done, in order.**
+1. Prove `StepCallGFrom` (the composition: `EvalInvDCall`'s transport as `eval_of_coreK`; the reference's `.call` clause at `(false, false)` is `runArgs … >>= refCall …` since `SM.headOf (.const g)` is `pure (K.C.global g)`; bind the two phases' `Out`s as `sim_seqS` does; `hok` through `runArgs`' determinism). Then state `CallFnG`'s three branches (with `callFn`'s inversion at a global head) and `CallRanG` from `RunFrameS`, `GlobalsOk.fn`, `RetKindG`, the callee frame's relation and the pop.
+2. `EvalAt` takes `RecRankG` (every step carries it: the [Rec] stack changes only at `checkFix`), once (A) is ruled.
+3. Task 2 (R3): `OutL` gains `v.KindOf T?` (and, for `RetKindG`'s establishment, the converse: a value returned at `&A` is a borrow); `succArgNoBorrowT_of` and `LetPushG`'s kind premise from the IH; `EvalKindT`/`EvalKindW` deleted.
+4. Task 3 (D187's reference change), Task 4 (`let`/`;` into `EvalAt`: `eval_of_coreK` with two classes, entry `P`, core `P ∧ deferCallTy = false`), Task 5.
+
+**Traps.** `#guard` hole states: `runWith … (located := true)`; the last `.state` entry is not the hole: read the hole's `.note _ _ (.hole _ Ω)`. The hole state of a function has two frames (the cells' frame, then `self` and the parameters): de Bruijn `.var 0` is the last binding of `env[1]`. `Value.lent` is `Value.gloan`. `open Classical in` goes before the docstring.
 
 ## TWENTY-EIGHTH LEAD (lead28, 2026-11-22; `spine-lead28`, branched from `spine-machine12` d34387ba)
 

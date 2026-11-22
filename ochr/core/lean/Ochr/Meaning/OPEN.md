@@ -14,6 +14,12 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE MASTER INDUCTION OF (II): A CALL OF A GLOBAL (lead29, 2026-11-22, `spine-lead29`; docs/31 D200)
+
+- `StepCallGFrom` (to prove): `StepCallG` from `EvalInvDCall` (C), `CallHeadArgsG` (X), `CallFnG` (X), `ErasedCallG` (D158).
+- `CallFnG`'s branches (to state): in place (consumes `GlobalsOk`, `RunFrameS`, `RetKindG`, `RecRankG`), closed off, proof-class.
+- `RecCheckedG` (C): FALSE today (`CallGAttack.holeΩ`), ruling asked; `RetKindG` (M): to be established at each definition's acceptance and instance-checked.
+
 ## THE MASTER INDUCTION OF (II), CONTINUED (lead28, 2026-11-22, `spine-lead28`; docs/31 D188 to D190)
 - BUILT: the invariant's clause (K), `Form.KindTyped` (where its type is stored, a binding holding a borrow stores `&A`, one holding a function value a Π written as one; globals likewise; deferred and missing types asked nothing), checked on the checker's own states (guards; `lake exe sweep` clause (K), depth 0 and `--deep-private`, 151/152 blocks) and the ripple repaired (`Machine.KindFrom`, every proved invariant lemma, every hand-built start state). Ruling (ii): `OutL`'s clause "a promised type that is missing means `err`", concluded by `EvalAt`; `LetPushG` asks it and every `let` supplies it. `EvalInvD` keeps the deferral flag (proved); `LetInvDUn`, `LetCallInvU` strengthened (proved).
 - PROVED: `succArgNoBorrowT_of` (`SuccArgNoBorrowT` from `EvalKindT` and `ExpectRefNat`); `not_kindTyped_stB` (machine11's counterexample fails (K)).
