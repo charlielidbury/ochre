@@ -114,6 +114,20 @@ def retype (st : MState) (i : Nat) (T : Option Value) : MState :=
 #guard (deepSts "UseHO").any fun st => !kindTypedB
   { st with env := st.env.map fun fr => { fr with binds := fr.binds.map fun b => if b.val matches .gfn "Idn" then { b with ty := some .tNat } else b } }
 
+-- `DeferClearG` (the placeholder until main's D130): from the hole of `AtClosure` (`f` a closure), the untyped `let` of a
+-- call, its type wanted, ends with the deferral flag clear; and the leak it guards against: `Z` run from a state with
+-- the flag SET ends with it still set (no evaluation consumes it today but a call's, D187)
+def runFlag (st : MState) (t : Term) : Option Bool :=
+  match (runMachine (do
+      modify fun s => { s with wantTy := true }
+      discard (Ochr.eval 1000 false t none)
+      pure (← get).deferCallTy) st 1000000).1 with
+  | .ok b _ => some b
+  | _ => none
+
+#guard runFlag (holeSt "AtClosure") (.letIn ⟨"y"⟩ (.call (.place (.var 0)) [.zero] false) (.place (.var 0))) == some false
+#guard runFlag { holeSt "AtClosure" with deferCallTy := true } .zero == some true
+
 end Ochr.Meaning.Steps.Form.Master.KindGuards
 
 namespace Ochr.Meaning.Steps.Form.Master
@@ -149,20 +163,7 @@ theorem succArgNoBorrowT_of (hK : EvalKindT) (hR : ExpectRefNat) : SuccArgNoBorr
   obtain ⟨A, rfl⟩ := hb l w e
   exact hR n _ A st₁ st₂ bh₂ hx
 
-/-- **An untyped deferred call records a Π written as one** (checker, NEW, lead28, docs/31 D188; UNREAD): the gap under
-`LetCallInvU` (machine11's (b)). From a state meeting the invariant, an untyped run of a call started as a `let`
-starts it (the type wanted, the deferral flag set, the record clear) that ends with a record `(P, ws)` has `P` a Π
-written as one. What it rests on: the record is `funType fv fT` for the head's value `fv` and the type `fT` its wanted
-run returned; `fT` when there is one (a function value's: `EvalKindT` for wanted untyped runs, of which a read is (K)
-at a stored type and the deferred type's evaluation otherwise); else the value's own (a closure's `.tPi`; a global
-function's stored type: (K)'s part on globals). A neutral head (an unknown, a sealed program) at a type not written as
-a Π is the one case (K) does not reach: the typed check never calls one (`callType`), and no accepted program's run
-records one (the sweep: 70,742 states with a record, none). -/
-def LaterPiG : Prop :=
-  ∀ (K : RunCtx) (ρ : Assignment) (n : Nat) (f : Term) (as : List Term) (hd : Bool) (st₀ st₁ : MState) (bh : Nat)
-    (v : Value) (T? : Option Value) (P : Value) (ws : List Value),
-    Pre K ρ st₀ → st₀.wantTy = true → st₀.deferCallTy = true → st₀.callTyLater = none →
-    Runs (Ochr.eval n false (.call f as hd) none) st₀ bh (v, T?) st₁ → st₁.callTyLater = some (P, ws) →
-    P.piWritten = true
+-- `LaterPiG` (an untyped deferred call that returns no type records a Π written as one, the gap under `LetCallInvU`)
+-- is stated beside `LetCallInvU` in `Steps/MasterUntyped.lean`, where the untyped `let` of a call consumes it (D190).
 
 end Ochr.Meaning.Steps.Form.Master

@@ -138,7 +138,7 @@ theorem stepZero (K : RunCtx) (φ : Future) : StepZero K φ := by
     obtain ⟨-, rfl, -⟩ := zeroInvE m typed hint st₀ st₁ bh' v T? h₀
     rfl
   exact outLK_of_outK (fun f as h e => by cases e) hTs <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
-    (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
+    (fun _ _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany zero_coreSimK
     st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hfz _) hok hD bh h
 
@@ -159,7 +159,7 @@ theorem stepTt (K : RunCtx) (φ : Future) : StepTt K φ := by
     obtain ⟨-, rfl, -⟩ := ttInvE m typed hint st₀ st₁ bh' v T? h₀
     rfl
   exact outLK_of_outK (fun f as h e => by cases e) hTs <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
-    (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
+    (fun _ _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany tt_coreSimK
     st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hft _) hok hD bh h
 

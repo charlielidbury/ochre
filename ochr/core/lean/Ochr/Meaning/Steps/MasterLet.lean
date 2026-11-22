@@ -166,6 +166,7 @@ def LetPushG : Prop :=
     0 < st₁.env.size →
     Pre K ρ (st₁.withTempT v₀ T₀) → Rel K ρ φ π (st₁.withTempT v₀ T₀) s₁ → Strict.SGood K.dm K.Γ φ s₁ →
     meanV K ρ (fun l => φ (π l)) ru.2 v₀ = ru.1 → (∀ T, T₀ = some T → StrAgree K ρ T ru.2) →
+    (T₀ = none → ru.2.m = TyM.err) →
     ru.2.label = (Value.heldLabel v₀).map π →
     Strict.GoodRes K.dm.read ru → Strict.LabOk K.dm s₁ ru → LoU s₁ ru.2.label →
     FitsAt K.D K.Γ (DecideScope.topReadings st₁) du v₀ → v₀.KindOf T₀ →
@@ -294,9 +295,8 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
   -- the step for `u`
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ true none v₀ T₀ s π (hm.of_modeEq hm₀) (fun _ => htn₀) (by omega) (.inl htd₀)
     (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu (fun e => by cases e) hD₁ bh₁ hru
-  replace hOu := outK_of_outLK hOu
   rw [htn₀] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, -, hwu⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
   obtain ⟨hgu, hlabu, hlouu, hS₁⟩ := Strict.fund_all hc u hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
   have hm₁ : ModeR st₁ := (hm.of_modeEq hm₀).of_modeEq hK₁.mode
@@ -307,7 +307,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
   have hfit := fitsAt_of_eval hk₀ htop₁ hdu
     (hFT K.D K.Γ m u st₀ st₁ bh₁ v₀ T₀ (hp.of_kern hk₀).inv hD₁ (hm.of_modeEq hm₀) htn₀ htd₀ hru)
   -- the push, on both sides
-  obtain ⟨hpB, hrB⟩ := hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau hlu
+  obtain ⟨hpB, hrB⟩ := hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau (hwu (.inl rfl)) hlu
     hgu hlabu hlouu hfit (hEK K ρ m true u none st₀ st₁ bh₁ v₀ T₀ (hp.of_kern hk₀) (.inl rfl) hru) hkB
   have hSB : Strict.SGood K.dm K.Γ φ (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) := by
     by_cases hs₁ : s₁.env = []
@@ -378,7 +378,7 @@ theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKind
     (hVC : ValsCongrA) (hFT : EvalFitsT) (hc : Strict.FundCtx K) :
     ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (x : Hint) (u w : Term),
       EvalSimK { K with Δ := Δ } ρ φ n (.letIn x u w)
-        (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
+        (fun st => (0 < st.env.size ∧ st.deferCallTy = false) ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
           (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) (· = true) := by
   intro n ih Δ ρ x u w
   by_cases hn : n < 3
@@ -386,12 +386,12 @@ theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKind
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.letIn x u w)
-      (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
+      (fun st => (0 < st.env.size ∧ st.deferCallTy = false) ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
         (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) (· = true) :=
     fun st st' typed hint v T? s π hP => letIn_core (K := { K with Δ := Δ }) hLT hPu hEK hDr hVC hFT ⟨hc.globals, hc.sorts⟩ ih
-      st st' typed hint v T? s π hP.1
+      st st' typed hint v T? s π hP.1.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
-    (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
+    (fun a b hk hf ha => ⟨⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1.1, hf.trans ha.1.2⟩,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'
 

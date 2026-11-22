@@ -94,7 +94,7 @@ def LetInvDUn : Prop :=
       Runs (Ochr.eval n false w (if st.curTail then hint else none)) stB bh₂ (r, T?) st₂ ∧
       Runs (Ochr.dropTopBind n) (st₂.withTempT r T?) bh₃ () st₃ ∧
       Kern st₃ (st'.withTempT v T?) ∧ Form.ModeEq st₃ st' ∧
-      DecTab D st₁ ∧ DecTab D st₂ ∧ st₀.wantTy = true
+      DecTab D st₁ ∧ DecTab D st₂ ∧ st₀.wantTy = true ∧ st₀.deferCallTy = st.deferCallTy
 
 /-- A term that is not a call does not match `.call`. -/
 theorem isCall_false {u : Term} (hnc : ∀ f as hd, u ≠ .call f as hd) :
@@ -168,7 +168,7 @@ theorem letInvDUn : LetInvDUn := by
   refine ⟨du', { s₂ with wantTy := true }, s₃,
     { s₃ with env := Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du', deferCallTy := false, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
     s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
-    hdr, ?_, ?_, ?_, ?_, rfl⟩
+    hdr, ?_, ?_, ?_, ?_, rfl, rfl⟩
   · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   · exact ⟨rfl, rfl, rfl, rfl⟩
   · exact decTab_declOf_at hDst hdu
@@ -180,6 +180,22 @@ theorem letInvDUn : LetInvDUn := by
       ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
         (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
   · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
+
+/-- **An untyped deferred call that returns no type records a Π written as one** (checker, NEW, lead28, docs/31 D188,
+D190; UNREAD): the gap under `LetCallInvU` (machine11's (a) and (b) together). From a state meeting the invariant, an
+untyped run of a call with its type wanted, the deferral flag set and the record clear (how an untyped `let` of a call
+starts it) that returns no type ends with a record `(P, ws)`, `P` a Π-type written as one. (a) `callFn` sets the record
+on every path that returns no type (machine11, read TRUE); (b) the record is `funType fv fT` for the head's value and
+the type its wanted run returned: a function value's by (K) at a stored type and by the deferred type's evaluation
+otherwise (`EvalKindW`), a global's own by (K)'s part on globals, a closure's own `.tPi`; a neutral head (an unknown, a
+sealed program) at a type not written as a Π is the one case (K) does not reach, which the typed check never calls
+(`callType`) and no accepted program's run records (`lake exe sweep`: 70,742 states with a record, every one a Π). -/
+def LaterPiG : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (n : Nat) (f : Term) (as : List Term) (hd : Bool) (st₀ st₁ : MState) (bh : Nat)
+    (v : Value),
+    Pre K ρ st₀ → st₀.wantTy = true → st₀.deferCallTy = true → st₀.callTyLater = none →
+    Runs (Ochr.eval n false (.call f as hd) none) st₀ bh (v, none) st₁ →
+    ∃ caps hs ds cod rd ws, st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws)
 
 /-- The top frame's last binding with its type deferred, as the checker's untyped `let` records a call's type
 (`lazyTy := (P, ws, |ds|)`, D82); `none` leaves the environment. -/
@@ -205,7 +221,8 @@ def LetCallInvU : Prop :=
       Runs (Ochr.eval n false (.call f as hd) none) st₀ bh₁ (v₀, T₀) st₁ ∧
       D.declOf (DecideScope.topReadings st) (.call f as hd) = du ∧
       st₀.deferCallTy = true ∧ st₀.callTyLater = none ∧
-      (lz = none ∨ ∃ caps hs ds cod rd ws, T₀ = none ∧ st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws) ∧
+      ((lz = none ∧ ∀ caps hs ds cod rd ws, T₀ = none → st₁.callTyLater ≠ some (.tPi caps (.pi hs ds cod) rd, ws)) ∨
+        ∃ caps hs ds cod rd ws, T₀ = none ∧ st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws) ∧
         lz = some (.tPi caps (.pi hs ds cod) rd, ws, ds.length)) ∧
       Kern { st₁ with env := (Env.pushBindE st₁.env h T₀ v₀ p du).setLazyTop lz } stB ∧ Form.ModeEq st₁ stB ∧
       stB.tailNext = st.curTail ∧
@@ -294,7 +311,7 @@ theorem letCallInvU : LetCallInvU := by
     have hk3 := kern_popTemp_withTempT _ _ T? hback
     refine ⟨du', { s₂ with wantTy := true, deferCallTy := true, callTyLater := none }, s₃,
       { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop none, deferCallTy := false, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
-      s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, rfl, rfl, (.inl rfl), ?_, ?_,
+      s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, rfl, rfl, (.inl ⟨rfl, fun caps hs ds cod rd ws hT e => by subst hT; simp at hL; rw [hL] at e; cases e⟩), ?_, ?_,
       rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
     · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · exact ⟨rfl, rfl, rfl, rfl⟩
@@ -353,7 +370,8 @@ theorem letCallInvU : LetCallInvU := by
           ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
             (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
       · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
-    · rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
+    · rename_i hnotPi
+      rw [if_pos (by simp [BEq.beq, DeclInfo.beq_refl])] at h₅
       peel h₅
       try simp only [if_true, ite_true, Bool.false_eq_true, if_false] at h₅
       rw [untypedTailHint_eq] at h₅
@@ -380,7 +398,9 @@ theorem letCallInvU : LetCallInvU := by
       have hk3 := kern_popTemp_withTempT _ _ T? hback
       refine ⟨du', { s₂ with wantTy := true, deferCallTy := true, callTyLater := none }, s₃,
         { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop none, deferCallTy := false, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
-        s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, rfl, rfl, (.inl rfl), ?_, ?_,
+        s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, rfl, rfl, (.inl ⟨rfl, fun caps hs ds cod rd ws hT e => by
+          subst hT; simp at hL; rw [hL] at e; cases e
+          first | exact hnotPi _ _ _ _ _ rfl | exact (hnotPi _ _ _ _ _ rfl).elim | simp_all⟩), ?_, ?_,
         rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
       · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
       · exact ⟨rfl, rfl, rfl, rfl⟩
@@ -551,7 +571,7 @@ theorem stepSeq_untyped (hST : SeqTailDecl K.D) (hDV : DropValueG)
     fun st st' typed hint v T? s π hP => seq_coreU (K := { K with Δ := Δ }) hST hDV hVC ⟨hc.globals, hc.sorts⟩ ih
       st st' typed hint v T? s π hP.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
-    (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
+    (fun a b hk _ ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'
 
@@ -560,8 +580,8 @@ flag** (docs/31 D180; as `seq_coreU`). -/
 theorem letIn_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hDr : LetDropG)
     (hVC : ValsCongrA) (hFU : EvalFitsU) (hc : Strict.FundCtx K) {ρ : Assignment} {m : Nat} {x : Hint} {u w : Term}
     (hnc : ∀ f as hd, u ≠ .call f as hd) (ih : IH K φ (m + 3)) :
-    CoreSimK K ρ φ (m + 1) (.letIn x u w) (fun st => 0 < st.env.size) (· = false) := by
-  intro st st' typed hint v T? s π hne hty hm _ htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
+    CoreSimK K ρ φ (m + 1) (.letIn x u w) (fun st => 0 < st.env.size ∧ st.deferCallTy = false) (· = false) := by
+  intro st st' typed hint v T? s π ⟨hne, hflag⟩ hty hm _ htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
   subst hty
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hdu,
     hkB, hmeB, htnB, hrw, hrd, hk₃, hme₃', hD₁, hD₂, hwt₀⟩ := Machine.letInvDUn m x u w hint st st' bh v T? K.D hnc htn htd hD h
@@ -581,9 +601,8 @@ theorem letIn_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ false none v₀ T₀ s π (hm.of_modeEq hm₀) (fun e => by cases e)
     (by omega) (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu
     (fun _ => by rw [htn₀]; exact hoku) hD₁ bh₁ hru
-  replace hOu := outK_of_outLK hOu
   rw [htn₀] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, -, hwu⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
   obtain ⟨hgu, hlabu, hlouu, hS₁⟩ := Strict.fund_all hc u hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
   have hm₁ : ModeR st₁ := (hm.of_modeEq hm₀).of_modeEq hK₁.mode
@@ -594,8 +613,8 @@ theorem letIn_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (
   have hfit := fitsAt_of_eval hk₀ htop₁ hdu
     (hFU K ρ φ π m u st₀ st₁ bh₁ v₀ T₀ s (hp.of_kern hk₀) (hr.of_kern hk₀) hS hD₁ (hm.of_modeEq hm₀) htn₀ htd₀ hoku hru)
   -- the push, on both sides
-  obtain ⟨hpB, hrB⟩ := hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau hlu
-    hgu hlabu hlouu hfit (hEK K ρ m false u none st₀ st₁ bh₁ v₀ T₀ (hp.of_kern hk₀) (.inr hwt₀) hru) hkB
+  obtain ⟨hpB, hrB⟩ := hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau (hwu (.inr ⟨hwt₀.1, hwt₀.2.trans hflag⟩)) hlu
+    hgu hlabu hlouu hfit (hEK K ρ m false u none st₀ st₁ bh₁ v₀ T₀ (hp.of_kern hk₀) (.inr hwt₀.1) hru) hkB
   have hSB : Strict.SGood K.dm K.Γ φ (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) := by
     by_cases hs₁ : s₁.env = []
     · rw [Strict.pushBindShaped_nil _ _ hs₁]; exact hS₁
@@ -696,7 +715,7 @@ theorem topReadings_setLazyTop (st : MState) (E : Env) (lz : Option (Value × Li
 (lead26, docs/31 D183): `letIn_coreU` with the deferral; the binding is pushed at the call's type (`LetPushG`) or,
 where the call came back with none, at the pair it recorded (`LetLazyPushG`), whose meaning is the reference's result
 type by the call's own conclusion (`OutL`'s `LaterOk`, the lead's ruling on D180). -/
-theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hPL : LetLazyPushG) (hDr : LetDropG)
+theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hLP : Machine.LaterPiG) (hPL : LetLazyPushG) (hDr : LetDropG)
     (hVC : ValsCongrA) (hFU : EvalFitsU) (hc : Strict.FundCtx K) {ρ : Assignment} {m : Nat} {x : Hint} {f : Term} {as : List Term}
     {hd : Bool} {w : Term} (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.letIn x (.call f as hd) w) (fun st => 0 < st.env.size) (· = false) := by
@@ -737,8 +756,13 @@ theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW)
   -- reference's result type (the call's `LaterOk`, read where the checker reads the record)
   obtain ⟨hpB, hrB⟩ : Pre { K with Δ := Δ₁ } ρ₁ stB ∧
       Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stB (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) := by
-    rcases hlz with rfl | ⟨caps, hs, ds, cod, rd, ws, rfl, hrec, rfl⟩
-    · exact hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau hlu
+    rcases hlz with ⟨rfl, hnr⟩ | ⟨caps, hs, ds, cod, rd, ws, rfl, hrec, rfl⟩
+    · -- no type came back only where the record is a Π-type (`LaterPiG`), which the `let` would have deferred
+      have hT : T₀ = none → ru.2.m = TyM.err := fun e => by
+        subst e
+        obtain ⟨caps, hs, ds, cod, rd, ws, hrec⟩ := hLP K ρ m f as hd st₀ st₁ bh₁ v₀ (hp.of_kern hk₀) hwt₀ hdf₀ hcl₀ hru
+        exact absurd hrec (hnr caps hs ds cod rd ws rfl)
+      exact hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau hT hlu
         hgu hlabu hlouu hfit (hEK K ρ m false _ none st₀ st₁ bh₁ v₀ T₀ (hp.of_kern hk₀) (.inr hwt₀) hru) hkB
     · have hz := hlat ⟨f, as, hd, rfl⟩ hdf₀ hcl₀ caps hs ds cod rd ws hrec
       exact hPL { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ x p du _ ru s₁ hz hne₁ hp₁ hr₁ hS₁ hmu hlu
@@ -822,7 +846,7 @@ theorem stepLetIn_untyped (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKi
     (hDr : LetDropG) (hVC : ValsCongrA) (hFU : EvalFitsU) (hc : Strict.FundCtx K) :
     ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (x : Hint) (u w : Term), (∀ f as hd, u ≠ .call f as hd) →
       EvalSimK { K with Δ := Δ } ρ φ n (.letIn x u w)
-        (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
+        (fun st => (0 < st.env.size ∧ st.deferCallTy = false) ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
           (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false)
         (· = false) := by
   intro n ih Δ ρ x u w hnc
@@ -831,12 +855,12 @@ theorem stepLetIn_untyped (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKi
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.letIn x u w)
-      (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
+      (fun st => (0 < st.env.size ∧ st.deferCallTy = false) ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
         (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) (· = false) :=
     fun st st' typed hint v T? s π hP => letIn_coreU (K := { K with Δ := Δ }) hLT hPu hEK hDr hVC hFU ⟨hc.globals, hc.sorts⟩
       hnc ih st st' typed hint v T? s π hP.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
-    (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
+    (fun a b hk hf ha => ⟨⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1.1, hf.trans ha.1.2⟩,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'
 
@@ -868,7 +892,7 @@ theorem stepLetIn_unerased (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalK
     (hFT : EvalFitsT) (hFU : EvalFitsU) (hc : Strict.FundCtx K) :
     ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (x : Hint) (u w : Term), (∀ f as hd, u ≠ .call f as hd) →
       EvalSimK { K with Δ := Δ } ρ φ n (.letIn x u w)
-        (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
+        (fun st => (0 < st.env.size ∧ st.deferCallTy = false) ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
           (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) :=
   fun n ih Δ ρ x u w hnc => evalSimK_of_typed_untyped (stepLetIn_typed hLT hPu hEK hDr hVC hFT hc n ih Δ ρ x u w)
     (stepLetIn_untyped hLT hPu hEK hDr hVC hFU hc n ih Δ ρ x u w hnc)
@@ -877,11 +901,11 @@ theorem stepLetIn_unerased (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalK
 ASSUMES 5 facts: `LetTailDecl` (table), `LetPushG`, `LetLazyPushG`, `LetDropG` (mixed), `ValsCongrA` (model); and
 `Strict.FundCtx K`. The inversion (`Machine.letCallInvU`) is proved; the deferred type's meaning is the call's own
 conclusion (`OutL`). -/
-theorem stepLetIn_untypedCall (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hPL : LetLazyPushG) (hDr : LetDropG)
+theorem stepLetIn_untypedCall (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hLP : Machine.LaterPiG) (hPL : LetLazyPushG) (hDr : LetDropG)
     (hVC : ValsCongrA) (hFU : EvalFitsU) (hc : Strict.FundCtx K) :
     ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (x : Hint) (f : Term) (as : List Term) (hd : Bool) (w : Term),
       EvalSimK { K with Δ := Δ } ρ φ n (.letIn x (.call f as hd) w)
-        (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x (.call f as hd) w) ≠ .any ∧
+        (fun st => (0 < st.env.size ∧ st.deferCallTy = false) ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x (.call f as hd) w) ≠ .any ∧
           (K.D.declOf (DecideScope.topReadings st) (.letIn x (.call f as hd) w)).isProof = false)
         (· = false) := by
   intro n ih Δ ρ x f as hd w
@@ -890,12 +914,12 @@ theorem stepLetIn_untypedCall (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : Ev
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.letIn x (.call f as hd) w)
-      (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x (.call f as hd) w) ≠ .any ∧
+      (fun st => (0 < st.env.size ∧ st.deferCallTy = false) ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x (.call f as hd) w) ≠ .any ∧
         (K.D.declOf (DecideScope.topReadings st) (.letIn x (.call f as hd) w)).isProof = false) (· = false) :=
-    fun st st' typed hint v T? s π hP => letCall_coreU (K := { K with Δ := Δ }) hLT hPu hEK hPL hDr hVC hFU
-      ⟨hc.globals, hc.sorts⟩ ih st st' typed hint v T? s π hP.1
+    fun st st' typed hint v T? s π hP => letCall_coreU (K := { K with Δ := Δ }) hLT hPu hEK hLP hPL hDr hVC hFU
+      ⟨hc.globals, hc.sorts⟩ ih st st' typed hint v T? s π hP.1.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
-    (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
+    (fun a b hk hf ha => ⟨⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1.1, hf.trans ha.1.2⟩,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'
 
@@ -904,17 +928,17 @@ data** (docs/31 D183): `stepLetIn_typed`, `stepLetIn_untyped` and `stepLetIn_unt
 D185, added the two fits): `LetTailDecl` (table), `LetPushG`, `LetLazyPushG`, `LetDropG` (mixed), `ValsCongrA`
 (model), `EvalFitsT` (checker), `EvalFitsU` (mixed); and `Strict.FundCtx K`.
 What `StepLetIn` lacks beyond it is the erased wrapper (D158). -/
-theorem stepLetIn_unerasedAll (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hPL : LetLazyPushG) (hDr : LetDropG)
+theorem stepLetIn_unerasedAll (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hLP : Machine.LaterPiG) (hPL : LetLazyPushG) (hDr : LetDropG)
     (hVC : ValsCongrA) (hFT : EvalFitsT) (hFU : EvalFitsU) (hc : Strict.FundCtx K) :
     ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (x : Hint) (u w : Term),
       EvalSimK { K with Δ := Δ } ρ φ n (.letIn x u w)
-        (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
+        (fun st => (0 < st.env.size ∧ st.deferCallTy = false) ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
           (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) := by
   intro n ih Δ ρ x u w
   by_cases hcall : ∃ f as hd, u = .call f as hd
   · obtain ⟨f, as, hd, rfl⟩ := hcall
     exact evalSimK_of_typed_untyped (stepLetIn_typed hLT hPu hEK hDr hVC hFT hc n ih Δ ρ x _ w)
-      (stepLetIn_untypedCall hLT hPu hEK hPL hDr hVC hFU hc n ih Δ ρ x f as hd w)
+      (stepLetIn_untypedCall hLT hPu hEK hLP hPL hDr hVC hFU hc n ih Δ ρ x f as hd w)
   · exact stepLetIn_unerased hLT hPu hEK hDr hVC hFT hFU hc n ih Δ ρ x u w (fun f as hd e => hcall ⟨f, as, hd, e⟩)
 
 end

@@ -135,7 +135,7 @@ theorem stepNat (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepNat K φ :=
     obtain ⟨-, rfl, -⟩ := natInvE m typed hint st₀ st₁ bh' v T? h₀
     rfl
   exact outLK_of_outK (fun f as h e => by cases e) hTs <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
-    (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
+    (fun _ _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany (type_coreSimK hIT .tNat TyM.nat (.inl rfl) (natInvE m) (fun _ _ _ => by rw [runT]; rfl)
       (fun _ _ _ _ => rfl))
     st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hfz _) hok hD bh h
@@ -158,7 +158,7 @@ theorem stepUnit (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepUnit K φ 
     obtain ⟨-, rfl, -⟩ := unitInvE m typed hint st₀ st₁ bh' v T? h₀
     rfl
   exact outLK_of_outK (fun f as h e => by cases e) hTs <| eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
-    (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
+    (fun _ _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany (type_coreSimK hIT .tUnit TyM.unit (.inr rfl) (unitInvE m) (fun _ _ _ => by rw [runT]; rfl)
       (fun _ _ _ _ => rfl))
     st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hfz _) hok hD bh h

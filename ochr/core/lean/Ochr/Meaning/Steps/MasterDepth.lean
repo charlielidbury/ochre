@@ -1,5 +1,6 @@
 import Ochr.Meaning.Steps.Master
 import Ochr.Meaning.Steps.Machine.StepInv
+import Ochr.Meaning.Steps.Machine.EvalInvF
 
 /-!
 # The checker's facts the master's steps use, at any erased depth (lead23, 2026-11-22; docs/31 D155)
@@ -38,8 +39,8 @@ theorem evalInvD : EvalInvD := by
   obtain ⟨ba', hat⟩ := Runs.noteValue_inv hna
   have hka := hla.kern
   obtain ⟨hhe, htde, htne⟩ := hla.tail
-  obtain ⟨st₀, st₁, bh', hk₀, hme₀, hct, htn, htd₀, hcd, hcore, hk₁, hme₁⟩ :=
-    evalAt_inv (dd := D.declOf (DecideScope.topReadings st) t) (hhe ▸ hm.headEval) hv hc (htde ▸ htd)
+  obtain ⟨st₀, st₁, bh', hk₀, hme₀, hct, htn, htd₀, hcd, hcore, hk₁, hme₁, -, -, -, hdf₀, -⟩ :=
+    evalAt_invF (dd := D.declOf (DecideScope.topReadings st) t) (hhe ▸ hm.headEval) hv hc (htde ▸ htd)
       (fun s b d s' hks hr => by
         have := decTab_declOf_at (DecTab.of_kern (hka.trans hks) hDst) hr
         rw [← this, ColumnC.topReadings_kern (hka.trans hks)]) hany hpr hat
@@ -47,8 +48,9 @@ theorem evalInvD : EvalInvD := by
   have hsa : Form.ModeEq st { sa with headEval := false } :=
     ⟨hm.headEval, hla.modeEq.copying, hla.modeEq.inPlace, hla.modeEq.erased⟩
   refine ⟨st₀, st₁, bh', hk0, hsa.trans (modeEq_form hme₀).symm, by rw [hct, ← htne], htn, htd₀, ?_, hcore,
-    hk₁.trans hlb.kern, (modeEq_form hme₁).trans (modeEq_form hlb.modeEq)⟩
-  rw [hcd, ColumnC.topReadings_kern hk0]
+    hk₁.trans hlb.kern, (modeEq_form hme₁).trans (modeEq_form hlb.modeEq), ?_⟩
+  · rw [hcd, ColumnC.topReadings_kern hk0]
+  · rw [hdf₀]; exact (congrArg MState.deferCallTy hla).symm
 
 /-- **`evalCore` of a typed `let`, at any erased depth**: the machine lane's `LetInvR` with no mode hypothesis
 and the mode at `u`'s entry the `let`'s (`ModeEq`) where `LetInvR` concludes `Mode`. -/

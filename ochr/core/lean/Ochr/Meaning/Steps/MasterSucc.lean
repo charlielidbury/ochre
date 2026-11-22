@@ -315,7 +315,7 @@ theorem stepSucc (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hNT 
     fun st st' typed hint v T? s π hP => succ_coreG (K := { K with Δ := Δ }) hST hSM hSF hNT ⟨hc.globals, hc.sorts⟩ ih
       st st' typed hint v T? s π hP.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
-    (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
+    (fun a b hk _ ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'
 
