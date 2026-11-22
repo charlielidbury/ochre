@@ -186,11 +186,16 @@ theorem teleFrame_param (dm : DataModel) (D : Decisions) (d : IndDecl) (ps : Lis
 
 /-- The steady nodes' agreement, the part of `knot_exists` that rests on frame locality and the model
 congruence: the run of a steady node of a field type in the actual frame gives its value at the
-canonical frame. -/
+canonical frame. Proved for the knot's own records: `Steady.steadyAt_knotK`.
+
+The earlier fields are asked to be MEMBERS of their field types at the knot's model (what
+`FieldsFaithful`'s consumer has, `FieldsTyped`), not to fit the knot's shapes (exists6: fitting gives
+membership only away from junk leaves, which needed `GlobalsTyped`; membership is what frame
+locality's `Good` and the rebuilt members read). -/
 def SteadyAt (K : RunCtx) (ρ : Assignment) (d : IndDecl) (R : List Sem → Rec) : Prop :=
   ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term), ps.length = d.params.length →
     (∀ j (hj : j < ps.length), ps[j] ∈ₛ[K.dm.read] K.dm.paramTy d j (ps.take j)) →
-    (∀ j (hj : j < e.length), FitsOneM uSig (uShape d (R ps) c j ((e.take j).map Sem.small)) e[j]) →
+    (∀ j (hj : j < e.length), e[j] ∈ₛ[K.dm.read] (setRec K.dm d R).fieldTy d ps c j (e.take j)) →
     e.length = i → fieldTerm d c i = some FT →
     ∀ (t : Term) (h : TyS) (r : Res) (s' : SState), Steady d c t → (∀ v ∈ t.freeVars, v ∈ FT.freeVars) →
       runT { K with dm := setRec K.dm d R } ρ noFuture false h t (teleFrame (setRec K.dm d R) K.D d ps c e) = some (r, s') →
@@ -205,7 +210,8 @@ theorem knotK_agree (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort �
     (hst : SteadyAt K ρ d (recK (knotK K ρ d hs hdΓ hspine hpar hpty))) :
     ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (r : Res) (s' : SState),
       ps.length = d.params.length → (∀ j (hj : j < ps.length), ps[j] ∈ₛ[K.dm.read] K.dm.paramTy d j (ps.take j)) →
-      (∀ j (hj : j < e.length), FitsOneM uSig (uShape d (recK (knotK K ρ d hs hdΓ hspine hpar hpty) ps) c j ((e.take j).map Sem.small)) e[j]) →
+      (∀ j (hj : j < e.length), e[j] ∈ₛ[K.dm.read]
+        (setRec K.dm d (recK (knotK K ρ d hs hdΓ hspine hpar hpty))).fieldTy d ps c j (e.take j)) →
       e.length = i → fieldTerm d c i = some FT →
       run { K with dm := setRec K.dm d (recK (knotK K ρ d hs hdΓ hspine hpar hpty)) } ρ noFuture (.plain (TyM.univ 1)) FT
         (teleFrame (setRec K.dm d (recK (knotK K ρ d hs hdΓ hspine hpar hpty))) K.D d ps c e) = some (r, s') →

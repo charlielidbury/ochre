@@ -247,6 +247,8 @@ import Ochr.Meaning.DataModel.Exists.Knot.Interp
 import Ochr.Meaning.DataModel.Exists.Knot.Guard
 import Ochr.Meaning.DataModel.Exists.Knot.Agree
 import Ochr.Meaning.DataModel.Exists.Knot.Congr
+import Ochr.Meaning.DataModel.Exists.Knot.Steady
+import Ochr.Meaning.DataModel.Exists.Knot.Exists
 import Ochr.Meaning.DataModel.Exists.TeleFrameGuard
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs

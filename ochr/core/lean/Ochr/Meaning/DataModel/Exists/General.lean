@@ -13,8 +13,7 @@ and how it was attacked. Read `HANDOFF.md` first.
 * `runT_frameLocal`: FRAME LOCALITY, the core lemma of piece 3.
 * `GlobalsTyped`, `globals_typed`: finding 2's obligation (a global a field type calls returns a
   member of its codomain sort, `Prop` or `Type₀`, or does not run).
-* `knot_exists`: pieces 3 and 4 for a data-sorted declaration, in the form the assembly uses (a
-  guarded knot whose field types are the run's).
+* `knot_exists`: moved to the default build, proved (`Knot.knot_exists`).
 * `PropLe`, `mono_prop`, `truth_exists`: piece 5 (truth first, with the monotonicity induction).
 -/
 
@@ -78,49 +77,12 @@ theorem globals_typed (dm : DataModel) (D : MState → Decisions) (fuel : Nat) (
 
 /-! ## Pieces 3 and 4: a data-sorted declaration's knot -/
 
-/-- **A data-sorted declaration's canonical knot** (restated by exists5, 2026-11-22; BELIEVED TRUE
-under the two checker rules the lead adopted, subject to measurement, docs/34 §18.6).
-
-As first written it was FALSE (`KnotCE.knotOld_false`, kernel-checked): it had no hypothesis that
-`d` is accepted, and `hpar` compares value parameters by equality, while a value argument may carry
-the knot's own record (`Pt(D2, x)` with `x : D2`). The restatement takes `d`'s field types in the
-first-order grammar with Lean's two rules (`Knot.Spine`: (B) the non-spine nodes, equations, calls and
-value arguments, read nothing that varies between the knot's comparisons; (A) a varying type argument
-stands at a `Type` parameter and is data-sorted; (B2) a value argument's parameter type does not
-mention a varying argument), the parameter types local (`Knot.ParamTyLocal`), the decisions local
-(`DecLocal`, frame locality's hypothesis), the globals label-free, and `GlobalsTyped`: frame
-locality swaps only bindings holding members of their types (`Good`), and an earlier field typed by a
-call's result is a member of it only when that result is no junk code (`LeafOk`: a call returns a code
-of level 0 or 1, never a `Prop`-sorted declaration's data code over its own carrier).
-
-How: the interpreter reads the field type along its spine (`D(ā)` as `D`'s record at the arguments,
-`d`'s own through the knot's record function, a parameter as itself) and the non-spine nodes as their
-runs under `K.dm` at a CANONICAL frame rebuilt from the key (non-varying index fields rebuilt as the
-members of their canonical types with the key's small readings; everything that varies, and the
-fields that are no index, a fixed dummy). Guardedness by induction on the spine (`hpar`, `recK`'s own
-parametricity, `SemAgree`); the non-spine nodes are record-free by construction. Agreement with the
-actual run by induction on the term: along the spine `RunLemmas.runT_tind`/`runT_teleFrame_param`;
-at a non-spine node `Knot.runT_stateOf_swap` (the actual frame and the canonical one differ only at
-bindings it does not read; rebuilt index fields equal the actual ones, `Piece3.memTy_small_inj`) and a
-model congruence (a term avoiding `d` runs the same under `K.dm` and under the knot's model). The
-obstacle that `teleFrame` typed the field being typed by its own type is repaired (docs/31 D160: the
-fields not yet bound are typed `err`, as the checker's `fieldTele` binds them). -/
-theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort ≠ 0)
-    (hfind : K.Γ.find? (·.name == d.name) = some d)
-    (hspine : ∀ c i FT, fieldTerm d c i = some FT → Knot.Spine K.Γ d c FT)
-    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
-    (hpty : Knot.ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
-    (hK : ∀ g, (K.C.global g).2.label = none)
-    (hglob : ∀ P : ProgState, P.baseC = K.C → GlobalsTyped K.dm P) :
-    ∃ S : KnotSpec, S.d = d ∧ (∀ j, S.N j = d.nestable.getD j false) ∧
-      ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (r : Res) (s' : SState),
-        ps.length = d.params.length → (∀ j (hj : j < ps.length), ps[j] ∈ₛ[K.dm.read] K.dm.paramTy d j (ps.take j)) →
-        (∀ j (hj : j < e.length), FitsOneM uSig (uShape d (recK S ps) c j ((e.take j).map Sem.small)) e[j]) →
-        e.length = i → fieldTerm d c i = some FT →
-        run { K with dm := setRec K.dm d (recK S) } ρ noFuture (.plain (TyM.univ 1)) FT
-          (teleFrame (setRec K.dm d (recK S)) K.D d ps c e) = some (r, s') →
-          r.1.asTy = (S.fty (recK S) ps c i (projIdx d c (e.map Sem.small))).mean := by
-  sorry
+/- `knot_exists` is PROVED (exists6, 2026-11-22) in the default build: `Knot.knot_exists`
+(`Knot/Exists.lean`, standard axioms), assuming five named facts (`GrammarOk`, `hpar`,
+`ParamTyLocal`, `DecLocal`, label-free globals). The statement that stood here (exists5's
+restatement) asked the earlier fields to fit the knot's shapes and assumed `GlobalsTyped`; the proved
+one asks them to be members of their field types (what `FieldsFaithful` hands its consumer), so
+`GlobalsTyped` is not needed for it. -/
 
 /-! ## Piece 5: `Prop`-sorted declarations, truth first -/
 

@@ -117,4 +117,156 @@ def ParamTyLocal (dm : DataModel) (Γ : List IndDecl) : Prop :=
     (∀ u ∈ (paramTerm M j).freeVars, u < j → ps[j - 1 - u]? = ps'[j - 1 - u]?) →
       dm.paramTy M j ps = dm.paramTy M j ps'
 
+/-! ## The grammar as a decidable check (what the checker is to enforce)
+
+`spineB` decides `Spine` from syntax, the declarations `Γ` and the declared parameter type terms
+(`spineB_sound`). `GrammarOk Γ d`, the check at every field of every constructor of `d`, is the ONE
+fact about the checker that the knot assumes ((A), (B), (B2) and the first-order grammar), until the
+checker enforces it (docs/34 §18.6). -/
+
+/-- `Steady`, decided. -/
+def steadyB (d : IndDecl) (c : Nat) (t : Term) : Bool :=
+  !t.mentionsType d.name && !t.anyAtom (fun _ => true) && t.freeVars.all fun v => !varVaries d c v
+
+/-- `HintSteady`, decided. -/
+def hintSteadyB (d : IndDecl) (c : Nat) (M : IndDecl) (j : Nat) (pre : List Term) : Bool :=
+  (paramTerm M j).freeVars.all fun u => if u < j then (match pre[j - 1 - u]? with
+    | some a => steadyB d c a
+    | none => true) else true
+
+/-- A parameter type term that is `Type` (`.sort 1`). -/
+def isType1 : Term → Bool
+  | .sort 1 => true
+  | _ => false
+
+/-- An applied declaration found in `Γ` is not `Prop`-sorted (anything else passes). -/
+def notPropDecl (Γ : List IndDecl) : Term → Bool
+  | .tind n _ => match Γ.find? (·.name == n) with
+    | some M => M.sort != 0
+    | none => true
+  | _ => true
+
+mutual
+/-- `Spine`, decided. -/
+def spineB (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Bool
+  | .nat => true
+  | .unit => true
+  | .place (.var v) => decide (v < d.params.length)
+  | .tind n as => match Γ.find? (·.name == n) with
+    | some M => spineArgsB Γ d c M 0 [] as
+    | none => false
+  | .call (.const f) as hd => steadyB d c (.call (.const f) as hd)
+  | .eq A a b => steadyB d c (.eq A a b)
+  | _ => false
+termination_by structural t => t
+
+/-- `SpineArgs`, decided. -/
+def spineArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat → List Term → List Term → Bool
+  | _, _, [] => true
+  | j, pre, a :: as =>
+    (if M.paramIsType j then
+      spineB Γ d c a && (steadyB d c a || (nestOf M j && isType1 (paramTerm M j) && notPropDecl Γ a))
+    else steadyB d c a && hintSteadyB d c M j pre) && spineArgsB Γ d c M (j + 1) (pre ++ [a]) as
+termination_by structural _ _ as => as
+end
+
+/-- **The checker fact the knot assumes**: every field type of every constructor of `d` passes the
+grammar check (decidable: finitely many fields, each a `Bool`). -/
+def GrammarOk (Γ : List IndDecl) (d : IndDecl) : Prop :=
+  ∀ c i FT, fieldTerm d c i = some FT → spineB Γ d c FT = true
+
+instance (Γ : List IndDecl) (d : IndDecl) : Decidable (GrammarOk Γ d) :=
+  decidable_of_iff (d.ctors.zipIdx.all fun (cs, c) => cs.2.all fun (_, FT) => spineB Γ d c FT) (by
+    unfold GrammarOk fieldTerm
+    constructor
+    · intro h c i FT hFT
+      cases hc : d.ctors[c]? with
+      | none => simp [hc] at hFT
+      | some cs =>
+        simp only [hc, Option.bind_some, Option.map_eq_some_iff] at hFT
+        obtain ⟨⟨nm, FT'⟩, h1, rfl⟩ := hFT
+        simp only [List.all_eq_true] at h
+        have hcs : (cs, c) ∈ d.ctors.zipIdx := by
+          rw [List.mem_iff_getElem?]; exact ⟨c, by simp [List.getElem?_zipIdx, hc]⟩
+        exact h _ hcs _ (List.mem_of_getElem? h1)
+    · intro h
+      simp only [List.all_eq_true]
+      rintro ⟨cs, c⟩ hm ⟨nm, FT⟩ hf
+      have hc : d.ctors[c]? = some cs := by
+        rw [List.mem_iff_getElem?] at hm
+        obtain ⟨k, hk⟩ := hm
+        rw [List.getElem?_zipIdx] at hk
+        cases hk' : d.ctors[k]? with
+        | none => simp [hk'] at hk
+        | some x =>
+          simp only [hk', Option.map_some, Option.some.injEq, Prod.mk.injEq] at hk
+          obtain ⟨rfl, rfl⟩ := hk; simpa using hk'
+      obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hf
+      exact h c i FT (by simp [hc, hi]))
+
+theorem steadyB_sound {d : IndDecl} {c : Nat} {t : Term} (h : steadyB d c t = true) : Steady d c t := by
+  simp only [steadyB, Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true] at h
+  exact ⟨⟨h.1.1, h.1.2⟩, fun v hv => by simpa using h.2 v hv⟩
+
+theorem hintSteadyB_sound {d : IndDecl} {c : Nat} {M : IndDecl} {j : Nat} {pre : List Term}
+    (h : hintSteadyB d c M j pre = true) : HintSteady d c M j pre := by
+  intro u hu hlt a ha
+  simp only [hintSteadyB, List.all_eq_true] at h
+  have := h u hu
+  rw [if_pos hlt, ha] at this
+  exact steadyB_sound this
+
+mutual
+/-- **The check decides the grammar** (soundness, the direction the knot uses). -/
+theorem spineB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} : ∀ {t : Term}, spineB Γ d c t = true → Spine Γ d c t
+  | .nat, _ => .nat
+  | .unit, _ => .unit
+  | .place p, h => by
+    cases p with
+    | var v => exact .param v (by simpa [spineB] using h)
+    | _ => simp [spineB] at h
+  | .tind n as, h => by
+    simp only [spineB] at h
+    split at h
+    · rename_i M hM; exact .tind n as M hM (spineArgsB_sound h)
+    · cases h
+  | .call f as hd, h => by
+    cases f with
+    | const g => exact .call g as hd (steadyB_sound (by simpa [spineB] using h))
+    | _ => simp [spineB] at h
+  | .eq A a b, h => .eq A a b (steadyB_sound (by simpa [spineB] using h))
+  | .borrow _, h | .assign _ _, h | .letIn _ _ _, h | .seq _ _, h | .matchNat _ _ _, h | .const _, h
+  | .val _, h | .sort _, h | .pi _ _ _, h | .fix _ _ _ _ _ _, h | .zero, h | .succ _, h | .tt, h
+  | .cong _ _, h | .ref _, h | .id _ _ _, h | .ascribe _ _, h | .prim _ _, h | .ctor _ _ _ _ _, h
+  | .matchInd _ _ _, h => by simp [spineB] at h
+
+theorem spineArgsB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDecl} :
+    ∀ {j : Nat} {pre as : List Term}, spineArgsB Γ d c M j pre as = true → SpineArgs Γ d c M j pre as
+  | j, pre, [], _ => .nil M j pre
+  | j, pre, a :: as, h => by
+    simp only [spineArgsB, Bool.and_eq_true] at h
+    obtain ⟨h1, h2⟩ := h
+    by_cases hty : M.paramIsType j = true
+    · rw [if_pos hty] at h1
+      simp only [Bool.and_eq_true, Bool.or_eq_true] at h1
+      obtain ⟨ha, hs⟩ := h1
+      refine .type M j pre a as hty (spineB_sound ha) ?_ ?_ (spineArgsB_sound h2)
+      · intro hn
+        rcases hs with hs | ⟨⟨hn', -⟩, -⟩
+        · exact absurd (steadyB_sound hs) hn
+        · exact hn'
+      · intro hn
+        rcases hs with hs | ⟨⟨-, h1t⟩, hnp⟩
+        · exact absurd (steadyB_sound hs) hn
+        · refine ⟨?_, ?_⟩
+          · unfold isType1 at h1t; split at h1t <;> simp_all
+          · rintro n' as' M' rfl hM'
+            simp [notPropDecl, hM'] at hnp
+            exact hnp
+    · rw [if_neg hty] at h1
+      simp only [Bool.and_eq_true] at h1
+      exact .value M j pre a as (by simpa using hty) (steadyB_sound h1.1) (hintSteadyB_sound h1.2)
+        (spineArgsB_sound h2)
+end
+
 end Ochr.Meaning.DataModel.Exists.Knot

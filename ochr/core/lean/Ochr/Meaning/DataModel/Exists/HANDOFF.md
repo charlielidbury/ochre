@@ -24,15 +24,17 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `FrameLocal/`: frame locality `runT_qset` (assumes `DecLocal`). `Decomposition.lean`: the nine pieces; `runT_congrDM` (piece 1) stated, unproved.
 - `General.lean` (outside the build): `globals_typed`, `mono_prop`, `truth_exists` (sorry), `runT_frameLocal` (false, kept), `knot_exists` (restated, sorry).
 
-## Next: `SteadyAt`, the one fact `knotK_agree` assumes
+## Done (exists6), all in the default build, standard axioms
 
-`Knot/Agree.knotK_agree` (default build, standard axioms) is `knot_exists`'s conclusion for the witness `knotK`, assuming `SteadyAt K ρ d R*` (`R* := recK (knotK …)`): the run of a steady node `t` of a field type `FT` (free variables among `FT`'s) in the actual frame `A := teleFrame (setRec K.dm d R*) K.D d ps c e` gives `valOf K ρ F* h t`, its value under `K` at the canonical frame `F* := canFrame K d ps c i es tyOf*`. So `knot_exists` = `knotK` + `knotK_agree` + a proof of `SteadyAt`. The plan for `SteadyAt` (`K* := {K with dm := setRec K.dm d R*}`):
-1. Frames `A = stateOf 0 bsA`, `F* = stateOf 0 bsF` equal off `X` = {fields `j < i` that vary or are no index} ∪ {parameters that vary}. Done: `fieldTy_knot` (the actual type at an earlier field is `tyOf* j`), `rebuild_eq` (the rebuilt member is `e[j]`; `es[j] = e[j].small` at an index field by `Piece3.projIdx_get`). Moved fields `j ≥ i`: equal since D160 (both `faithBind TyM.err .moved .other`). Non-varying parameters: the same expression (`canFrame`'s `if j < ps.length`).
-2. `Good` at `X` under `K*`: `e[j]` via `Data.fitsOneM_mem` (needs `LeafOk` at the knot's leaves: a leaf comes from a steady node's `.ty T`, and `GlobalsTyped` gives a call's result a code of level 0 or 1, so never a `Prop`-sorted data code over its own carrier; a data-sorted one over its own carrier is not a leaf, `dataView`) and `Strict.mem_whole K.dm.read_wholeFields`; `ps[j]` the same; the dummies `0 : Nat`. `pmem_of_mem`.
-3. `runT_stateOf_swap` (needs `DecLocal`, label-free globals) with `X`; free variables of `t` avoid `X`: they do not vary (`Steady`), and a field `FT` mentions is an index field (`IndDecl.indexFields`, `fieldRefs`).
-4. **Model congruence** for `t` avoiding `d.name` (`Knot.Avoids`): `runT K* t F* = runT K t F*`. The run reads `recOf` only at a name it finds (`.tind`, `.ctor`, matches, `meanV` of `.val`); `read`/`car`/`tyR` are the universal signature's. Template `AssignCongr.runT_congrA` (516 lines). This is piece 1/2 of `Decomposition.lean` in a narrowed form.
+- D160: `teleFrame` types the fields not yet bound `err`; `TeleFrameGuard.lean` pins the checker's frame.
+- `Knot/Congr.lean`: `runT_congrR`, the model congruence (no assumed fact). `Avoids` restated (no embedded value; `avoidsOld_gap`).
+- `Knot/Steady.lean`: `steadyAt_knotK` (assumes `DecLocal`, label-free globals).
+- `Knot/Grammar.lean`: `spineB`/`spineArgsB`/`GrammarOk` (decidable), `spineB_sound`.
+- `Knot/Exists.lean`: `knot_exists`, PROVED, assuming five named facts (`GrammarOk`, `hpar`, `ParamTyLocal`, `DecLocal`, label-free globals). `SteadyAt` and `knotK_agree` now ask the earlier fields to be MEMBERS of their field types (FieldsTyped at the knot's model), not to fit the shapes; `GlobalsTyped` is no longer needed for the knot.
 
-Then: `mono_prop`, `truth_exists` (piece 5; attack first, especially the monotonicity induction), `globals_typed`, `DecAt` threading (when a consumer needs it; recipe below), pieces 6, 7, assembly. The knot's `pEntry` is `pEntryTy` (what `Step2` used); piece 6 (records' parameter clauses) may need value parameters' entries read small instead.
+## Next
+
+`mono_prop` and `truth_exists` (piece 5, `General.lean`; attack first, especially the monotonicity induction, never exercised by an instance; `PropNestCE.lean` shows why the data construction is false there), then `globals_typed`, pieces 6, 7 and the assembly. The assembly must discharge `hpar` (by the induction over declarations: `recK_agree` for a knot's own records) and `ParamTyLocal` (piece 7's parameter types are runs of the parameter type terms, local by frame locality).
 
 ## DecLocal, node by node (exists4, partly done)
 
