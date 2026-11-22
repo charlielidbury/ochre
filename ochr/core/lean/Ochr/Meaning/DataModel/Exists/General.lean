@@ -14,7 +14,8 @@ and how it was attacked. Read `HANDOFF.md` first.
 * `GlobalsTyped`, `globals_typed`: finding 2's obligation (a global a field type calls returns a
   member of its codomain sort, `Prop` or `Type₀`, or does not run).
 * `knot_exists`: moved to the default build, proved (`Knot.knot_exists`).
-* `PropLe`, `mono_prop`, `truth_exists`: piece 5 (truth first, with the monotonicity induction).
+* `truth_exists`: piece 5 (truth first); FALSE as written (`TruthCE`). `PropLe`, `mono_prop`: proved,
+  `PropMono.lean`.
 -/
 
 namespace Ochr.Meaning.DataModel.Exists.General
@@ -86,32 +87,21 @@ one asks them to be members of their field types (what `FieldsFaithful` hands it
 
 /-! ## Piece 5: `Prop`-sorted declarations, truth first -/
 
-/-- Parameter lists that differ only at nestable `Prop` parameters, each weakened. -/
-def PropLe (d : IndDecl) (ps ps' : List Sem) : Prop :=
-  ps'.length = ps.length ∧ ∀ j v v', ps[j]? = some v → ps'[j]? = some v' →
-    v' = v ∨ (d.nestable.getD j false = true ∧
-      ∃ P P' : Prop, v = .ty (TyM.prop P) ∧ v' = .ty (TyM.prop P') ∧ (P → P'))
+/- `PropLe` and `mono_prop` are PROVED (exists6) in the default build: `Exists/PropMono.lean`. The
+step is direct (the same constructor and fields; a proof fits any weaker proposition leaf); its
+content is the hypothesis `hcanon`, which the induction over declarations must establish, and which can
+hold only under rule (A*) (`CrossSortCE.lean`). -/
 
-/-- **Membership is monotone in the nestable `Prop` parameters** (BELIEVED TRUE for the canonical
-records, by induction over the declarations; FALSE for an arbitrary faithful model, which may put
-anything where the run of a field type is undefined, so it is stated of a model whose records are the
-canonical ones: `hcanon`, to be replaced by the construction's own predicate once `knot_exists` and
-`truth_exists` define it). Why it holds for the canonical records: a nestable `Prop` parameter occurs in
-a field type only whole (a leaf `prop P`, fitted by `•` exactly when `P`, monotone) or at a nestable
-`Prop` parameter of an earlier declaration (by induction); a field type that does not mention it is the
-run's result at a frame that differs only at the parameter's binding (`runT_frameLocal`), so the same.
-What the truth-first construction needs it for: the one-step operator of a `Prop`-sorted declaration
-nested at a `Prop` parameter of an earlier one (`Q := MkQ(h : And(Q, True))`) is monotone, so its
-least predicate is a fixed point. -/
-theorem mono_prop (dm : DataModel) (d : IndDecl) (ps ps' : List Sem)
-    (hcanon : ∀ c i es, (uShape d (dm.recOf d ps') c i es = uShape d (dm.recOf d ps) c i es) ∨
-      ∃ P P' : Prop, (P → P') ∧ uShape d (dm.recOf d ps) c i es = .leaf (PLift P) (.prop P) ∧
-        uShape d (dm.recOf d ps') c i es = .leaf (PLift P') (.prop P'))
-    (hle : PropLe d ps ps') :
-    (∃ v, dm.Mem d (dm.recOf d ps) v) → ∃ v, dm.Mem d (dm.recOf d ps') v := by
-  sorry
-
-/-- **A `Prop`-sorted declaration, truth first** (BELIEVED TRUE). The least predicate closed under the
+/-- **A `Prop`-sorted declaration, truth first.** FALSE AS WRITTEN (exists6, 2026-11-22; kernel-checked:
+`TruthCE.truthOld_false`): it assumes nothing of the earlier records, and an earlier `N (P : Prop) :
+Prop := MkN(h : P)` whose record at `P` is the leaf `¬P` makes `Q : Prop := MkQ(h : N(Q))` inhabited
+exactly when it is not, under any faithful record of `Q`. Minimal restatement (to be stated when the
+ruling on (A*) is in): add `hmono`, every earlier declaration's records satisfy `mono_prop`'s `hcanon`
+at `PropLe`-related parameters (the assembly's induction supplies it), and the grammar fact for a
+`Prop`-sorted `d` (its own occurrences are direct fields or stand at nestable `Prop` parameters of
+`Prop`-sorted declarations, rule (A*)); and ask the earlier fields to be members of their field types,
+as `knot_exists` now does. Then the one-step operator is monotone and its least fixed point (an
+impredicative intersection) is the truth predicate. Previously: BELIEVED TRUE. The least predicate closed under the
 constructors, with the declaration's own occurrences (and its occurrences inside earlier declarations
 at nestable `Prop` parameters) read as the predicate; records whose such occurrences are leaves holding
 it (no self-reference, no knot); the record means the predicate; and its field types are the run's

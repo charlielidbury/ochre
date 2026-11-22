@@ -249,6 +249,9 @@ import Ochr.Meaning.DataModel.Exists.Knot.Agree
 import Ochr.Meaning.DataModel.Exists.Knot.Congr
 import Ochr.Meaning.DataModel.Exists.Knot.Steady
 import Ochr.Meaning.DataModel.Exists.Knot.Exists
+import Ochr.Meaning.DataModel.Exists.CrossSortCE
+import Ochr.Meaning.DataModel.Exists.TruthCE
+import Ochr.Meaning.DataModel.Exists.PropMono
 import Ochr.Meaning.DataModel.Exists.TeleFrameGuard
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs

@@ -32,9 +32,12 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `Knot/Grammar.lean`: `spineB`/`spineArgsB`/`GrammarOk` (decidable), `spineB_sound`.
 - `Knot/Exists.lean`: `knot_exists`, PROVED, assuming five named facts (`GrammarOk`, `hpar`, `ParamTyLocal`, `DecLocal`, label-free globals). `SteadyAt` and `knotK_agree` now ask the earlier fields to be MEMBERS of their field types (FieldsTyped at the knot's model), not to fit the shapes; `GlobalsTyped` is no longer needed for the knot.
 
+- `CrossSortCE.lean`: the checker accepts nesting across sorts that Lean rejects; `hpar` is false for `E` (argued). RULING REQUESTED from the lead on rule (A*) (docs/34 §18.9); read the answer first.
+- `TruthCE.lean`: `truth_exists` as written is false (kernel-checked; no hypothesis on earlier records). `PropMono.lean`: `mono_prop` proved (its content is its hypothesis).
+
 ## Next
 
-`mono_prop` and `truth_exists` (piece 5, `General.lean`; attack first, especially the monotonicity induction, never exercised by an instance; `PropNestCE.lean` shows why the data construction is false there), then `globals_typed`, pieces 6, 7 and the assembly. The assembly must discharge `hpar` (by the induction over declarations: `recK_agree` for a knot's own records) and `ParamTyLocal` (piece 7's parameter types are runs of the parameter type terms, local by frame locality).
+Restate and prove `truth_exists` once (A*) is ruled: hypotheses `hmono` (earlier records satisfy `mono_prop`'s `hcanon`), the grammar for a `Prop`-sorted `d` under (A*), earlier fields as members; the truth predicate is the least fixed point of the one-step operator (impredicative intersection); the records hold, at every key where `d` or its truth occurs, the proposition leaf; faithfulness then follows the knot's pattern (frame locality + model congruence at steady nodes). Then `globals_typed`, pieces 6, 7 and the assembly. Older plan: `mono_prop` and `truth_exists` (piece 5, `General.lean`; attack first, especially the monotonicity induction, never exercised by an instance; `PropNestCE.lean` shows why the data construction is false there), then `globals_typed`, pieces 6, 7 and the assembly. The assembly must discharge `hpar` (by the induction over declarations: `recK_agree` for a knot's own records) and `ParamTyLocal` (piece 7's parameter types are runs of the parameter type terms, local by frame locality).
 
 ## DecLocal, node by node (exists4, partly done)
 
