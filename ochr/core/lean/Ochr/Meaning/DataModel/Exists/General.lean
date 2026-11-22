@@ -1,4 +1,6 @@
 import Ochr.Meaning.DataModel.Exists.Defs
+import Ochr.Meaning.DataModel.Exists.Knot.Grammar
+import Ochr.Meaning.DataModel.Exists.FrameLocal.Setup
 import Ochr.Meaning.DataModel.Exists.Step2
 
 /-!
@@ -76,41 +78,38 @@ theorem globals_typed (dm : DataModel) (D : MState → Decisions) (fuel : Nat) (
 
 /-! ## Pieces 3 and 4: a data-sorted declaration's knot -/
 
-/-- **A data-sorted declaration's canonical knot, as first written: FALSE** (exists5, 2026-11-22;
-`KnotCE.knotOld_false`, kernel-checked; docs/34 §18.6). Kept for the record until the restatement
-replaces it. Counterexample: `Pt (A : Type) (a : A) := MkPt`, `D2 := D2Leaf | D2Node(x : D2,
-p : Pt(D2, x))`, both accepted. Field `p`'s type passes the earlier field `x`, a member carrying the knot's
-own record, as a VALUE argument to `Pt`, and `hpar` compares value parameters by equality only, so an
-earlier record may read the knot's record through it at any depth (one that puts the flip of what it
-reads at a short path satisfies `hpar`, and then no knot exists). The statement also lacked that `d` is
-accepted (its field types first-order, `d` only at nestable parameters). Two more shapes the checker
-accepts (and Lean rejects) defeat the planned interpreter without making this false: an equation side
-reading an earlier field whose type mentions `d` or a nestable parameter (`LD`, `W`/`UW`: the field's
-kind is the run's result, whose definedness reads the record, so the kinds are not record-free), and
-`d` nested through a `Prop`-sorted declaration at a `Prop` parameter (`D := MkD(q : Q(PP(D)))`: the
-record holds "`D` is inhabited"). Restatement pending a ruling on adopting Lean's two rules in the
-checker (docs/34 §18.6).
+/-- **A data-sorted declaration's canonical knot** (restated by exists5, 2026-11-22; BELIEVED TRUE
+under the two checker rules for which a ruling is requested, docs/34 §18.6).
 
-Earlier docstring (exists2): BELIEVED TRUE; pieces 3 and 4 in the form the
-assembly uses. Given a run context whose model is faithful on the declarations before `d` and whose
-globals are typed, there is a guarded knot (`KnotSpec`, its nestable parameters `d.nestable`) whose
-field types at its own fixed point are the run's (under the model whose records for `d` are the
-knot's), wherever the run is defined at typed parameters and fields. First stated without `hpar` and
-with the run under `K.dm` itself it was FALSE: the run reads `K.dm`'s records for `d` and for the
-declarations `d` nests in, and nothing tied them to the knot or made them parametric in their nestable
-parameters (the canonical records of earlier declarations are, `recK_agree`).
+As first written it was FALSE (`KnotCE.knotOld_false`, kernel-checked): it had no hypothesis that
+`d` is accepted, and `hpar` compares value parameters by equality, while a value argument may carry
+the knot's own record (`Pt(D2, x)` with `x : D2`). The restatement takes `d`'s field types in the
+first-order grammar with Lean's two rules (`Knot.Spine`: (B) the non-spine nodes, equations, calls and
+value arguments, read nothing that varies between the knot's comparisons; (A) a varying type argument
+stands at a `Type` parameter and is data-sorted; (B2) a value argument's parameter type does not
+mention a varying argument), the parameter types local (`Knot.ParamTyLocal`), the decisions local
+(`DecLocal`, frame locality's hypothesis), and the globals label-free. `GlobalsTyped` is not needed:
+the conclusion compares types only.
 
-How: `fty` is the interpreter of `HANDOFF.md` (syntactic along the `.tind` spine, where `d` can occur
-only at nestable positions; the run's result elsewhere, at the canonical frame rebuilt from the key).
-Agreement by induction on the field-type term with `RunLemmas` (`runT_tind`, `runT_eq`,
-`runT_call_const`, `runT_teleFrame_param`/`field`), `Piece3.index_fields_eq`, `runT_frameLocal`, and
-`GlobalsTyped` for `Lvl0`/`LeafOk` at a call's result. Guardedness by the same induction: `d`'s records
-enter only through nestable parameters (D107), carried by `SemAgree` and `recK_agree`; a value argument
-of `d`'s own occurrence is read small (`smallOnly`). False for a `Prop`-sorted `d` nested at a `Prop`
-parameter (`PropNestCE.not_guarded`): those go through `truth_exists`. -/
+How: the interpreter reads the field type along its spine (`D(ā)` as `D`'s record at the arguments,
+`d`'s own through the knot's record function, a parameter as itself) and the non-spine nodes as their
+runs under `K.dm` at a CANONICAL frame rebuilt from the key (non-varying index fields rebuilt as the
+members of their canonical types with the key's small readings; everything that varies, and the
+fields that are no index, a fixed dummy). Guardedness by induction on the spine (`hpar`, `recK`'s own
+parametricity, `SemAgree`); the non-spine nodes are record-free by construction. Agreement with the
+actual run by induction on the term: along the spine `RunLemmas.runT_tind`/`runT_teleFrame_param`;
+at a non-spine node `Knot.runT_stateOf_swap` (the actual frame and the canonical one differ only at
+bindings it does not read; rebuilt index fields equal the actual ones, `Piece3.memTy_small_inj`) and a
+model congruence (a term avoiding `d` runs the same under `K.dm` and under the knot's model). Open
+obstacle (ruling requested): `teleFrame` types the field being typed by its own type, which makes the
+canonical frame self-referential; the repair types the not-yet-bound fields `err`, as the checker's
+`fieldTele` binds them. -/
 theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort ≠ 0)
-    (hglob : ∀ P : ProgState, P.baseC = K.C → GlobalsTyped K.dm P)
-    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M)) :
+    (hfind : K.Γ.find? (·.name == d.name) = some d)
+    (hspine : ∀ c i FT, fieldTerm d c i = some FT → Knot.Spine K.Γ d c FT)
+    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
+    (hpty : Knot.ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
+    (hK : ∀ g, (K.C.global g).2.label = none) :
     ∃ S : KnotSpec, S.d = d ∧ (∀ j, S.N j = d.nestable.getD j false) ∧
       ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (r : Res) (s' : SState),
         ps.length = d.params.length → (∀ j (hj : j < ps.length), ps[j] ∈ₛ[K.dm.read] K.dm.paramTy d j (ps.take j)) →
