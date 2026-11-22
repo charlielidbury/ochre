@@ -13,10 +13,11 @@ accepted; `JS` (`J` at unknown endpoints, closed off as a stuck block, [T-J-stuc
 
 **The reference's runs** (kernel-checked, `Kp` with no declaration): `Eq(Nat, S(Z), S(Z))` is a true
 proposition (`ref_eqS_true`), `Eq(Nat, S(Z), Z)` a false one (`ref_eqSZ_false`), each with the state
-untouched; and `J(Nat, 0, 1, Nat, (), 0)` runs to `0` (`ref_J_runs_t`): the reference's `J` means its
-transported term WHATEVER its endpoints ([J-run]), where the checker is stuck at endpoints that are
-not convertible and closes the `J` off as a block whose one arm is the transported term; that block's
-meaning is the run of the `J` (`closeBlock_step`), so both paths mean the transported term.
+untouched. The reference's `J` means its transported term WHATEVER its endpoints ([J-run]), where the checker
+is stuck at endpoints that are not convertible and closes the `J` off as a block whose one arm is the
+transported term; that block's meaning is the run of the `J` (`closeBlock_step`), so both paths mean the
+transported term. Since main's D124 it hands that term `P(a)`, so its motive must be callable: at the motive
+`Nat`, not a function, `J(Nat, 0, 1, Nat, (), 0)` fails (`ref_J_nonfn_motive_fails`; it ran to `0` before).
 
 **A private computation keeps the new unknowns' types** (checked on the checker's state at a hole of
 `TAt`, with `F` and `G` in scope): `conv F G` answers `true`, `mkEqM Nat F G` gives `⊤`, and the type
@@ -145,19 +146,17 @@ theorem ref_eqSZ_false (hint : TyS) : ∃ r, run (Kp dm [] G) ρ φ hint (.eq .n
   intro h
   cases h
 
-/-- The reference's `J` means its transported term whatever its endpoints: here `J(Nat, 0, 1, Nat, (), 0)`
-runs to `0`, the state untouched ([J-run]; the checker is stuck there, [J-stuck], and closes the `J`
-off as a block whose one arm is the transported term, [T-J-stuck]). -/
-theorem ref_J_runs_t (hint : TyS) :
-    (run (Kp dm [] G) ρ φ hint (.prim "J" [.nat, .zero, .succ .zero, .nat, .tt, .zero]) (emptyState 0)).map (·.1.1)
-      = some (.el0 Nat 0) := by
+/-- **Since main's D124 the reference's `J` calls its motive** (lead27, docs/31 D184): it hands the transported term
+`P(a)`, the motive called at the first endpoint, as both of the checker's typed paths do. At the motive `Nat`, which is
+not a function, `J(Nat, 0, 1, Nat, (), 0)` now FAILS, as the checker's typed run fails at the call of its motive (this
+test said, before, that the run gives `0`: the reference's `J` means its transported term whatever its endpoints, which
+still holds for a motive that is a function, `JS` above, but is not kernel-checked here). -/
+theorem ref_J_nonfn_motive_fails (hint : TyS) :
+    run (Kp dm [] G) ρ φ hint (.prim "J" [.nat, .zero, .succ .zero, .nat, .tt, .zero]) (emptyState 0) = none := by
   rw [run, runT]
-  show Option.map _ (SM.erasedIf (false, false) _ _) = _
+  show SM.erasedIf (false, false) _ _ = _
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, bind, SM.onCopy]
-  -- the strict ends of [Entry] and the join: the probes' decisions capture and move nothing
-  have hm : ∀ t s, MatchEntryOk (Kp dm [] G) φ true t s := fun t s _ => ⟨trivial, trivial⟩
-  have hj : ∀ en t s, JoinDropOk (Kp dm [] G) φ en t s := fun en t s => trivial
-  simp only [run_one_at dm G ρ φ, hm, hj, if_true]
+  simp only [run_one_at dm G ρ φ]
   rfl
 
 end Ochr.Meaning.Regress.EqJRef

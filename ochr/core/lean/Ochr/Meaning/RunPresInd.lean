@@ -147,8 +147,8 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
     (s' = s ∧ r.2.label = none) ∨
     (∃ t tl', t ∈ args ∧ runT K ρ φ tl' hint t s = some (r, s')) ∨
     (∃ p, readPlace K φ p true s = some (r, s')) ∨
-    -- `J`: its transported term's entry, its run, its join
-    (∃ t s₂, t ∈ args ∧ run K ρ φ (.plain TyM.err) t (matchEntry K φ true t s).1 = some (r, s₂) ∧
+    -- `J`: its transported term's entry, its run (at the hint `P(a)`, main's D124), its join
+    (∃ t hJ s₂, t ∈ args ∧ run K ρ φ hJ t (matchEntry K φ true t s).1 = some (r, s₂) ∧
       s' = joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim n args) s₂) := by
   have prem : ∀ (xs : List Term), (SM.onCopy (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k)
       (pure (.proof, .plain (TyM.prop True))))) s = some (r, s') → s' = s ∧ r.2.label = none :=
@@ -194,15 +194,16 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
     obtain ⟨_, s₃, e3, h⟩ := SM.bind_some h
     obtain ⟨_, s₄, e4, h⟩ := SM.bind_some h
     obtain ⟨_, s₅, e5, h⟩ := SM.bind_some h
+    obtain ⟨_, s₆, e6, h⟩ := SM.bind_some h
     rw [SM.onCopy_state e1] at e2; rw [SM.onCopy_state e2] at e3; rw [SM.onCopy_state e3] at e4
-    rw [SM.onCopy_state e4] at e5; rw [SM.onCopy_state e5] at h
+    rw [SM.onCopy_state e4] at e5; rw [SM.onCopy_state e5] at e6; rw [SM.onCopy_state e6] at h
     dsimp only at h
     split at h
     · split at h
       · rename_i r₁ R₁ s₂ h2
         split at h
         · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-          exact .inr (.inr (.inr ⟨t, s₂, by simp, h2, rfl⟩))
+          exact .inr (.inr (.inr ⟨t, _, s₂, by simp, h2, rfl⟩))
         · cases h
       · cases h
     · cases h
@@ -220,7 +221,7 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
     have key' : ∀ b : Bool × Bool, SM.erasedIf b (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (run K ρ φ hint u)) s = some (r, s') →
         (s' = s ∧ r.2.label = none) ∨ (∃ t tl', t ∈ [u] ∧ runT K ρ φ tl' hint t s = some (r, s')) ∨
         (∃ p, readPlace K φ p true s = some (r, s')) ∨
-        (∃ t s₂, t ∈ [u] ∧ run K ρ φ (.plain TyM.err) t (matchEntry K φ true t s).1 = some (r, s₂) ∧
+        (∃ t hJ s₂, t ∈ [u] ∧ run K ρ φ hJ t (matchEntry K φ true t s).1 = some (r, s₂) ∧
           s' = joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim n [u]) s₂) :=
       fun b h => (key b h).imp_right (Or.imp_right Or.inl)
     rcases hn with rfl | rfl | rfl <;> (rw [runT] at h; exact key' _ h)
@@ -1032,13 +1033,13 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
       · exact .inl rfl) _ hi
     exact ⟨hi', (fun l hl => by cases hl), e', o'⟩
   | tl, .prim n args, hint, s, s', r, hi, h => by
-    rcases run_prim_cases K ρ φ h with ⟨rfl, hl⟩ | ⟨t, tl', ht, h'⟩ | ⟨p, h'⟩ | ⟨t, s₂, ht, h', rfl⟩
+    rcases run_prim_cases K ρ φ h with ⟨rfl, hl⟩ | ⟨t, tl', ht, h'⟩ | ⟨p, h'⟩ | ⟨t, hJ, s₂, ht, h', rfl⟩
     · exact rinv_pure L hi hl
     · exact runAll_rinvT hK args t ht tl' hint s s' r hi h'
     · exact ⟨(readPlace_rinv K φ L h' hi).1, (readPlace_rinv K φ L h' hi).2, readPlace_envLe K φ h',
         readPlace_ordKeep K φ h' hi⟩
     · obtain ⟨hi₁, e₁, o₁⟩ := matchEntry_props K φ L true t hi
-      obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runAll_rinv hK args t ht (.plain TyM.err) _ s₂ r hi₁ h'
+      obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runAll_rinv hK args t ht hJ _ s₂ r hi₁ h'
       exact ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
         e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
         o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩

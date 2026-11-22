@@ -304,13 +304,13 @@ theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInv
 /-! ## The shapes `checkTail` matches -/
 
 /-- The terms `Machine.checkTailAt` treats by their shape: `let`, `;`, the two matches, and the
-primitives `split f in u`, `split f { … }`, `rewrite`/`rewriteR` with two arguments. Every other term in
+primitives `split f in u` and `rewrite`/`rewriteR` with two arguments. Every other term in
 tail position is evaluated (`eval fuel' true t goal`) and handed to the continuation. The patterns are
-`checkTailAt`'s, in its order. -/
+`checkTailAt`'s, in its order. (The braces form `split f { … }`, the primitive `splitArms`, is gone from the core
+since main's D126: `split f(ā) { … }` resolves to `split f in match f(ā) { … }`; docs/31 D184.) -/
 def tailShaped : Term → Bool
   | .letIn .. | .seq .. | .matchNat .. | .matchInd .. => true
   | .prim "split" [.const _, _] => true
-  | .prim "splitArms" [.const _, .letIn ..] => true
   | .prim "rewrite" [_, _] | .prim "rewriteR" [_, _] => true
   | _ => false
 
@@ -367,9 +367,20 @@ def StepRef : Prop := ∀ n, IH K φ n → ∀ Δ ρ A, EvalAt { K with Δ := Δ
 def StepId : Prop := ∀ n, IH K φ n → ∀ Δ ρ A a b, EvalAt { K with Δ := Δ } ρ φ n (.id A a b)
 /-- The step for `(u : A)`. -/
 def StepAscribe : Prop := ∀ n, IH K φ n → ∀ Δ ρ u A, EvalAt { K with Δ := Δ } ρ φ n (.ascribe u A)
-/-- The step for a primitive (`J`, `symm`, `trans`, `rewrite`, `rewriteR`, `split`, `splitArms`, a hole,
+/-- The step for a primitive (`J`, `symm`, `trans`, `rewrite`, `rewriteR`, `split`, a hole,
 `clone`, `peek`, `inplace`, an unknown name). -/
 def StepPrim : Prop := ∀ n, IH K φ n → ∀ Δ ρ nm as, EvalAt { K with Δ := Δ } ρ φ n (.prim nm as)
+/-- **The step for `J(A, a, b, P, h, t)`** (lead27, docs/31 D184), the part of `StepPrim` at `J`. Since main's D124 the
+checker hands the transported term `t` the hint `P(a)` on both typed paths (`Machine.jMotiveAt`: `P` called at `a`'s
+value, on a private copy; the untyped run where `t` reads its hint), and the reference does the same on every run (its
+`J` clause calls the motive's meaning at the first endpoint's, on a copy, `callOf`). What the step will need, beside
+the induction hypothesis at `t` (and at `A`, `a`, `b`, `P`, `h` on copies): [Entry] and [Join] as for a match with one
+arm (`MatchEntryOk`, `JoinDropOk`: D93's open leaves); [J-stuck] as a block (`closeBlock`, the typed run at endpoints
+that do not convert); the two hints agree, the checker's `P(a)` meaning the reference's (a mixed fact, to be stated
+with the step: `jMotiveAt`'s value against `callOf`'s); the erased mode where the table reads `J` as a proof. -/
+def StepJ : Prop :=
+  ∀ n, IH K φ n → ∀ Δ ρ (A a b P h t : Term), EvalAt { K with Δ := Δ } ρ φ n (.prim "J" [A, a, b, P, h, t])
+
 /-- The step for a declared inductive type at its parameters (`evalTInd`). -/
 def StepTInd : Prop := ∀ n, IH K φ n → ∀ Δ ρ nm as, EvalAt { K with Δ := Δ } ρ φ n (.tind nm as)
 /-- The step for a constructor application (`evalCtor`). -/
@@ -390,7 +401,7 @@ def TStepMatchNat : Prop := ∀ n, IH K φ n → ∀ Δ ρ p z u, TailAt { K wit
 /-- A match on a declared inductive in tail position (column `Not`'s general form). -/
 def TStepMatchInd : Prop :=
   ∀ n, IH K φ n → ∀ Δ ρ p ty arms, TailAt { K with Δ := Δ } ρ φ n (.matchInd p ty arms)
-/-- `split f in u`, `split f { … }`, `rewrite h u`, `rewriteR h u` in tail position. -/
+/-- `split f in u`, `rewrite h u`, `rewriteR h u` in tail position. -/
 def TStepPrim : Prop :=
   ∀ n, IH K φ n → ∀ Δ ρ nm as, tailShaped (.prim nm as) = true → TailAt { K with Δ := Δ } ρ φ n (.prim nm as)
 /-- Every other term in tail position: evaluated with the goal as its hint, the result handed to the

@@ -1561,10 +1561,13 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
   | .prim "J" [A, a, b, P, h, t] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t])) (do
     -- `J` means its transported term; its endpoints, motive and proof are statements on copies
     let _ ← SM.onCopy (runT false (.plain TyM.err) A)
-    let _ ← SM.onCopy (runT false (.plain TyM.err) a)
+    let ra ← SM.onCopy (runT false (.plain TyM.err) a)
     let _ ← SM.onCopy (runT false (.plain TyM.err) b)
-    let _ ← SM.onCopy (runT false (.plain TyM.err) P)
+    let rP ← SM.onCopy (runT false (.plain TyM.err) P)
     let _ ← SM.onCopy (runT false (.plain TyM.err) h)
+    -- main's D124: the transported term is handed the motive at the first endpoint, `P(a)`, on both of the
+    -- checker's typed paths (`Machine.jMotiveAt`: `P` called at `a`'s value, on a private copy); docs/31 D184
+    let rPa ← SM.onCopy (callOf K.dm.read rP [ra])
     -- D90 [Entry]: `J` computes, so its transported term's stuck block's captures are accessed
     -- first; then the term runs as the one arm of D84's join (`Machine.evalCore`'s `J`)
     fun s =>
@@ -1572,8 +1575,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       if MatchEntryOk K φ true t s then
       let s := (matchEntry K φ true t s).1
       let entry := movedPlaces φ s
-      -- the transported term runs with no hint (`evalCore`'s `J`, in place; docs/31 D119)
-      match runT false (.plain TyM.err) t s with
+      -- the transported term runs at the hint `P(a)` (`evalCore`'s `J`, in place; D119, main's D124)
+      match runT false (.plain rPa.1.asTy) t s with
       | some ((r, R), s) =>
         if JoinDropOk K φ entry (.prim "J" [A, a, b, P, h, t]) s then
           some ((r, R), joinDrop K φ entry (.prim "J" [A, a, b, P, h, t]) s)
@@ -1590,7 +1593,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT false hint u)) s
   -- `split f in u` ([Split], D61) is a typing device: the end-of-body check checks `u` in each world of the split at
   -- the goal; once run it is its term, at the form's own hint and tail flag (docs/31 D175, the lead's ruling).
-  -- The braces form `split f { … }` has no clause: its core term binds `()` in place of the split value (D178)
+  -- (The braces form is surface syntax only since main's D126: `split f(ā) { … }` resolves to this form.)
   | .prim "split" [.const f, u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "split" [.const f, u]))
       (runT tl hint u) s
   | .prim _ _ => SM.fail

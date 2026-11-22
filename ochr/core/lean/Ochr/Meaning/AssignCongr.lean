@@ -289,9 +289,11 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
       intro _ s₄ e4; have e := SM.onCopy_state e4; subst e
       apply SM.bind_congr (SM.onCopy_congr (hall h' (hm h' (by simp)) _ _))
       intro _ s₅ e5; have e := SM.onCopy_state e5; subst e
+      apply SM.bind_congr rfl
+      intro _ s₆ e6; have e := SM.onCopy_state e6; subst e
       dsimp only
-      rw [show ∀ s₀, runT K ρ φ false (.plain TyM.err) t s₀ = runT (KA K Δ') ρ' φ false (.plain TyM.err) t s₀ from
-        fun s₀ => hall t (hm t (by simp)) _ s₀]
+      rw [show ∀ (hh : TyS) s₀, runT K ρ φ false hh t s₀ = runT (KA K Δ') ρ' φ false hh t s₀ from
+        fun hh s₀ => hall t (hm t (by simp)) hh s₀]
       rfl
     by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
     · obtain ⟨u, hn, hargs⟩ := hc

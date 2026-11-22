@@ -294,8 +294,8 @@ open Ochr.Meaning
 section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
-/-- `J(A, a, b, P, h, t)`: the endpoints, motive and proof on copies, the block entry, the transported
-term, the join. -/
+/-- `J(A, a, b, P, h, t)`: the endpoints, motive and proof on copies, the motive at the first endpoint on a copy
+(the transported term's hint, main's D124), the block entry, the transported term, the join. -/
 theorem fund_J (hc : FundCtx K) {A a b P h t : Term} (ht : Fund K ρ φ t) :
     Fund K ρ φ (.prim "J" [A, a, b, P, h, t]) := fun tl hint => by
   intro s s' r hs hr
@@ -312,6 +312,8 @@ theorem fund_J (hc : FundCtx K) {A a b P h t : Term} (ht : Fund K ρ φ t) :
   rw [SM.onCopy_state g₄] at k₄
   obtain ⟨_, t₅, g₅, k₅⟩ := SM.bind_some k₄
   rw [SM.onCopy_state g₅] at k₅
+  obtain ⟨_, t₆, g₆, k₅⟩ := SM.bind_some k₅
+  rw [SM.onCopy_state g₆] at k₅
   dsimp only at k₅
   obtain ⟨hme, k₅⟩ := open Classical in ite_none_some k₅
   have hs₁ := sgood_matchEntry (K := K) (φ := φ) hs₀ true t hme
@@ -321,7 +323,7 @@ theorem fund_J (hc : FundCtx K) {A a b P h t : Term} (ht : Fund K ρ φ t) :
   · rename_i r' R s₄ h2
     obtain ⟨hjd, h₀⟩ := open Classical in ite_none_some h₀
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
-    obtain ⟨hg, hlab, hlou, hs₄⟩ := ht false (.plain TyM.err) _ _ _ hs₁ h2
+    obtain ⟨hg, hlab, hlou, hs₄⟩ := ht false _ _ _ _ hs₁ h2
     exact fund_join hc (fun _ s => s) (fun _ _ => .inl rfl) _ _ hg hlab hlou hs₄ hjd
   · cases h₀
 

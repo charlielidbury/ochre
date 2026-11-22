@@ -1407,11 +1407,13 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
       intro _ s₄ e4; have e := SM.onCopy_state e4; subst e
       apply SM.bind_congr (SM.onCopy_congr (hall h' (hm h' (by simp)) _ _ hi))
       intro _ s₅ e5; have e := SM.onCopy_state e5; subst e
+      apply SM.bind_congr rfl
+      intro _ s₆ e6; have e := SM.onCopy_state e6; subst e
       dsimp only
       rw [propext (matchEntryOk_congr K hφ hi true t), matchEntry_congr K hφ hi]
       have hi₁ := (matchEntry_props K φ' L true t hi).1
       rw [movedPlaces_congr hφ hi₁]
-      rw [show runT K ρ φ false (.plain TyM.err) t _ = runT K ρ φ' false (.plain TyM.err) t _ from hall t (hm t (by simp)) _ _ hi₁]
+      rw [show runT K ρ φ false _ t _ = runT K ρ φ' false _ t _ from hall t (hm t (by simp)) _ _ hi₁]
       split
       · split
         · rename_i r₁ R₁ s₆ h6

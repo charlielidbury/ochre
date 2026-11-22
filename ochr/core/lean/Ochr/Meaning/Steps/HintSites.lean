@@ -64,12 +64,6 @@ theorem run_split (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (hint
   simp only [SM.erasedIf, SM.stmtIf]
   rfl
 
-/-- The braces form has no clause yet (docs/31 D178: its core term binds `()` in place of the split value). -/
-theorem run_splitArms_fails (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (hint : TyS) (f : String)
-    (w : Term) (s : SState) : runT K ρ φ tl hint (.prim "splitArms" [.const f, w]) s = none := by
-  rw [runT]
-  all_goals first | rfl | (intros; simp_all)
-
 /-! ## What the checker's UNTYPED run does with a `split` (lead25; docs/31 D175; FLIPPED at main's D125/D126)
 
 The lead ruled (task 2(a), lead25's brief) that the reference runs a `split`'s term, and asked first what the

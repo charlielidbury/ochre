@@ -24,13 +24,13 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - PROVED: `stepSeq_untyped` (out of tail position; assumes `UntypedSeqTailNoHint` [checker, PROVED since the merge of D124: `Machine.untypedSeqTailNoHint`], `SeqTailDecl`, `DropValueG`, `ValsCongrA`), `stepLetIn_untyped` (out of tail position, right-hand side not a call; assumes `UntypedLetTailNoHint` [checker, PROVED since the merge of D124: `Machine.untypedLetTailNoHint`], `LetTailDecl`, `LetPushG`, `LetDropG`, `ValsCongrA`); `Machine.seqInvDU`, `Machine.letInvDUn` (proved).
 - PROVED at the merge of main (machine9, spine-machine10): `HintSites.UntypedLetTailNoHint`, `UntypedSeqTailNoHint`, `UntypedMatchNatArmNoHint`, `UntypedMatchIndArmNoHint` (D124), `ClonePeekPlace` (D122), all in `Steps/Machine/HintFacts.lean`. `Machine.LetCallInvU` PROVED since (lead26); `Master.LetLazyPushG` restated (lead26, D180).
 - NEW, open (Consistency chain): `Assembly.inds_prefix` (checker leaf: every stage's declarations are a prefix of the whole program's); `covered_prefix` deleted.
-- The tail shape `split f in u`: the reference now runs `u` (D178). KNOWN FALSE: the tail shape `split f {…}` (`splitArms`): no reference clause (`run_splitArms_fails`); ruling asked (D178).
+- The tail shape `split f in u`: the reference now runs `u` (D178). The braces form `split f {…}` is gone from the core since main's D126 (it resolves to `split f in match f(ā) {…}`), so it has no clause and no step (lead27, D184).
 - `EvalAt`/`CoreSimK`/`EvalSimK` assume `HintBelow` (D179, ruled); the old form is not shown false (counterexample not built).
 
 ## THE MASTER INDUCTION OF (II), CONTINUED (lead24, 2026-11-22, `spine-lead24`; docs/31 D170 to D173)
 - PROVED: `stepSucc` (typed and untyped), assuming 3 NEW facts: `SuccStrictG` (mixed, typed only), `SuccMeanG` (model), `SuccFlightG` (mixed); `Machine.succInvD` (PROVED). The model change it needed (the reference runs `S`'s argument with no hint) is built (D171).
 - (superseded by lead25: `UntypedTailNoHint` is now four facts, one per site)
-- (superseded by lead25, D178: `split f in u` now has its clause; `split f {…}` still has none)
+- (superseded by lead25, D178: `split f in u` now has its clause; the braces form is gone from the core since main's D126, lead27 D184)
 - The erased depth is tested on the reference's side (D170): `DepthRef.column_CapE` (nothing assumed), `column_CtorE` (`CtxFaithful` only); `NestE`, `MatchE`, `ReadE` argued, not run.
 - The hint audit (D172): the model's remaining drifts fixed (`Eq`'s sides, every parameter); eleven sites where the checker's typed and untyped runs differ, and three where the reference differs from the typed check (`J` stuck: open; `rewrite`, `lentProofAssign`: proofs on copies), listed for rulings.
 

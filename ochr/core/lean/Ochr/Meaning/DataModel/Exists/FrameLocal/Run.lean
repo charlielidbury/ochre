@@ -775,6 +775,9 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
       have e := SM.onCopy_state e1; subst s₁
       refine comm_bind (comm_onCopy (hall h' (by simp) false _ s β' hA (hVa h' (by simp)) hR)) fun _ s₁ e1 => ?_
       have e := SM.onCopy_state e1; subst s₁
+      -- the transported term's hint `P(a)` (main's D124), on a copy
+      refine comm_bind (comm_onCopy (callOf_qset hA.twin.pre' _ _ _)) fun rPa s₁ e1 => ?_
+      have e := SM.onCopy_state e1; subst s₁
       unfold Comm; dsimp only
       obtain ⟨hR₁, e₁', -⟩ := matchEntry_props K φ (fun _ => True) true t hR
       generalize hme : matchEntry K φ true t s = me at hR₁ e₁'
@@ -787,10 +790,10 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
       rw [movedPlaces_qset K φ hT₁.pre' hT₁.fix hA.good hA.good']
       by_cases hm : MatchEntryOk K φ true t s
       · rw [if_pos (hok.2 hm), if_pos hm]
-        have ct := hall t (by simp) false (.plain TyM.err) S₁ β' hA₁ (hVt.of_envLe e₁') hR₁
+        have ct := hall t (by simp) false (.plain rPa.1.asTy) S₁ β' hA₁ (hVt.of_envLe e₁') hR₁
         unfold Comm qmap at ct
         rw [ct]
-        cases h2 : runT K ρ φ false (.plain TyM.err) t S₁ with
+        cases h2 : runT K ρ φ false (.plain rPa.1.asTy) t S₁ with
         | none => rfl
         | some z =>
           obtain ⟨⟨r, R⟩, X⟩ := z
