@@ -557,6 +557,16 @@ def checkInd (d : IndDecl) : M Unit := do
         err s!"[Ind] field {fname} of {cn}: its type mentions {", ".intercalate names}, which is not an earlier field (a field's type may mention the parameters and the fields before it)"
   -- D55: parameter and field types are type positions (the fields are in scope, as data)
   let (sc, ns, _) ← telescope (← fuelLeft) true [] [] (d.params.map (·.1)) (d.params.map (·.2))
+  -- D128 [Ind-decl]: a parameter whose declared type reads as a sort is written as one. A field
+  -- type is typed by the reading (D55, below) and nesting decided by the written type
+  -- (`paramIsType`), so a parameter written `B : (let z = A; Type)` was a type for the fields and a
+  -- value for nesting, and a field type read a value parameter that varies. Decided from the
+  -- written types and their readings (`telescope`), nothing run.
+  for (((h, PT), r), i) in (d.params.zip sc.reverse).zipIdx do
+    if let .sort l := r then
+      unless PT matches .sort _ do
+        let S := (Term.sort l).pp []
+        err s!"[D128] the parameter {h.name} of {n} is declared at {PT.pp (pnames.drop (np - i))}, which reads as the sort {S} without being written as one: a type parameter is written as a sort (write {h.name} : {S})"
   for (_, fields) in d.ctors do
     let sc' := sc ++ fields.reverse.map fun _ => DeclInfo.other
     let ns' := ns ++ fields.reverse.map (·.1)
