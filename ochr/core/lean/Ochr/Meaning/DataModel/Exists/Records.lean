@@ -1,5 +1,6 @@
 import Ochr.Meaning.DataModel.Exists.Knot.TruthExists
 import Ochr.Meaning.DataModel.Exists.Piece3
+import Ochr.Meaning.DataModel.Exists.LeafOk
 
 /-!
 # Piece 6: records that read value parameters only small (exists9)
@@ -419,23 +420,27 @@ noncomputable def recCanon : List Sem → Rec :=
   fun ps => recK (knotK K ρ d hs hdΓ hspine hpar hpty) (canonPs K.dm (K.dm.paramTy d) d ps)
 
 /-- **Piece 6 for a data-sorted declaration**: the records `recCanon` are faithful (`types`, `values`,
-`smallOnly`) at any context whose model has them and the same parameter types at `d`. Assumes, besides
-the knot's: `hTyP` (a type parameter's type has no level-0 member; the run-defined parameter types
-read a universe, `Params.pty_type`), `hfree` (`VaryValFree`, a fact about the checker), and `hleaf`, the clause
-`leafOk` itself (OPEN: the knot's field types at members are never the raw code of a `Prop`-sorted
-declaration; a property of the run, see docs/34 §18.14). -/
+`smallOnly`, `leafOk`) at any context whose model has them and the same parameter types at `d`. Assumes,
+besides the knot's: `hTyP` (a type parameter's type has no level-0 member; the run-defined parameter
+types read a universe, `Params.pty_type`) and `hfree` (`VaryValFree`, a fact about the checker).
+`leafOk` holds by the grammar (`LeafOk.ftyK_notRaw`: no field type of the knot is the raw code of a
+`Prop`-sorted declaration; exists10). -/
 theorem recordsFaithful_canon
     (hTyP : ∀ j qs, d.paramIsType j = true → ∀ (A : Type) (c : Code0 A) (v : Sem), K.dm.paramTy d j qs = .t0 A c →
       ¬ v ∈ₛ[K.dm.read] .t0 A c)
     (hfree : VaryValFree d) (K' : RunCtx)
-    (hrec : K'.dm.recOf d = recCanon K ρ d hs hdΓ hspine hpar hpty) (hpt : K'.dm.paramTy d = K.dm.paramTy d)
-    (hleaf : ∀ ps, ps.length = d.params.length → ParamsTyped K'.dm d ps → K'.dm.RecLeafOk d (K'.dm.recOf d ps)) :
+    (hrec : K'.dm.recOf d = recCanon K ρ d hs hdΓ hspine hpar hpty) (hpt : K'.dm.paramTy d = K.dm.paramTy d) :
     RecordsFaithfulAt K' d := by
   have htyped : ∀ ps, ParamsTyped K'.dm d ps → Typed K.dm (K.dm.paramTy d) ps := fun ps h j hj => by
     have := h j hj; rw [hpt] at this; exact this
   have hcanon : ∀ ps, ParamsTyped K'.dm d ps → K'.dm.recOf d ps = recK (knotK K ρ d hs hdΓ hspine hpar hpty) ps :=
     fun ps h => by rw [hrec]; show recK _ (canonPs _ _ _ ps) = _; rw [canonPs_typed _ _ _ ps (htyped ps h)]
-  refine ⟨?types, ?values, ?smallOnly, hleaf⟩
+  refine ⟨?types, ?values, ?smallOnly, ?leafOk⟩
+  case leafOk =>
+    intro ps _ hps
+    rw [hcanon ps hps]
+    exact LeafOk.recLeafOk_of K'.dm _ d ps fun c i es T h =>
+      LeafOk.ftyK_notRaw K ρ d hspine _ ps (LeafOk.params_notRaw hps) c i es T h
   case types =>
     intro ps j A c _ hty hps hj
     rw [hcanon ps hps]
@@ -631,23 +636,26 @@ noncomputable def recCanonP : List Sem → Rec :=
 include hdΓ hspine hpty in
 /-- **Piece 6 for a `Prop`-sorted declaration**: the records `recCanonP` (the truth spec's at the canonical
 parameters) are faithful (`types`, `values`,
-`smallOnly`) at any context whose model has them and the same parameter types at `d`. Assumes, besides
-the knot's: `hTyP` (a type parameter's type has no level-0 member; the run-defined parameter types
-read a universe, `Params.pty_type`), `hfree` (`VaryValFree`, a fact about the checker), and `hleaf`, the clause
-`leafOk` itself (OPEN: the knot's field types at members are never the raw code of a `Prop`-sorted
-declaration; a property of the run, see docs/34 §18.14). -/
+`smallOnly`, `leafOk`) at any context whose model has them and the same parameter types at `d`. Assumes,
+besides the truth spec's: `hTyP` (a type parameter's type has no level-0 member; the run-defined
+parameter types read a universe, `Params.pty_type`) and `hfree` (`VaryValFree`, a fact about the
+checker). `leafOk` holds by the grammar (`LeafOk.ftyP_notRaw`; exists10). -/
 theorem recordsFaithful_canonP
     (hTyP : ∀ j qs, d.paramIsType j = true → ∀ (A : Type) (c : Code0 A) (v : Sem), K.dm.paramTy d j qs = .t0 A c →
       ¬ v ∈ₛ[K.dm.read] .t0 A c)
     (hfree : VaryValFree d) (K' : RunCtx)
-    (hrec : K'.dm.recOf d = recCanonP K ρ d T) (hpt : K'.dm.paramTy d = K.dm.paramTy d)
-    (hleaf : ∀ ps, ps.length = d.params.length → ParamsTyped K'.dm d ps → K'.dm.RecLeafOk d (K'.dm.recOf d ps)) :
+    (hrec : K'.dm.recOf d = recCanonP K ρ d T) (hpt : K'.dm.paramTy d = K.dm.paramTy d) :
     RecordsFaithfulAt K' d := by
   have htyped : ∀ ps, ParamsTyped K'.dm d ps → Typed K.dm (K.dm.paramTy d) ps := fun ps h j hj => by
     have := h j hj; rw [hpt] at this; exact this
   have hcanon : ∀ ps, ParamsTyped K'.dm d ps → K'.dm.recOf d ps = recK (truthSpec K ρ d T) ps :=
     fun ps h => by rw [hrec]; show recK _ (canonPs _ _ _ ps) = _; rw [canonPs_typed _ _ _ ps (htyped ps h)]
-  refine ⟨?types, ?values, ?smallOnly, hleaf⟩
+  refine ⟨?types, ?values, ?smallOnly, ?leafOk⟩
+  case leafOk =>
+    intro ps _ hps
+    rw [hcanon ps hps]
+    exact LeafOk.recLeafOk_of K'.dm _ d ps fun c i es X h =>
+      LeafOk.ftyP_notRaw K ρ d hspine T ps (LeafOk.params_notRaw hps) c i es X h
   case types =>
     intro ps j A c _ hty hps hj
     rw [hcanon ps hps]
