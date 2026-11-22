@@ -269,4 +269,58 @@ theorem spineArgsB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDec
         (spineArgsB_sound h2)
 end
 
+/-! ## Rule (A*), Lean's: a nested occurrence passes only through declarations of its own sort
+
+ADOPTED by the lead (2026-11-22), subject to measurement, with (A) and (B). Two parts, each a `Bool`
+on syntax, the declarations and their stored nestable sets; the checker enforces both at every
+declaration `d` (with `Γ` the declarations up to and including `d`): `AStarOk Γ d`.
+* (i) `occSortB`: every applied declaration in a field type of `d` one of whose arguments mentions `d`
+  has `d`'s sort (for a data-sorted `d` this is part of what `Spine`'s (A) asks of the argument).
+* (ii) `NestSortB`: each parameter `d` stores as nestable is passed, in every field type of `d`, only to
+  declarations of `d`'s sort (D107's nestable computation, with that condition added).
+The knot (`knot_exists`) does not need (A*): its records keep a declaration of the other sort as a
+sub-record, and stay parametric (`CrossSortCE.hpar_E`). The truth-first construction of `Prop`-sorted
+declarations needs it: with it, every shape a nestable `Prop` parameter reaches is a proposition leaf
+(`mono_prop`'s hypothesis). -/
+
+/-- The sort of the declaration named `n` in `Γ`. -/
+def sortIn (Γ : List IndDecl) (n : String) : Option Nat := (Γ.find? (·.name == n)).map (·.sort)
+
+mutual
+/-- (A*)(i) in `t`: an applied declaration one of whose arguments mentions `d` has `d`'s sort. -/
+def occSortB (Γ : List IndDecl) (d : IndDecl) : Term → Bool
+  | .tind n as => (!(Term.mentionsTypeList d.name as) || sortIn Γ n == some d.sort) && occSortListB Γ d as
+  | _ => true
+termination_by structural t => t
+
+def occSortListB (Γ : List IndDecl) (d : IndDecl) : List Term → Bool
+  | [] => true
+  | a :: as => occSortB Γ d a && occSortListB Γ d as
+termination_by structural as => as
+end
+
+mutual
+/-- (A*)(ii) in `t`, at variable `v`: an applied declaration one of whose arguments mentions `v` has
+sort `s`. -/
+def passSortB (Γ : List IndDecl) (s v : Nat) : Term → Bool
+  | .tind n as => (!(as.any fun a => a.freeVars.contains v) || sortIn Γ n == some s) && passSortListB Γ s v as
+  | _ => true
+termination_by structural t => t
+
+def passSortListB (Γ : List IndDecl) (s v : Nat) : List Term → Bool
+  | [] => true
+  | a :: as => passSortB Γ s v a && passSortListB Γ s v as
+termination_by structural as => as
+end
+
+/-- (A*)(ii) at `M`: each stored nestable parameter (variable `np - 1 - j` in a field type) is passed
+only to declarations of `M`'s sort. -/
+def NestSortB (Γ : List IndDecl) (M : IndDecl) : Bool :=
+  (List.range M.params.length).all fun j => !(M.nestable.getD j false) ||
+    M.ctors.all fun cs => cs.2.all fun f => passSortB Γ M.sort (M.params.length - 1 - j) f.2
+
+/-- **Rule (A*) at a declaration** (`Γ`: the declarations up to and including `d`). -/
+def AStarOk (Γ : List IndDecl) (d : IndDecl) : Bool :=
+  (d.ctors.all fun cs => cs.2.all fun f => occSortB Γ d f.2) && NestSortB Γ d
+
 end Ochr.Meaning.DataModel.Exists.Knot
