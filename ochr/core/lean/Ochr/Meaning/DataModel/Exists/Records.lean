@@ -412,7 +412,7 @@ theorem paramTyOf_recK' (dm : DataModel) (S : KnotSpec) (ps : List Sem) (j : Nat
 section
 variable (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort ≠ 0) (hdΓ : d ∈ K.Γ)
   (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT)
-  (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
+  (hpar : ParHyp K d)
   (hpty : ParamTyLocalD K.dm d)
 
 /-- **The model's record of a data-sorted declaration**: the knot's at the canonical parameters. -/

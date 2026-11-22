@@ -281,6 +281,8 @@ import Ochr.Meaning.DataModel.Exists.Knot.NestLoop
 import Ochr.Meaning.DataModel.Exists.Knot.FromChecks
 import Ochr.Meaning.DataModel.Exists.Records
 import Ochr.Meaning.DataModel.Exists.Params
+import Ochr.Meaning.DataModel.Exists.LeafOk
+import Ochr.Meaning.DataModel.Exists.PropParCE
 import Ochr.Meaning.DataModel.Exists.ScopeCE
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs

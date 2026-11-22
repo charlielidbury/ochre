@@ -289,7 +289,7 @@ theorem steadyAt_spec (K : RunCtx) (ρ : Assignment) (d : IndDecl) (S : KnotSpec
 /-- **The steady nodes agree, at the knot's own records**: `SteadyAt` for `knotK`. -/
 theorem steadyAt_knotK (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hs : d.sort ≠ 0) (hdΓ : d ∈ K.Γ)
     (hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT)
-    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
+    (hpar : ParHyp K d)
     (hpty : ParamTyLocalD K.dm d)
     (hD : FrameLocal.DecLocal K.D) (hK : ∀ g, (K.C.global g).2.label = none) :
     SteadyAt K ρ d (recK (knotK K ρ d hs hdΓ hspine hpar hpty)) :=
