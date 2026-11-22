@@ -80,7 +80,7 @@ theorem globals_typed (dm : DataModel) (D : MState → Decisions) (fuel : Nat) (
 /-! ## Pieces 3 and 4: a data-sorted declaration's knot -/
 
 /- `knot_exists` is PROVED (exists6, 2026-11-22) in the default build: `Knot.knot_exists`
-(`Knot/Exists.lean`, standard axioms), assuming five named facts (`GrammarOk`, `hpar`,
+(`Knot/Exists.lean`, standard axioms), assuming six named facts (`GrammarCoreOk`, `GrammarHintOk`, `hpar`,
 `ParamTyLocal`, `DecLocal`, label-free globals). The statement that stood here (exists5's
 restatement) asked the earlier fields to fit the knot's shapes and assumed `GlobalsTyped`; the proved
 one asks them to be members of their field types (what `FieldsFaithful` hands its consumer), so

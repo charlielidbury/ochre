@@ -29,11 +29,13 @@ namespace Ochr.Meaning.DataModel.Exists.Knot
 
 open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 
-/-- **A `Prop`-sorted declaration's records exist, truth first.** Assumes: the grammar fact
-`PGrammarOk` (about the checker); `DecLocal` (an obligation on the decisions); the earlier
-`Prop`-sorted records monotone (`hmono`), `ParamTyLocal` and label-free globals (for the assembly). -/
+/-- **A `Prop`-sorted declaration's records exist, truth first.** Assumes six named facts: about the
+checker, to be derived from its checks today (step 2, not yet proved): `hcore` (`PGrammarCoreOk`);
+about the checker, ENFORCED AFTER MAIN'S D123: `hhint` (`GrammarHintOk`); an obligation on the
+decisions: `hD` (`DecLocal`); for the assembly: `hmono` (the earlier `Prop`-sorted records monotone),
+`hpty` (`ParamTyLocal`), `hK` (label-free globals). -/
 theorem truth_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort = 0)
-    (hgram : PGrammarOk K.Γ d)
+    (hcore : PGrammarCoreOk K.Γ d) (hhint : GrammarHintOk K.Γ d)
     (hmono : ∀ M ∈ K.Γ, M ≠ d → M.sort = 0 → ∀ ps ps', PropLe M ps ps' → ∀ c i es, es.length = i →
       ShapeLe (uShape M (K.dm.recOf M ps) c i es) (uShape M (K.dm.recOf M ps') c i es))
     (hpty : ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
@@ -49,7 +51,7 @@ theorem truth_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.
         run { K with dm := setRec K.dm d (recK S) } ρ noFuture (.plain (TyM.univ 1)) FT
           (teleFrame (setRec K.dm d (recK S)) K.D d ps c e) = some (r, s') →
           r.1.asTy = (S.fty (recK S) ps c i (projIdx d c (e.map Sem.small))).mean := by
-  have G : TruthHyp K d := ⟨hs, hd, fun c i FT h => pspineB_sound (hgram c i FT h), hmono, hpty⟩
+  have G : TruthHyp K d := ⟨hs, hd, fun c i FT h => pspineB_sound (pgrammarOk_of_parts hcore hhint c i FT h), hmono, hpty⟩
   exact ⟨truthSpec K ρ d (truthP K ρ d), truthP K ρ d, rfl, uTyR_truthRec G, fun _ _ hp => truthRec_mono G hp,
     truth_agree K ρ d G (steadyAt_spec K ρ d _ hD hK)⟩
 

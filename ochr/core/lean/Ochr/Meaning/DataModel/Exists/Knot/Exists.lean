@@ -7,7 +7,8 @@ Pieces 3 and 4 of the existence proof for a data-sorted declaration (docs/34 §1
 assembly uses: a guarded knot (`KnotSpec`) whose field types are the reference run's readings of the
 declared field types in the frame the checker types a field in (`teleFrame`), at the knot's own
 records. Restated from `General.knot_exists` (exists5's restatement, outside the build, `sorry`):
-* the grammar is the one checker fact `GrammarOk` (decidable, `Grammar.lean`), not `Spine` directly;
+* the grammar is two checker facts, `GrammarCoreOk` and `GrammarHintOk` (decidable, `Grammar.lean`;
+  their conjunction gives `Spine`), not `Spine` directly;
 * the earlier fields are asked to be members of their field types at the knot's model (what
   `FieldsFaithful` hands its consumer), not to fit the knot's shapes; with that, `GlobalsTyped` and
   the lookup hypothesis `hfind` are not needed (they served only to turn fitting into membership).
@@ -17,16 +18,18 @@ namespace Ochr.Meaning.DataModel.Exists.Knot
 
 open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 
-/-- **A data-sorted declaration's canonical knot exists.** Assumes five named facts, of three kinds:
-* about the checker, NOT YET ENFORCED by it: `hgram` (`GrammarOk`: the first-order grammar with (A),
-  (B), (B2); rule (A*) is not needed here and is not part of it);
+/-- **A data-sorted declaration's canonical knot exists.** Assumes six named facts, of four kinds:
+* about the checker, to be derived from its checks today (step 2, not yet proved): `hcore`
+  (`GrammarCoreOk`: the first-order grammar with (A), (B); rule (A*) is not needed here);
+* about the checker, ENFORCED AFTER MAIN'S D123 (false today at `HintShapes.DK`): `hhint`
+  (`GrammarHintOk`: (B2) at every value argument along the spine);
 * an obligation on the checker's decisions, for the machine lane: `hD` (`DecLocal`, frame locality's);
 * for the assembly to discharge: `hpar` (the earlier declarations' records are parametric in their
   nestable parameters; canonical records are, e.g. `CrossSortCE.hpar_E`), `hpty` (the earlier
   parameter types are local, `ParamTyLocal`), `hK` (the globals carry no label). The witness is `knotK`; guardedness is `ftyK_agree`, the agreement with the run is
 `knotK_agree` along the spine and `steadyAt_knotK` at the steady nodes. -/
 theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort ≠ 0)
-    (hgram : GrammarOk K.Γ d)
+    (hcore : GrammarCoreOk K.Γ d) (hhint : GrammarHintOk K.Γ d)
     (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
     (hpty : ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
     (hK : ∀ g, (K.C.global g).2.label = none) :
@@ -39,7 +42,7 @@ theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.�
           (teleFrame (setRec K.dm d (recK S)) K.D d ps c e) = some (r, s') →
           r.1.asTy = (S.fty (recK S) ps c i (projIdx d c (e.map Sem.small))).mean := by
   have hspine : ∀ c i FT, fieldTerm d c i = some FT → Spine K.Γ d c FT :=
-    fun c i FT h => spineB_sound (hgram c i FT h)
+    fun c i FT h => spineB_sound (grammarOk_of_parts hcore hhint c i FT h)
   exact ⟨knotK K ρ d hs hd hspine hpar hpty, rfl, fun _ => rfl,
     knotK_agree K ρ d hs hd hspine hpar hpty (steadyAt_knotK K ρ d hs hd hspine hpar hpty hD hK)⟩
 

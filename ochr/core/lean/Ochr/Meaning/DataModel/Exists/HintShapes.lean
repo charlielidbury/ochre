@@ -70,12 +70,15 @@ def items : List Item :=
     | .error _ => none
 
 open Ochr.Meaning.DataModel.Exists.Knot in
--- the grammar at each declaration the checker stores (`DF`, `DK2` pass; `DK`, `DT3` do not), and
+-- the grammar at each declaration the checker stores (`DF`, `DK2` pass; `DK`, `DT3` do not), in its
+-- two parts: all four pass `GrammarCoreOk`; `DK`, `DT3` fail only `GrammarHintOk` ((B2), main's D123);
 -- `NF`'s, `PK`'s and `PF`'s first parameter is stored nestable
 #guard let inds := (globalsAfter {} items).2
-  let ok (n : String) : Option Bool := (inds.find? (·.name == n)).map fun d => decide (GrammarOk inds d)
+  let ok (n : String) : Option (Bool × Bool × Bool) := (inds.find? (·.name == n)).map fun d =>
+    (decide (GrammarOk inds d), decide (GrammarCoreOk inds d), decide (GrammarHintOk inds d))
   let nest (n : String) : Option (List Bool) := (inds.find? (·.name == n)).map (·.nestable)
-  [ok "DF", ok "DK2", ok "DK", ok "DT3"] == [some true, some true, some false, some false] &&
+  [ok "DF", ok "DK2", ok "DK", ok "DT3"] ==
+      [some (true, true, true), some (true, true, true), some (false, true, false), some (false, true, false)] &&
     [nest "NF", nest "PK", nest "PF"] == [some [true, false, false], some [true, false], some [true, false, false]]
 
 end Ochr.Meaning.DataModel.Exists.HintShapes

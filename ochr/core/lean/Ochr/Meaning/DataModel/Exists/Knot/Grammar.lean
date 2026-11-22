@@ -441,4 +441,215 @@ theorem pspineArgsB_sound {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDe
         (pspineArgsB_sound h2)
 end
 
+
+/-! ## The grammar in two parts: enforced by the checker today, enforced after main's D123
+
+The lead's ruling (2026-11-22) on (B2): the checker is to store, in a declaration's field and parameter
+types, the parameters it solves for a constructor (main's D123, as Lean's elaborator writes every
+implicit argument). Until then (B2) is false at an accepted declaration (`HintShapes.DK`). So the grammar
+is two named facts: `GrammarCoreOk` (everything but (B2): the first-order grammar, (A), (B); to be
+derived from the checker's checks, step 2) and `GrammarHintOk` ((B2) at every value argument along the
+spine: ENFORCED AFTER MAIN'S D123). Their conjunction is `GrammarOk` (`grammarOk_of_parts`), and likewise
+for `Prop`-sorted declarations (`PGrammarCoreOk`, the same `GrammarHintOk`). -/
+
+/-- The decided check at every field of every constructor, as a `Prop`. -/
+theorem allFields_iff (d : IndDecl) (P : Nat → Term → Bool) :
+    (d.ctors.zipIdx.all fun (cs, c) => cs.2.all fun (_, FT) => P c FT) = true ↔
+      ∀ c i FT, fieldTerm d c i = some FT → P c FT = true := by
+  unfold fieldTerm
+  constructor
+  · intro h c i FT hFT
+    cases hc : d.ctors[c]? with
+    | none => simp [hc] at hFT
+    | some cs =>
+      simp only [hc, Option.bind_some, Option.map_eq_some_iff] at hFT
+      obtain ⟨⟨nm, FT'⟩, h1, rfl⟩ := hFT
+      simp only [List.all_eq_true] at h
+      have hcs : (cs, c) ∈ d.ctors.zipIdx := by
+        rw [List.mem_iff_getElem?]; exact ⟨c, by simp [List.getElem?_zipIdx, hc]⟩
+      exact h _ hcs _ (List.mem_of_getElem? h1)
+  · intro h
+    simp only [List.all_eq_true]
+    rintro ⟨cs, c⟩ hm ⟨nm, FT⟩ hf
+    have hc : d.ctors[c]? = some cs := by
+      rw [List.mem_iff_getElem?] at hm
+      obtain ⟨k, hk⟩ := hm
+      rw [List.getElem?_zipIdx] at hk
+      cases hk' : d.ctors[k]? with
+      | none => simp [hk'] at hk
+      | some x =>
+        simp only [hk', Option.map_some, Option.some.injEq, Prod.mk.injEq] at hk
+        obtain ⟨rfl, rfl⟩ := hk; simpa using hk'
+    obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hf
+    exact h c i FT (by simp [hc, hi])
+
+mutual
+/-- **(B2) along a field type's spine**: at each value argument of an applied declaration (inside the
+field type and, recursively, inside its arguments at type parameters), the hint is steady or the
+argument does not read it (`hintFreeB`). -/
+def valHintB (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Bool
+  | .tind n as => match Γ.find? (·.name == n) with
+    | some M => valHintArgsB Γ d c M 0 [] as
+    | none => true
+  | _ => true
+termination_by structural t => t
+
+def valHintArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat → List Term → List Term → Bool
+  | _, _, [] => true
+  | j, pre, a :: as =>
+    (if M.paramIsType j then valHintB Γ d c a else (hintSteadyB d c M j pre || hintFreeB Γ a)) &&
+      valHintArgsB Γ d c M (j + 1) (pre ++ [a]) as
+termination_by structural _ _ as => as
+end
+
+/-- **(B2) at every field: a fact about the checker ENFORCED AFTER MAIN'S D123** (false today at
+`HintShapes.DK`). -/
+def GrammarHintOk (Γ : List IndDecl) (d : IndDecl) : Prop :=
+  ∀ c i FT, fieldTerm d c i = some FT → valHintB Γ d c FT = true
+
+instance (Γ : List IndDecl) (d : IndDecl) : Decidable (GrammarHintOk Γ d) :=
+  decidable_of_iff _ (allFields_iff d (valHintB Γ d))
+
+mutual
+/-- `spineB` without (B2): the part of the grammar the checker enforces today. -/
+def spineCoreB (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Bool
+  | .nat => true
+  | .unit => true
+  | .place (.var v) => decide (v < d.params.length)
+  | .tind n as => match Γ.find? (·.name == n) with
+    | some M => spineCoreArgsB Γ d c M 0 [] as
+    | none => false
+  | .call (.const f) as hd => steadyB d c (.call (.const f) as hd)
+  | .eq A a b => steadyB d c (.eq A a b)
+  | _ => false
+termination_by structural t => t
+
+def spineCoreArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat → List Term → List Term → Bool
+  | _, _, [] => true
+  | j, pre, a :: as =>
+    (if M.paramIsType j then
+      spineCoreB Γ d c a && (steadyB d c a || (nestOf M j && notPropDecl Γ a))
+    else steadyB d c a) && spineCoreArgsB Γ d c M (j + 1) (pre ++ [a]) as
+termination_by structural _ _ as => as
+end
+
+mutual
+theorem spineB_of_parts {Γ : List IndDecl} {d : IndDecl} {c : Nat} :
+    ∀ {t : Term}, spineCoreB Γ d c t = true → valHintB Γ d c t = true → spineB Γ d c t = true
+  | .nat, _, _ => by simp [spineB]
+  | .unit, _, _ => by simp [spineB]
+  | .place p, h1, _ => by cases p <;> simp_all [spineCoreB, spineB]
+  | .call f as hd, h1, _ => by cases f <;> simp_all [spineCoreB, spineB]
+  | .eq A a b, h1, _ => by simp_all [spineCoreB, spineB]
+  | .tind n as, h1, h2 => by
+    simp only [spineCoreB] at h1
+    simp only [valHintB] at h2
+    simp only [spineB]
+    split at h1
+    · rename_i M hM
+      rw [hM] at h2
+      exact spineArgsB_of_parts h1 h2
+    · cases h1
+  | .borrow _, h1, _ | .assign _ _, h1, _ | .letIn _ _ _, h1, _ | .seq _ _, h1, _ | .matchNat _ _ _, h1, _ | .const _, h1, _
+  | .val _, h1, _ | .sort _, h1, _ | .pi _ _ _, h1, _ | .fix _ _ _ _ _ _, h1, _ | .zero, h1, _ | .succ _, h1, _ | .tt, h1, _
+  | .cong _ _, h1, _ | .ref _, h1, _ | .id _ _ _, h1, _ | .ascribe _ _, h1, _ | .prim _ _, h1, _ | .ctor _ _ _ _ _, h1, _
+  | .matchInd _ _ _, h1, _ => by simp [spineCoreB] at h1
+
+theorem spineArgsB_of_parts {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDecl} :
+    ∀ {j : Nat} {pre as : List Term}, spineCoreArgsB Γ d c M j pre as = true → valHintArgsB Γ d c M j pre as = true →
+      spineArgsB Γ d c M j pre as = true
+  | _, _, [], _, _ => by simp [spineArgsB]
+  | j, pre, a :: as, h1, h2 => by
+    simp only [spineCoreArgsB, valHintArgsB, spineArgsB, Bool.and_eq_true] at h1 h2 ⊢
+    refine ⟨?_, spineArgsB_of_parts h1.2 h2.2⟩
+    by_cases hty : M.paramIsType j = true
+    · simp only [hty, if_true, Bool.and_eq_true] at h1 h2 ⊢
+      exact ⟨spineB_of_parts h1.1.1 h2.1, h1.1.2⟩
+    · simp only [hty, Bool.false_eq_true, if_false, Bool.and_eq_true] at h1 h2 ⊢
+      exact ⟨h1.1, h2.1⟩
+end
+
+/-- **The rest of the grammar at every field (data-sorted): a fact about the checker, to be derived
+from its checks today** (step 2). -/
+def GrammarCoreOk (Γ : List IndDecl) (d : IndDecl) : Prop :=
+  ∀ c i FT, fieldTerm d c i = some FT → spineCoreB Γ d c FT = true
+
+instance (Γ : List IndDecl) (d : IndDecl) : Decidable (GrammarCoreOk Γ d) :=
+  decidable_of_iff _ (allFields_iff d (spineCoreB Γ d))
+
+theorem grammarOk_of_parts {Γ : List IndDecl} {d : IndDecl} (h1 : GrammarCoreOk Γ d) (h2 : GrammarHintOk Γ d) :
+    GrammarOk Γ d :=
+  fun c i FT hFT => spineB_of_parts (h1 c i FT hFT) (h2 c i FT hFT)
+
+mutual
+/-- `pspineB` without (B2): the part of the grammar the checker enforces today. -/
+def pspineCoreB (Γ : List IndDecl) (d : IndDecl) (c : Nat) : Term → Bool
+  | .nat => true
+  | .unit => true
+  | .place (.var v) => decide (v < d.params.length)
+  | .tind n as => match Γ.find? (·.name == n) with
+    | some M => pspineCoreArgsB Γ d c M 0 [] as
+    | none => false
+  | .call (.const f) as hd => steadyB d c (.call (.const f) as hd)
+  | .eq A a b => steadyB d c (.eq A a b)
+  | _ => false
+termination_by structural t => t
+
+def pspineCoreArgsB (Γ : List IndDecl) (d : IndDecl) (c : Nat) (M : IndDecl) : Nat → List Term → List Term → Bool
+  | _, _, [] => true
+  | j, pre, a :: as =>
+    (if M.paramIsType j then
+      pspineCoreB Γ d c a && (steadyB d c a || (nestOf M j && isType0 (paramTerm M j) && M.sort == 0))
+    else steadyB d c a) && pspineCoreArgsB Γ d c M (j + 1) (pre ++ [a]) as
+termination_by structural _ _ as => as
+end
+
+mutual
+theorem pspineB_of_parts {Γ : List IndDecl} {d : IndDecl} {c : Nat} :
+    ∀ {t : Term}, pspineCoreB Γ d c t = true → valHintB Γ d c t = true → pspineB Γ d c t = true
+  | .nat, _, _ => by simp [pspineB]
+  | .unit, _, _ => by simp [pspineB]
+  | .place p, h1, _ => by cases p <;> simp_all [pspineCoreB, pspineB]
+  | .call f as hd, h1, _ => by cases f <;> simp_all [pspineCoreB, pspineB]
+  | .eq A a b, h1, _ => by simp_all [pspineCoreB, pspineB]
+  | .tind n as, h1, h2 => by
+    simp only [pspineCoreB] at h1
+    simp only [valHintB] at h2
+    simp only [pspineB]
+    split at h1
+    · rename_i M hM
+      rw [hM] at h2
+      exact pspineArgsB_of_parts h1 h2
+    · cases h1
+  | .borrow _, h1, _ | .assign _ _, h1, _ | .letIn _ _ _, h1, _ | .seq _ _, h1, _ | .matchNat _ _ _, h1, _ | .const _, h1, _
+  | .val _, h1, _ | .sort _, h1, _ | .pi _ _ _, h1, _ | .fix _ _ _ _ _ _, h1, _ | .zero, h1, _ | .succ _, h1, _ | .tt, h1, _
+  | .cong _ _, h1, _ | .ref _, h1, _ | .id _ _ _, h1, _ | .ascribe _ _, h1, _ | .prim _ _, h1, _ | .ctor _ _ _ _ _, h1, _
+  | .matchInd _ _ _, h1, _ => by simp [pspineCoreB] at h1
+
+theorem pspineArgsB_of_parts {Γ : List IndDecl} {d : IndDecl} {c : Nat} {M : IndDecl} :
+    ∀ {j : Nat} {pre as : List Term}, pspineCoreArgsB Γ d c M j pre as = true → valHintArgsB Γ d c M j pre as = true →
+      pspineArgsB Γ d c M j pre as = true
+  | _, _, [], _, _ => by simp [pspineArgsB]
+  | j, pre, a :: as, h1, h2 => by
+    simp only [pspineCoreArgsB, valHintArgsB, pspineArgsB, Bool.and_eq_true] at h1 h2 ⊢
+    refine ⟨?_, pspineArgsB_of_parts h1.2 h2.2⟩
+    by_cases hty : M.paramIsType j = true
+    · simp only [hty, if_true, Bool.and_eq_true] at h1 h2 ⊢
+      exact ⟨pspineB_of_parts h1.1.1 h2.1, h1.1.2⟩
+    · simp only [hty, Bool.false_eq_true, if_false, Bool.and_eq_true] at h1 h2 ⊢
+      exact ⟨h1.1, h2.1⟩
+end
+
+/-- **The rest of the grammar at every field (`Prop`-sorted): a fact about the checker, to be derived
+from its checks today** (step 2). -/
+def PGrammarCoreOk (Γ : List IndDecl) (d : IndDecl) : Prop :=
+  ∀ c i FT, fieldTerm d c i = some FT → pspineCoreB Γ d c FT = true
+
+instance (Γ : List IndDecl) (d : IndDecl) : Decidable (PGrammarCoreOk Γ d) :=
+  decidable_of_iff _ (allFields_iff d (pspineCoreB Γ d))
+
+theorem pgrammarOk_of_parts {Γ : List IndDecl} {d : IndDecl} (h1 : PGrammarCoreOk Γ d) (h2 : GrammarHintOk Γ d) :
+    PGrammarOk Γ d :=
+  fun c i FT hFT => pspineB_of_parts (h1 c i FT hFT) (h2 c i FT hFT)
+
 end Ochr.Meaning.DataModel.Exists.Knot

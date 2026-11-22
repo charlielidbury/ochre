@@ -43,11 +43,18 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `Steady.steadyAt_spec`: the steady-node agreement for ANY `KnotSpec` (canonical frame typed by the spec's own field types; `SteadyAtS` in Agree.lean); `steadyAt_knotK` is its instance.
 - `truth_exists` PROVED (`Knot/TruthExists.lean`, docs/34 §18.11): truth interpreter `semP`/`ftyP` (`TruthInterp.lean`), monotonicity `ftyP_le` and the fixed point `truthP` (`TruthMono.lean`, `Truth.lfpM`: least fixed point among argument-monotone predicates), agreement `truth_agree` (`TruthAgree.lean`). Assumes `PGrammarOk`, `hmono` (earlier Prop-sorted records monotone, genuine keys), `ParamTyLocal`, `DecLocal`, label-free globals. Returns d's records monotone (for the next `hmono`). `General.truth_exists` (sorry) retired.
 
-## Which grammar predicate each theorem assumes
+## Which grammar predicate each theorem assumes (two named parts, the lead's instruction)
 
-- `Knot.knot_exists` (data-sorted): `GrammarOk K.Γ d` (`spineB`). No same-sort predicate.
-- `Knot.truth_exists` (`Prop`-sorted): `PGrammarOk K.Γ d` (`pspineB`; it carries (A*) for `d` itself). No `AStarOk` at the earlier declarations.
-- Step 2 of the lead's brief (checker acceptance gives these) is NOT started: `Scratch/GrammarSweep.lean` (untracked) sweeps the example corpus; run it before stating the implication.
+- `GrammarCoreOk` / `PGrammarCoreOk`: the grammar minus (B2); a fact about the checker, to be derived from its checks today (step 2).
+- `GrammarHintOk`: (B2) along the spine; a fact about the checker ENFORCED AFTER MAIN'S D123 (ruled 2026-11-22: the checker stores solved constructor parameters; spec in docs/34 §18.10). False today at `HintShapes.DK`.
+- `Knot.knot_exists`: `GrammarCoreOk` + `GrammarHintOk` (+ `hpar`, `ParamTyLocal`, `DecLocal`, label-free globals). No same-sort predicate.
+- `Knot.truth_exists`: `PGrammarCoreOk` + `GrammarHintOk` (+ `hmono`, `ParamTyLocal`, `DecLocal`, label-free globals). `PSpine` carries (A*) for `d`; no `AStarOk` at earlier declarations.
+- Report theorems as "assumes N facts", sorted: about the checker and not enforced (`GrammarHintOk` until D123); about the checker and enforced but unproved (`GrammarCoreOk`, step 2); obligations on the decisions (`DecLocal`); for the assembly.
+- `Scratch/GrammarSweep.lean` (untracked) evaluates the grammar at every declaration of every registered example block (~16 min); run it before stating step 2's implication.
+
+## Assembly obligation found while reading `CtxFaithful` (not yet addressed)
+
+`CtxFaithful K` quantifies `∀ Δ ρ`, but `knotK`/`truthSpec` take `ρ` (the interpreter's `valOf` runs under `ρ`). The assembly must build records that do not depend on `ρ`: either show a declared field type's run does not read `ρ` (declared types hold no hole or unknown), or fix `ρ` and prove the run's congruence in `ρ` for such terms.
 
 ## Next
 
