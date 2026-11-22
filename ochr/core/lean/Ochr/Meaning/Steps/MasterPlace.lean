@@ -23,8 +23,8 @@ assemblies are PROVED from them:
 The class: a direct place, an unerased term the table reads as decided data. NOT covered: a place with a positional
 projection (a one-constructor match, `projMatch`; its arm is a direct read of the field); an erased read (the erased
 wrapper, D158). The read of a borrow whose content is partly moved is accepted today (`PlaceGuards.MB2`, D181) and
-will be rejected (RULED (A), main's D127): the step assumes it as one named checker fact, `BorrowReadWhole`, false
-until then.
+is rejected since main's D127 (RULED (A); merged into the proof line by machine11): the step takes it as one named
+checker fact, `BorrowReadWhole`, PROVED (`Machine.borrowReadWhole`, `Steps/Machine/BorrowRead.lean`).
 -/
 
 namespace Ochr.Meaning.Steps.Form.Master
@@ -99,10 +99,11 @@ def ReadInvD : Prop :=
         ((∀ l w, v ≠ .borrow l w) → v.hasHole = false) ∧
         ∃ E', ckSetBot stA.env pos p.steps.2 = some E' ∧ Kern { stA with env := E' } st')
 
-/-- **A read of a place holding a borrow finds the borrow's content whole** (a fact about the checker alone; FALSE
-today, TRUE after main's D127, the lead's ruling (A) on D181, D182): `readPlace`'s borrow branch runs before the
-`hasHole` test every other moved value meets. Pin: `PlaceGuards.readR` (at `MB2`'s point the read returns a borrow
-over `(⊥, σb)`; it fails after D127), beside `MB1` (accepted) and `MB3` (rejected). -/
+/-- **A read of a place holding a borrow finds the borrow's content whole** (a fact about the checker alone; PROVED
+since main's D127 was merged, machine11: `Machine.borrowReadWhole`, `Steps/Machine/BorrowRead.lean`; the lead's ruling
+(A) on D181, D182): `readPlace`'s borrow branch runs before the
+`hasHole` test every other moved value meets. Pin: `PlaceGuards.readR` (at `MB2`'s point the read of `r` now fails, D127;
+before it, it returned a borrow over `(⊥, σb)`), beside `MB1` (accepted) and `MB3` (rejected). -/
 def BorrowReadWhole : Prop :=
   ∀ (n : Nat) (p : Place) (st st' : MState) (bh : Nat) (v : Value),
     Runs (Ochr.readPlace n p) st bh v st' → ∀ l w, v = .borrow l w → w.hasHole = false
@@ -332,7 +333,7 @@ theorem place_coreT (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD) (hBW :
 
 /-- **The step for a direct place read, typed or untyped, at every tail flag, where the table reads it as decided
 data** (docs/31 D181, D182), with what the run keeps. ASSUMES 7 facts: `EvalInvDT`, `PlaceInvD`, `ReadInvD`,
-`BorrowReadWhole` (checker; the last FALSE today, true after main's D127), `PlaceTypeG`, `AccessG`, `ReadOutG` (each
+`BorrowReadWhole` (checker; PROVED, `Machine.borrowReadWhole`), `PlaceTypeG`, `AccessG`, `ReadOutG` (each
 part checker, part model). It uses no induction hypothesis (a read has no sub-run). -/
 theorem stepPlace_direct (hET : EvalInvDT) (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD)
     (hBW : BorrowReadWhole) (hA : AccessG) (hRO : ReadOutG) :
