@@ -509,7 +509,7 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
   | .prim "trans" as | .prim "symm" as | .prim "rewrite" as | .prim "rewriteR" as =>
     for a in as do sub a
     pure .prop   -- D60: `rewrite h in u` is `J`, a proof
-  | .prim "split" [_, u] | .prim "splitArms" [_, u] => declOf fuel' chk sc ns u   -- D61: its body's
+  | .prim "split" [_, u] => declOf fuel' chk sc ns u   -- D61: its body's
   | .prim "clone" [u] => declOf fuel' chk sc ns u
   | .prim _ as => for a in as do sub a
                   pure .other
