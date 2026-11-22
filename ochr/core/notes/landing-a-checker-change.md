@@ -68,3 +68,8 @@ Its final report, 2026-11-21.
 - **`lake env lean` stops at 100 errors.** A probe file of plain `def`s with more rejections than that is cut short ("maximum number of errors (100 …) reached, exiting"); pass `-DmaxErrors=100000` on the command line (`set_option` in the file does not reach it).
 - **Differential twins for a class hunt.** For a fault in one of two routes to the same state (a plain borrow against a call's returned borrow; a move into a call, into a stuck block, or a drop at the join), generate one row per operation and per route, check the routes' verdicts and values agree row by row, and keep the generator: the same table, asserted, guards the fix (`DependentFields.MarkedTable…`, `Equality.IdConsumed`). For `Id`, put each hiding pair beside its honest twin and the twin that does the hidden thing on both sides (`Equality.ObsRef`).
 - **A paused account leaves orphans.** A background chain killed by its parent can leave a `lake build` and its `gcc` running in a worktree; find them by `readlink /proc/<pid>/cwd` before restarting a build there.
+
+## From the lane that landed D125 and D126
+
+- **`lake env lean` runs the checker interpreted; add `--load-dynlib=.lake/build/lib/libochr_Ochr.so`** (the library's precompiled code, from `lake build`) and it runs native: a probe of one hash-map lemma went from 59 s to 5 s, and the whole unlocated dump (all 147 blocks) takes 82 s. The library must be built from the same sources (it is the branch's own checker).
+- **A surface change that rewrites the case study moves the paper's line counts.** `notes/hashmap-count-ochr.py` gives the hash map's row of the paper's size figure; run it on both sides and update the figure and the text that quotes it.
