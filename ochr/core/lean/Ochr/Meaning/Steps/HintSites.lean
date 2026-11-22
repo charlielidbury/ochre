@@ -11,8 +11,9 @@ here, every verdict by running the checker:
 none (out of tail position), and so does the reference (`Run.tailHint`, D156). Smallest run: `let y = Z; N` with
 `inductive L (A : Type) := N`, untyped, out of tail position, at the hint `L(Nat)`: the tail's bare `N` records the
 hint's parameter (`N` at `[Nat]`); at no hint it records none; the typed run rejects it ("cannot infer"). After
-main's D124 the untyped run at the hint records `[]` too. `UntypedTailNoHint` is the named checker fact the untyped
-steps state against it: FALSE today (`untyped_tail_reads_hint` below), true after D124.
+main's D124 the untyped run at the hint records `[]` too. The untyped steps state it as named checker facts, one
+per site (`UntypedLetTailNoHint`, `UntypedSeqTailNoHint`, `UntypedMatchNatArmNoHint`,
+`UntypedMatchIndArmNoHint`): FALSE today (the pins below), true after D124.
 
 **`split` has no reference clause (finding).** `split f in u` and `split f { … }` (D61) are accepted in tail position;
 `runT` has no clause for them (`.prim _ _ => SM.fail`), so the reference's run of every body ending in one fails
@@ -55,6 +56,44 @@ theorem run_split_fails (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool)
   rw [runT]
   all_goals first | rfl | (intros; simp_all)
 
+/-! ## What the checker's UNTYPED run does with a `split` (lead25; docs/31 D175)
+
+The lead ruled (task 2(a), lead25's brief) that the reference runs a `split`'s term, and asked first what the
+checker's untyped run does. It does NOT run the term: `evalCore` rejects both forms at every tail flag, typed or
+untyped ("split: only in tail position"); only `checkTail` handles them. A data-valued function whose body ends in a
+split is accepted (`G`, `G2` below: the goal `V(IsZ(n))` is stuck on `IsZ(n)`), but a call of it is run by the
+checker's untyped run of the body (`runBody`), which fails there: every caller is rejected (`H`, `H2`, `H3`). -/
+
+ochr SplitData {
+  inductive B := T | F
+  def IsZ (n : Nat) : B := match n { Z => T, S(m) => F }
+  def V (b : B) : Type := match b { T => Nat, F => Unit }
+  def G (n : Nat) : V(IsZ(n)) := split IsZ { T => Z, F => () }
+  def G2 (n : Nat) : V(IsZ(n)) := split IsZ in match IsZ(n) { T => Z, F => () }
+  reject def H : Nat := G(Z)
+  reject def H2 (n : Nat) : V(IsZ(n)) := G(n)
+  reject def H3 : Unit := G(S(Z))
+}
+
+-- `G` and `G2` (data-valued, ending in a split) are accepted; every call of `G` that the checker runs is rejected
+#guard (Ochr.Test.runWith (some Prelude) "SplitData" SplitData {} (located := false)).allAsExpected
+
+/-- The checker's error, or `""`. -/
+def errMsg {α : Type} (f : M α) (st : MState) (fuel : Nat) : String :=
+  match (runMachine f st fuel).1 with
+  | .fail (.error m _) => m
+  | _ => ""
+
+-- the untyped run of either form fails, with the tail-position error, at every tail flag
+#guard errMsg (Ochr.eval 100 false (.prim "split" [.const "IsZ", .zero]) none) {} 1000 ==
+  "split: only in tail position (where the goal is known)"
+#guard errMsg (Ochr.eval 100 false (.prim "splitArms" [.const "IsZ", .letIn ⟨"h"⟩ .zero .zero]) none) {} 1000 ==
+  "split: only in tail position (where the goal is known)"
+#guard errMsg (Ochr.eval 100 false (.prim "split" [.const "IsZ", .zero]) none) { tailNext := true } 1000 ==
+  "split: only in tail position (where the goal is known)"
+#guard errMsg (Ochr.eval 100 false (.prim "splitArms" [.const "IsZ", .letIn ⟨"h"⟩ .zero .zero]) none) { tailNext := true } 1000 ==
+  "split: only in tail position (where the goal is known)"
+
 /-! ## The untyped tail (main's D124) -/
 
 /-- `inductive L (A : Type) := N`, as a declaration. -/
@@ -75,15 +114,94 @@ def tLetN : Term := .letIn ⟨"y"⟩ .zero (.ctor "L" 0 ⟨"N"⟩ [] [])
 -- the typed run hands the tail no hint: rejected
 #guard !isOk (Ochr.eval 100 true tLetN (some (.tInd "L" [.tNat]))) stL 100000
 
-/-- **Out of tail position, an untyped `let`, `;` or match hands its tail or arm no hint** (a fact about the
-checker; FALSE today, true after main's D124, ruled (1)): from a state not in tail position (`curTail = false`), the
-untyped `evalCore` of a `let`, a `;` or either match at any hint runs exactly as at no hint. The untyped steps for
-these four formers state it, counted, as `clone`/`peek` state main's D122. -/
-def UntypedTailNoHint : Prop :=
-  ∀ (n : Nat) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
-    (∃ x u w, t = .letIn x u w) ∨ (∃ u w, t = .seq u w) ∨ (∃ p z u, t = .matchNat p z u) ∨
-      (∃ p ty arms, t = .matchInd p ty arms) →
+/-- `Z; N`. -/
+def tSeqN : Term := .seq .zero (.ctor "L" 0 ⟨"N"⟩ [] [])
+
+/-- One frame, `L` declared, `x ↦ Z : Nat`, `y ↦ N[Nat] : L(Nat)`; not in tail position. -/
+def bxZ : Binding := { hint := ⟨"x"⟩, ty := some .tNat, val := .zero, decl := .other }
+def byN : Binding := { hint := ⟨"y"⟩, ty := some (.tInd "L" [.tNat]), val := .ind "L" 0 ⟨"N"⟩ [.tNat] [], decl := .ind "L" [.other] }
+def stLx : MState := { env := #[{ binds := #[bxZ, byN] }], inds := [declL] }
+
+/-- `match x { Z => N, S _ => N }`. -/
+def tMatchNatN : Term := .matchNat (.var 1) (.ctor "L" 0 ⟨"N"⟩ [] []) (.ctor "L" 0 ⟨"N"⟩ [] [])
+
+/-- `match y { N => N }`. -/
+def tMatchIndN : Term := .matchInd (.var 0) "L" [(⟨"N"⟩, .ctor "L" 0 ⟨"N"⟩ [] [])]
+
+/-- `N` recording `Nat`, and recording nothing. -/
+def nNat : Value := .ind "L" 0 ⟨"N"⟩ [.tNat] []
+def nNil : Value := .ind "L" 0 ⟨"N"⟩ [] []
+
+#guard stLx.curTail == false && stLx.tailNext == false
+-- TODAY (each flips after main's D124 at its site): the untyped run at the hint `L(Nat)` hands the tail or arm the hint
+#guard (outVal (Ochr.eval 100 false tSeqN (some (.tInd "L" [.tNat]))) stL 100000).1 == nNat
+#guard (outVal (Ochr.eval 100 false tMatchNatN (some (.tInd "L" [.tNat]))) stLx 100000).1 == nNat
+#guard (outVal (Ochr.eval 100 false tMatchIndN (some (.tInd "L" [.tNat]))) stLx 100000).1 == nNat
+-- at no hint each records nothing
+#guard (outVal (Ochr.eval 100 false tSeqN none) stL 100000).1 == nNil
+#guard (outVal (Ochr.eval 100 false tMatchNatN none) stLx 100000).1 == nNil
+#guard (outVal (Ochr.eval 100 false tMatchIndN none) stLx 100000).1 == nNil
+
+/-! The four sites of main's D124, ONE named fact each (the lead's ruling (b), lead25's brief: kept separate so
+each is discharged when its change lands). Each is FALSE today (the pins above; `tLetN` for the `let`), true after: out of tail position (`curTail = false`) the untyped `evalCore` of the former at any hint runs
+exactly as at no hint. In tail position the untyped run, the typed check and the reference all hand the hint. -/
+
+/-- **D124 at a `let`'s tail** (FALSE today, pin `tLetN`). -/
+def UntypedLetTailNoHint : Prop :=
+  ∀ (n : Nat) (x : Hint) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
     st.curTail = false →
-    (Runs (Ochr.evalCore (n + 1) false t hint) st bh r st' ↔ Runs (Ochr.evalCore (n + 1) false t none) st bh r st')
+    (Runs (Ochr.evalCore (n + 1) false (.letIn x u w) hint) st bh r st' ↔
+      Runs (Ochr.evalCore (n + 1) false (.letIn x u w) none) st bh r st')
+
+/-- **D124 at a `;`'s tail** (FALSE today, pin `tSeqN`). -/
+def UntypedSeqTailNoHint : Prop :=
+  ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
+    st.curTail = false →
+    (Runs (Ochr.evalCore (n + 1) false (.seq u w) hint) st bh r st' ↔
+      Runs (Ochr.evalCore (n + 1) false (.seq u w) none) st bh r st')
+
+/-- **D124 at a match on a number's arms** (FALSE today, pin `tMatchNatN`). -/
+def UntypedMatchNatArmNoHint : Prop :=
+  ∀ (n : Nat) (p : Place) (z u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
+    st.curTail = false →
+    (Runs (Ochr.evalCore (n + 1) false (.matchNat p z u) hint) st bh r st' ↔
+      Runs (Ochr.evalCore (n + 1) false (.matchNat p z u) none) st bh r st')
+
+/-- **D124 at a match on a declared inductive's arms** (FALSE today, pin `tMatchIndN`). -/
+def UntypedMatchIndArmNoHint : Prop :=
+  ∀ (n : Nat) (p : Place) (ty : String) (arms : List (Hint × Term)) (hint : Option Value) (st st' : MState) (bh : Nat)
+    (r : Value × Option Value),
+    st.curTail = false →
+    (Runs (Ochr.evalCore (n + 1) false (.matchInd p ty arms) hint) st bh r st' ↔
+      Runs (Ochr.evalCore (n + 1) false (.matchInd p ty arms) none) st bh r st')
+
+/-! ## `J`'s transported term: the typed check's two paths (the lead's (c); docs/31 D175)
+
+Where `J` computes the typed check runs `t` with no hint; where it is stuck the block's arm runs `t` at `P(a)`. Pinned
+on a bare constructor of a declaration with a parameter: `JL` (stuck) is accepted because the arm hands `P(a)`, `JL2`
+(computing) is rejected for want of the parameter. The checker lane is making the two paths agree; this pin flips
+then, whichever hint they agree on. -/
+
+ochr JHint {
+  inductive L (A : Type) := N | C(h : A, t : L(A))
+  def JL (a : Nat) (b : Nat) (h : Eq(Nat, a, b)) : L(Nat) := J(Nat, a, b, λ(z : Nat) : Type => L(Nat), h, N)
+  reject def JL2 : L(Nat) := J(Nat, 0, 0, λ(z : Nat) : Type => L(Nat), refl, N)
+  def JL3 : L(Nat) := J(Nat, 0, 0, λ(z : Nat) : Type => L(Nat), refl, N[Nat])
+}
+
+-- TODAY: the stuck path hands `P(a)` (JL accepted), the computing path none (JL2 rejected)
+#guard (Ochr.Test.runWith (some Prelude) "JHint" JHint {} (located := false)).allAsExpected
+
+/-! ## `clone`/`peek` of a place (the lead's (e); main's D122, landed on main, not merged into this line) -/
+
+/-- **`clone` and `peek` take a place** (a fact about the checker; FALSE on this line's checker, true after main's
+D122 is merged): every successful `evalCore` of `clone(u)` or `peek(u)` has a place operand. Pin, to flip:
+`MasterGuards`' `isOk (checkDef defCL)` (`let x = S(Z); let y = clone(S(x)); x` accepted today). The `prim` step
+states it, counted, until the merge. -/
+def ClonePeekPlace : Prop :=
+  ∀ (n : Nat) (typed : Bool) (f : String) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat)
+    (r : Value × Option Value),
+    (f = "clone" ∨ f = "peek") → Runs (Ochr.evalCore (n + 1) typed (.prim f [u]) hint) st bh r st' →
+    ∃ p, u = .place p
 
 end Ochr.Meaning.Steps.Form.HintSites
