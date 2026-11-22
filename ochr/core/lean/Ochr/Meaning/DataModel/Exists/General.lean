@@ -1,4 +1,6 @@
-import Ochr.Meaning.DataModel.Exists.Piece3
+import Ochr.Meaning.DataModel.Exists.Defs
+import Ochr.Meaning.DataModel.Exists.Knot.Grammar
+import Ochr.Meaning.DataModel.Exists.FrameLocal.Setup
 import Ochr.Meaning.DataModel.Exists.Step2
 
 /-!
@@ -18,7 +20,7 @@ and how it was attacked. Read `HANDOFF.md` first.
 
 namespace Ochr.Meaning.DataModel.Exists.General
 
-open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
+open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical Ochr.Meaning.DataModel.Exists
 
 /-! ## Frame locality -/
 
@@ -36,20 +38,19 @@ def DiffAt (dm : DataModel) (X : Nat → Prop) (s s' : SState) : Prop :=
         (b'.val = b.val ∨ (X p ∧ ∀ ψ, (b.val ψ).whole ∧ (b'.val ψ).whole ∧
           b.val ψ ∈ₛ[dm.read] b.ty.m ∧ b'.val ψ ∈ₛ[dm.read] b.ty.m))
 
-/-- **Frame locality** (BELIEVED TRUE; the core lemma left of piece 3). A run reads its frame only at
-the variables its term mentions: from two states differing at bindings the term does not mention, each
-holding whole members of its type there, the run gives the same result and states that differ the same
-way. The uniform form proves pieces 1 and 2 with it (two run contexts agreeing on the declarations the
-term reaches); this is the frame half.
+/-- **Frame locality, as first written: FALSE** (exists3, 2026-11-21; docs/34 §18.5). Kept for the
+record; the restatement is `FrameLocal.runT_qset` (an equation over the transform `qset`).
+Attacked: (1) `DiffAt` does not compare `lent`, `heldTy`, `heldMem`, and a live label's recorded member
+is what a place reading that label reads (kernel-checked: `FrameLocalCE.frameLocal_false`, `X` empty);
+(2) a value at `X` may read the future, and `Id`'s observation reads every position after ending every
+borrow, so two sides that end a borrow differently see an `X` binding differently (argued); (3) the
+decisions (`joinMoves`, `blockCaps`, `invalidated`, `rePointed`) may name a place at `X`, and a drop
+at a field of an `X` binding is defined at one value and not the other (argued). The restatement asks
+constant values at `X` (the canonical frame's are), compares every record, and assumes `DecLocal`.
 
-Attacked (2026-11-21) by reading every place the run looks at a whole state rather than a place the
-term names: `movedPlaces` (the moved parts of every binding: none in a whole value), `lentOk`/`StateOk`
-(every position an open member: both are members), `SM.guarded (ContentOk …)`/`AccessOk` (the labels at
-a place: none), `JoinDropOk` and the decisions' `joinMoves`/`blockCaps` (the moved places and the scope's
-readings, the same), `typedFuture` (labels), `Id`'s observation (it compares the two sides' final states
-position by position; a position in `X` is the same in both sides). None reads a value at `X`. Proof
-template: `RunCongr.run_congr` (an induction over the run's mutual block with a relation preserved by
-every clause). -/
+Earlier attack (exists2): the whole-state scans `movedPlaces`, `lentOk`/`StateOk`, `SM.guarded`,
+`JoinDropOk`, `typedFuture`, `Id`'s observation read no value at `X` that the term does not reach;
+that reading missed counts 1 to 3. -/
 theorem runT_frameLocal (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (t : Term)
     (X : Nat → Prop) (s s' : SState) (hd : DiffAt K.dm X s s') (hone : s.env.length = 1)
     (hX : ∀ v ∈ t.freeVars, ∀ p, s.varPos v = some (.bind 0 p) → ¬ X p)
@@ -58,17 +59,6 @@ theorem runT_frameLocal (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool)
   sorry
 
 /-! ## Finding 2: the globals a field type calls -/
-
-/-- **The globals of a program state are typed where a field type can call them**: each global whose
-stored type is a function type into a sort, applied (`callOf`) at members of its domains, returns a
-member of the codomain, a code of `Prop` or of `Type₀` (`Probes.DMXBoundary`: the checker admits no
-other codomain in a field type), or does not run. `Step2.EvTGood` is this at one global. -/
-def GlobalsTyped (dm : DataModel) (P : ProgState) : Prop :=
-  ∀ (n : String) (g : GDef), P.globals.find? (·.name == n) = some g →
-    (∃ caps hs ds l rd, g.ty = .tPi caps (.pi hs ds (.sort l)) rd ∧ l ≤ 1) →
-  ∀ (args : List Res) (s : SState) (r : Res) (s' : SState),
-    callOf dm.read (P.baseC.global n) args s = some (r, s') →
-      ∃ (A : Type) (c : Code0 A), r.1 = .ty (.t0 A c) ∧ (c.level = some 1 ∨ c.level = some 0)
 
 /-- **Finding 2's obligation** (BELIEVED TRUE; asked at every argument, which costs nothing for a
 closure: `callOf` decodes each argument at its domain's code, so at a non-member it does not run).
@@ -88,31 +78,41 @@ theorem globals_typed (dm : DataModel) (D : MState → Decisions) (fuel : Nat) (
 
 /-! ## Pieces 3 and 4: a data-sorted declaration's knot -/
 
-open Classical in
-/-- The model with `d`'s records replaced. -/
-noncomputable def setRec (dm : DataModel) (d : IndDecl) (R : List Sem → Rec) : DataModel :=
-  { dm with recOf := fun d' => if d' = d then R else dm.recOf d' }
+/-- **A data-sorted declaration's canonical knot** (restated by exists5, 2026-11-22; BELIEVED TRUE
+under the two checker rules for which a ruling is requested, docs/34 §18.6).
 
-/-- **A data-sorted declaration's canonical knot** (BELIEVED TRUE; pieces 3 and 4 in the form the
-assembly uses). Given a run context whose model is faithful on the declarations before `d` and whose
-globals are typed, there is a guarded knot (`KnotSpec`, its nestable parameters `d.nestable`) whose
-field types at its own fixed point are the run's (under the model whose records for `d` are the
-knot's), wherever the run is defined at typed parameters and fields. First stated without `hpar` and
-with the run under `K.dm` itself it was FALSE: the run reads `K.dm`'s records for `d` and for the
-declarations `d` nests in, and nothing tied them to the knot or made them parametric in their nestable
-parameters (the canonical records of earlier declarations are, `recK_agree`).
+As first written it was FALSE (`KnotCE.knotOld_false`, kernel-checked): it had no hypothesis that
+`d` is accepted, and `hpar` compares value parameters by equality, while a value argument may carry
+the knot's own record (`Pt(D2, x)` with `x : D2`). The restatement takes `d`'s field types in the
+first-order grammar with Lean's two rules (`Knot.Spine`: (B) the non-spine nodes, equations, calls and
+value arguments, read nothing that varies between the knot's comparisons; (A) a varying type argument
+stands at a `Type` parameter and is data-sorted; (B2) a value argument's parameter type does not
+mention a varying argument), the parameter types local (`Knot.ParamTyLocal`), the decisions local
+(`DecLocal`, frame locality's hypothesis), the globals label-free, and `GlobalsTyped`: frame
+locality swaps only bindings holding members of their types (`Good`), and an earlier field typed by a
+call's result is a member of it only when that result is no junk code (`LeafOk`: a call returns a code
+of level 0 or 1, never a `Prop`-sorted declaration's data code over its own carrier).
 
-How: `fty` is the interpreter of `HANDOFF.md` (syntactic along the `.tind` spine, where `d` can occur
-only at nestable positions; the run's result elsewhere, at the canonical frame rebuilt from the key).
-Agreement by induction on the field-type term with `RunLemmas` (`runT_tind`, `runT_eq`,
-`runT_call_const`, `runT_teleFrame_param`/`field`), `Piece3.index_fields_eq`, `runT_frameLocal`, and
-`GlobalsTyped` for `Lvl0`/`LeafOk` at a call's result. Guardedness by the same induction: `d`'s records
-enter only through nestable parameters (D107), carried by `SemAgree` and `recK_agree`; a value argument
-of `d`'s own occurrence is read small (`smallOnly`). False for a `Prop`-sorted `d` nested at a `Prop`
-parameter (`PropNestCE.not_guarded`): those go through `truth_exists`. -/
+How: the interpreter reads the field type along its spine (`D(ā)` as `D`'s record at the arguments,
+`d`'s own through the knot's record function, a parameter as itself) and the non-spine nodes as their
+runs under `K.dm` at a CANONICAL frame rebuilt from the key (non-varying index fields rebuilt as the
+members of their canonical types with the key's small readings; everything that varies, and the
+fields that are no index, a fixed dummy). Guardedness by induction on the spine (`hpar`, `recK`'s own
+parametricity, `SemAgree`); the non-spine nodes are record-free by construction. Agreement with the
+actual run by induction on the term: along the spine `RunLemmas.runT_tind`/`runT_teleFrame_param`;
+at a non-spine node `Knot.runT_stateOf_swap` (the actual frame and the canonical one differ only at
+bindings it does not read; rebuilt index fields equal the actual ones, `Piece3.memTy_small_inj`) and a
+model congruence (a term avoiding `d` runs the same under `K.dm` and under the knot's model). Open
+obstacle (ruling requested): `teleFrame` types the field being typed by its own type, which makes the
+canonical frame self-referential; the repair types the not-yet-bound fields `err`, as the checker's
+`fieldTele` binds them. -/
 theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort ≠ 0)
-    (hglob : ∀ P : ProgState, P.baseC = K.C → GlobalsTyped K.dm P)
-    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M)) :
+    (hfind : K.Γ.find? (·.name == d.name) = some d)
+    (hspine : ∀ c i FT, fieldTerm d c i = some FT → Knot.Spine K.Γ d c FT)
+    (hpar : ∀ M ∈ K.Γ, M ≠ d → ∀ n, RAgree (fun j => M.nestable.getD j false) n (K.dm.recOf M) (K.dm.recOf M))
+    (hpty : Knot.ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
+    (hK : ∀ g, (K.C.global g).2.label = none)
+    (hglob : ∀ P : ProgState, P.baseC = K.C → GlobalsTyped K.dm P) :
     ∃ S : KnotSpec, S.d = d ∧ (∀ j, S.N j = d.nestable.getD j false) ∧
       ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (r : Res) (s' : SState),
         ps.length = d.params.length → (∀ j (hj : j < ps.length), ps[j] ∈ₛ[K.dm.read] K.dm.paramTy d j (ps.take j)) →

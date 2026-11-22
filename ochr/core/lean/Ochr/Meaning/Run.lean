@@ -944,9 +944,37 @@ def obsTyped (R : DataRead) (reps : List Place) (ws : List Sem) (s : SState) : P
     | some (pos, _) => w ∈ₛ[R] (s.tyAt pos).m
     | none => True
 
+/-- Insert into a list sorted largest first. Structurally recursive, so the kernel evaluates it on
+concrete terms (a library sort defined by well-founded recursion does not reduce under `rfl`/`decide`). -/
+def capInsert (i : Nat) : List Nat → List Nat
+  | [] => [i]
+  | j :: js => if i > j then i :: j :: js else j :: capInsert i js
+
 /-- The variables a closure captures, oldest binding first (`Machine.capture`'s order: the
-largest de Bruijn index first). -/
-def capOrder (t : Term) : List Nat := (t.freeVars.toArray.qsort (· > ·)).toList
+largest de Bruijn index first). An insertion sort of `freeVars` (which has no duplicates, so the
+descending order is unique: this is the order `Array.qsort (· > ·)` gave before, rebuilt
+structurally so that membership is provable, `mem_capOrder`). -/
+def capOrder (t : Term) : List Nat := t.freeVars.foldl (fun acc i => capInsert i acc) []
+
+theorem mem_capInsert (x i : Nat) (l : List Nat) : x ∈ capInsert i l ↔ x = i ∨ x ∈ l := by
+  induction l with
+  | nil => simp [capInsert]
+  | cons j js ih =>
+    unfold capInsert
+    split
+    · simp
+    · simp only [List.mem_cons, ih, or_left_comm]
+
+theorem mem_foldl_capInsert (x : Nat) (l acc : List Nat) :
+    x ∈ l.foldl (fun acc i => capInsert i acc) acc ↔ x ∈ acc ∨ x ∈ l := by
+  induction l generalizing acc with
+  | nil => simp
+  | cons j js ih =>
+    rw [List.foldl_cons, ih, mem_capInsert]; simp only [List.mem_cons, or_assoc, or_left_comm]
+
+/-- Every captured index is a free variable of the term, and conversely. -/
+theorem mem_capOrder (t : Term) (i : Nat) : i ∈ capOrder t ↔ i ∈ t.freeVars := by
+  rw [capOrder, mem_foldl_capInsert]; simp
 
 /-- One capture of a closure being formed (`Machine.capture`): the variable is accessed, then
 moved unless its declared reading is copy (D80). -/
