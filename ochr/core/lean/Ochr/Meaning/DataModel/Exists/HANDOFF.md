@@ -1,69 +1,50 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists3`, worktree `/home/charlielidbury/repos/ochre-exists3` (exists2's `spine-exists2` is retired). Durable record: `ochr/docs/34-data-model-existence.md` §18 (read it first; §18.5 is frame locality) and docs/31 D110. This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists5` (branch `spine-exists5`, worktree as above; it carries the proof line through f6c59f58: the merge needed only `Fix.lean`'s parameter push to take D138's loan site (`setLent` after `pushCell`) and `FrameLocalCE`'s access lemmas to take the new liveness argument).
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists5`, worktree `/home/charlielidbury/repos/ochre-exists3` (it carries the proof line through f6c59f58). Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.5 frame locality, §18.6 the knot). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists5`.
 
-## Frame locality: done (exists4)
+## Rulings requested from the lead (read the answers first)
 
-`FrameLocal/Run.lean`'s **`runT_qset`** is proved, in the default build, standard axioms; it assumes `DecLocal` (and the usual `hK`). Files, in dependency order: `Vars`, `Qset`, `Prims`, `Join`, `Setup` (exists3), `Agree` (descriptions that agree at the right arity: a Π's binders and a closure's stages differ between the two sides at argument lists of the wrong length, and every consumer reads them only at the right one), `Fix` (the closure's body frame one frame up: `fixBodyAt_qset`, `fixStage_qset`), `Run` (the mutual induction with companions `runArm_qset`, `runParams_qset`, `runFields_qset`, `runArgs_qset`, `runAll_qset`, `runBinds_qset`). `capOrder` is a structural insertion sort on this branch (`mem_capOrder`), commit 39c93c86: it touches `Meaning/Run.lean`, so the merge must take it.
+1. Checker rules from Lean's kernel (docs/34 §18.6): **(B)** a variable mentions what its declared type mentions (no equation side, call argument or value argument in a field type reads an earlier field whose type mentions the declaration or a varying parameter; a parameter read so is not nestable); **(A)** a data-sorted declaration does not occur inside an argument at a `Prop` parameter. `Knot.Spine` states the field-type grammar with them (plus (B2): a value argument's parameter type mentions no varying earlier argument, which typing gives). If (B) is refused: `hpar` must compare value parameters by small readings and a relational lemma over the run is needed (runs under different records agree where both are defined); `LD`, `W`/`UW` in §18.6 are the cases.
+2. **`teleFrame` (Faithful.lean) should type the not-yet-bound fields `err`**, as the checker's `fieldTele` binds them (`pushBind name none .bot`). Today the field being typed carries its own type read from the knot's record, which makes the canonical frame self-referential, and frame locality cannot swap a `moved` binding (not `Good`: not whole). Proposed: the field binding's type `if j < e.length then dm.fieldTy d ps c j (e.take j) else TyM.err`. `Knot.canFrame` already uses `err` there. Fallback if refused: extend `runT_qset` to `Q` positions holding `moved` on both sides (the join-drop and capture cases are where it bites: moved places are what the join drops).
+
+## Done (exists5), all in the default build, standard axioms
+
+- `KnotCE.knotOld_false`: `knot_exists` as first written is false (a value parameter carrying the knot's record; `Pt(D2, x)`).
+- `Knot/Swap.lean` `runT_stateOf_swap`: frame locality between two one-frame states differing at a set of binding indices (assumes `DecLocal`, label-free globals).
+- `Knot/Grammar.lean`: `paramVaries`, `fieldVaries`, `varVaries`, `Steady`, `Spine`/`SpineArgs`, `ParamTyLocal` (definitions).
+- `Knot/Interp.lean`: the interpreter `semT`/`itpArgs`/`argSem`/`itpT`, the canonical frame `canFrame`, `ftyK`.
+- `Knot/Guard.lean`: `knotK` (a `KnotSpec`), guardedness PROVED (`ftyK_agree`), resting on `Spine`, `hpar`, `ParamTyLocal` as hypotheses.
+- `General.knot_exists` RESTATED (outside the build, `sorry`): `S := knotK …` is the witness.
+
+## Earlier pieces (exists2–4), still current
+
+- `PreludeModel.lean`, `Step2.lean`: the two kernel-checked instances of the repaired statement's bundles. `PropNestCE.lean`: piece 4 is false for `Prop`-sorted declarations nested at a `Prop` parameter.
+- `RunLemmas.lean`: the run of each field-type term form (`runT_var`, `runT_tind`, `runParams_spec`, `runT_eq`, `runT_call_const`, `runT_teleFrame_param`/`field`, `teleFrame_split`, `callOf_val`). `Piece3.lean`: `memTy_small_inj`, `index_fields_eq`, `projIdx_get`/`projIdx_take`.
+- `FrameLocal/`: frame locality `runT_qset` (assumes `DecLocal`). `Decomposition.lean`: the nine pieces; `runT_congrDM` (piece 1) stated, unproved.
+- `General.lean` (outside the build): `globals_typed`, `mono_prop`, `truth_exists` (sorry), `runT_frameLocal` (false, kept), `knot_exists` (restated, sorry).
+
+## Next: the agreement half of `knot_exists` (the plan, worked out)
+
+`S := knotK K ρ d …`, `R* := recK S`, `K* := {K with dm := setRec K.dm d R*}`, `es := projIdx d c (e.map small)`, `A` the actual frame (repaired `teleFrame`), `F*` the canonical one (`canFrame K d ps c i es tyOf*`, `tyOf* j := shapeTyP (shapeOf (ftyK … R* ps c j (es.take j)))`). Claim, by induction on `Spine` (subterms of the field type): `runT K* ρ noFuture false h t A = some (r, _) → r.1 = semT K ρ d R* ps F* h t`; then `r.1.asTy = (ftyK …).mean` (for `.tind`: `.ty (uTyR M rec)`; else `.asTy` of `semT`).
+1. Frames (`A = stateOf 0 bsA`, `F* = stateOf 0 bsF`) equal off `X` = {fields `j < i` that vary or are no index} ∪ {parameters that vary}. At a non-varying index field: the actual type `K*.dm.fieldTy d ps c j (e.take j)` is `tyOf* j` (unfold `uShape`, `projIdx_take`, `recK_kind`, `recK_contRec`: `uShape` from a record holding `F.kind`/`F.cont` is `shapeOf F`); the rebuilt member is `e[j]` (`es[j] = e[j].small` at an index field, `Piece3.memTy_small_inj`). Moved fields: equal after the `teleFrame` repair. Non-varying parameters: the same expression.
+2. `Good` at `X` (under `K*`): `e[j]` and `ps[j]` are whole members (need: `FitsOneM` gives membership of `shapeTyP`; members are whole); the dummies `0 : Nat` are.
+3. A steady node's free variables avoid `X` (they do not vary; the fields a field type mentions are index fields, `IndDecl.indexFields`). Then `runT_stateOf_swap` gives `runT K* t A`'s value = `runT K* t F*`'s.
+4. **Model congruence** (piece 1/2, not yet stated in this form): a term avoiding `d.name` (`Knot.Avoids`: `mentionsType` and embedded values) runs the same under `K` and `K*` (models differing only at `d`'s records). The run reads `recOf` only at a name it finds (`.tind`, `.ctor`, matches, `meanV` of `.val`); `read`/`car`/`tyR` are the universal signature's. Template: `AssignCongr.runT_congrA` (516 lines).
+5. Spine cases: parameter (`runT_var` at `A`'s binding), `.tind` (`runT_tind`, `runParams_spec`: argument `j` runs at hint `paramTy M j (psM.take j)`; `itpArgs` uses the same with `pre = psM.take j`; `K*.dm.tyM M psM = uTyR M (recFor K d R* M psM)`), steady (1–4).
+
+Then: `mono_prop`, `truth_exists` (piece 5; attack first, especially the monotonicity induction), `globals_typed`, `DecAt` threading (when a consumer needs it; recipe below), pieces 6, 7, assembly. The knot's `pEntry` is `pEntryTy` (what `Step2` used); piece 6 (records' parameter clauses) may need value parameters' entries read small instead.
 
 ## DecLocal, node by node (exists4, partly done)
 
-`FrameLocal/DecAt.lean` (default build): `JoinLocal`, `CapsLocal`, `RepLocal`, `DecAt D t` (the obligation at one node: a match → join + caps at the match; `J` → join at the `J` term, caps at its transported term; `Id A t u` → rep at `t`; any other node → `True`), `DecLocal.decAt` (global ⇒ node-wise), `Term.hasDecNode`, `decAt_of_hasDecNode`, `chainDecisions_inv` (the chain's `invalidated` is the default `[]`, so `DecLocal.inv` holds outright), and a `#guard` that `Step2.step2Decls` has no match/`J`/`Id` in any field or parameter type.
+`FrameLocal/DecAt.lean` (default build): `DecAt D t` is the obligation at one node; `DecLocal.decAt`; `decAt_of_hasDecNode`; `chainDecisions_inv`. NOT done: `runT_qset` still takes the global `DecLocal K.D`. Recipe: define `DecAll D : Term → Prop` mutually with lists/arms (`DecAt D t ∧` `DecAll` of each immediate subterm) and `decAll_of_hasDecNode`; replace `hD : DecLocal K.D` in `runT_qset` and its companions by `hinv` plus `hDA : DecAll K.D t`; at each IH call pass the subterm's component; at matches/`J`/`Id` use `hDA.1`. About sixty call sites, all mechanical.
 
-The checker's static analyses the obligation concerns, exactly: `Decide.jdMoves` (through `checkerDecisionsFF`'s `joinMoves`, `joinMovesD`), `BlockCaps.staticBlockCaps` (the chain's `blockCaps`), `Decide.typeState`'s `repointed` (`rePointed`, `typeStateD`); and `Decisions.invalidated` (empty in the chain). For the machine lane: `∀ d accepted, ∀ field/parameter type FT of d, ∀ node u of FT, DecAt (chainDecisions fuel st) u` (scopes: every `sc`).
+## Idioms and traps
 
-NOT done (do first): `runT_qset` still takes the global `DecLocal K.D`. Recipe to switch it to the node-wise form: define `DecAll D : Term → Prop` mutually with lists/arms (`DecAt D t ∧` `DecAll` of each immediate subterm, the shape of `Term.hasDecNode`) and `decAll_of_hasDecNode`; replace `hD : DecLocal K.D` in `runT_qset` and every companion by `hinv : ∀ sc p q, q ∈ K.D.invalidated sc p → q.root = p.root` plus `hDA : DecAll K.D t` (companions: `∀ a ∈ as, DecAll K.D a`); at each IH call pass the subterm's component of `hDA`; at the matches/`J`/`Id` clauses use `hDA.1` where `hD.join`/`hD.caps`/`hD.rep` are used now (`joinMoves_avoid` and `blockCaps_avoid` take `JoinLocal`/`CapsLocal` at the term instead of `DecLocal`); `matchEntry_qset`/`entryAccess_qset`/`Twin.invalidate` already take only the `inv` clause. Every IH call site is a `runT_qset hK hD …`/`run…_qset hK hD …` call: about sixty, all mechanical.
-
-Then the plan below continues at step 2 (`globals_typed`).
-
-## State
-
-- The statement is repaired ((M-a) bc86f861, (S) d4b7a5ee) and its bundles are inhabited, kernel-checked, in the default build: `PreludeModel.lean` (the library), `Step2.lean` (library + Bool, List, EvT, Rose, TF, Ev, Q). `PropNestCE.lean` (piece 4 false for `Prop`-sorted declarations nested at a `Prop` parameter) is in the default build too. `RecordsCE.lean` is a record outside the build.
-- `RunLemmas.lean`: the run of each field-type term form, under every run context and every decision table: `runT_var`, `runT_sort`, `runT_nat`, `runT_zero`, `runT_tind` (+ `runParams_spec`, `runT_tind0/1/2`), `runT_eq`, `runT_call_const` (+ `runArgs_one`, `callOf_val`: a call's value depends on callee and argument values only), `erasedIf_val`, `teleFrame_split`, `runT_teleFrame_param`, `runT_teleFrame_field`.
-- `Piece3.lean` (default build): `memTy_small_inj` (two members of one level-0 type with one small reading are equal, any model), `fieldTy_t0`, `fields_small_inj`, `projIdx_get`/`projIdx_take`, `index_fields_eq` (typed earlier fields with equal PROJECTED small readings agree at every index field).
-- `Probes.lean`: `DMXBoundary`, asserted: the checker admits in a field type only calls of globals of codomain `Prop` or `Type₀`; an equation side calling a function, a type function of the declaration's own type parameter, one that is a function type at some instances, and a `Prop`-valued one are accepted, and each has a faithful record by the interpreter's `.ty` case (the run's result); none is a counterexample.
-- `Decomposition.lean`: the nine pieces with corrected beliefs (4 data-sorted only; 5 all `Prop`-sorted truth-first with monotonicity; 6 repaired; 3 with step 2's findings). Only `runT_congrDM` (piece 1) is stated. Nothing of the general proof is proved.
-
-## Next, in order (riskiest first)
-
-The statements are written, with `sorry`, in `General.lean` (outside the default build; build it with
-`lake build Ochr.Meaning.DataModel.Exists.General`). Each docstring says what it rests on, how it was
-attacked, and, for three of them, how the first version was false or vacuous. Prove them in this order:
-
-1. **`runT_frameLocal`** (frame locality; the core of piece 3). An induction over the run's mutual
-   block in the style of `RunCongr.run_congr`, with `DiffAt` preserved by every clause. Make it
-   uniform with pieces 1 and 2 (two run contexts agreeing on the declarations the term reaches) if the
-   relation stays manageable; otherwise prove the frame half alone first. The whole-state scans were
-   read and none reads a value at a position the term does not mention (docstring).
-2. **`globals_typed`** (finding 2's obligation): from the strict `.fix` clause (`SM.strictS` of the
-   closure at the function type it builds), `app_mem'`, and `Consistency.fix_split`'s first claim (the
-   stored type's code is the closure's; the lead's leaf, open). Restricted to globals of codomain
-   `Prop` or `Type₀`, the only ones a field type calls (`Probes.DMXBoundary`, asserted).
-3. **`knot_exists`** (pieces 3 and 4, data-sorted): the interpreter is syntactic along the `.tind`
-   spine (a parameter `var j` is `parTy`; `M(ā)` is `FTy.data M` at `M`'s record at the arguments, `d`'s
-   own occurrences through the knot's record function, value arguments by the run, read small) and
-   the run's result elsewhere, at the canonical frame (parameters, and earlier fields chosen among
-   those fitting the knot's shapes with the key's projected small readings: `Piece3.index_fields_eq`
-   makes the choice agree with the actual fields at every index field, `runT_frameLocal` absorbs the
-   rest). Agreement by induction on the term with `RunLemmas`; guardedness by the same induction
-   (`SemAgree`, `recK_agree` of earlier records: hypothesis `hpar`).
-4. **`mono_prop`, `truth_exists`** (piece 5). Replace `mono_prop`'s `hcanon` by the construction's own
-   predicate once 3 defines the canonical records.
-5. Pieces 6, 7, and the assembly 9 (by induction on the items, the model built declaration by
-   declaration with `setRec`, earlier globals' meanings read through 1 and 2); 8a/8b with the lead.
-
-What step 2 (`Step2.lean`) did not exercise, and the general proof must: `EvT`'s meaning as
-`defMeaning` computes it (a closure with the same behaviour stood in), the monotonicity induction (the
-two truths were computed outright), an equation side calling a function (`S(S(m))`, accepted: its
-field type is the run's result, the interpreter's `.ty` case), and frame locality (its one non-index
-earlier field was a proof).
-
-## Idioms and traps (beyond the predecessor's, in 1765a998's version of this file)
-
-- A run lemma's hypothesis `hr : run K … = some (r, s')`: `unfold run at hr` first (`run` is an `abbrev`; `rw` does not see through it).
-- `runT` of a term whose clause is `do match … with` unfolds to a match applied to the state: `split at hr` fails ("Failed to find match-expression discriminants"); `revert hr; cases h : <discriminant>` instead.
-- `rw [h] at hr` where `h : (0 : Nat) = …` rewrites EVERY `0`, constructor indices included: pass the variable index with its equation (`runT_teleFrame_param … (hvj : v = ps.length - 1 - j)`).
-- To work at a concrete context, `cases K with | mk dm Γ C D Δ Λ cur => dsimp only at hdm hΓ; subst hdm hΓ`.
-- `find?` by name on a concrete declaration list is `rfl`.
-- Python edits of Lean files: never put Lean text containing `'''` (e.g. `s'''`) in a Python triple-quoted string; write it to a scratch file with a quoted heredoc and read it.
-- An existential from `List.getElem?_eq_some_iff.1` blocks `omega`: `obtain ⟨hj, -⟩ := …` first.
+- A run lemma's hypothesis `hr : run K … = some (r, s')`: `unfold run at hr` first (`run` is an `abbrev`).
+- `runT` of a term whose clause is `do match … with` unfolds to a match applied to the state: `revert hr; cases h : <discriminant>` instead of `split at hr`.
+- `rw [h] at hr` where `h : (0 : Nat) = …` rewrites EVERY `0`: pass the variable index with its equation.
+- To work at a concrete context, `cases K with | mk dm Γ C D Δ Λ cur => …`; `find?` by name on a concrete declaration list is `rfl`.
+- Unfold a definition compiled by well-founded recursion (`semT`, `itpT`, `ftyK`) with `rw [f]` and close leftover `match = match` goals by `cases <discriminant> <;> rfl`; the catch-all equation of `semT` has side conditions (`semT_other`).
+- Inside a `mutual` block, recursive calls do not take the section variables; passing `(ρ := ρ)` to them is an error. Structural recursion over the mutual `Spine`/`SpineArgs` proofs works for theorems.
+- Forward run computations (KnotCE): `runT_var_fwd` (a read at a shape-free state under decisions that erase nothing), `run_D2`/`run_p` (`rw [runT]` the outer clause, then `simp only [find, runParams, SM.onCopy, …]` with the inner runs as rewrite lemmas quantified over the hint).
+- Python edits of Lean files: never put Lean text containing `'''` in a Python triple-quoted string.
