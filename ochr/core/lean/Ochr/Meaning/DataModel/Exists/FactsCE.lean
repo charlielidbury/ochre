@@ -20,6 +20,9 @@ stop holding and the build fails here: that is the sign the two facts became tru
   `varyValFact_false` from it, in the kernel): `B` varies, is not a type parameter, and the field
   reads it. Now `Assembly.VaryValFact`, false until main's D128. `dTL` is written by hand following
   `resolveDecl`'s conventions; machine10 ran the surface form through the checker.
+* `Assembly.FieldHeads` (the checker's part of exists10's `FieldLevels`) asks a parameter heading a
+  field type to be written at a sort; `TL`'s `B` is written at a `let` (`fieldHeads_false`). False
+  until main's D128.
 * `DecLocal.join` (`FrameLocal/Setup.lean`) is false at a state with `B2 := A0(n : Nat) | A1`: the
   join of `match k { Z => Z, S => Z }` at the entry `[x.n]` is `[x]` (`join_regrains`,
   `decLocal_false`), a checker bug (the join re-grains places already moved), to be fixed by main's
@@ -131,6 +134,20 @@ theorem varyValFact_false (hacc : tlAccepted = true) : ¬ Assembly.VaryValFact 3
       exact .inr ⟨0, by decide +kernel, by simp [hv0]⟩
     have := hfree 0 0 (.place (.var 0)) rfl 0 (by decide +kernel) (by decide) hv1
     revert this; decide +kernel
+  · cases hacc
+
+/-- **`FieldHeads`' parameter part is false**, given that the checker accepts `TL`: the field `x : B`
+is headed by parameter `B`, written at a `let`, not a sort. -/
+theorem fieldHeads_false (hacc : tlAccepted = true) : ¬ Assembly.FieldHeads 3000 tlItems := by
+  intro H
+  unfold tlAccepted at hacc
+  split at hacc
+  · rename_i st' hst
+    have hT := ((Steps.Machine.checkItem_tables _ _ _ _ hst).1 dTL rfl).1
+    have h0 : (Assembly.stSt 3000 tlItems 0).inds = [] := rfl
+    rw [h0, tl_nestable] at hT
+    obtain ⟨l, -, hl⟩ := (H 0 (by decide) st' dTL _ hst rfl (by rw [hT]; rfl)).1 0 0 0 rfl (by decide)
+    cases hl
   · cases hacc
 
 /-! ## `DecLocal.join`: the join re-grains a place already moved -/

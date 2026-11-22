@@ -29,7 +29,8 @@ the leaves below and the step lemmas (`Steps/*.lean`). Writing them found the kn
 A data model covering and faithful to every accepted program exists (`exists_dataModel`, docs/34),
 which turns the relative statement into `consistencyBounded`. It is proved (exists10, exists11,
 `DataModel/Exists/Assembly.lean`) assuming the facts bundled in `DataFacts` (docs/34 §18.16); two of
-them are false today (`VaryValFact`, `DecLocal`'s `join`; main's D128 and D129 make them true), and
+them are false today (`VaryValFact` and `FieldHeads` by one declaration, `DecLocal`'s `join` by a
+checker bug; main's D128 and D129 make them true), and
 `DecLocal` is asked at every state, so until those changes reach the proof line it says nothing about
 today's checker.
 `consistencyBounded_assembled` takes `DataFacts` as a hypothesis.
@@ -400,7 +401,7 @@ checker, kept as an assumption of the construction, not a hypothesis here: the c
 decides that two applications of a type former to different arguments are different (a record
 keeps what field types read of the parameters, not the parameters; docs/34 §8, §13).
 
-**Assumes seven facts, bundled in `hF : DataFacts`** (exists11; docs/34 §18.16 states each exactly):
+**Assumes eight facts, bundled in `hF : DataFacts`** (exists11; docs/34 §18.16 states each exactly):
 * `ItemFacts` (about the checker; read true, all but its `IndChecks` part proved by machine10's
   `checkItem_tables`): an accepted inductive declaration appends one entry passing `Knot.IndChecks`
   with the item's parameters and constructors and leaves the globals; an accepted definition leaves
@@ -411,7 +412,12 @@ keeps what field types read of the parameters, not the parameters; docs/34 §8, 
   true after main's D128): no field type of an accepted declaration reads a varying value parameter;
 * `NamesFact` (about the checker and resolution; read true for resolved items): the names an accepted
   item's code mentions are the stage's;
-* `FieldLevels` (the checker's field-level check, and the model's run; see its docstring);
+* `FieldHeads` (about the checker): a parameter heading a field type is written at `Prop` or `Type`
+  (FALSE TODAY, `TL` again, `FactsCE.fieldHeads_false`; true after main's D128), and a global heading
+  one has a stored codomain `Prop` or `Type` (read true);
+* `GlobalCallLevels` (about the model, NOT PROVED): a global whose stored codomain is `Prop` or `Type`
+  calls to level-0 type values. With `FieldHeads` it gives the field types' level, which exists10
+  assumed whole (`FieldLevels`); that step is proved (`FieldLevel.fieldLevel0_of`);
 * `DecLocal` at every state (an obligation on the decisions; its `join` part FALSE TODAY, a checker bug,
   checked counterexample `FactsCE.decLocal_false`, true after main's D129);
 * `DecStable` (an obligation on the decisions, at the states the checker reaches on the program).
@@ -421,8 +427,7 @@ there, the machine lane's `decide_fuel_agree`), so today no list of items satisf
 theorem says nothing about today's checker; `VaryValFact` fails besides for every program holding a
 declaration like `TL`. Once D128 and D129 are merged into the proof line, it says: a data model
 covering and faithful to every stage exists for every program whose items satisfy the remaining facts,
-each read true against the code or about resolution, with `FieldLevels`' model part as its docstring
-says. -/
+each read true against the code or about resolution, and the one model fact `GlobalCallLevels`. -/
 theorem exists_dataModel (items : List Item) (fuel : Nat)
     (hF : DataModel.Exists.Assembly.DataFacts (chainDecisions fuel) fuel items) :
     ∃ dm : DataModel,

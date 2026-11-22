@@ -6,6 +6,7 @@ import Ochr.Meaning.DataModel.Exists.Params
 import Ochr.Meaning.DataModel.Exists.Knot.CongrN
 import Ochr.Meaning.DataModel.Exists.DeclStep
 import Ochr.Meaning.Steps.Machine.CheckItem
+import Ochr.Meaning.DataModel.Exists.FieldLevel
 
 /-!
 # The assembly: the induction's invariant, and the existence of the data model (exists8–exists10)
@@ -25,9 +26,12 @@ an accepted definition, `inv_defn`; an accepted inductive declaration of either 
 with `inv_ind_faithful`), `exists_of_inv`, and `exists_dataModel_facts`, which assumes the facts in
 `DataFacts` (docs/34 §18.16 gives each one's exact statement and status):
 * about the checker: `ItemFacts` (read true; all but its `IndChecks` part proved by machine10),
-  `NamesFact` (read true for resolved items), `FieldLevels` (see its docstring), `VaryValFact` (FALSE
-  TODAY, true after main's D128);
+  `NamesFact` (read true for resolved items), `VaryValFact` (FALSE TODAY, true after main's D128),
+  `FieldHeads` (its call part read true, its parameter part FALSE TODAY, true after main's D128);
 * about resolution: `NoValFact` (no embedded value in an inductive item's types);
+* about the model, not proved: `GlobalCallLevels` (a global whose stored codomain is `Prop` or `Type`
+  calls to level-0 type values); with `FieldHeads` it gives the field types' level
+  (`FieldLevel.fieldLevel0_of`, proved), which exists10 assumed whole as `FieldLevels`;
 * obligations on the checker's decisions: `DecLocal` at every state (its `join` part FALSE TODAY,
   a checker bug, true after main's D129) and `DecStable` (at the states the checker reaches).
 The stage prefix fact is proved (machine10's `Steps.Machine.indsOf_take_prefix`). `DecLocal` is asked
@@ -395,24 +399,48 @@ def NamesFact : Prop :=
         Knot.Term.nok (fieldNames (indsOf {} fuel items) (stage D fuel items dm k) d') FT = true) ∧
       ∀ j, Knot.Term.nok (stageNames (indsOf {} fuel items) (stage D fuel items dm k)) (Knot.paramTerm d' j) = true)
 
-/-- A field type runs, at well-typed parameters and earlier fields, to a code of carrier level 0. -/
-def FieldLevel0 (K : RunCtx) (ρ : Assignment) (d : IndDecl) : Prop :=
-  ∀ ps c i e FT r s', ParamsTyped K.dm d ps → FieldsTyped K.dm d ps c e → e.length = i → fieldTerm d c i = some FT →
-    run K ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm K.D d ps c e) = some (r, s') →
-    ∃ (B : Type) (cd : Code0 B), r.1.asTy = .t0 B cd
+/-- What the checker establishes of a field type's head (`FieldHeads`): a parameter heading it is
+declared at a written sort `Prop` or `Type`; a global heading it (a call) has a stored type whose
+codomain is the sort `Prop` or `Type`. -/
+def HeadLevels (gs : List GDef) (d : IndDecl) : Prop :=
+  (∀ c i v, fieldTerm d c i = some (.place (.var v)) → v < d.params.length →
+    ∃ l, l ≤ 1 ∧ Knot.paramTerm d (d.params.length - 1 - v) = .sort l) ∧
+  (∀ c i f as hd, fieldTerm d c i = some (.call (.const f) as hd) →
+    ∃ (cs : List Value) (hs : List Hint) (ds : List Term) (l : Nat) (rd : List (DeclInfo × Value)), l ≤ 1 ∧
+      (gs.find? (·.name == f)).map (·.ty) = some (.tPi cs (.pi hs ds (.sort l)) rd))
 
-/-- **The checker's field-level check is sound** (about the checker, not derived: `checkInd` rejects
-a field whose type, evaluated at generic parameters and fields, has `sortOf` above 1, "its type must be
-in Prop or Type"). At the context of the stage that accepts `d`, for any model whose parameter types of
-`d` are the run's readings of its declared ones, a field type of `d` runs at members to a code of
-carrier level 0 (not `Type₁` or above as a value): what `FieldsFaithful` needs, since the model's field
-types are level-0 codes. -/
-def FieldLevels : Prop :=
-  ∀ (dm : DataModel) (k : Nat) (hk : k < items.length) (st' : MState) (d0 d' : IndDecl),
-    verdict fuel items k hk = .ok () st' → items[k] = .ind d0 → st'.inds = (stage D fuel items dm k).inds ++ [d'] →
-    ∀ (dm'' : DataModel) (ρ : Assignment),
-      ParamsFaithfulAt ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d' →
-      FieldLevel0 ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d'
+/-- **The heads of an accepted declaration's field types are at level 0** (the checker's part of
+exists10's `FieldLevels`; about the checker, not derived). Of the entry `d'` the checker stores for
+the program's `k`-th item, `HeadLevels` at the stage's globals.
+* The call part reads TRUE: `firstOrderTerm` admits a call only of a global whose stored type is a
+  `tPi` with codomain a written sort; `checkInd` rejects a field whose generic value has `sortOf`
+  above 1 or computes to a sort or a Π; with no cumulativity a call into `Type₁` has a value of sort
+  above 1 or is stuck with its codomain's level (probes: `H : Nat → Type₁` at `H(Z)`, `H(k)`, all
+  rejected, docs/34 §18.16).
+* The parameter part is FALSE TODAY, true after main's D128: D55 lets a parameter head a field type
+  when its declared READING is a sort, and `TL`'s `B : (let z = A; Type)` is written as a `let`
+  (`FactsCE.fieldHeads_false`). Otherwise a parameter written at a call is rejected (D55, "a type
+  only by computation") and one written at `Type₁` by the level check (`Big`). -/
+def FieldHeads : Prop :=
+  ∀ (k : Nat) (hk : k < items.length) (st' : MState) (d0 d' : IndDecl),
+    verdict fuel items k hk = .ok () st' → items[k] = .ind d0 → st'.inds = indsOf {} fuel (items.take k) ++ [d'] →
+    HeadLevels st'.globals d'
+
+/-- **A global whose stored codomain is `Prop` or `Type` calls to level-0 type values** (the
+model's part of exists10's `FieldLevels`; about the model, NOT PROVED). At every stage, at every model's
+read, every call through the stage's meaning of such a global gives a level-0 type value or no type
+value (`FieldLevel.CallsLevel0`). Why it should hold: the stage's type of the global is `err` or the
+meaning of its stored type, `globalTyS` (the stored type is found first in every later stage's
+globals, which only grow); that meaning is `err` or `piTyAt R l' ps out` with `out` constantly
+`univ l`; at `l' ≤ 2` it is not a level-2 type, so `FieldLevel.callsLevel0_of_not_t2` gives it; at
+`l' = 3` (a domain in `Type₁`) the telescope's codomain is `(lvl2 R).codeOf (univ l)`, a lifted level-1
+code, whose elements encode as level-0 type values. What a proof needs: that stage invariant on the
+means' types, `meanV` and `runT` at `tPi`/`pi`, and the codomain of `telL`. -/
+def GlobalCallLevels : Prop :=
+  ∀ (dm : DataModel) (k : Nat), k ≤ items.length →
+    ∀ (f : String) (cs : List Value) (hs : List Hint) (ds : List Term) (l : Nat) (rd : List (DeclInfo × Value)), l ≤ 1 →
+      ((stage D fuel items dm k).globals.find? (·.name == f)).map (·.ty) = some (.tPi cs (.pi hs ds (.sort l)) rd) →
+      ∀ dmR : DataModel, FieldLevel.CallsLevel0 dmR ((stage D fuel items dm k).baseC.global f)
 
 theorem fieldsNoVal_of_ctors {d d' : IndDecl} (h : d'.ctors = d.ctors) (hv : Knot.FieldsNoVal d) :
     Knot.FieldsNoVal d' := fun c i FT hFT => hv c i FT (by unfold fieldTerm at hFT ⊢; rw [← h]; exact hFT)
@@ -421,14 +449,16 @@ theorem paramsNoVal_of_params {d d' : IndDecl} (h : d'.params = d.params) (hv : 
     ParamsNoVal d' := fun j => by have := hv j; unfold Knot.paramTerm at this ⊢; rw [h]; exact this
 
 /-- **The facts the existence of the data model rests on**, together (`exists_dataModel_facts`): about
-the checker, not derived from its code, `ItemFacts`, `NamesFact`, `FieldLevels`; obligations on the
+the checker, `ItemFacts`, `NamesFact`, `VaryValFact`, `FieldHeads`; about resolution, `NoValFact`; about
+the model, `GlobalCallLevels`; obligations on the
 checker's decisions, `DecLocal` at every state and `DecStable`. -/
 structure DataFacts : Prop where
   item : ItemFacts
   noVal : NoValFact items
   varyVal : VaryValFact fuel items
   names : NamesFact D fuel items
-  levels : FieldLevels D fuel items
+  heads : FieldHeads fuel items
+  callLevels : GlobalCallLevels D fuel items
   decLocal : ∀ st, FrameLocal.DecLocal (D st)
   decStable : DecStable D fuel items
 
@@ -611,12 +641,15 @@ theorem paramsOk_typed {dm : DataModel} {d : IndDecl} {ps : List Sem} (h : param
   fun j hj => h j _ (List.getElem?_eq_getElem hj)
 
 /-- **The new declaration is faithful at every extension of the stage that accepts it.** -/
-theorem inv_ind_faithful (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+theorem inv_ind_faithful (hN : NamesFact D fuel items)
     (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (k : Nat) (hk : k < items.length) (dm : DataModel)
     (st' : MState) (d0 d' : IndDecl) (hv : verdict fuel items k hk = .ok () st') (hit : items[k] = .ind d0)
     (hI : st'.inds = (stage D fuel items dm k).inds ++ [d']) (hgl : st'.globals = (stage D fuel items dm k).globals)
     (hfresh : d' ∉ (stage D fuel items dm k).inds) (hpnv : ParamsNoVal d') (hnv : Knot.FieldsNoVal d')
+    (hFL0 : ∀ (dm'' : DataModel) (ρ : Assignment),
+      ParamsFaithfulAt ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d' →
+      FieldLevel.FieldLevel0 ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d')
     (S : KnotSpec) (Rc : List Sem → Rec)
     (hagree : DeclStep.SpecAgree (ctx1 D fuel items dm k st' d') (fun _ => .err) d' S)
     (hRc : ∀ ps, ParamsTyped (ctx1 D fuel items dm k st' d').dm d' ps → Rc ps = recK S ps)
@@ -661,7 +694,7 @@ theorem inv_ind_faithful (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel
     simp [Kb, ctx1, ProgState.ctx, setRec, setPty, hMd]
   have hKbd : Kb.dm.recOf d' = recK S ∧ Kb.dm.paramTy d' = ptyAt D fuel items dm k st' d' := by
     simp [Kb, ctx1, ProgState.ctx, setRec, setPty]
-  -- `d'`'s parameter types are faithful at the knot's context (what `FieldLevels` asks)
+  -- `d'`'s parameter types are faithful at the knot's context (what `hFL0` asks)
   have hPFb : ParamsFaithfulAt Kb (fun _ => .err) d' := by
     obtain ⟨-, hDSp'⟩ := hDS k hk st' d0 d' hv hit hI0 st' (List.prefix_refl _) hst'Γ (List.prefix_refl _)
     apply DeclStep.paramsFaithful_pty (ctx0 D fuel items dm k st') (fun _ => .err) d' hlab (hDL st') Kb _ hKbd.2
@@ -693,7 +726,7 @@ theorem inv_ind_faithful (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel
       · exact (hrecT ps hps).trans (congrFun hKbd.1.symm ps)
       · exact hKpt.trans hKbd.2.symm
     · intro ps c i e FT r s' hl hps he hei hFT hr
-      exact hFL dm k hk st' d0 d' hv hit hI Kb.dm (fun _ => .err) hPFb ps c i e FT r s'
+      exact hFL0 Kb.dm (fun _ => .err) hPFb ps c i e FT r s' hl
         (DeclStep.paramsTyped_congr (hKpt.trans hKbd.2.symm) hps)
         (DeclStep.fieldsTyped_congr ((hrecT ps hps).trans (congrFun hKbd.1.symm ps)) he) hei hFT hr
   · -- parameter types
@@ -712,13 +745,16 @@ theorem inv_ind_faithful (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel
 and a spec `S` with `S`'s agreement at the build context, `Rc` the spec's records at well-typed
 parameters, `Rc` faithful as records, parametric (data-sorted) or monotone (`Prop`-sorted). The new
 model sets `d'`'s parameter types (`ptyAt`) and records (`Rc`). -/
-theorem inv_ind_core (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+theorem inv_ind_core (hIF : ItemFacts) (hN : NamesFact D fuel items)
     (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items)
     (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm)
     (st' : MState) (d0 d' : IndDecl) (hv : verdict fuel items k hk = .ok () st') (hit : items[k] = .ind d0)
     (hI : st'.inds = (stage D fuel items dm k).inds ++ [d']) (hgl : st'.globals = (stage D fuel items dm k).globals)
     (hfresh : d' ∉ (stage D fuel items dm k).inds) (hpnv : ParamsNoVal d') (hnv : Knot.FieldsNoVal d')
+    (hFL0 : ∀ (dm'' : DataModel) (ρ : Assignment),
+      ParamsFaithfulAt ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d' →
+      FieldLevel.FieldLevel0 ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d')
     (S : KnotSpec) (Rc : List Sem → Rec)
     (hagree : DeclStep.SpecAgree (ctx1 D fuel items dm k st' d') (fun _ => .err) d' S)
     (hRc : ∀ ps, ParamsTyped (ctx1 D fuel items dm k st' d').dm d' ps → Rc ps = recK S ps)
@@ -782,7 +818,7 @@ theorem inv_ind_core (hIF : ItemFacts) (hN : NamesFact D fuel items) (hFL : Fiel
         rw [hsk, hgl]; exact List.prefix_refl _
     rw [List.mem_singleton] at hd
     subst hd
-    exact inv_ind_faithful D fuel items hN hFL hDL hDS k hk dm st' d0 d hv hit hI hgl hfresh hpnv hnv S Rc hagree hRc
+    exact inv_ind_faithful D fuel items hN hDL hDS k hk dm st' d0 d hv hit hI hgl hfresh hpnv hnv hFL0 S Rc hagree hRc
       hrecF hΓp hPi hsk hagP hdm'_d K hK
   · -- par
     intro M hM hMs n
@@ -815,8 +851,8 @@ for a model agreeing with it at stage `k`'s declarations. By the `k`-th item's v
   `grammar_of_checks`' `TopSortOk`), a `Prop`-sorted one's the truth spec's (`Records.recCanonP`,
   hypothesis `hmono` from `mono` and `rest`). `d'` is faithful at every extension (`inv_ind_faithful`,
   through `DeclStep`'s transfers: `DecStable`, `Knot.runT_congrN` with `NamesFact`, no embedded value;
-  the field types' level by `FieldLevels`). -/
-theorem inv_step (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fuel items) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+  the field types' level by `FieldLevel.fieldLevel0_of` from `FieldHeads` and `GlobalCallLevels`). -/
+theorem inv_step (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fuel items) (hN : NamesFact D fuel items) (hFH : FieldHeads fuel items) (hGC : GlobalCallLevels D fuel items)
     (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items)
     (k : Nat) (hk : k < items.length) (dm : DataModel) (h : Inv D fuel items k dm) :
@@ -869,6 +905,19 @@ theorem inv_step (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fu
       ¬ v ∈ₛ[K1.dm.read] .t0 A c := fun j qs hj A c v hT => by
     rw [hK1pt] at hT
     exact Params.pty_type (ctx0 D fuel items dm k st') (fun _ => .err) d' j qs hj A c v hT
+  -- the field types' level (`FieldLevel.fieldLevel0_of`): the grammar's top shapes, the heads' levels
+  -- from the checker (`FieldHeads`), the globals' calls from the model (`GlobalCallLevels`)
+  have hheads := hFH k hk st' d0 d' hv hit (by rw [hI', hPi])
+  have hTop : ∀ c i FT, fieldTerm d' c i = some FT → FieldLevel.Top d' FT := fun c i FT hFT => by
+    by_cases hs : d'.sort = 0
+    · exact FieldLevel.top_of_pspine (Knot.pspineB_sound (hpgram hs c i FT hFT))
+    · exact FieldLevel.top_of_spine (Knot.spineB_sound (hgram hs c i FT hFT))
+  have hFL0 : ∀ (dm'' : DataModel) (ρ : Assignment),
+      ParamsFaithfulAt ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d' →
+      FieldLevel.FieldLevel0 ((stage D fuel items dm k).ctx dm'' D (indsOf {} fuel items) st') ρ d' :=
+    fun dm'' ρ hPF => FieldLevel.fieldLevel0_of _ ρ d' hTop hheads.1 (fun c i f as hd hFT => by
+      obtain ⟨cs, hs', ds, l, rd, hl, hty⟩ := hheads.2 c i f as hd hFT
+      exact hGC dm k (by omega) f cs hs' ds l rd hl (by rw [← hgl']; exact hty) dm'') hPF
   by_cases hs : d'.sort = 0
   · -- a `Prop`-sorted declaration: the truth spec
     have hpspine : ∀ c i FT, fieldTerm d' c i = some FT → Knot.PSpine K1.Γ d' c FT :=
@@ -882,7 +931,7 @@ theorem inv_step (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fu
       · rw [(h.rest M hMP).1]; exact .inl rfl
     let G : Knot.TruthHyp K1 d' := ⟨hs, hdΓ, hpspine, hmono, hpty⟩
     let T := Knot.truthP K1 (fun _ => .err) d'
-    refine inv_ind_core D fuel items hIF hN hFL hDL hDS hpre k hk dm h st' d0 d' hv hit hI' hgl' hfresh hpnv hnv
+    refine inv_ind_core D fuel items hIF hN hDL hDS hpre k hk dm h st' d0 d' hv hit hI' hgl' hfresh hpnv hnv hFL0
       (Knot.truthSpec K1 (fun _ => .err) d' T) (Records.recCanonP K1 (fun _ => .err) d' T)
       (Knot.truth_agree K1 (fun _ => .err) d' G (Knot.steadyAt_spec K1 (fun _ => .err) d' _ hD hK)) ?_ ?_
       (fun hs' => absurd hs hs') ?_ hval'
@@ -902,7 +951,7 @@ theorem inv_step (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fu
       by_cases hMP : M ∈ indsOf {} fuel (items.take k)
       · exact h.par M hMP hMs n
       · rw [(h.rest M hMP).1]; intro ps ps' _ q _; rfl
-    refine inv_ind_core D fuel items hIF hN hFL hDL hDS hpre k hk dm h st' d0 d' hv hit hI' hgl' hfresh hpnv hnv
+    refine inv_ind_core D fuel items hIF hN hDL hDS hpre k hk dm h st' d0 d' hv hit hI' hgl' hfresh hpnv hnv hFL0
       (Knot.knotK K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty) (Records.recCanon K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty)
       (Knot.knotK_agree K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty
         (Knot.steadyAt_knotK K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty hD hK)) ?_ ?_
@@ -914,25 +963,25 @@ theorem inv_step (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fu
       exact Records.recordsFaithful_canon K1 (fun _ => .err) d' hs hdΓ hspine hpar hpty hTyP hfree K hrec
         (hpt.trans hK1pt.symm)
 
-theorem inv_all (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fuel items) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+theorem inv_all (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fuel items) (hN : NamesFact D fuel items) (hFH : FieldHeads fuel items) (hGC : GlobalCallLevels D fuel items)
     (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
     ∀ k, k ≤ items.length → ∃ dm, Inv D fuel items k dm
   | 0, _ => ⟨_, inv_zero D fuel items⟩
   | k + 1, hk => by
-    obtain ⟨dm, h⟩ := inv_all hIF hNV hVV hN hFL hDL hDS hpre k (by omega)
-    obtain ⟨dm', h', -⟩ := inv_step D fuel items hIF hNV hVV hN hFL hDL hDS hpre k (by omega) dm h
+    obtain ⟨dm, h⟩ := inv_all hIF hNV hVV hN hFH hGC hDL hDS hpre k (by omega)
+    obtain ⟨dm', h', -⟩ := inv_step D fuel items hIF hNV hVV hN hFH hGC hDL hDS hpre k (by omega) dm h
     exact ⟨dm', h'⟩
 
 /-- `exists_dataModel`, from the step (and the prefix fact `hpre`). -/
-theorem exists_dataModel' (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fuel items) (hN : NamesFact D fuel items) (hFL : FieldLevels D fuel items)
+theorem exists_dataModel' (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryValFact fuel items) (hN : NamesFact D fuel items) (hFH : FieldHeads fuel items) (hGC : GlobalCallLevels D fuel items)
     (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hDS : DecStable D fuel items)
     (hpre : ∀ k, k ≤ items.length → indsOf {} fuel (items.take k) <+: indsOf {} fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) := by
-  obtain ⟨dm, h⟩ := inv_all D fuel items hIF hNV hVV hN hFL hDL hDS hpre items.length (Nat.le_refl _)
+  obtain ⟨dm, h⟩ := inv_all D fuel items hIF hNV hVV hN hFH hGC hDL hDS hpre items.length (Nat.le_refl _)
   exact ⟨dm, exists_of_inv D fuel items h hpre⟩
 
 /-- **The data model exists**, from the facts it rests on (`DataFacts`); the stage prefix fact is
@@ -942,7 +991,7 @@ theorem exists_dataModel_facts (hF : DataFacts D fuel items) :
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
-  exists_dataModel' D fuel items hF.item hF.noVal hF.varyVal hF.names hF.levels hF.decLocal hF.decStable
+  exists_dataModel' D fuel items hF.item hF.noVal hF.varyVal hF.names hF.heads hF.callLevels hF.decLocal hF.decStable
     (fun k _ => Steps.Machine.indsOf_take_prefix {} fuel items k)
 
 end
