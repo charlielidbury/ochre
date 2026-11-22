@@ -534,7 +534,9 @@ Ruled by the lead on `exists5`'s proposal (§18.6, last paragraph). `teleFrame` 
 
 **`truth_exists` as written is false** (`Exists/TruthCE.truthOld_false`, kernel-checked). It assumed nothing of the earlier records. Take `N (P : Prop) : Prop := MkN(h : P)` and `Q : Prop := MkQ(h : N(Q))` (both accepted, by Lean too), with `N`'s record at `P` holding the leaf `¬P`. Then any faithful record of `Q` makes `Q` inhabited exactly when it is not. The contradiction comes from the faithfulness clause alone. The restatement adds that the earlier records are monotone in their nestable `Prop` parameters (`mono_prop`'s hypothesis, supplied by the assembly's induction) and the grammar fact under (A*). Then the one-step operator is monotone and its least fixed point is the truth predicate.
 
-**`mono_prop`, proved** (`Exists/PropMono.lean`). The step is direct: the same constructor with the same fields, since a proof fits any weaker proposition leaf. Its content is its hypothesis, which only (A*) makes attainable.
+**`mono_prop`, proved** (`Exists/PropMono.lean`), and generalized: the shapes at the stronger parameters are the same, weaker proposition leaves, or sub-records of a `Prop`-sorted declaration whose inhabitation is implied (`ShapeLe`). The step is direct: the same constructor with the same fields. Its content is its hypothesis, which (A*) makes attainable: every shape a nestable `Prop` parameter reaches is then a proposition leaf or a `Prop`-sorted sub-record.
+
+**`truth_exists` restated** (`General.lean`, `sorry`; plan in `HANDOFF.md`). It adds rule (A*), the earlier records' `ShapeLe`-monotonicity, frame locality's facts and local parameter types. It also returns `d`'s own records monotone, so that the induction over declarations continues. The grammar fact for a `Prop`-sorted declaration is still to be added. The least fixed point of a monotone operator on predicates is built (`Exists/Truth.lean`, `lfpP_fixed`).
 
 ## Appendix: the probe programs
 

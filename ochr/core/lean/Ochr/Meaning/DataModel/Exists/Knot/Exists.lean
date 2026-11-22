@@ -17,11 +17,13 @@ namespace Ochr.Meaning.DataModel.Exists.Knot
 
 open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 
-/-- **A data-sorted declaration's canonical knot exists.** Assumes five named facts: `hgram` (the
-checker's grammar, `GrammarOk`), `hpar` (the earlier declarations' records are parametric in their
-nestable parameters), `hpty` (the earlier parameter types are local, `ParamTyLocal`), `hD` (the
-checker's decisions are local, `DecLocal`, frame locality's obligation), `hK` (the globals carry no
-label). The witness is `knotK`; guardedness is `ftyK_agree`, the agreement with the run is
+/-- **A data-sorted declaration's canonical knot exists.** Assumes five named facts, of three kinds:
+* about the checker, NOT YET ENFORCED by it: `hgram` (`GrammarOk`: the first-order grammar with (A),
+  (B), (B2); rule (A*) is not needed here and is not part of it);
+* an obligation on the checker's decisions, for the machine lane: `hD` (`DecLocal`, frame locality's);
+* for the assembly to discharge: `hpar` (the earlier declarations' records are parametric in their
+  nestable parameters; canonical records are, e.g. `CrossSortCE.hpar_E`), `hpty` (the earlier
+  parameter types are local, `ParamTyLocal`), `hK` (the globals carry no label). The witness is `knotK`; guardedness is `ftyK_agree`, the agreement with the run is
 `knotK_agree` along the spine and `steadyAt_knotK` at the steady nodes. -/
 theorem knot_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort ≠ 0)
     (hgram : GrammarOk K.Γ d)

@@ -252,6 +252,7 @@ import Ochr.Meaning.DataModel.Exists.Knot.Exists
 import Ochr.Meaning.DataModel.Exists.CrossSortCE
 import Ochr.Meaning.DataModel.Exists.TruthCE
 import Ochr.Meaning.DataModel.Exists.PropMono
+import Ochr.Meaning.DataModel.Exists.Truth
 import Ochr.Meaning.DataModel.Exists.TeleFrameGuard
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs

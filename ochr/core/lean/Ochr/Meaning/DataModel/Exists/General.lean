@@ -2,6 +2,7 @@ import Ochr.Meaning.DataModel.Exists.Defs
 import Ochr.Meaning.DataModel.Exists.Knot.Grammar
 import Ochr.Meaning.DataModel.Exists.FrameLocal.Setup
 import Ochr.Meaning.DataModel.Exists.Step2
+import Ochr.Meaning.DataModel.Exists.PropMono
 
 /-!
 # The general proof's riskiest statements (stated, `sorry`; outside the default build)
@@ -92,29 +93,38 @@ step is direct (the same constructor and fields; a proof fits any weaker proposi
 content is the hypothesis `hcanon`, which the induction over declarations must establish, and which can
 hold only under rule (A*) (`CrossSortCE.lean`). -/
 
-/-- **A `Prop`-sorted declaration, truth first.** FALSE AS WRITTEN (exists6, 2026-11-22; kernel-checked:
-`TruthCE.truthOld_false`): it assumes nothing of the earlier records, and an earlier `N (P : Prop) :
-Prop := MkN(h : P)` whose record at `P` is the leaf `¬P` makes `Q : Prop := MkQ(h : N(Q))` inhabited
-exactly when it is not, under any faithful record of `Q`. Minimal restatement (to be stated when the
-ruling on (A*) is in): add `hmono`, every earlier declaration's records satisfy `mono_prop`'s `hcanon`
-at `PropLe`-related parameters (the assembly's induction supplies it), and the grammar fact for a
-`Prop`-sorted `d` (its own occurrences are direct fields or stand at nestable `Prop` parameters of
-`Prop`-sorted declarations, rule (A*)); and ask the earlier fields to be members of their field types,
-as `knot_exists` now does. Then the one-step operator is monotone and its least fixed point (an
-impredicative intersection) is the truth predicate. Previously: BELIEVED TRUE. The least predicate closed under the
-constructors, with the declaration's own occurrences (and its occurrences inside earlier declarations
-at nestable `Prop` parameters) read as the predicate; records whose such occurrences are leaves holding
-it (no self-reference, no knot); the record means the predicate; and its field types are the run's
-(under the model whose records for `d` are these). `Step2.ev_tyR`, `Step2.q_tyR` are two instances,
-each computed outright; the general fixed point needs `mono_prop`. First stated without the last
-clause it was vacuous (any record and its own inhabitation meet it). -/
+/-- **A `Prop`-sorted declaration, truth first** (RESTATED by exists6, 2026-11-22; BELIEVED TRUE).
+
+As first written it was FALSE (`TruthCE.truthOld_false`, kernel-checked): it assumed nothing of the
+earlier records, and an anti-monotone earlier record makes `Q : Prop := MkQ(h : N(Q))` inhabited exactly
+when it is not. Restated: the earlier records are monotone in their nestable `Prop` parameters
+(`hmono`, `ShapeLe` at every key, which `mono_prop` turns into monotone inhabitation, and which the
+construction must return for `d` too, the second conclusion, so the induction over declarations goes
+on); rule (A*) at every declaration (`hstar`; the lead's ruling); frame locality's two facts and local
+parameter types (as for the knot); the earlier fields members of their field types (as `knot_exists`).
+STILL MISSING from the hypotheses: the grammar fact for a `Prop`-sorted `d` (`Spine` with (A) read for
+`Prop`: a varying argument stands at a `Prop` parameter of a `Prop`-sorted declaration; (B) as is).
+
+Plan (HANDOFF): `T := lfpP Φ` (`Truth.lean`), `Φ T ps` = some constructor has fields fitting the shapes
+of the record `R_T ps`, which is the knot's record built from an interpreter that reads `d`'s own
+occurrences `d(ā)` as the proposition leaf `T ā` and everything else as `ftyK` does (no knot: `R_T`
+does not read itself, so it is defined outright by the interpreter at each key). `Φ` is monotone by
+`mono_prop` (`hmono`, (A*): every shape `T` reaches is a proposition leaf or a `Prop`-sorted
+sub-record); then `T = Φ T` (`lfpP_fixed`) is `uTyR d (R_T ps) = TyM.prop (T ps)`; faithfulness is
+`knotK_agree`'s argument with a self-occurrence's run `tyM d ā = prop (Nonempty (car d (R_T ā)))` =
+`prop (T ā)` by the fixed point, and `steadyAt_knotK`'s at the steady nodes. -/
 theorem truth_exists (K : RunCtx) (ρ : Assignment) (d : IndDecl) (hd : d ∈ K.Γ) (hs : d.sort = 0)
-    (hglob : ∀ P : ProgState, P.baseC = K.C → GlobalsTyped K.dm P) :
+    (hstar : ∀ M ∈ K.Γ, Knot.AStarOk K.Γ M = true)
+    (hmono : ∀ M ∈ K.Γ, M ≠ d → ∀ ps ps', PropLe M ps ps' → ∀ c i es,
+      ShapeLe (uShape M (K.dm.recOf M ps) c i es) (uShape M (K.dm.recOf M ps') c i es))
+    (hpty : Knot.ParamTyLocal K.dm K.Γ) (hD : FrameLocal.DecLocal K.D)
+    (hK : ∀ g, (K.C.global g).2.label = none) :
     ∃ (T : List Sem → Prop) (R : List Sem → Rec),
       (∀ ps, uTyR d (R ps) = TyM.prop (T ps)) ∧
+      (∀ ps ps', PropLe d ps ps' → ∀ c i es, ShapeLe (uShape d (R ps) c i es) (uShape d (R ps') c i es)) ∧
       ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (r : Res) (s' : SState),
         ps.length = d.params.length → (∀ j (hj : j < ps.length), ps[j] ∈ₛ[K.dm.read] K.dm.paramTy d j (ps.take j)) →
-        (∀ j (hj : j < e.length), FitsOneM uSig (uShape d (R ps) c j ((e.take j).map Sem.small)) e[j]) →
+        (∀ j (hj : j < e.length), e[j] ∈ₛ[K.dm.read] (setRec K.dm d R).fieldTy d ps c j (e.take j)) →
         e.length = i → fieldTerm d c i = some FT →
         run { K with dm := setRec K.dm d R } ρ noFuture (.plain (TyM.univ 1)) FT
           (teleFrame (setRec K.dm d R) K.D d ps c e) = some (r, s') →
