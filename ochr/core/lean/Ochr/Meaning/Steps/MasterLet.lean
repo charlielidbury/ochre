@@ -161,6 +161,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
   -- the step for `u`
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ true none v₀ T₀ s π (hm.of_modeEq hm₀) (fun _ => htn₀) (by omega) (.inl htd₀)
     (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu (fun e => by cases e) hD₁ bh₁ hru
+  replace hOu := outK_of_outLK hOu
   rw [htn₀] at hOu
   obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
@@ -197,6 +198,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
   have hOw := (ih m (by omega) Δ₁ ρ₁).1 w stB st₂ true none r T? _ π₁ (hm₁.of_modeEq hmeB)
     (fun _ => htnB.trans (hctl rfl)) (by omega) htdB'
     hpB hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) (hintBelow_none _) hnhw (fun e => by cases e) hD₂ bh₂ hrw
+  replace hOw := outK_of_outLK hOw
   rw [htnB] at hOw
   obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
   have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w

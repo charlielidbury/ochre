@@ -108,6 +108,7 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ typed none v₀ T₀ s π (hm.of_modeEq hm₀) (fun _ => htn₀)
     (by omega) (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS (by simpa [Term.valsOk] using hv) hab' (hintBelow_none _) hnh' hokU
     (hDb K.D hD) bh₁ hu₀
+  replace hOu := outK_of_outLK hOu
   rw [htn₀] at hOu
   obtain ⟨⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx, hmean, hagr, -, hp₁, hr₁⟩, hK₁⟩ := hOu
   have hx' : runT K ρ φ false (.plain TyM.err) u s = some (r, s₁) := hx

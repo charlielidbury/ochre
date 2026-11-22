@@ -137,6 +137,7 @@ theorem seq_coreK (hST : SeqTailDecl K.D) (hDV : DropValueG) (hVC : ValsCongrA) 
   -- the step for `u`, from the entry state itself
   have hOu := (ih m (by omega) K.Δ ρ).1 u st st₁ true none v₀ T₀ s π hm (fun _ => htn) hne (.inl htd) hp hr hS
     hv.1 habu (hintBelow_none _) hnhu (fun e => by cases e) hD₁ bh₁ hru
+  replace hOu := outK_of_outLK hOu
   rw [htn] at hOu
   obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
@@ -161,6 +162,7 @@ theorem seq_coreK (hST : SeqTailDecl K.D) (hDV : DropValueG) (hVC : ValsCongrA) 
     (hm.of_modeEq hKW.mode) (fun _ => htnW.trans (hctl rfl)) (by rw [hKW.size]; exact hne) htdW'
     (hP₄.of_kern hkW) (hR₄.of_kern hkW) hS₂ (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habW) (hintBelow_none _) hnhw
     (fun e => by cases e) hD bh₂ hrw
+  replace hOw := outK_of_outLK hOw
   rw [htnW] at hOw
   obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
   have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w (discardEnd ru.2 s₁) = some (rw', s₃) := by
