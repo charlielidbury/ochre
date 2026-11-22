@@ -2328,6 +2328,19 @@ def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) 
   pure r
 termination_by structural fuel
 
+/-- D124, `J`: the motive `P` at the first endpoint's value `av`, `P(a)`, the type the typed check
+hands the transported term (as its hint) and checks it against, computed as the typed check computes
+it: `A` and `P` evaluated and `P` called at `av`, on a private copy (they are statements). -/
+def jMotiveAt (fuel : Nat) (A P : Term) (av : Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  inStatement do
+    let A' ← evalType fuel' A
+    let (Pv, PT) ← eval fuel' true P
+    -- D115: the call's head and argument are held in Ω, as temporaries, until it binds them
+    pushTemp Pv PT "J"; pushTemp av (some A') "J"
+    pure (← callFn fuel' true PT 1 #[some A'] false).1
+termination_by structural fuel
+
 /-- `hint`: the type the context requires of `t`, used only to infer the parameters of a
 constructor application that its fields do not determine (v2.0, D46). -/
 def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
@@ -2549,9 +2562,12 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         -- static ends, rule 2: its entry ends what [T-J-stuck]'s block would
         discard (blockEntry fuel' u)
         return ← joinDrop fuel' t (do demand want; eval fuel' false u)
+      -- D124: `t`'s hint is `P(a)`, as on both typed paths, computed only where `t` reads it
+      -- (`readsHint`: not in tail position), as the typed check computes it (`jMotiveAt`)
+      let reads ← readsHint fuel' false false u
       if !(← jErased fuel' P) then
-        -- its endpoints are erased positions, on private copies; `A`, `P` and `h`
-        -- are never run by the machine (A.191)
+        -- its endpoints are erased positions, on private copies; `A` and `h` are never run by
+        -- the machine (A.191), nor `P` but for `t`'s hint
         let (av, _) ← inStatement (eval fuel' false a)
         let (bv, _) ← inStatement (eval fuel' false b)
         -- [J]: the endpoints are convertible, `J` is `t`; [J-stuck]: otherwise the run is
@@ -2559,11 +2575,13 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         -- D84 [Join]: `t` is the one arm, so its moves are taken at the join's grain
         -- static ends, rule 2: its entry ends what [T-J-stuck]'s block would
         if ← conv fuel' av bv then
+          let hJ ← if reads then some <$> jMotiveAt fuel' A P av else pure none
           discard (blockEntry fuel' u)
-          return ← joinDrop fuel' t (do demand want; eval fuel' false u)
+          return ← joinDrop fuel' t (do demand want; eval fuel' false u hJ)
         stuckNow
+      let hJ ← if reads then some <$> jMotiveAt fuel' A P (← inStatement (eval fuel' false a)).1 else pure none
       demand want
-      return (← eval fuel' false u)
+      return (← eval fuel' false u hJ)
     let A' ← evalType fuel' A
     let (av, Ta) ← inStatement (eval fuel' true a)
     let (bv, Tb) ← inStatement (eval fuel' true b)
@@ -2599,7 +2617,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       return ← closeBlock fuel' tJ [arm] (some Pb)
     -- static ends, rule 2: its entry ends what [T-J-stuck]'s block would
     discard (blockEntry fuel' u)
-    let (v, Tu) ← joinDrop fuel' t (eval fuel' true u)
+    -- D124: `t` gets the hint `P(a)`, as where `J` is stuck (above): the two typed paths hand it the same
+    let (v, Tu) ← joinDrop fuel' t (eval fuel' true u (some Pa))
     let fl ← getFlags
     expectTy fuel' "the transported term" Tu Pa
     setFlags fl    -- t's flags (J is t)

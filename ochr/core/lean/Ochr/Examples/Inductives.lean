@@ -743,15 +743,56 @@ ochr UntypedHints uses Logic, Nats {
   -- a body that needs no context (runBody hands no hint), its tail a constructor its fields determine
   def GBc (n : Nat) : L(Nat) := C(clone(n), N[Nat])
   def IBc : Eq(L(Nat), GBc(3), C[Nat](3, N[Nat])) := refl
-  -- J's transported term, a bare constructor: stuck (h unknown) and computing (refl)
+  -- J's transported term (D124): the typed check hands it `P(a)` whether `J` is stuck (`GJs…`: `h`
+  -- unknown, closed off) or computes (`GJr…`: `refl`), and the untyped run, the instance, where it
+  -- reads it; a bare constructor, one its fields determine, one with its parameter written, and
+  -- terms that are not constructors (a call, and a `let` whose tail is a bare constructor: no hint
+  -- reaches a `let`'s tail out of tail position, so both paths reject it)
   def GJs (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, N)
   def IJs : Eq(L(Nat), GJs(0, refl), N[Nat]) := refl
-  reject def GJr (n : Nat) : L(Nat) := J(Nat, n, n, λ(z : Nat) : Type => L(Nat), refl, N)
-  reject def IJr : Eq(L(Nat), GJr(3), N[Nat]) := refl
+  def GJr (n : Nat) : L(Nat) := J(Nat, n, n, λ(z : Nat) : Type => L(Nat), refl, N)
+  def IJr : Eq(L(Nat), GJr(3), N[Nat]) := refl
   def GJc (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, C(clone(n), N))
   def IJc : Eq(L(Nat), GJc(0, refl), C[Nat](0, N[Nat])) := refl
+  def GJrc (n : Nat) : L(Nat) := J(Nat, n, n, λ(z : Nat) : Type => L(Nat), refl, C(clone(n), N))
+  def IJrc : Eq(L(Nat), GJrc(3), C[Nat](3, N[Nat])) := refl
   def GJw (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, N[Nat])
   def IJw : Eq(L(Nat), GJw(0, refl), N[Nat]) := refl
+  def GJrw (n : Nat) : L(Nat) := J(Nat, n, n, λ(z : Nat) : Type => L(Nat), refl, N[Nat])
+  def IJrw : Eq(L(Nat), GJrw(3), N[Nat]) := refl
+  def GJf (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, IdL(C[Nat](clone(n), N[Nat])))
+  def IJf : Eq(L(Nat), GJf(0, refl), C[Nat](0, N[Nat])) := refl
+  def GJrf (n : Nat) : L(Nat) := J(Nat, n, n, λ(z : Nat) : Type => L(Nat), refl, IdL(C[Nat](clone(n), N[Nat])))
+  def IJrf : Eq(L(Nat), GJrf(3), C[Nat](3, N[Nat])) := refl
+  reject def GJl (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, (let y = Z; N))
+  reject def IJl : Eq(L(Nat), GJl(0, refl), N[Nat]) := refl
+  reject def GJrl (n : Nat) : L(Nat) := J(Nat, n, n, λ(z : Nat) : Type => L(Nat), refl, (let y = Z; N))
+  reject def IJrl : Eq(L(Nat), GJrl(3), N[Nat]) := refl
+  -- `J` away from the end of a body: a `let`'s right-hand side and a call's argument
+  def GJsLet (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := (let r = J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, N); r)
+  def IJsLet : Eq(L(Nat), GJsLet(0, refl), N[Nat]) := refl
+  def GJrLet (n : Nat) : L(Nat) := (let r = J(Nat, n, n, λ(z : Nat) : Type => L(Nat), refl, N); r)
+  def IJrLet : Eq(L(Nat), GJrLet(3), N[Nat]) := refl
+  def GJsA (n : Nat) (h : Eq(Nat, n, 0)) : Nat := Len(J(Nat, n, 0, λ(z : Nat) : Type => L(Nat), h, N))
+  def IJsA : Eq(Nat, GJsA(0, refl), 0) := refl
+  def GJrA (n : Nat) : Nat := Len(J(Nat, n, n, λ(z : Nat) : Type => L(Nat), refl, N))
+  def IJrA : Eq(Nat, GJrA(3), 0) := refl
+  -- a motive that depends on the endpoint: `P(a)` mentions `n`, stuck at the generic call
+  def TN (z : Nat) : Type := match z { Z => Nat, S k => Unit }
+  def GJds (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(TN(z)), h, N)
+  def IJds : Eq(L(Nat), GJds(0, refl), N[Nat]) := refl
+  def GJdr (n : Nat) : L(TN(n)) := J(Nat, n, n, λ(z : Nat) : Type => L(TN(z)), refl, N)
+  def IJdr : Eq(L(Unit), GJdr(3), N[Unit]) := refl
+  def GJdw (n : Nat) (h : Eq(Nat, n, 0)) : L(Nat) := J(Nat, n, 0, λ(z : Nat) : Type => L(TN(z)), h, N[TN(n)])
+  def IJdw : Eq(L(Nat), GJdw(0, refl), N[Nat]) := refl
+  def GJdrw (n : Nat) : L(TN(n)) := J(Nat, n, n, λ(z : Nat) : Type => L(TN(z)), refl, N[TN(n)])
+  def IJdrw : Eq(L(Unit), GJdrw(3), N[Unit]) := refl
+  -- an erased `J` (its motive into `Prop`), a proof: it always computes; in a data function's body
+  -- its untyped run is a statement
+  inductive PN (A : Type) : Prop := PNil
+  def GJe (n : Nat) : PN(Nat) := J(Nat, n, n, λ(z : Nat) : Prop => PN(Nat), refl, PNil)
+  def GJeD (n : Nat) : Nat := (let p = J(Nat, n, n, λ(z : Nat) : Prop => PN(Nat), refl, PNil); 0)
+  def IJeD : Eq(Nat, GJeD(3), 0) := refl
 }
 
 #guard (run "UntypedHints" UntypedHints).rejectedWith [
@@ -778,7 +819,10 @@ ochr UntypedHints uses Logic, Nats {
   ("GUlN", "cannot infer the parameter A of N"),
   ("GUsN", "cannot infer the parameter A of N"),
   ("GUmN", "cannot infer the parameter A of N"),
-  ("GJr", "cannot infer the parameter A of N")]
+  ("GJl", "cannot infer the parameter A of N"),
+  ("GJrl", "cannot infer the parameter A of N"),
+  ("IJl", "unknown constant GJl"),
+  ("IJrl", "unknown constant GJrl")]
 
 namespace Ochr.Examples.UntypedHints
 open Ochr
@@ -817,6 +861,16 @@ def tN : Term := .ctor "L" 0 ⟨"N"⟩ [] []
       inds := [declL] } with
   | .ok (some (.ind _ _ _ ps _)) => ps.length == 1
   | _ => false
+
+/-- `J(Nat, 0, 0, λ(z : Nat) : Type => L(Nat), (), t)`: `J` computes (its proof is never run). -/
+def jR (t : Term) : Term :=
+  .prim "J" [.nat, .zero, .zero, .fix ⟨"_"⟩ [⟨"z"⟩] [.nat] (.sort 1) none (.tind "L" [.nat]), .tt, t]
+
+-- J's transported term where `J` computes: a bare `N` takes `Nat` from `P(a)`, as the typed check
+-- hands it (before D124's site for `J`, the untyped run handed it nothing and it recorded none), in
+-- tail position or not
+#guard recorded (runAt (jR tN) false) == some [.tNat]
+#guard recorded (runAt (jR tN) true) == some [.tNat]
 
 end Ochr.Examples.UntypedHints
 
