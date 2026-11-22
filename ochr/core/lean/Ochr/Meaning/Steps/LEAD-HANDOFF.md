@@ -1,4 +1,22 @@
-# Lead handoff (twenty-second lead, lead22, 2026-11-22; twenty-first lead, lead21, 2026-11-22; twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+# Lead handoff (twenty-third lead, lead23, 2026-11-22; twenty-second lead, lead22, 2026-11-22; twenty-first lead, lead21, 2026-11-22; twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+
+## TWENTY-THIRD LEAD (lead23, 2026-11-22; `spine-lead23`, branched from `spine-lead22` e941e8f6 with `spine` 36123b14 merged): the five rulings on the master induction; `;`, `Nat`, `Unit` in general
+
+**Built (standard axioms; docs/31 D154 to D159).**
+- (a), (e): `Form.eval_sim` deleted; `EvalAt`/`TailAt` conclude `Kept` (mode, frames, top readings) beside `Out` (`TailOutK` at the leaf); `EvalTop` gone. Forms for a class of states: `CoreSimK`, `EvalSimK`, `eval_of_coreK` (`Steps/Master.lean`).
+- (b): statements at every erased depth (`ModeR`); `Steps/MasterDepth.lean`: `evalInvD`, `letInvD` (the machine lane's proofs with the mode freed); `MasterGuards.DepthProbe` pins the five programs accepted only above depth 0.
+- (d): `Run.tailHint` (tail position hands the hint); ripple repaired everywhere incl. the existence lane's `FrameLocal/Run.lean`, `Knot/Congr.lean` (ruling (A)); `ColumnLet.NoHint` for the columns and fragment; `Steps/TailHintRegress.lean` (both sides). The master's statements say a typed run is not in tail position (`typed = true → tailNext = false`; `TailAt`: `tailNext = false`).
+- `Steps/MasterSeq.lean`: `seqInvD` (proved), `stepSeq_typed` (assumes `SeqTailDecl`, `DropValueG`, `ValsCongrA`, `FundCtx`).
+- `Steps/MasterType.lean`: `stepNat`, `stepUnit` (assume `InvPushType`).
+
+**Not done, in order.**
+1. The erased wrapper (D158): state its four facts in Lean (`ErasedInv`, `ErasedValue`, `PreKeep`, `ProofTrue`) at the exact class, guard the checker ones, and assemble: an erased term's `EvalAt` from its core step one depth down. Then the `let`/`;` erased cases close through it.
+2. `succ`: `SuccInv` at any depth for every value at `Nat`; the reference hands `S`'s argument the hint `Nat` where the typed checker hands none (owed since D119): `runT_hintIndep` gives value, label and state only, so either the model hands none (as D119 meant) or a lemma that `.succ`'s result type ignores its argument's.
+3. The untyped `let`/`;` (callee bodies in place): the untyped `evalCore` hands the tail the hint out of tail position, the reference none; `LetInv` untyped, the call deferral (`lazyTy`).
+4. `place`, `borrow`, `assign` (D153's rows), stating every checker fact at any depth (the capture-move check and K2 are skipped above depth 0: a real case).
+5. (c) once the checker's D122 is merged into the proof line: the `clone`/`peek` step with "the operand is a place" as a named fact until then.
+
+**Traps.** After `obtain ⟨rfl, …⟩` on `v = vt` Lean substitutes the argument away; use `subst v`. `{ s₄ with tailDecl := _, … }` placeholders in a `refine` unify with the wrong fields: write them out. `DiscardOk { K with Δ := Δ₁ }` is `DiscardOk K` only up to `show`. A guard on the checker's verdict: `Ochr.Test.runWith … |>.rows.find? … |>.verdict`, matched with `Ochr.Verdict.rejected m _`.
 
 ## TWENTY-SECOND LEAD (lead22, 2026-11-22; `spine-lead22`, branched from `spine` ab9754c9): the master induction; the general step by former
 

@@ -14,12 +14,13 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
-## THE MASTER INDUCTION OF (II) (lead22, 2026-11-22, `spine-lead22`; docs/31 D150 to D153)
+## THE MASTER INDUCTION OF (II) (lead22, lead23, 2026-11-22, `spine-lead23`; docs/31 D150 to D159)
 
-`Steps/Master.master`: (II) for `eval` and `checkTail` at every fuel, `Δ`, assignment and term, ASSUMING the 32 step statements of `AllSteps` (no `sorry`). The table of the 32 is docs/31 D153. Proved in general: `stepZero`, `stepTt` (nothing assumed), `tStepOther` (assumes `TailOtherInv`), `stepLetIn_typed` (typed, unerased `let`; assumes `LetTailDecl`, `ValsCongrA`, `LetPushG`, `LetDropG`, `FundCtx`). Since lead23 (D154) `EvalAt`/`TailAt` conclude `Kept` (mode, frames, top readings) beside `Out`; `EvalTop` is gone.
-- NEW FACTS, open: `TailOtherInv` (checker, guarded; `Steps/MasterTail.lean`), `LetTailDecl` (table, guarded), `ValsCongrA` (model), `LetPushG`, `LetDropG` (each part checker, part model) (`Steps/MasterLet.lean`).
-- KNOWN FALSE as things stand: `StepPrim` at `clone`/`peek` of a non-place (`Steps/MasterGuards.lean`; ruling asked); `TStepLetIn`, `TStepSeq`, `TStepMatchNat`, `TStepMatchInd` at a tail that reads its hint (the model's tail positions hand no hint; ruling asked).
-- `Form.eval_sim` (false: no mode, no handed-down reading) is DELETED (D154); `EvalAt` is the statement.
+`Steps/Master.master`: (II) for `eval` and `checkTail` at every fuel, `Δ`, assignment, term and erased depth, ASSUMING the 32 step statements of `AllSteps` (no `sorry`); each statement concludes `Kept` (mode, frames, top readings) beside `Out`, and says a typed run is not in tail position. The table of the 32 is docs/31 D153. Proved in general: `stepZero`, `stepTt` (nothing assumed); `stepNat`, `stepUnit` (`InvPushType`); `tStepOther` (`TailOtherInv`); `stepLetIn_typed` (typed, unerased `let`: `LetTailDecl`, `ValsCongrA`, `LetPushG`, `LetDropG`, `FundCtx`); `stepSeq_typed` (typed, unerased `;`: `SeqTailDecl`, `DropValueG`, `ValsCongrA`, `FundCtx`). Proved facts at any depth: `Machine.evalInvD`, `letInvD`, `seqInvD`.
+- NEW FACTS, open: `TailOtherInv` (checker, guarded), `InvPushType` (checker), `LetTailDecl`, `SeqTailDecl` (table, guarded), `ValsCongrA` (model), `LetPushG`, `LetDropG`, `DropValueG` (each part checker, part model; checker halves guarded).
+- The erased wrapper (every former's erased case), stated with its four missing facts: docs/31 D158 (the erased path's inversion, an erased value holds no label, `Pre` across the restore, a proof's type means a true proposition); `Rel` across the restore is proved (`Rel.private_copy`).
+- KNOWN FALSE as things stand: `StepPrim` at `clone`/`peek` of a non-place (`Steps/MasterGuards.lean`; the checker's D122 will reject it; ruling (c): until then the step takes "the operand is a place" as a named fact).
+- The model's tail-hint change is BUILT (D156); `Form.eval_sim` is DELETED (D154).
 
 ## THE FIRST DATA TYPES `B` AND `Box`; A CAPTURE PINNED (lead21, 2026-11-22, `spine-lead21`; docs/31 D147 to D149)
 - Stated checker facts, unreviewed, guarded: `ColumnNot.SplitNotInv` (`Steps/DataNot.lean`), `ColumnBox.WrapInv`, `ColumnBox.UnboxInv` (`Steps/DataBox.lean`). For the machine lane.
