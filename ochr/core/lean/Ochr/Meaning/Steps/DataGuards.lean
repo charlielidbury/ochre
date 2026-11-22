@@ -62,7 +62,8 @@ def kernEqI (a b : MState) : Bool :=
     a.nextLoan == b.nextLoan && a.nextAbs == b.nextAbs && a.absTy.size == b.absTy.size &&
     (a.absTy.zip b.absTy).all (fun (x, y) => x.exact y) && a.absDecl == b.absDecl &&
     a.refs.length == b.refs.length && (a.refs.zip b.refs).all (fun (x, y) => x.1 == y.1 && x.2.exact y.2) &&
-    a.etaRefs.isEmpty && b.etaRefs.isEmpty && a.neutrals.isEmpty && b.neutrals.isEmpty &&
+    a.etaRefs.length == b.etaRefs.length && (a.etaRefs.zip b.etaRefs).all (fun (x, y) => x.1 == y.1 && x.2.exact y.2) &&
+    a.neutrals.isEmpty && b.neutrals.isEmpty &&
     (match a.goal, b.goal with | some x, some y => x.exact y | none, none => true | _, _ => false) &&
     a.liveScope == b.liveScope
 
