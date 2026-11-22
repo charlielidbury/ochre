@@ -847,6 +847,38 @@ def resolveLoans (fuel : Nat) (v : Value) : M Value := do
   | _ => pure v
 termination_by structural fuel
 
+/-- D131 (a safety net of the typed check): a binding a typed run makes (a `let`, a parameter of
+the function being checked, a λ's parameter) agrees with its stored type and with the value bound.
+The class its declared reading `d` gives it (a proof; a type; data) is the class of its stored type
+`T` (a proposition; a sort; anything else), and a proof value `⋆` is read as a proof. The readers
+see a sort only where one is written (D55): through a call of a function whose body is a sort
+(`PropF(x)` with `PropF (n : Nat) : Type₁ := Prop`), a constant or an ascription, a type reads as
+data, and so does a proof whose type is formed from it (`J` through a motive
+`λ(x : Nat) : PropF(x) => ⊤`). Decisions that consume the reading then disagree with the run (the
+join moved a proof read as data at an instance: D131's `V1`). The value is compared as well as the
+type because a stored type can be stuck on a hidden sort (an unknown's or a sealed type, classed as
+data) while the value is already `⋆`. The other way, a binding read as a proof holds `⋆` or a
+stand-in whose content is not known yet (an unknown `σ`, at a proposition the run cannot evaluate;
+a sealed program); any other value read as a proof is rejected too. An unknown reading (a hole's)
+is not tested. -/
+def readingAgrees (fuel : Nat) (h : Hint) (T : Value) (d : DeclInfo) (v : Value) : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if d matches .any | .conflict then return
+  let cls (k : Nat) : String := match k with | 0 => "a proof" | 2 => "a type" | _ => "data"
+  let hidden := "a sort is hidden from the reading, behind a call of a function whose body is a sort, a constant, an ascription or a match whose arms disagree; write the sort itself there"
+  let rd : Nat := if d.isProof then 0 else if d matches .sort _ then 2 else 1
+  let ty : Nat ← if T matches .sort _ then pure 2 else if ← isPropV fuel' T then pure 0 else pure 1
+  unless rd == ty do
+    let what := match ty with
+      | 0 => s!"its type {T} is a proposition"
+      | 2 => s!"its type {T} is a sort"
+      | _ => s!"its type {T} is neither a sort nor a proposition"
+    err s!"[D131] {h.name} is {cls ty} ({what}), but its declared type reads as {cls rd}: {hidden}"
+  if v == .proof && rd != 0 then
+    err s!"[D131] {h.name} holds a proof (⋆, its type {T}), but its declared type reads as {cls rd}: {hidden}"
+  if rd == 0 && !(v matches .proof | .abs _ | .sealed _) then
+    err s!"[D131] {h.name} is read as a proof, but holds {v}, which is not a proof (its type {T})"
+
 -- the machine is one `mutual` block, and compiling it (LCNF) outgrew the default heartbeats
 set_option maxHeartbeats 1000000 in
 mutual
@@ -2456,6 +2488,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     -- `h` is a proof iff `u` is, or its declared type is a proposition (P1; `u` may be an
     -- embedded value, `⋆` in a sealed program's bindings, which the pre-pass does not read)
     let p := (← getFlags).2 || du'.isProof
+    -- D131: in a typed run the binding's reading agrees with its type
+    if typed then if let some T' := T then readingAgrees fuel' h T' du' v
     pushBind h T v p du'
     -- D82: a call's type, the declared codomain at its arguments, evaluated when it is read
     if let some (P, ws) := later then
@@ -4635,7 +4669,10 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
   | .letIn h u w =>
     let du ← withLive true (declOf fuel' false [] [] u)
     let (v, T) ← eval fuel' true u
-    pushBind h T v (← getFlags).2 (← refineDecl du)
+    let du' ← refineDecl du
+    -- D131: the binding's reading agrees with its type
+    if let some T' := T then readingAgrees fuel' h T' du' v
+    pushBind h T v (← getFlags).2 du'
     checkTail fuel' w fun r R => do
       let fl ← getFlags      -- the path's tail flags (dropping may normalise)
       pushTemp r (some R) "checkTail"
@@ -4772,16 +4809,20 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
       let c ← absAt fuel' pd.deref T
       let l ← freshLoan
       modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
+      -- D131: the parameter's reading agrees with its type and its value
+      readingAgrees fuel' h A pd (.borrow l c)
       pushBind h (some A) (.borrow l c) p pd
       entries := entries.push (match c with
         | .abs σ => if T == .tNat || (T matches .tInd ..) then some σ else none
         | _ => none)
     | _ =>
       if ← isPropV fuel' A then
+        readingAgrees fuel' h A pd .proof
         pushBind h (some A) .proof p (← refineDecl pd)
         entries := entries.push none
       else
         let c ← absAt fuel' pd A
+        readingAgrees fuel' h A pd c
         pushBind h (some A) c p (← refineDecl pd)
         entries := entries.push (match c with
           | .abs σ => if A == .tNat || (A matches .tInd ..) then some σ else none
