@@ -309,6 +309,7 @@ import Ochr.Meaning.Strict.WitnessFix
 import Ochr.Meaning.Strict.OpenFutureCE
 import Ochr.Meaning.Strict.FrameCE
 import Ochr.Meaning.Strict.FrameLocCE
+import Ochr.Meaning.Strict.FrameCellCE
 import Ochr.Meaning.Steps.Machine.HintFacts
 import Ochr.Meaning.Steps.Machine.TailOther
 import Ochr.Meaning.Steps.Machine.PlaceInv

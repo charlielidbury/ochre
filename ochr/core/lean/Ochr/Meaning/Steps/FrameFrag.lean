@@ -867,22 +867,43 @@ theorem closureRun_of_checker_free (hB : BodyLazyInv) (hN : InvNumA)
 
 /-! ## The frame property restated over `FrameRelS`: the general statement (open) -/
 
-/-- **The frame property, restated over `FrameRelS`** (docs/31 D127's ruling; D129's locality clause), as
-a named proposition: OPEN in general, proved on the label-free fragment (`run_frameS_lf`, whose
-hypotheses imply these). For every context with `FundCtx`, from an in-place state `s` and a closure state
-`s'` related by `FrameRelS` at the function's own binding `i` (not read by `t`: its de Bruijn index in the
-closure's top frame is not free in `t`), with the in-place state good and `FrameStart` met at the call,
-the closure's positions reading only its live labels and its top frame none of the parameters' (the
-clause D129 adds: without it the statement is false, `Strict/FrameLocCE.run_frame_loc_false`), a term with
-no `Id` (or a call with no parameter label) runs to the same result, its label renamed, and related
-states, or fails on both sides.
+/-- **The frame property as D129 restated it: FALSE** (lead30, docs/31 D201; `Strict/FrameCellCE.runFrameS_false`,
+kernel-checked). It asks goodness of the in-place state only, and `FrameRel` says nothing of the closure's frame 0 beyond
+the values of its first `ks.length` bindings (`lowerVal`); the whole-state strict test after a write or a borrow at a
+field path (`lentOk`, `StateOk`) reads every binding, so a closure frame-0 binding outside its stored type (`junk : Nat ↦
+err`, no parameter) fails the closure's run of `x.0 := c` where the in-place run succeeds. Kept as the record; the
+statement is `RunFrameS`, below. -/
+def RunFrameS_old : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (i : Nat)
+    (tl : Bool) (hint : TyS) (t : Term) (s s' : SState),
+    Strict.FundCtx K → FrameStart s₀ ks → t.valsOk (Strict.ValsP K ρ φ) → (t.idFree = true ∨ ks = []) →
+    (∀ F', s'.env.getLast? = some F' → (F'.binds.length - 1 - i) ∉ t.freeVars) →
+    FrameRelS K.dm.read σ s₀ ks i s s' →
+    (∀ p, Ochr.Meaning.FT (fun l => s'.Live l) (s'.valAt p)) →
+    (∀ p, p.frameOf = 1 → Ochr.Meaning.FT (fun l => s'.Live l ∧ σ l ∉ ks) (s'.valAt p)) →
+    Strict.SGood K.dm K.Γ φ s →
+    FrameAgreeS K.dm.read σ s₀ ks i (runT K ρ φ tl hint t s) (runT K ρ φ tl hint t s')
 
-What a proof needs beyond the label-free fragment, clause by clause of `runT` (docs/31 D129): `&x` and
+/-- **The frame property, restated over `FrameRelS`** (docs/31 D127's ruling; D129's locality clause; D201's goodness of
+the closure's state), as a named proposition: OPEN in general, proved on the label-free fragment (`run_frameS_lf`, whose
+hypotheses imply these). For every context with `FundCtx`, from an in-place state `s` and a closure state `s'` related
+by `FrameRelS` at the function's own binding `i` (not read by `t`: its de Bruijn index in the closure's top frame is not
+free in `t`), with BOTH states good (D201: the whole-state test after a write or a borrow at a field path reads the
+caller's frames in place and the closure's frame 0, its cells; `Strict/FrameCellCE` refutes the form that asked the
+in-place state alone) and `FrameStart` met at the call, the closure's positions reading only its live labels and its
+top frame none of the parameters' (the clause D129 adds: without it the statement is false,
+`Strict/FrameLocCE.run_frame_loc_false`), a term with no `Id` (or a call with no parameter label) runs to the same
+result, its label renamed, and related states, or fails on both sides. At a call the closure's state is `fixBodyAt`'s:
+its frame 0 the cells (`x° ↦ loan l` at the content type, a member at every typed future), its top frame `self` (the
+stage below, a member of the weakened type) and the arguments (members); the run keeps goodness on both sides
+(`Strict.fund_all`).
+
+What a proof needs beyond the label-free fragment, clause by clause of `runT` (docs/31 D129, D201): `&x` and
 `x := u`/`*y := u` with a label: [End] (`endLabel`) and [Access] (`access`, its rounds) on related states,
 the typed futures related through `σ` (the locality clause), the strict end tests (`EndOk`, `AccessOk`)
 equivalent; `let`/`;` ending a held borrow (the same); a field path: the whole-state test (`StateOk`),
-the caller's frames by `SGood` and `FrameStart` (they read no label of the frame), the closure's own by
-the relation; `match`: `movedPlaces` (top frame, at `lentFuture`), the entry and the join's drop; `.fix`
+the caller's frames by `SGood` and `FrameStart` (they read no label of the frame), the closure's frame 0 by its
+`SGood`; `match`: `movedPlaces` (top frame, at `lentFuture`), the entry and the join's drop; `.fix`
 inside the body: the inner closure's runs from states with one more frame (`FrameRel.frames` asks two)
 and its meaning's equality (its finals read through `σ`, equal where they read only the returned label);
 `.call`: `callOf` on related states (the consumed arguments' fixing, `mapVals`, reaching the caller's
@@ -895,7 +916,7 @@ def RunFrameS : Prop :=
     FrameRelS K.dm.read σ s₀ ks i s s' →
     (∀ p, Ochr.Meaning.FT (fun l => s'.Live l) (s'.valAt p)) →
     (∀ p, p.frameOf = 1 → Ochr.Meaning.FT (fun l => s'.Live l ∧ σ l ∉ ks) (s'.valAt p)) →
-    Strict.SGood K.dm K.Γ φ s →
+    Strict.SGood K.dm K.Γ φ s → Strict.SGood K.dm K.Γ φ s' →
     FrameAgreeS K.dm.read σ s₀ ks i (runT K ρ φ tl hint t s) (runT K ρ φ tl hint t s')
 
 end FrameFrag
