@@ -97,7 +97,7 @@ def CallHeadArgsG (K : RunCtx) (φ : Future) : Prop :=
     ∃ (m : Nat) (stc st₁ : MState) (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (cf : CallFlags)
       (bh' : Nat),
       m + 1 < n ∧ cf.defer = st.deferHere ∧ cf.want = st.wantHere ∧ Kept st stc ∧ stc.tailNext = false ∧
-      fT = (st.globals.find? (·.name == g)).map (·.ty) ∧
+      fT = (stc.globals.find? (·.name == g)).map (·.ty) ∧ as.length = ws.size ∧
       Runs (Ochr.callFn m typed fT as.length tys hd none none cf.res cf.fills cf.want cf.defer none) stc bh' (v, T?) st₁ ∧
       Kern st₁ st' ∧ ModeEq st₁ st' ∧
       ∃ (ρc : Assignment) (Δc : Nat → TyS) (πc : Nat → Nat) (asR : List Res) (sc : SState),
@@ -242,6 +242,66 @@ def RecCheckedG : Prop :=
     stc.env.back? = some fr → fr.temps = base ++ #[fv] ++ ws →
     Runs (Ochr.callFn n typed fT ws.size tys hd none none cf.res cf.fills cf.want cf.defer none) stc bh r st₁ →
     ∃ bh' stR, Runs (Ochr.recCheck fv ws none) stc bh' () stR
+
+/-! ## The composition, at the class of states the other steps use -/
+
+/-- **The reference's run of a call of a global the table does not erase** is its arguments' run followed by
+`refCall` (`runT`'s `.call` clause: `SM.erasedIf (false, false)` is the run itself, and a global's head is
+`pure (K.C.global g)`, `SM.headOf` of a non-place). -/
+theorem runT_callConst (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (hint : TyS) (g : String)
+    (as : List Term) (hd : Bool) (s : SState) (hfl : K.D.flags (scopeOf s) (.call (.const g) as hd) = (false, false)) :
+    runT K ρ φ tl hint (.call (.const g) as hd) s =
+      (runArgs K ρ φ false (K.C.global g).2.m [] as >>= fun asR => refCall K (K.C.global g) asR) s := by
+  rw [runT]
+  simp only [hfl, SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, SM.headOf]
+  rw [runT]
+  rfl
+
+theorem IH.mono {K : RunCtx} {φ : Future} {n m : Nat} (h : IH K φ n) (hmn : m ≤ n) : IH K φ m :=
+  fun k hk Δ ρ => h k (Nat.lt_of_lt_of_le hk hmn) Δ ρ
+
+/-- **The unerased call of a global, from the two phases** (the composition `StepCallGFrom` asks, at the class of
+states the other proved steps use: a frame, and the table not reading the call as a proof). PROVED from
+`EvalInvDCall` (checker), `CallHeadArgsG` and `CallFnG` (mixed), all three unproved. Concludes `Out` and `Kept`;
+`CallFnG`'s deferred and promised types are not yet carried to `OutL` (they need `evalAt`'s bookkeeping after
+`evalCore` to keep `callTyLater`, which `EvalInvDCall` does not yet say). -/
+theorem stepCallG_unerased {K : RunCtx} {φ : Future} (hE : EvalInvDCall) (hH : CallHeadArgsG K φ) (hF : CallFnG K φ) :
+    ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (g : String) (as : List Term) (hd : Bool),
+      EvalSimK { K with Δ := Δ } ρ φ n (.call (.const g) as hd)
+        (fun st => 0 < st.env.size ∧
+          (K.D.declOf (DecideScope.topReadings st) (.call (.const g) as hd)).isProof = false) := by
+  intro n ih Δ ρ g as hd st st' typed hint v T? s π hP _ hm htl htd hp hr hS hv hab hhb hnh hfl hok hD bh h
+  by_cases hn : n < 3
+  · exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
+  obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
+  obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, h₀, hk₁, hm₁, -, -, -, -⟩ :=
+    hE (m + 1) typed (.const g) as hd hint st st' bh v T? K.D hm hD htd hP.2 h
+  have hD₁ : DecTab K.D st₁ := DecTab.of_kern hk₁.symm hD
+  obtain ⟨m', stc, st₂, fT, ws, tys, cf, bh'', hlt, -, -, hkc, htnc, hfT, hlen, hrun, hk₂, hm₂,
+      ρc, Δc, πc, asR, sc, hext, hargs, hpt⟩ :=
+    hH (m + 1) (ih.mono (by omega)) Δ ρ g as hd st₀ st₁ typed hint v T? s π bh'
+      (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv
+      (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl hD₁ h₀
+  have hrunT : ∀ tl h', runT { K with Δ := Δ } ρ φ tl h' (.call (.const g) as hd) s =
+      refCall { K with Δ := Δc } (K.C.global g) asR sc := by
+    intro tl h'
+    rw [runT_callConst _ ρ φ tl h' g as hd s hfl]
+    simp only [Bind.bind, hargs]
+    rfl
+  have hsz : 0 < stc.env.size := by
+    rw [hkc.size, ← ColumnC.size_of_erase hk₀.env]; exact hP.1
+  have hD₂ : DecTab K.D st₂ := DecTab.of_kern hk₂.symm hD₁
+  have hok' : typed = false → (refCall { K with Δ := Δc } (K.C.global g) asR sc).isSome := by
+    intro e; rw [← hrunT st.tailNext (hintM { K with Δ := Δ } ρ hint)]; exact hok e
+  obtain ⟨⟨ρ', Δ', π', r, s', hext', hx, hm', ha, hl, hp', hr', -, -⟩, hkept⟩ :=
+    hF m' (ih.mono (by omega)) Δc ρc πc g hd typed fT ws tys cf stc st₂ sc asR v T? bh''
+      ((hm.of_modeEq hm₀).of_modeEq hkc.mode) htnc hsz hpt hfT hok' hD₂
+      (by rw [← hlen]; exact hrun)
+  have hO : Out { K with Δ := Δ } ρ φ π st₀ st₂ s
+      (runT { K with Δ := Δ } ρ φ st.tailNext (hintM { K with Δ := Δ } ρ hint) (.call (.const g) as hd)) v T? :=
+    ⟨ρ', Δ', π', r, s', hext.trans hext', by rw [hrunT]; exact hx, hm', ha, hl, hp', hr'⟩
+  exact ⟨Out.of_kern hk₀ (hk₂.trans hk₁) hO,
+    ((((Kept.of_kern hk₀ hm₀).trans hkc).trans hkept).trans (Kept.of_kern hk₂ hm₂)).trans (Kept.of_kern hk₁ hm₁)⟩
 
 /-- **The statement to prove next** (`stepCallG_of`): the step for a call of a global from the two phases, the
 transport and the erased wrapper. -/

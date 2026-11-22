@@ -36,6 +36,12 @@ ochr RecAtk {
     FF => match n { Z => (H(TT, S(S(S(Z)))); Z), S m => Z } }
 }
 
+#guard_msgs (drop warning) in
+ochr RetKindAtk {
+  def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x, S m => y }
+  def Kc (n : Nat) (x : &Nat) (y : &Nat) : &Nat := Pick(n, x, y)
+}
+
 namespace Ochr.Meaning.Steps.Form.CallGAttack
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps
@@ -146,5 +152,19 @@ def recVerdict (nm : String) : String :=
 -- `H` is rejected at the typed check of the inner call site, in the arm `p = FF`, `n = Z`, whose entry value has no strict
 -- subterm: the same call the in-place run made unchecked
 #guard (recVerdict "H").startsWith "[Rec] at H(TT, 3)"
+
+/-! ## `RetKindG` on instances (the lead's check before building on it)
+
+A callee returning one of two borrow arguments (`Pick`) and a callee whose body ends in a call that closes off (`Kc`,
+at the generic `n`) are accepted: in the model their bodies return a parameter's borrow (its label) or `callOf`'s
+fresh label (`.ref` branch), so their results are labelled, at a codomain written `&` (by reading: `fixG` is not
+computable). A codomain that is a type-function call returning a borrow type cannot arise: `&` in a term position is a
+borrow in the surface ("Nat is not a place"), and the core checker rejects a type function whose body is the type
+`&Nat` (`defRT`, `refTopOk`), so "written `&`" is exactly "a borrow codomain". -/
+
+#guard (Ochr.Test.runWith (some Prelude) "RetKindAtk" RetKindAtk {} (located := false)).allAsExpected
+
+def defRT : Def := { name := "RT", hs := [⟨"n"⟩], doms := [.nat], cod := .sort 1, body := .ref .nat }
+#guard !isOk (checkDef defRT) {} 100000
 
 end Ochr.Meaning.Steps.Form.CallGAttack
