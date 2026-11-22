@@ -872,6 +872,20 @@ def jR (t : Term) : Term :=
 #guard recorded (runAt (jR tN) false) == some [.tNat]
 #guard recorded (runAt (jR tN) true) == some [.tNat]
 
+/-- An untyped run of `t` at the hint `h`, in a context that reads its type (`want`, as a `let`'s
+right-hand side and a borrow argument are). -/
+def runWant (t : Term) (h : Option Value) : Option (Option Value) :=
+  match runM (Ochr.eval 100 false t h) { env := #[{}], inds := [declL], wantTy := true } with
+  | .ok (_, T) => some T
+  | .error _ => none
+
+-- an embedded value's type, where its context reads it: by its kind, as the typed check types it
+-- (before D124's site for it, the untyped run took the hint, so `0` embedded at `L(Nat)` was typed
+-- `L(Nat)`); a proof's is the hint, as in the typed check
+#guard runWant (.val .zero) (some (.tInd "L" [.tNat])) == some (some .tNat)
+#guard runWant (.val (.ind "L" 0 ⟨"N"⟩ [.tNat] [])) (some (.tInd "L" [.tUnit])) == some (some (.tInd "L" [.tNat]))
+#guard runWant (.val .proof) (some (.tInd "True" [])) == some (some (.tInd "True" []))
+
 end Ochr.Examples.UntypedHints
 
 

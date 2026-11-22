@@ -2465,7 +2465,13 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .val v =>
     -- an embedded value is typed by the position it was embedded at (the hint), as below
     let hint ← forceHint fuel' hint
-    if !typed then return (v, hint)
+    -- D124, an embedded value's type: the untyped run types it as the typed check does (below), by
+    -- its kind (`valType?`: a number, an unknown, a constructor, a type, a closure, a sealed program,
+    -- a live loan's content) and else by the hint (a proof; a loan whose borrow is gone), where its
+    -- context reads its type (`want`); where nothing reads it, it is not computed
+    if !typed then
+      if !want then return (v, hint)
+      return (v, (← valType? fuel' v).orElse fun _ => hint)
     -- an embedded value with no type of its own (a proof, an inert loan) has the type of the
     -- position it was embedded at: a parameter's or a field's declared type (the hint)
     match v, hint with
