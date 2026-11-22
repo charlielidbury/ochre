@@ -353,7 +353,7 @@ theorem seqB_core (hSB : SeqBorInv) (hR : FragRun K.D) (hdec : FragDec K.D) (hIE
     simp only
     have hd : discardEnd ru.2 s₁ = s₁.endAt (π₁ l) r := by
       unfold discardEnd; rw [hrul]; exact SState.endLabel_eq hhold
-    rw [hd]; exact hxw'
+    rw [hd, frag_hint (K := K) (ρ := ρ) (φ := φ) hw _ _ (.plain TyM.err)]; exact hxw'
   have hext : Ext K ρ π st stW ρ₁ Δ₁ π₁ :=
     (he₁.congr hk₀.absTy hk₀.nextLoan rfl rfl).grow (by rw [← hkW.absTy]; exact hq.absSize)
       (by rw [← hkW.nextLoan]; exact hq.nextLoan)

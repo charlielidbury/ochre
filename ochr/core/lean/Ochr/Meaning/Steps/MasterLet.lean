@@ -150,7 +150,7 @@ variable {K : RunCtx} {φ : Future}
 theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
     (hVC : ValsCongrA) (hc : Strict.FundCtx K) {ρ : Assignment} {m : Nat} {x : Hint} {u w : Term} (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.letIn x u w) (fun st => 0 < st.env.size) (· = true) := by
-  intro st st' typed hint v T? s π hne hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
+  intro st st' typed hint v T? s π hne hty hm hctl htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hdu,
     hkB, hmeB, htnB, hrw, hrd, hk₃, hme₃', hD₁, hD₂⟩ := Machine.letInvD m x u w hint st st' bh v T? K.D htn htd hD h
@@ -159,7 +159,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
   have hnhw : w.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.2
   have hsz₀ : st₀.env.size = st.env.size := (ColumnC.size_of_erase hk₀.env).symm
   -- the step for `u`
-  have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ true none v₀ T₀ s π (hm.of_modeEq hm₀) (by omega) (.inl htd₀)
+  have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ true none v₀ T₀ s π (hm.of_modeEq hm₀) (fun _ => htn₀) (by omega) (.inl htd₀)
     (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) hnhu (fun e => by cases e) hD₁ bh₁ hru
   rw [htn₀] at hOu
   obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
@@ -194,7 +194,8 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
     have hσ' : σ < st₀.absTy.size := by rw [← hk₀.absTy]; exact habw σ hσ
     obtain ⟨a, d⟩ := he₁.agree σ hσ'
     exact ⟨a.symm, d.symm⟩
-  have hOw := (ih m (by omega) Δ₁ ρ₁).1 w stB st₂ true none r T? _ π₁ (hm₁.of_modeEq hmeB) (by omega) htdB'
+  have hOw := (ih m (by omega) Δ₁ ρ₁).1 w stB st₂ true none r T? _ π₁ (hm₁.of_modeEq hmeB)
+    (fun _ => htnB.trans (hctl rfl)) (by omega) htdB'
     hpB hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) hnhw (fun e => by cases e) hD₂ bh₂ hrw
   rw [htnB] at hOw
   obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
@@ -223,9 +224,11 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
       rfl
   refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃⟩, hkept⟩
   -- the reference's `let`
+  -- a typed `let` is not in tail position (`hctl`): its tail runs with no hint on both sides (D156)
+  have hth : tailHint st.curTail (hintM K ρ hint) = .plain TyM.err := by rw [hctl rfl]; rfl
   rw [runT_letIn _ _ x u w s hfl, hxu']
   simp only [bind, Option.bind]
-  rw [hpb, hxw']
+  rw [hpb, hth, hxw']
   exact letDrop_eval hLD rw'
 
 /-- **The step for a typed `let` the table reads as decided data, in general**: from the induction
@@ -241,7 +244,7 @@ theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG
           (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) (· = true) := by
   intro n ih Δ ρ x u w
   by_cases hn : n < 3
-  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
+  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.letIn x u w)

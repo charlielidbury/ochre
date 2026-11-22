@@ -779,7 +779,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     have es : s₂ = discardEnd x.2 s₁ := (SM.guardMod_some h2a).2
     subst es
     obtain ⟨hi₁', e₁', o₁'⟩ := discardEnd_props L hi₁ x.2
-    obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl w (.plain TyM.err) _ s' r hi₁' h2
+    obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl w (tailHint tl hint) _ s' r hi₁' h2
     exact ⟨hi₂, hy₂, e₁.trans (e₁'.trans e₂), o₁.trans e₁ (o₁'.trans e₁' o₂)⟩
   | tl, .succ u, hint, s, s', r, hi, h => by
     rw [runT] at h
@@ -846,7 +846,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         · exact ⟨.inl h', hn⟩
         · exact ⟨.inr (.inr h'), hn⟩
     have o₂ := ordKeep_pushBindShaped hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u } hy₁
-    obtain ⟨hi₃, hy₃, e₃, o₃⟩ := runT_rinv hK tl w (.plain TyM.err) _ s₃ (r', R) hi₂ h2
+    obtain ⟨hi₃, hy₃, e₃, o₃⟩ := runT_rinv hK tl w (tailHint tl hint) _ s₃ (r', R) hi₂ h2
     dsimp only
     refine ⟨(letDrop_rinv L hi₃ hy₃ _ ?_).1, (letDrop_rinv L hi₃ hy₃ _ ?_).2.1,
       e₁.trans (envLe_letDrop ((envPush_pushBindShaped _ _).trans_le e₃) _),
@@ -874,7 +874,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     have o₁ := o₀.trans e₀ o₁'
     split at h
     · try dsimp only at h
-      cases h2 : runT K ρ φ tl (.plain TyM.err) z s₁ with
+      cases h2 : runT K ρ φ tl (tailHint tl hint) z s₁ with
       | none => rw [h2] at h; cases h
       | some a =>
         rw [h2] at h
@@ -882,12 +882,12 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         simp only [Option.bind_some, Option.bind_eq_some_iff] at h
         obtain ⟨_, -, h⟩ := h
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl z (.plain TyM.err) _ s₂ (r', R) hi₁ h2
+        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl z (tailHint tl hint) _ s₂ (r', R) hi₁ h2
         exact lend_post L _ (hlend _ _) ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
           e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
           o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
     · try dsimp only at h
-      cases h2 : runT K ρ φ tl (.plain TyM.err) u s₁ with
+      cases h2 : runT K ρ φ tl (tailHint tl hint) u s₁ with
       | none => rw [h2] at h; cases h
       | some a =>
         rw [h2] at h
@@ -895,7 +895,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         simp only [Option.bind_some, Option.bind_eq_some_iff] at h
         obtain ⟨_, -, h⟩ := h
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl u (.plain TyM.err) _ s₂ (r', R) hi₁ h2
+        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl u (tailHint tl hint) _ s₂ (r', R) hi₁ h2
         exact lend_post L _ (hlend _ _) ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
           e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
           o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
@@ -921,7 +921,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     split at h
     · rename_i c _
       try dsimp only at h
-      cases h2 : runArm K ρ φ tl (.plain TyM.err) c arms s₁ with
+      cases h2 : runArm K ρ φ tl (tailHint tl hint) c arms s₁ with
       | none => rw [h2] at h; cases h
       | some a =>
         rw [h2] at h
@@ -929,7 +929,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         simp only [Option.bind_some, Option.bind_eq_some_iff] at h
         obtain ⟨_, -, h⟩ := h
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runArm_rinv hK tl arms (.plain TyM.err) _ _ s₂ (r', R) hi₁ h2
+        obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runArm_rinv hK tl arms (tailHint tl hint) _ _ s₂ (r', R) hi₁ h2
         have hj : ∀ sj, sj = lend R.label (joinDrop K φ (movedPlaces φ s₁) (.matchInd p n arms) s₂) ∨ sj = s₂ →
             RInv L sj ∧ (∀ y, R.label = some y → LoU1 sj y) ∧ EnvLe s sj ∧ OrdKeep L s sj := by
           rintro sj (rfl | rfl)

@@ -153,7 +153,7 @@ theorem seqI_core (hSq : SeqInv) (hR : FragRun K.D) (hdec : FragDec K.D) (hI : I
     rw [SM.guardMod_of (by unfold DiscardOk; rw [hrul]; trivial)]
     simp only
     have hd : discardEnd ru.2 s₁ = s₁ := by unfold discardEnd; rw [hrul]
-    rw [hd]; exact hxw'
+    rw [hd, frag_hint (K := K) (ρ := ρ) (φ := φ) hw _ _ (.plain TyM.err)]; exact hxw'
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
     (he₁.congr hk₀.absTy hk₀.nextLoan hkW.absTy hkW.nextLoan).trans he₂
   exact ⟨ρ₂, Δ₂, π₂, rw', s₂, hext, hxs, hmw, haw, hlw, hp₂, hr₂⟩

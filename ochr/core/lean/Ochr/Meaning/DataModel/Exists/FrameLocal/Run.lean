@@ -486,19 +486,19 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
       · simp [optCheck, hm]
       simp only [optCheck, if_pos hm, Option.bind_some]
       have arm : ∀ w : Term, VarsAvoid Q s w →
-          Comm Q β' (runT K ρ φ tl (TyS.plain TyM.err) w) S₁ → Comm Q β (runT K ρ φ tl (TyS.plain TyM.err) w) S₁ →
+          Comm Q β' (runT K ρ φ tl (tailHint tl hint) w) S₁ → Comm Q β (runT K ρ φ tl (tailHint tl hint) w) S₁ →
           (do
-            let a ← runT K ρ φ tl (TyS.plain TyM.err) w (qset Q β' S₁)
+            let a ← runT K ρ φ tl (tailHint tl hint) w (qset Q β' S₁)
             optCheck (JoinDropOk K φ (movedPlaces φ S₁) (Term.matchNat p z u) a.snd)
             some ((a.1.fst, a.1.snd), L' a.1.snd.label (joinDrop K φ (movedPlaces φ S₁) (Term.matchNat p z u) a.snd))) =
           Option.map (fun x => (x.fst, qset Q β' x.snd)) (do
-            let a ← runT K ρ φ tl (TyS.plain TyM.err) w S₁
+            let a ← runT K ρ φ tl (tailHint tl hint) w S₁
             optCheck (JoinDropOk K φ (movedPlaces φ S₁) (Term.matchNat p z u) a.snd)
             some ((a.1.fst, a.1.snd), L a.1.snd.label (joinDrop K φ (movedPlaces φ S₁) (Term.matchNat p z u) a.snd))) := by
         intro w hVw cw cw0
         unfold Comm qmap at cw
         rw [cw]
-        cases h2 : runT K ρ φ tl (.plain TyM.err) w S₁ with
+        cases h2 : runT K ρ φ tl (tailHint tl hint) w S₁ with
         | none => rfl
         | some a =>
           obtain ⟨⟨r, R⟩, X⟩ := a
@@ -556,11 +556,11 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
       simp only [optCheck, if_pos hm, Option.bind_some]
       split
       · rename_i c hc
-        have ca := runArm_qset hK hD tl (.plain TyM.err) c arms S₁ Q β β' hA₁ (fun a ha => (hVa a ha).of_envLe e₁) hR₁
-        have ca0 := runArm_qset hK hD tl (.plain TyM.err) c arms S₁ Q β β hA₁.self (fun a ha => (hVa a ha).of_envLe e₁) hR₁
+        have ca := runArm_qset hK hD tl (tailHint tl hint) c arms S₁ Q β β' hA₁ (fun a ha => (hVa a ha).of_envLe e₁) hR₁
+        have ca0 := runArm_qset hK hD tl (tailHint tl hint) c arms S₁ Q β β hA₁.self (fun a ha => (hVa a ha).of_envLe e₁) hR₁
         unfold Comm qmap at ca
         rw [ca]
-        cases h2 : runArm K ρ φ tl (.plain TyM.err) c arms S₁ with
+        cases h2 : runArm K ρ φ tl (tailHint tl hint) c arms S₁ with
         | none => rfl
         | some a =>
           obtain ⟨⟨r, R⟩, X⟩ := a
@@ -576,7 +576,7 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
       · cases tg
         case proof =>
           dsimp only
-          exact comm_anyArm fun c => runArm_qset hK hD tl (.plain TyM.err) c arms S₁ Q β β' hA₁
+          exact comm_anyArm fun c => runArm_qset hK hD tl (tailHint tl hint) c arms S₁ Q β β' hA₁
             (fun a ha => (hVa a ha).of_envLe e₁) hR₁
         all_goals rfl
   | tl, .borrow p, hint, s, Q, β, β', hA, hV, hR => by
@@ -650,10 +650,10 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
       have hVw : VarsAvoid Q (pushBindShaped X b) w :=
         VarsAvoid.push (hV.of_envLe e₁) (fun x hx => by simp [Term.placeOccs, hx]) (envPush_pushBindShaped X b)
           hA₁.twin.pre.pos
-      have cw := runT_qset hK hD tl w (.plain TyM.err) _ Q β β' hA₂ hVw hR₂
+      have cw := runT_qset hK hD tl w (tailHint tl hint) _ Q β β' hA₂ hVw hR₂
       unfold Comm at cw
       rw [cw]
-      cases h2 : runT K ρ φ tl (.plain TyM.err) w (pushBindShaped X b) with
+      cases h2 : runT K ρ φ tl (tailHint tl hint) w (pushBindShaped X b) with
       | none => rfl
       | some z =>
         obtain ⟨⟨r, R⟩, Z⟩ := z

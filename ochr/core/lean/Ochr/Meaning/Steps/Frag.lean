@@ -236,10 +236,18 @@ theorem FragRun.nat {D : Decisions} (h : FragRun D) : FragNatRun D :=
     exact ⟨hv, hT⟩
 
 /-- **The reference's run of a fragment term reads no hint** (each clause the fragment uses hands its
-sub-terms fixed hints and ignores its own). -/
+sub-terms fixed hints and ignores its own; a `let`'s or a `;`'s tail, in tail position handed the form's own
+hint since docs/31 D156, by induction). -/
 theorem frag_hint {K : RunCtx} {ρ : Assignment} {φ : Future} {Γ : List FT} {t : Term} {A : FT} (hty : FTy Γ t A)
     (tl : Bool) (h h' : TyS) (s : SState) : runT K ρ φ tl h t s = runT K ρ φ tl h' t s := by
-  cases hty <;> rw [runT, runT]
+  induction hty generalizing tl h h' s with
+  | letIn Γ x u w A B _ _ _ ihw =>
+    have e : runT K ρ φ tl (tailHint tl h) w = runT K ρ φ tl (tailHint tl h') w := funext (ihw tl _ _)
+    rw [runT, runT, e]
+  | seq Γ u w A B _ _ _ ihw =>
+    have e : runT K ρ φ tl (tailHint tl h) w = runT K ρ φ tl (tailHint tl h') w := funext (ihw tl _ _)
+    rw [runT, runT, e]
+  | _ => rw [runT, runT]
 
 /-! ## The cases of the induction -/
 

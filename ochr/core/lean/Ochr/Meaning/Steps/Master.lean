@@ -128,7 +128,7 @@ keeps the mode, the frames and the top frame's readings (`Kept`). -/
 def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    ModeR st → 0 < st.env.size →
+    ModeR st → (typed = true → st.tailNext = false) → 0 < st.env.size →
     (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
@@ -156,7 +156,7 @@ code), from a state in the plain mode at any erased depth with no reading handed
 embedded values of, holding the state's unknowns and no hole; the leaf keeps what `Kept` asks. -/
 def TailAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState),
-    ModeR st → 0 < st.env.size → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
+    ModeR st → st.tailNext = false → 0 < st.env.size → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     DecTab K.D st' →
@@ -169,13 +169,6 @@ def IH (K : RunCtx) (φ : Future) (n : Nat) : Prop :=
   ∀ m, m < n → ∀ (Δ : Nat → TyS) (ρ : Assignment),
     (∀ t, EvalAt { K with Δ := Δ } ρ φ m t) ∧ (∀ t, TailAt { K with Δ := Δ } ρ φ m t)
 
-/-- `EvalAt` for a term the table leaves unerased gives `Column.EvalSim` (the fragment's and the columns'
-form) at states with a frame. -/
-theorem evalSim_of_evalAt {K : RunCtx} {ρ : Assignment} {φ : Future} {n : Nat} {t : Term}
-    (h : EvalAt K ρ φ n t) : EvalSim K ρ φ n t (fun st => 0 < st.env.size) :=
-  fun st st' typed hint v T? s π hne _ hm htd hp hr hS hv hab hnh _ hok hD bh hrun =>
-    (h st st' typed hint v T? s π hm.toR hne htd hp hr hS hv hab hnh hok hD bh hrun).1
-
 /-! ## The column's forms with what a run keeps
 
 `CoreSimK` and `EvalSimK` are `Column.CoreSim` and `Column.EvalSim` at any erased depth (`ModeR` for `Mode`)
@@ -187,7 +180,7 @@ def CoreSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    P st → TY typed → ModeR st → st.tailNext = false → st.tailDecl = none →
+    P st → TY typed → ModeR st → (typed = true → st.curTail = false) → st.tailNext = false → st.tailDecl = none →
     st.curDecl = some (K.D.declOf (DecideScope.topReadings st) t) → Pre K ρ st → Rel K ρ φ π st s →
     Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
@@ -202,7 +195,7 @@ def EvalSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    P st → TY typed → ModeR st →
+    P st → TY typed → ModeR st → (typed = true → st.tailNext = false) →
     (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
@@ -234,10 +227,10 @@ theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInv
     (hany : ∀ st, P st → K.D.declOf (DecideScope.topReadings st) t ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) t).isProof = false) (hc : CoreSimK K ρ φ n t P TY) :
     EvalSimK K ρ φ (n + 2) t P TY := by
-  intro st st' typed hint v T? s π hPs hty hm htd hp hr hS hv hab hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π hPs hty hm htl htd hp hr hS hv hab hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, h₀, hk₁, hm₁⟩ :=
     hE n typed t hint st st' bh v T? K.D hm hD ht hcall (hany st hPs).1 (hany st hPs).2 htd h
-  obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty (hm.of_modeEq hm₀) htn htd₀ hcd₀ (hp.of_kern hk₀)
+  obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ hcd₀ (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS hv
     (by rw [← hk₀.absTy]; exact hab) hnh hfl (by rw [hct]; exact hok) (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'

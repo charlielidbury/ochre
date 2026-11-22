@@ -14,7 +14,8 @@ programs, with the checker's verdicts (probed on the checker, 2026-11-21):
 
 - `TailNone`: the typed checker hands a `let`'s tail no hint, so the bare `None` has no record and it
   rejects ("cannot infer the parameter A"). The reference fails there too (`tailNone_none`), at any
-  outer hint: the strict constructor with no record fails.
+  outer hint: a constant's body runs out of tail position, where the tail gets no hint (D156: in tail
+  position it gets the `let`'s), and the strict constructor with no record fails.
 - `UseIt`: its check runs `SetNone`'s body in place, where the UNTYPED checker hands `None` no hint
   (it checks nothing there). The reference hands it the place's type, as the typed checker does, so
   the in-place run of the body succeeds (`setNone_inPlace`), at `SetNone`'s frame above `UseIt`'s
@@ -49,17 +50,19 @@ theorem runT_noneT_noHint (hfl : ∀ sc t, K.D.flags sc t = (false, false))
   have hd : (TyS.plain TyM.err).data = none := rfl
   simp [runParams, runFields, optD, ctorOut, SM.strictS, SM.fail, hd, pure, bind]
 
-/-- **`TailNone` fails at every hint** (the checker rejects it): the `let`'s tail runs with no hint. -/
+/-- **`TailNone` fails at every hint** (the checker rejects it): a constant's body is not in tail position,
+and out of tail position the `let`'s tail runs with no hint. (Since docs/31 D156 a `let` IN tail position hands
+its tail its own hint, so this holds at `tl = false` only: in a function's body the same `let` runs.) -/
 theorem tailNone_none (hfl : ∀ sc t, K.D.flags sc t = (false, false))
-    (hΓ : K.Γ.find? (·.name == "Opt") = some optD) (tl : Bool) (hint : TyS) (y x : Hint) (s : SState) :
-    runT K ρ φ tl hint (.letIn y .zero (noneT x)) s = none := by
+    (hΓ : K.Γ.find? (·.name == "Opt") = some optD) (hint : TyS) (y x : Hint) (s : SState) :
+    runT K ρ φ false hint (.letIn y .zero (noneT x)) s = none := by
   rw [runT]
   show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _
   rw [hfl]
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
   have hz : runT K ρ φ false (.plain TyM.err) .zero s = some ((.el0 Nat 0, .plain TyM.nat), s) := by
     rw [runT]; rfl
-  simp only [Bind.bind, hz, Option.bind_some, runT_noneT_noHint hfl hΓ, Option.bind_none]
+  simp only [Bind.bind, hz, Option.bind_some, tailHint_false, runT_noneT_noHint hfl hΓ, Option.bind_none]
 
 end Generic
 

@@ -401,7 +401,8 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : Place
     (hdrop : ∀ stB st₂ bh r T?, Pw stB → Mode stB →
       (stB.tailDecl = none ∨ stB.tailDecl = some (K.D.declOf (DecideScope.topReadings stB) w)) → DecTab K.D st₂ →
       Runs (Ochr.eval n true w none) stB bh (r, T?) st₂ →
-      ∃ fr b, st₂.env[st₂.env.size - 1]? = some fr ∧ fr.binds.back? = some b ∧ (b.val = .bot ∨ b.val.Num)) :
+      ∃ fr b, st₂.env[st₂.env.size - 1]? = some fr ∧ fr.binds.back? = some b ∧ (b.val = .bot ∨ b.val.Num))
+    (hwh : NoHint K ρ φ w) :
     CoreSim K ρ φ (n + 1) (.letIn x u w) Plet (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
@@ -510,7 +511,7 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : Place
       unfold LetLendersOk; rw [hlast]
       exact accessOk_noSites (by rw [hpos]; exact rel_noSites_at hr₂ (fun l => by rw [hbv]; exact hns l _))
     simp only [bind, Option.bind]
-    rw [hpb, hxw']
+    rw [hpb, hwh.tail, hxw']
     simp only [hlast, hsh, hll, if_pos hllok]
   -- the conclusion
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
@@ -815,7 +816,7 @@ theorem runT_seq (tl : Bool) (hint : TyS) (u w : Term) (s : SState)
     runT K ρ φ tl hint (.seq u w) s = (do
       let r ← runT K ρ φ false (.plain TyM.err) u
       SM.guardMod (DiscardOk K φ r.2) (discardEnd r.2)
-      runT K ρ φ tl (.plain TyM.err) w) s := by
+      runT K ρ φ tl (tailHint tl hint) w) s := by
   rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _; rw [hfl]; rfl
 
 theorem asg_of_withTempT {st : MState} {v : Value} {T? : Option Value} (h : Asg K ρ (st.withTempT v T?).norm) :
@@ -839,7 +840,7 @@ theorem seq_core (hSq : SeqInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n : Nat
       st₀.tailDecl = none → DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ → Pw st₁)
     (hPwk : ∀ a b, Kern a b → Pw a → Pw b)
     (hwv : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), w.valsOk (Strict.ValsP { K with Δ := Δ' } ρ' φ))
-    (hwa : ∀ m, w.absBelow m) (hwn : w.hasHolePrim = false) :
+    (hwa : ∀ m, w.absBelow m) (hwn : w.hasHolePrim = false) (hwh : NoHint K ρ φ w) :
     CoreSim K ρ φ (n + 1) (.seq u w) Pseq (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
@@ -885,7 +886,7 @@ theorem seq_core (hSq : SeqInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n : Nat
     rw [SM.guardMod_of (by unfold DiscardOk; rw [hrul]; trivial)]
     simp only
     have hd : discardEnd ru.2 s₁ = s₁ := by unfold discardEnd; rw [hrul]
-    rw [hd]; exact hxw'
+    rw [hd, hwh.tail]; exact hxw'
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
     (he₁.congr hk₀.absTy hk₀.nextLoan hkW.absTy hkW.nextLoan).trans he₂
   exact ⟨ρ₂, Δ₂, π₂, rw', s₂, hext, hxs, hmw, haw, hlw, hp₂, hr₂⟩

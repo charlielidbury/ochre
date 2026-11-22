@@ -85,7 +85,7 @@ theorem sim_seq (hE : EvalInv) (hZ : ZeroInv) (hA : AssignDerefInv) (hVE : VarEn
         exact ⟨rfl, hm₁⟩)
       (fun st st₀ st₁ bh v₀ T₀ hP hk hm htd hD h => (run_write hE hZ hA hd (hP.kern hk) hm htd hD h).2.2.2)
       (fun a b h ha => ha.kern h) (fun _ _ => by simp [seqB, writeB, Term.valsOk])
-      (fun m σ hσ => by simp [seqB, writeB, Term.anyAtom] at hσ) (by decide))
+      (fun m σ hσ => by simp [seqB, writeB, Term.anyAtom] at hσ) (by decide) (noHint_place _))
 
 /-- `&x`, at any extension. -/
 theorem sim_bor (hE : EvalInv) (hB : BorrowNumInv) (hI : InvSteps) (hd : DecTab K.D stC)
@@ -127,7 +127,8 @@ theorem sim_inner (hE : EvalInv) (hZ : ZeroInv) (hB : BorrowNumInv) (hA : Assign
         obtain ⟨-, -, p, q, xv, -, he⟩ := run_seq hE hZ hA hVE hSq hd hXB hm htd hD h
         obtain ⟨fr, hfr, hbs⟩ := top_of_erase ((erase_E2 p q xv .bot).trans he.symm)
           (fr := { binds := #[bx p xv, byB q .bot] }) rfl
-        exact ⟨fr, byB q .bot, hfr, by rw [hbs]; rfl, .inl rfl⟩))
+        exact ⟨fr, byB q .bot, hfr, by rw [hbs]; rfl, .inl rfl⟩)
+      (noHint_seq _ (noHint_place _)))
 
 /-- **The step for the body of `B`** (`let x = S(Z); let y = &x; *y := Z; x`, typed, at any fuel from
 `15`): composed from the column's steps, every side condition of each discharged for this program
@@ -174,6 +175,7 @@ theorem sim_bodyB (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hB : BorrowNumIn
       (fun a b h ha => ha.kern h) (fun _ _ => by simp [innerB, seqB, writeB, Term.valsOk])
       (fun m σ hσ => by simp [innerB, seqB, writeB, Term.anyAtom] at hσ) (by decide)
       (fun stB st₂ bh r T? hXB hm htd hD h => (run_inner hE hZ hB hA hVE hSq hL hDN hd hXB hm htd hD h).2.2)
+      (noHint_letIn _ _ (noHint_seq _ (noHint_place _)))
   exact eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e) (fun _ _ _ e => by cases e)
     (fun st hst => by rw [hst.readings, declOf_bodyB hd]; exact duC_ok) hlet
 

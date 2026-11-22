@@ -1166,6 +1166,14 @@ def _root_.Ochr.Term.fieldHinted (a : Term) (d : IndDecl) (c i : Nat) : Bool :=
   (match a with | .val _ => true | _ => false) ||
   (d.dependent c && d.fieldDependent c i)
 
+/-- **The hint a sequencing form hands its tail or arm** (docs/31 D151's ruling (d), built in D156): in tail
+position (`tl`) its own, as the checker's tail check (`checkTail`) hands the goal to a `let`'s tail, a
+sequence's tail and a match's arms; out of tail position none, as the typed `eval` hands none (D119). -/
+def tailHint (tl : Bool) (hint : TyS) : TyS := if tl then hint else .plain TyM.err
+
+@[simp] theorem tailHint_true (hint : TyS) : tailHint true hint = hint := rfl
+@[simp] theorem tailHint_false (hint : TyS) : tailHint false hint = .plain TyM.err := rfl
+
 mutual
 
 
@@ -1217,8 +1225,9 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let d := K.D.declOf (scopeOf s) u
     let ((v, T), s) ← runT false (.plain TyM.err) u s
     let s := pushBindShaped s { ty := T, val := fun _ => v, decl := d }
-    -- the tail runs with no hint, as the TYPED checker runs it (`evalCore`'s `.letIn`; docs/31 D119)
-    let ((r, R), s) ← runT tl (.plain TyM.err) w s
+    -- the tail runs with no hint, as the TYPED checker runs it (`evalCore`'s `.letIn`; docs/31 D119),
+    -- except in tail position, where it runs at the `let`'s own (`checkTail`'s `.letIn`; D156)
+    let ((r, R), s) ← runT tl (tailHint tl hint) w s
     -- [Drop] of the binding: the borrow it holds *now* ends, then it is forgotten (PROPOSAL,
     -- m2-proofs, CE5: not the label its type carried when it was bound, which it may have moved
     -- out, while an assignment may have made it the holder of another)
@@ -1239,8 +1248,9 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let r ← runT false (.plain TyM.err) u
     -- STRICT END (ruling (A))
     SM.guardMod (DiscardOk K φ r.2) (discardEnd r.2)
-    -- the tail runs with no hint, as the TYPED checker runs it (docs/31 D119)
-    runT tl (.plain TyM.err) w) s
+    -- the tail runs with no hint, as the TYPED checker runs it (docs/31 D119), except in tail
+    -- position, where it runs at the sequence's own (`checkTail`'s `.seq`; D156)
+    runT tl (tailHint tl hint) w) s
   | .matchNat p z u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchNat p z u)) (fun s => do
     -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access] for the tag: the
     -- audit's A1); `⊥` is an error; then D84's drop at the join
@@ -1253,11 +1263,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let entry := movedPlaces φ s
     match tg.asNat with
     | some 0 => do
-      let ((r, R), s) ← runT tl (.plain TyM.err) z s
+      let ((r, R), s) ← runT tl (tailHint tl hint) z s
       let _ ← optCheck (JoinDropOk K φ entry (.matchNat p z u) s)
       some ((r, R), lend R.label (joinDrop K φ entry (.matchNat p z u) s))
     | some (_ + 1) => do
-      let ((r, R), s) ← runT tl (.plain TyM.err) u s
+      let ((r, R), s) ← runT tl (tailHint tl hint) u s
       let _ ← optCheck (JoinDropOk K φ entry (.matchNat p z u) s)
       some ((r, R), lend R.label (joinDrop K φ entry (.matchNat p z u) s))
     | none => none) s
@@ -1279,8 +1289,9 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       | _ => tg.asNat
     match c? with
     | some c => do
-      -- an arm runs with no hint, as the TYPED checker runs it (docs/31 D119)
-      let ((r, R), s) ← runArm tl (.plain TyM.err) c arms s
+      -- an arm runs with no hint, as the TYPED checker runs it (docs/31 D119), except in tail
+      -- position, where it runs at the match's own (`checkTail`'s matches; D156)
+      let ((r, R), s) ← runArm tl (tailHint tl hint) c arms s
       let _ ← optCheck (tg.isProof = true ∨ one = true ∨ JoinDropOk K φ entry (.matchInd p n arms) s)
       -- a match on a proof has no join (`Machine.evalMatchByType`: its one arm runs on every
       -- path; the audit's A4)
@@ -1289,7 +1300,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         | _ => if one then s else lend R.label (joinDrop K φ entry (.matchInd p n arms) s))
     -- an erased match on a proof with other than one arm: the arms on copies (`SM.anyArm`)
     | none => match tg with
-      | .proof => SM.anyArm arms.length (fun c => runArm tl (.plain TyM.err) c arms) s
+      | .proof => SM.anyArm arms.length (fun c => runArm tl (tailHint tl hint) c arms) s
       | _ => none) s
   | .tind n args => do
     match K.Γ.find? (·.name == n) with

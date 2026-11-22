@@ -285,6 +285,7 @@ theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) 
         obtain ⟨fr, b, hfr, hb, hn, ht⟩ := hB.2
         exact (run_x hE hV hmB hD₂ hfr hb hn ht (by rw [hB.1]; exact flags_x hd)
           (by rw [hB.1, declOf_x hd]; exact Aux.duC_ok) htdB h).2.2.2)
+      (noHint_place _)
   exact eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e) (fun _ _ _ e => by cases e)
     (fun st hst => by rw [hst.1, declOf_bodyC hd]; exact Aux.duC_ok) hlet
 

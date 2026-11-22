@@ -210,7 +210,7 @@ theorem runUnbox (hd : ParDecUnbox K.D) (hΓ : K.Γ = [declBox])
   have htg : SM.guarded (TagOk K φ (.var 0)) (tagOf K φ (.var 0) indTag) s = some (.el0 Nat 0, s) := by
     rw [SM.guarded_of htag]; unfold tagOf; rw [h.resolve0]; dsimp only
     rw [h.access, h.typedFuture, h.val]; rfl
-  have harm : runArm K ρ φ true (.plain TyM.err) 0 [(⟨"MkBox"⟩, .place pbn)] s =
+  have harm : runArm K ρ φ true hint 0 [(⟨"MkBox"⟩, .place pbn)] s =
       some ((.el0 Nat m, .plain TyM.nat), moveBn K s) := by
     simp only [runArm, if_true]; exact runReadBn hd hΓ hsh h true _
   have hme : ∀ t, optCheck (MatchEntryOk K φ false t s) = some ⟨⟩ := fun t => by
@@ -223,7 +223,7 @@ theorem runUnbox (hd : ParDecUnbox K.D) (hΓ : K.Γ = [declBox])
   simp only [SM.erasedIf, SM.stmtIf, ← show bodyUnbox = .matchInd (.var 0) "Box" _ from rfl, hfl,
     Bool.false_eq_true, if_false]
   rw [htg]
-  simp only [bind, Option.bind, Bool.not_true, Bool.false_and, hent, harm, hone, Sem.asNat_el0]
+  simp only [bind, Option.bind, Bool.not_true, Bool.false_and, hent, tailHint_true, harm, hone, Sem.asNat_el0]
   rw [hjok, hme]; simp
 
 end

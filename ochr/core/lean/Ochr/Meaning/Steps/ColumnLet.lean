@@ -159,6 +159,33 @@ theorem rel_top_shape_none {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Na
 section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
+/-- **A term whose reference run reads no hint** (docs/31 D156): every run of it at any hint is its run at none.
+In tail position the reference hands a `let`'s or a `;`'s tail the form's own hint (D151's ruling (d)), where
+the TYPED checker's `evalCore` hands none; the column and fragment steps, stated at every tail flag, need their
+tails' runs to agree at the two, which they do for every term of the fragment (`FTy.noHint`). -/
+def NoHint (K : RunCtx) (ρ : Assignment) (φ : Future) (t : Term) : Prop :=
+  ∀ (tl : Bool) (h : TyS) (s : SState), runT K ρ φ tl h t s = runT K ρ φ tl (.plain TyM.err) t s
+
+/-- The tail's run at the hint a sequencing form hands it is its run at none, for a tail that reads no hint. -/
+theorem NoHint.tail {t : Term} (hn : NoHint K ρ φ t) (tl : Bool) (hint : TyS) (s : SState) :
+    runT K ρ φ tl (tailHint tl hint) t s = runT K ρ φ tl (.plain TyM.err) t s := hn tl _ s
+
+theorem NoHint.tailFun {t : Term} (hn : NoHint K ρ φ t) (tl : Bool) (hint : TyS) :
+    runT K ρ φ tl (tailHint tl hint) t = runT K ρ φ tl (.plain TyM.err) t := funext (hn.tail tl hint)
+
+/-! The fragment's formers read no hint but through their tails. -/
+
+theorem noHint_zero : NoHint K ρ φ .zero := fun _ _ _ => by rw [runT, runT]
+theorem noHint_place (p : Place) : NoHint K ρ φ (.place p) := fun _ _ _ => by rw [runT, runT]
+theorem noHint_borrow (p : Place) : NoHint K ρ φ (.borrow p) := fun _ _ _ => by rw [runT, runT]
+theorem noHint_succ (u : Term) : NoHint K ρ φ (.succ u) := fun _ _ _ => by rw [runT, runT]
+theorem noHint_assign (p : Place) (u : Term) : NoHint K ρ φ (.assign p u) := fun _ _ _ => by rw [runT, runT]
+theorem noHint_const (c : String) : NoHint K ρ φ (.const c) := fun _ _ _ => by rw [runT, runT]
+theorem noHint_letIn (x : Hint) (u : Term) {w : Term} (hw : NoHint K ρ φ w) : NoHint K ρ φ (.letIn x u w) :=
+  fun _ _ _ => by rw [runT, runT]; simp only [hw.tail]
+theorem noHint_seq (u : Term) {w : Term} (hw : NoHint K ρ φ w) : NoHint K ρ φ (.seq u w) :=
+  fun _ _ _ => by rw [runT, runT]; simp only [hw.tailFun]
+
 /-- The `let` clause of the strict run, where the aligned table does not erase it. -/
 theorem runT_letIn (tl : Bool) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
     (hfl : K.D.flags (scopeOf s) (.letIn x u w) = (false, false)) :
@@ -166,7 +193,7 @@ theorem runT_letIn (tl : Bool) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
       let d := K.D.declOf (scopeOf s) u
       let ((v, T), s) ← runT K ρ φ false (.plain TyM.err) u s
       let s := pushBindShaped s { ty := T, val := fun _ => v, decl := d }
-      let ((r, R), s) ← runT K ρ φ tl (.plain TyM.err) w s
+      let ((r, R), s) ← runT K ρ φ tl (tailHint tl hint) w s
       let held : Option Nat := match s.env.getLast? with
         | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
         | none => none
@@ -207,7 +234,8 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : PlaceL
     (hdrop : ∀ stB st₂ bh r T?, Pw stB → Mode stB →
       (stB.tailDecl = none ∨ stB.tailDecl = some (K.D.declOf (DecideScope.topReadings stB) w)) → DecTab K.D st₂ →
       Runs (Ochr.eval n true w none) stB bh (r, T?) st₂ →
-      ∃ fr b, st₂.env[st₂.env.size - 1]? = some fr ∧ fr.binds.back? = some b ∧ (b.val = .bot ∨ b.val.Num)) :
+      ∃ fr b, st₂.env[st₂.env.size - 1]? = some fr ∧ fr.binds.back? = some b ∧ (b.val = .bot ∨ b.val.Num))
+    (hwh : NoHint K ρ φ w) :
     CoreSim K ρ φ (n + 1) (.letIn x u w) Plet (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
@@ -314,7 +342,7 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : PlaceL
       unfold LetLendersOk; rw [hlast]
       exact accessOk_noSites (by rw [hpos]; exact rel_noSites_at hr₂ (fun l => by rw [hbv]; exact hns l _))
     simp only [bind, Option.bind]
-    rw [hpb, hxw']
+    rw [hpb, hwh.tail, hxw']
     simp only [hlast, hsh, hll, if_pos hllok]
   -- the conclusion
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=

@@ -307,7 +307,7 @@ theorem runT_congrR : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Avoi
     intro a s₁ _
     apply SM.bind_congr rfl
     intro _ s₂ _
-    exact runT_congrR tl w (.plain TyM.err) _ (by avd)
+    exact runT_congrR tl w (tailHint tl hint) _ (by avd)
   | tl, .succ u, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
@@ -403,9 +403,9 @@ theorem runT_congrR : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Avoi
     obtain ⟨s₁, lend⟩ := me
     dsimp only
     split
-    · apply Option.bind_congr' (runT_congrR tl z (.plain TyM.err) s₁ (by avd))
+    · apply Option.bind_congr' (runT_congrR tl z (tailHint tl hint) s₁ (by avd))
       intro _ _; rfl
-    · apply Option.bind_congr' (runT_congrR tl u (.plain TyM.err) s₁ (by avd))
+    · apply Option.bind_congr' (runT_congrR tl u (tailHint tl hint) s₁ (by avd))
       intro _ _; rfl
     · rfl
   | tl, .matchInd p n arms, hint, s, ha => by
@@ -424,10 +424,10 @@ theorem runT_congrR : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Avoi
       (by simp_all [Avoids, Term.anyAtom])
     split
     · rename_i c _
-      apply Option.bind_congr' (runArm_congrR tl arms (.plain TyM.err) c s₁ harms)
+      apply Option.bind_congr' (runArm_congrR tl arms (tailHint tl hint) c s₁ harms)
       intro _ _; rfl
     · split
-      · exact SM.anyArm_congr fun c => runArm_congrR tl arms (.plain TyM.err) c s₁ harms
+      · exact SM.anyArm_congr fun c => runArm_congrR tl arms (tailHint tl hint) c s₁ harms
       · rfl
   | tl, .letIn x u w, hint, s, ha => by
     rw [runT, runT]
@@ -435,7 +435,7 @@ theorem runT_congrR : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Avoi
     apply Option.bind_congr' (runT_congrR false u _ s (by avd))
     rintro ⟨⟨v, T⟩, s₁⟩ _
     dsimp only
-    apply Option.bind_congr' (runT_congrR tl w (.plain TyM.err) _ (by avd))
+    apply Option.bind_congr' (runT_congrR tl w (tailHint tl hint) _ (by avd))
     intro _ _; rfl
   | tl, .assign p u, hint, s, ha => by
     rw [runT, runT, lentOk_R K d R φ, contentOf_R, placeTy_R, assignAt_R, invalidate_R, InvalidateOk_R]

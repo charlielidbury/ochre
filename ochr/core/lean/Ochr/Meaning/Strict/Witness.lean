@@ -364,8 +364,8 @@ theorem joinDrop_sC (dm : DataModel) (inv : List Place) (entry : List Place) :
 /-- **The match runs**: the tag of `y` is `0`, the first arm reads `0`, and the join drops `x.0`. -/
 theorem run_join (dm : DataModel) (inv : List Place) (ρ : Assignment) (hint : TyS) :
     runT (Kw dm inv) ρ φw true hint tJoin sC = some ((.el0 Nat 0, .plain TyM.nat), sD) := by
-  have hconst : runT (Kw dm inv) ρ φw true (.plain TyM.err) (.const "c") sC = some ((.el0 Nat 0, .plain TyM.nat), sC) := by
-    rw [runT]; rfl
+  have hconst : ∀ T, runT (Kw dm inv) ρ φw true T (.const "c") sC = some ((.el0 Nat 0, .plain TyM.nat), sC) := by
+    intro T; rw [runT]; rfl
   have htag : tagOf (Kw dm inv) φw (.var 0) natTag sC = some (.el0 Nat 0, sC) := by
     unfold tagOf
     rw [show resolve sC (.var 0) = some (.bind 0 1, []) from rfl]

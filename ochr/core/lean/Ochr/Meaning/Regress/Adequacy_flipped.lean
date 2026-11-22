@@ -81,7 +81,7 @@ runs to a proof: as with no arms (an empty proposition: no member to run at), or
 theorem erased_match_proof_fails (p : Place) (n : String) (arms : List (Hint × Term)) (hint : TyS) (tl : Bool)
     (s s₁ : SState) (hfl : (K.D.flags (scopeOf s) (.matchInd p n arms)).2 = true)
     (htag : tagOf K φ p indTag s = some (.proof, s₁)) (harms : arms.length ≠ 1)
-    (hno : ∀ c, SM.ranProof (runArm K ρ φ tl (.plain TyM.err) c arms s₁) = false) :
+    (hno : ∀ c, SM.ranProof (runArm K ρ φ tl (tailHint tl hint) c arms s₁) = false) :
     runT K ρ φ tl hint (.matchInd p n arms) s = none := by
   rw [runT]
   by_cases hT : ¬ TagOk K φ p s
@@ -99,7 +99,7 @@ theorem erased_match_proof_fails (p : Place) (n : String) (arms : List (Hint × 
 theorem erased_match_proof_runs (p : Place) (n : String) (h₁ h₂ : Hint) (t₁ t₂ : Term) (hint : TyS) (tl : Bool)
     (s s₁ s₂ : SState) (R : TyS) (hfl : (K.D.flags (scopeOf s) (.matchInd p n [(h₁, t₁), (h₂, t₂)])).2 = true)
     (hT : TagOk K φ p s) (htag : tagOf K φ p indTag s = some (.proof, s₁))
-    (h1 : runT K ρ φ tl (.plain TyM.err) t₁ s₁ = none) (h2 : runT K ρ φ tl (.plain TyM.err) t₂ s₁ = some ((.proof, R), s₂)) :
+    (h1 : runT K ρ φ tl (tailHint tl hint) t₁ s₁ = none) (h2 : runT K ρ φ tl (tailHint tl hint) t₂ s₁ = some ((.proof, R), s₂)) :
     runT K ρ φ tl hint (.matchInd p n [(h₁, t₁), (h₂, t₂)]) s = some ((.proof, .plain (TyM.prop True)), s) := by
   rw [runT]
   simp only [SM.erasedIf, hfl, if_true, bind, Option.bind, SM.guarded_of hT, htag, matchEntry, Sem.isProof, Bool.not_true,

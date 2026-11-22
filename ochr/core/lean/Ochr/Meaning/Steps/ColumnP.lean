@@ -281,14 +281,15 @@ theorem body_runP (hSp : SplitPInv) (ρ : Assignment) (a : Nat) (hDP : DecTab D 
     refine ⟨_, _, hS b (ρAt_zero ρ (b + 1)), rfl, rfl, hl _ ?_⟩
     unfold setN0; rw [Strict.liveLabels_setAt]; exact liveLabels_SMP _
 
-/-- The body's run reads neither the assignment nor the hint (it holds no unknown; a match hands its arms none). -/
+/-- The body's run reads neither the assignment nor the hint (it holds no unknown; in tail position a match
+hands its arms its own hint, docs/31 D156, and neither arm reads it). -/
 theorem runT_bodyP (K : RunCtx) (ρ ρ' : Assignment) (h h' : TyS) (s : SState) :
     runT K ρ φ true h bodyP s = runT K ρ' φ true h' bodyP s := by
   show runT K ρ φ true h (.matchNat (.var 0) .zero (.place pn0)) s =
     runT K ρ' φ true h' (.matchNat (.var 0) .zero (.place pn0)) s
-  have e1 : runT K ρ φ true (.plain TyM.err) .zero = runT K ρ' φ true (.plain TyM.err) .zero :=
+  have e1 : runT K ρ φ true (tailHint true h) .zero = runT K ρ' φ true (tailHint true h') .zero :=
     funext fun s => by rw [runT, runT]
-  have e2 : runT K ρ φ true (.plain TyM.err) (.place pn0) = runT K ρ' φ true (.plain TyM.err) (.place pn0) :=
+  have e2 : runT K ρ φ true (tailHint true h) (.place pn0) = runT K ρ' φ true (tailHint true h') (.place pn0) :=
     funext fun s => by rw [runT, runT]
   conv => lhs; rw [runT]
   conv => rhs; rw [runT]

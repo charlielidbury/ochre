@@ -207,25 +207,25 @@ theorem runP (hd : ParDecP K.D) (h : RefP ρ φ g s) (hg : ∀ q, Sem.movedIn g 
     obtain ⟨hjok, hjd⟩ := joinP (φ := φ) hd h'
     exact ⟨by unfold optCheck; exact if_pos hjok, hjd⟩
   refine ⟨fun h0 => ?_, fun a h0 => ?_⟩
-  · have hz : runT K ρ φ true (.plain TyM.err) .zero s = some ((.el0 Nat 0, .plain TyM.nat), s) := by
-      rw [runT]; rfl
+  · have hz : ∀ T, runT K ρ φ true T .zero s = some ((.el0 Nat 0, .plain TyM.nat), s) := by
+      intro T; rw [runT]; rfl
     have hmv := h.movedPlaces h0 hg
     have hnt : natTag (.el0 Nat 0) (s.tyAt (.bind 1 1)) = .el0 Nat 0 := by simp [natTag, Sem.asNat_el0]
     show runT K ρ φ true hint (.matchNat (.var 0) .zero (.place pn0)) s = _
     rw [runT]
     simp only [SM.erasedIf, SM.stmtIf, hfl, Bool.false_eq_true, if_false]
     rw [htg 0 h0, hnt]
-    simp only [bind, Option.bind, hent, Sem.asNat_el0, hz, hmv]
+    simp only [bind, Option.bind, hent, Sem.asNat_el0, tailHint_true, hz, hmv]
     rw [hme, (hj s h.toRefJ).1, (hj s h.toRefJ).2]
   · have hmv := h.movedPlaces h0 hg
     have hnt : natTag (.el0 Nat (a + 1)) (s.tyAt (.bind 1 1)) = .el0 Nat 1 := by simp [natTag, Sem.asNat_el0]
-    have harm := runArmS (K := K) hd h h0 true (.plain TyM.err)
+    have harm := runArmS (K := K) hd h h0 true hint
     have hj₁ : RefJ (setN0 K s) := h.toRefJ.setAt _ _
     show runT K ρ φ true hint (.matchNat (.var 0) .zero (.place pn0)) s = _
     rw [runT]
     simp only [SM.erasedIf, SM.stmtIf, hfl, Bool.false_eq_true, if_false]
     rw [htg (a + 1) h0, hnt]
-    simp only [bind, Option.bind, hent, Sem.asNat_el0, harm, hmv]
+    simp only [bind, Option.bind, hent, Sem.asNat_el0, tailHint_true, harm, hmv]
     rw [hme, (hj _ hj₁).1, (hj _ hj₁).2]
 
 end

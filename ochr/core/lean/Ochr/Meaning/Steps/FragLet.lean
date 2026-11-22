@@ -738,7 +738,7 @@ theorem letF_core (hL : LetInv) (hR : FragRun K.D) (hdec : FragDec K.D) (hDN : D
   -- the reference's `let`
   rw [runT_letIn _ _ x u w s hfl, hxu']
   simp only [bind, Option.bind]
-  rw [hpb, hxw']
+  rw [hpb, frag_hint (K := K) (ρ := ρ) (φ := φ) hw _ _ (.plain TyM.err), hxw']
   obtain ⟨frs, hlast, ⟨hsh, hok, rfl⟩ | ⟨L, hsh, hok, rfl⟩⟩ := hLD
   · simp only [hlast, hsh]; rw [if_pos (show LetLendersOk K φ s₂ from hok)]
   · simp only [hlast, hsh]; rw [if_pos (show EndOk K φ s₂ L from hok)]

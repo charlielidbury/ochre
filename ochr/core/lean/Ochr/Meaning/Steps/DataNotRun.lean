@@ -143,7 +143,7 @@ theorem runNot (hd : ParDecNot K.D) (hΓ : K.Γ = [declB]) {g : Sem} (h : RefNot
   have htg : SM.guarded (TagOk K φ (.var 0)) (tagOf K φ (.var 0) indTag) s = some (.el0 Nat c, s) := by
     rw [SM.guarded_of htag]; unfold tagOf; rw [h.resolve0]; dsimp only
     rw [h.access, h.typedFuture, h.valB, h0]; rfl
-  have harm : runArm K ρ φ true (.plain TyM.err) c
+  have harm : runArm K ρ φ true hint c
       [(⟨"T"⟩, .ctor "B" 1 ⟨"F"⟩ [] []), (⟨"F"⟩, .ctor "B" 0 ⟨"T"⟩ [] [])] s =
       some ((datB K.dm (1 - c), .plain (tyBM K.dm)), s) := by
     rcases c with _ | _ | c
@@ -163,8 +163,8 @@ theorem runNot (hd : ParDecNot K.D) (hΓ : K.Γ = [declB]) {g : Sem} (h : RefNot
   have hjd : joinDrop K φ [] bodyNot s = s := by unfold joinDrop; rw [hjm]; rfl
   have hjok : optCheck ((Sem.el0 Nat c).isProof = true ∨ false = true ∨ JoinDropOk K φ [] bodyNot s) = some ⟨⟩ := by
     unfold optCheck; rw [if_pos]; right; right; unfold JoinDropOk; rw [hjm]; trivial
-  simp only [bind, Option.bind, Bool.not_true, Bool.false_and, hme, hent, harm, hmv, hone, hjok, hjd,
-    Sem.asNat_el0]
+  simp only [bind, Option.bind, Bool.not_true, Bool.false_and, hme, hent, tailHint_true, harm, hmv, hone, hjok,
+    hjd, Sem.asNat_el0]
   rw [hme, hjok]; rfl
 
 end
