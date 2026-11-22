@@ -281,9 +281,9 @@ ochr Hunt4 uses Nats {
   def I5uL (u : Unit) : True := I5g(Inl[True, True](I), 1, 2)
   def I6g (h : Or2(True, True)) (x : Nat) : Nat := (let p : True = match h { Inl(a) => (let q = x; a), Inr(b) => b }; Z)
 
-  -- the `split f { … }` form (D61): the arms are a match on a hidden variable
+  -- the braces form `split f(ā) { … }` (D61, D126): the arms are a match on the call
   def SF (n : Nat) : Nat by n := match n { Z => Z, S m => S(SF(m)) }
-  def SPg (n : Nat) (a : Nat) : Eq(Nat, SF(n), SF(n)) := split SF { Z => (let q = a; refl), S k => refl }
+  def SPg (n : Nat) (a : Nat) : Eq(Nat, SF(n), SF(n)) := split SF(n) { Z => (let q = a; refl), S k => refl }
 }
 
 #eval IO.println (showJoins (run "Hunt4" Hunt4 { derivation := true }))

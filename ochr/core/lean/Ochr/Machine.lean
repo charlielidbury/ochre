@@ -806,7 +806,7 @@ at an embedded value, `rewrite` and `rewriteR` as their type (the untyped run re
 their type), which is read only where the context reads the term's type (`typeRead`: a borrow
 argument, whose type is its cell's at [Close]; nowhere else the untyped run hands a hint); through
 `clone`, `peek` and `inplace` (which hand it to their operand); and, in tail position (`tail`),
-through a `let`'s or a `;`'s tail and a match's arms. Nothing else reads it (a hole is stuck in an
+through a `let`'s or a `;`'s tail, a match's arms and a split's term (D125). Nothing else reads it (a hole is stuck in an
 untyped run). Read from syntax and declarations. The untyped run hands a hint exactly where the
 typed check does; where the term would not read it, it is not computed, which no run can tell from
 computing it. -/
@@ -816,7 +816,7 @@ def readsHint (fuel : Nat) (tail typeRead : Bool) (t : Term) : M Bool := do
   | .ctor ty _ _ ps _ => pure (ps.isEmpty && !(← lookupInd ty).params.isEmpty)
   | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ => pure typeRead
   | .prim "clone" [u] | .prim "peek" [u] | .prim "inplace" [u] => readsHint fuel' false typeRead u
-  | .letIn _ _ w | .seq _ w => if tail then readsHint fuel' true typeRead w else pure false
+  | .letIn _ _ w | .seq _ w | .prim "split" [_, w] => if tail then readsHint fuel' true typeRead w else pure false
   | .matchNat _ z s =>
     if tail then pure ((← readsHint fuel' true typeRead z) || (← readsHint fuel' true typeRead s)) else pure false
   | .matchInd _ _ arms => if tail then arms.anyM fun (_, a) => readsHint fuel' true typeRead a else pure false
@@ -2298,6 +2298,8 @@ def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) 
     -- a proposition is a copy (D100), so the clone of a proof is that proof, `⋆` flagged a proof,
     -- and of data a copy of the data (the operand's flags, set by its own evaluation)
     | .prim "clone" _ => getFlags
+    -- D125: an untyped `split f in u` is `u` (the typed one is checked by `checkTailAt` only)
+    | .prim "split" _ => getFlags
     | .prim "hole" _ => getFlags     -- set by `evalCore`: a proof iff its type is a proposition
     | .prim "rewrite" _ | .prim "rewriteR" _ => pure (true, true)   -- D60: `J`, a proof
     | .ctor ty _ _ _ _ => let p ← ctorIsProof ty; pure (p, p)   -- D42: a Prop inductive's value is a proof
@@ -2324,6 +2326,19 @@ def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) 
     modify fun s => { s with env := before }
   setFlags (erased, proof)
   pure r
+termination_by structural fuel
+
+/-- D124, `J`: the motive `P` at the first endpoint's value `av`, `P(a)`, the type the typed check
+hands the transported term (as its hint) and checks it against, computed as the typed check computes
+it: `A` and `P` evaluated and `P` called at `av`, on a private copy (they are statements). -/
+def jMotiveAt (fuel : Nat) (A P : Term) (av : Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  inStatement do
+    let A' ← evalType fuel' A
+    let (Pv, PT) ← eval fuel' true P
+    -- D115: the call's head and argument are held in Ω, as temporaries, until it binds them
+    pushTemp Pv PT "J"; pushTemp av (some A') "J"
+    pure (← callFn fuel' true PT 1 #[some A'] false).1
 termination_by structural fuel
 
 /-- `hint`: the type the context requires of `t`, used only to infer the parameters of a
@@ -2547,9 +2562,12 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         -- static ends, rule 2: its entry ends what [T-J-stuck]'s block would
         discard (blockEntry fuel' u)
         return ← joinDrop fuel' t (do demand want; eval fuel' false u)
+      -- D124: `t`'s hint is `P(a)`, as on both typed paths, computed only where `t` reads it
+      -- (`readsHint`: not in tail position), as the typed check computes it (`jMotiveAt`)
+      let reads ← readsHint fuel' false false u
       if !(← jErased fuel' P) then
-        -- its endpoints are erased positions, on private copies; `A`, `P` and `h`
-        -- are never run by the machine (A.191)
+        -- its endpoints are erased positions, on private copies; `A` and `h` are never run by
+        -- the machine (A.191), nor `P` but for `t`'s hint
         let (av, _) ← inStatement (eval fuel' false a)
         let (bv, _) ← inStatement (eval fuel' false b)
         -- [J]: the endpoints are convertible, `J` is `t`; [J-stuck]: otherwise the run is
@@ -2557,11 +2575,13 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         -- D84 [Join]: `t` is the one arm, so its moves are taken at the join's grain
         -- static ends, rule 2: its entry ends what [T-J-stuck]'s block would
         if ← conv fuel' av bv then
+          let hJ ← if reads then some <$> jMotiveAt fuel' A P av else pure none
           discard (blockEntry fuel' u)
-          return ← joinDrop fuel' t (do demand want; eval fuel' false u)
+          return ← joinDrop fuel' t (do demand want; eval fuel' false u hJ)
         stuckNow
+      let hJ ← if reads then some <$> jMotiveAt fuel' A P (← inStatement (eval fuel' false a)).1 else pure none
       demand want
-      return (← eval fuel' false u)
+      return (← eval fuel' false u hJ)
     let A' ← evalType fuel' A
     let (av, Ta) ← inStatement (eval fuel' true a)
     let (bv, Tb) ← inStatement (eval fuel' true b)
@@ -2597,7 +2617,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       return ← closeBlock fuel' tJ [arm] (some Pb)
     -- static ends, rule 2: its entry ends what [T-J-stuck]'s block would
     discard (blockEntry fuel' u)
-    let (v, Tu) ← joinDrop fuel' t (eval fuel' true u)
+    -- D124: `t` gets the hint `P(a)`, as where `J` is stuck (above): the two typed paths hand it the same
+    let (v, Tu) ← joinDrop fuel' t (eval fuel' true u (some Pa))
     let fl ← getFlags
     expectTy fuel' "the transported term" Tu Pa
     setFlags fl    -- t's flags (J is t)
@@ -2634,7 +2655,18 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     let (_, Tu) ← eval fuel' true u (some G')
     expectTy fuel' "the rewritten term" Tu G'
     pure (.proof, some G)
-  | .prim "split" _ | .prim "splitArms" _ => err "split: only in tail position (where the goal is known)"
+  | .prim "split" [_, u] =>
+    -- D61: the typed check splits the goal at the end of a body (`checkTailAt`); a typed run
+    -- elsewhere has no goal to split
+    if typed then err "split: only in tail position (where the goal is known)"
+    -- D125: the untyped run (a called body, a sealed program's re-run, the runtime) runs `u`, as
+    -- a `let`'s tail: the split decides nothing a run needs, since `u` names the call it splits on
+    -- (D126: `split f(ā) { arms }` is `split f in match f(ā) { arms }`) and a run computes it
+    let myD := (← get).curDecl
+    modify fun s => { s with tailDecl := myD }     -- the tail's reading is the split's
+    demand want
+    modify fun s => { s with tailNext := tail }     -- static ends: `u` is the split's tail
+    eval fuel' false u (if tail then hint else none)     -- D124: the hint only in tail position
   | .prim "hole" _ =>
     -- a hole (`?`, docs/07): a value of the type the context requires (a fresh abstract value,
     -- `⋆` for a proposition), so the rest checks around it; the editor shows its goal and Ω.
@@ -4534,7 +4566,8 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match t with
   | .prim "split" [.const f, u] =>
-    -- D61: `split f in u`: split the goal's stuck result of `f`, `u` in every arm
+    -- D61: `split f in u`: split the goal's stuck result of `f`, `u` in every arm (D126: the
+    -- braces form `split f(ā) { arms }` is `split f in match f(ā) { arms }`, resolved so)
     let (σ, T) ← splitTarget fuel' f
     let w ← enterWorld
     match T with
@@ -4558,17 +4591,6 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
           trace fun _ => s!"[Split] σ{σ} := {r}"
           checkTail fuel' u k
     | _ => err s!"split {f}: its result type {T} is not an inductive type"
-  | .prim "splitArms" [.const f, .letIn h _ w] =>
-    -- D61: `split f { C(x̄) => u, … }`: the split value is bound to a hidden variable, and
-    -- the arms are an ordinary match on it
-    let (σ, T) ← splitTarget fuel' f
-    pushBind h (some T) (.abs σ) false
-    checkTail fuel' w fun r R => do
-      let fl ← getFlags
-      pushTemp r (some R) "checkTail"
-      dropTopBind fuel'
-      setFlags fl
-      k (← popTemp) R
   | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
     -- D60: in tail position the rewritten goal becomes the path's goal, so `u` may split
     let some G := (← get).goal | err "rewrite: no goal"

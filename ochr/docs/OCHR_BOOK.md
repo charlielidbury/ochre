@@ -224,7 +224,7 @@ def CountDownZero (k : Word) : Eq(Word, CountDown(k), Zero) by k := (
 There is none. A proof is always a term, and there is no `by { … }` block: `by` after a signature names the decreasing argument (§6). Instead, a few terms work like tactics. Each reads the goal it is checked against and hands a changed goal to its body, so you write them outermost first, in the order you would run the tactics. The goal comes from the signature, from the parameter type when the proof is a call's argument, or from an annotation `let h : G = (…); …`.
 
 - **`rewrite h in t`**, for `h : Eq(A, a, b)`, proves the goal `G` from `t : G'`, where `G'` is `G` with `b` replaced by `a`. `rewrite ← h in t` replaces `a` by `b`. Rewrites chain: `rewrite h1 in rewrite ← h2 in t`. Occurrences inside a stuck `match` aren't found, so state helper lemmas about *calls*.
-- **`split F in t`** finds the first stuck call of `F` in the goal, splits on its result, and checks `t` in every case. `split F { C1 => t1, C2(x) => t2 }` gives one proof per case.
+- **`split F in t`** finds the first stuck call of `F` in the goal, splits on its result, and checks `t` in every case. `split F(a, …) { C1 => t1, C2(x) => t2 }` gives one proof per case: it writes the call whose result picks the case, and means `split F in match F(a, …) { … }`.
 - **`?`** stands for the rest of the proof. The warning shows the goal at that point and the values in scope, as Lean's goal view does after a tactic.
 - **Reading a failed proof.** `the body of P has type A, but the goal is B` gives both normal forms. A goal stuck on `⌈F(σ3, …)⌉` is waiting for a case split on something `F` matches on.
 

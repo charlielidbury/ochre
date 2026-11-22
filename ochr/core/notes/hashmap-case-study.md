@@ -43,6 +43,7 @@ The code copies no value. `Find(V, m, k) := Lookup(V, &m, k)` is the statements'
 | Ochr, previous final (values `Nat`, with D53; 7d5d51ef) | 146 | 205 | 0 | 1,284 | 1,635 |
 | Ochr, generic, before the sugar (99ceb9b3) | 200 | 216 | 0 | 1,649 | 2,065 |
 | **Ochr, generic, final** | 184 | 162 | 0 | 1,350 | **1,696** |
+| Ochr, generic, after D126 (2026-11-22: the braces form of `split` writes its call) | 184 | 162 | 0 | 1,353 | 1,699 |
 
 (Aeneas's property proofs include the `.fsti`'s 124 lines of statements. The previous final's proofs were 1,315 lines in §2 and the paper; by 7d5d51ef the same count, `--old-rule`, gives 1,302: insert 275, remove 271 and get_mut 92 lines, against 282, 275 and 94.)
 - **Counted and uncounted.** Counted, as above: 1,696 lines in 177 declarations. Uncounted: the general library, 827 lines in 85 declarations; the case study uses `Words`, `Lists`, `Options`, `Arrays` and `ArrayLemmas` (and through them `Bools`, `Logic`, `WordType`). With the library counted too, Ochr's development is 2,523 lines, against Aeneas's 2,892 with `Primitives.fst` (222 lines) counted.

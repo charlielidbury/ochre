@@ -45,7 +45,7 @@ inductive STerm where
   | sort (l : Nat)
   | rewrite (rev : Bool) (h t : STerm)           -- `rewrite h in t`, `rewrite ← h in t` (D60)
   | split (f : String) (t : STerm)                -- `split f in t` (D61)
-  | splitArms (f : String) (arms : List (String × List String × STerm))   -- `split f { C(x̄) => t, … }` (D61)
+  | splitArms (f : String) (arms : List (String × List String × STerm))   -- `split f { C(x̄) => t, … }`, D61's spelling, rejected by resolution (D126)
   | letPat (c : String) (vars : List String) (scrut body : STerm)   -- `let C(x̄) = e; u`: `match e { C(x̄) => u }`, C's type having one constructor
   | loc (start stop : Nat) (t : STerm)           -- where `t` is written (byte offsets; the editor)
 deriving Inhabited, Repr
@@ -667,8 +667,11 @@ def resolveF (fuel : Nat) (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     return .prim (if rev then "rewriteR" else "rewrite") [← resolveF fuel' ctx false h, ← resolveF fuel' ctx false u]
   | .split f u =>           -- D61: [Split] on the goal's stuck result of `f`
     return .prim "split" [.const f, ← resolveF fuel' ctx false u]
-  | .splitArms f arms =>    -- D61: the split value is bound to a hidden variable, matched on
-    return .prim "splitArms" [.const f, ← resolveF fuel' ctx false (.letIn "⋄split" none .unitLit (.matchGen (.ident "⋄split") arms))]
+  | .splitArms f _ =>
+    -- D126: the braces form names the call it splits on, `split f(ā) { arms }`, which the
+    -- notation makes `split f in match f(ā) { arms }`; D61's spelling named none, and a run of
+    -- the code (D125) could not tell which call's result picks the arm
+    throw s!"split {f} \{ … } names no call: write the call of {f} the goal is stuck on, `split {f}(a, …) \{ … }`, which is `split {f} in match {f}(a, …) \{ … }` (D126)"
   | .top => pure (.tind "True" [])
   | .and P Q => return .tind "And" [← resolveF fuel' ctx true P, ← resolveF fuel' ctx true Q]
   | .prod A B => return .tind "Pair" [← resolveF fuel' ctx true A, ← resolveF fuel' ctx true B]   -- `A × B` (D52)

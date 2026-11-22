@@ -53,7 +53,7 @@ Terms:
 | `⊤`, `False`, `P ∧ Q`, `⟨h, k⟩` | true, false, conjunction, a proof of a conjunction |
 | `let ⟨h, k⟩ = p; u` | take a conjunction apart |
 | `rewrite h in t`, `rewrite ← h in t` | rewriting (§7) |
-| `split F in t`, `split F { C(x) => t, … }` | split the goal on a stuck call of `F` (§7) |
+| `split F in t`, `split F(a, …) { C(x) => t, … }` | split the goal on a stuck call of `F` (§7) |
 | `Nat`, `Z`, `S(n)`, numerals | unary natural numbers (built in) |
 | `Unit`, `()` | the unit type |
 
@@ -94,7 +94,7 @@ A proof is a program whose type is the statement; it is erased when the program 
 - **False.** `match h {}` for `h` of an empty type. A contradictory equation between different constructors is `False` by computation, so it matches with no arms too.
 - **Conjunctions.** Build with `⟨p, q⟩`; take apart with `let ⟨p, q⟩ = h; …`.
 - **Rewriting.** For `h : Eq(A, a, b)`, `rewrite h in t` proves the goal `G` from `t : G'`, where `G'` is `G` with every occurrence of `b` replaced by `a`; `rewrite ← h in t` replaces `a` by `b`. The goal must be known (the declaration's type, a call's argument, or `let x : T = (rewrite …); …`). A rewrite that finds no occurrence is an error, and occurrences hidden inside a stuck `match` are not found, so state helper facts about calls rather than about inline matches. Several rewrites chain: `rewrite h1 in rewrite ← h2 in t`. Examples: `05Equality.lean`, and the lemma library in `16Arrays.lean`.
-- **`split F in t`** splits the goal on the first stuck call of `F` it contains, as a `match` on that call's result would; `split F { C1 => t1, C2(x) => t2 }` gives each arm. Examples: `08CaseSplits.lean`.
+- **`split F in t`** splits the goal on the first stuck call of `F` it contains, as a `match` on that call's result would; `split F(a, …) { C1 => t1, C2(x) => t2 }` gives each arm: it writes the call whose result picks the arm (the one the goal is stuck on) and means `split F in match F(a, …) { … }`. The call runs like any other, so a call that borrows something changes it: write it on a copy (`let s1 = clone(s); split F(&s1, …) { … }`). Examples: `08CaseSplits.lean`.
 - **`J`** (transport) exists but `rewrite` is almost always easier.
 
 When a proof is rejected, `lake -q exe check --trace Name` shows the goal in evaluated form. A goal that is stuck on `⌈F(σ3, …)⌉` is waiting for a case split on something `F` matches on.

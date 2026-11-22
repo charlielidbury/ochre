@@ -109,9 +109,11 @@ syntax (name := ochrElseIf) " else " "if " ochr_term " { " ochr_term " }" (ochr_
 syntax:max (name := ochrIf) "if " ochr_term " { " ochr_term " }" (ochr_else)? : ochr_term
 syntax:10 "rewrite " ochr_term:11 " in " ochr_term:10 : ochr_term
 syntax:10 "rewrite " "← " ochr_term:11 " in " ochr_term:10 : ochr_term
--- D61: `split f in t`, `split f { C(x̄) => t, … }`: [Split] on the goal's stuck result of `f`
+-- D61: `split f in t`: [Split] on the goal's stuck result of `f`. D126: `split f(ā) { C(x̄) => t, … }`
+-- is `split f in match f(ā) { C(x̄) => t, … }`; D61's `split f { … }`, which names no call, is
+-- parsed so that resolution rejects it with what to write
 syntax:10 "split " ident " in " ochr_term:10 : ochr_term
-syntax:max (name := ochrSplitArms) "split " ident " { " ochr_arm,+,? " }" : ochr_term
+syntax:max (name := ochrSplitArms) "split " ochr_term:max " { " ochr_arm,+,? " }" : ochr_term
 syntax ident : ochr_patvar
 syntax "_" : ochr_patvar
 syntax ident " => " ochr_term:10 : ochr_arm
@@ -258,10 +260,21 @@ partial def elabTermCore (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := 
   if stx.raw.getKind == ``ochrIf then
     return ← elabIf stx.raw[1] stx.raw[3] (optArg stx.raw[5])
   if stx.raw.getKind == ``ochrSplitArms then
-    let f := stx.raw[1].getId.toString
     let arms := stx.raw[3].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_arm)
     let as ← arms.mapM elabArm
-    return ← `(STerm.splitArms $(strLit f) [$as,*])
+    let c : TSyntax `ochr_term := ⟨stx.raw[1]⟩
+    -- D61's spelling, `split f { … }`: kept for resolution's message (D126)
+    if let `(ochr_term| $f:ident) := c then
+      return ← `(STerm.splitArms $(strLit f.getId.toString) [$as,*])
+    -- D126: `split f(ā) { arms }` is `split f in match f(ā) { arms }`
+    let f? : Option Ident := if c.raw.getKind == ``ochrCall then
+        match (⟨c.raw[0]⟩ : TSyntax `ochr_term) with
+        | `(ochr_term| $f:ident) => some f
+        | _ => none
+      else none
+    let some f := f?
+      | Macro.throwErrorAt c "split names a call of a function, `split f(a, …) { … }`, or is written `split f in t`"
+    return ← `(STerm.split $(strLit f.getId.toString) (STerm.matchGen $(← elabTerm c) [$as,*]))
   if stx.raw.getKind == ``ochrArrLit then
     Macro.throwErrorAt stx "an array literal needs its type written next to it: `let a : Array(E, n) = [x, y]` or `([x, y] : Array(E, n))`"
   if stx.raw.getKind == ``ochrProj then
