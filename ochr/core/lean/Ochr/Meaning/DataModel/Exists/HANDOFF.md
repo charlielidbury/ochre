@@ -1,11 +1,11 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists5`, worktree `/home/charlielidbury/repos/ochre-exists3` (it carries the proof line through f6c59f58). Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.5 frame locality, §18.6 the knot). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists5`.
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists6` (from `spine-exists5`), worktree `/home/charlielidbury/repos/ochre-exists3` (it carries the proof line through f6c59f58). Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.5 frame locality, §18.6 the knot). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists6`.
 
-## Rulings requested from the lead (read the answers first)
+## Rulings (made by the lead 2026-11-22)
 
-1. Checker rules from Lean's kernel (docs/34 §18.6): **(B)** a variable mentions what its declared type mentions (no equation side, call argument or value argument in a field type reads an earlier field whose type mentions the declaration or a varying parameter; a parameter read so is not nestable); **(A)** a data-sorted declaration does not occur inside an argument at a `Prop` parameter. `Knot.Spine` states the field-type grammar with them (plus (B2): a value argument's parameter type mentions no varying earlier argument, which typing gives). If (B) is refused: `hpar` must compare value parameters by small readings and a relational lemma over the run is needed (runs under different records agree where both are defined); `LD`, `W`/`UW` in §18.6 are the cases.
-2. **`teleFrame` (Faithful.lean) should type the not-yet-bound fields `err`**, as the checker's `fieldTele` binds them (`pushBind name none .bot`). Today the field being typed carries its own type read from the knot's record, which makes the canonical frame self-referential, and frame locality cannot swap a `moved` binding (not `Good`: not whole). Proposed: the field binding's type `if j < e.length then dm.fieldTy d ps c j (e.take j) else TyM.err`. `Knot.canFrame` already uses `err` there. Fallback if refused: extend `runT_qset` to `Q` positions holding `moved` on both sides (the join-drop and capture cases are where it bites: moved places are what the join drops).
+1. Checker rules (A) and (B) (docs/34 §18.6): ADOPTED, subject to measurement; `checker6` implements and measures them, reading `Knot/Grammar.lean` as its specification. In `knot_exists`, "every accepted declaration's field types satisfy the grammar" is ONE named fact about the checker, counted as assumed until the checker enforces it; state its predicates as decidable functions of syntax, declarations and declared types where possible.
+2. `teleFrame` types the fields not yet bound `err`: APPROVED and BUILT by `exists6` (docs/31 D160, docs/34 §18.7; the checker's frame pinned by `TeleFrameGuard.lean`).
 
 ## Done (exists5), all in the default build, standard axioms
 
@@ -24,15 +24,25 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - `FrameLocal/`: frame locality `runT_qset` (assumes `DecLocal`). `Decomposition.lean`: the nine pieces; `runT_congrDM` (piece 1) stated, unproved.
 - `General.lean` (outside the build): `globals_typed`, `mono_prop`, `truth_exists` (sorry), `runT_frameLocal` (false, kept), `knot_exists` (restated, sorry).
 
-## Next: `SteadyAt`, the one fact `knotK_agree` assumes
+## Done (exists6), all in the default build, standard axioms
 
-`Knot/Agree.knotK_agree` (default build, standard axioms) is `knot_exists`'s conclusion for the witness `knotK`, assuming `SteadyAt K ρ d R*` (`R* := recK (knotK …)`): the run of a steady node `t` of a field type `FT` (free variables among `FT`'s) in the actual frame `A := teleFrame (setRec K.dm d R*) K.D d ps c e` gives `valOf K ρ F* h t`, its value under `K` at the canonical frame `F* := canFrame K d ps c i es tyOf*`. So `knot_exists` = `knotK` + `knotK_agree` + a proof of `SteadyAt`. The plan for `SteadyAt` (`K* := {K with dm := setRec K.dm d R*}`):
-1. Frames `A = stateOf 0 bsA`, `F* = stateOf 0 bsF` equal off `X` = {fields `j < i` that vary or are no index} ∪ {parameters that vary}. Done: `fieldTy_knot` (the actual type at an earlier field is `tyOf* j`), `rebuild_eq` (the rebuilt member is `e[j]`; `es[j] = e[j].small` at an index field by `Piece3.projIdx_get`). Moved fields `j ≥ i`: equal only after the `teleFrame` repair (ruling 2). Non-varying parameters: the same expression (`canFrame`'s `if j < ps.length`).
-2. `Good` at `X` under `K*`: `e[j]` via `Data.fitsOneM_mem` (needs `LeafOk` at the knot's leaves: a leaf comes from a steady node's `.ty T`, and `GlobalsTyped` gives a call's result a code of level 0 or 1, so never a `Prop`-sorted data code over its own carrier; a data-sorted one over its own carrier is not a leaf, `dataView`) and `Strict.mem_whole K.dm.read_wholeFields`; `ps[j]` the same; the dummies `0 : Nat`. `pmem_of_mem`.
-3. `runT_stateOf_swap` (needs `DecLocal`, label-free globals) with `X`; free variables of `t` avoid `X`: they do not vary (`Steady`), and a field `FT` mentions is an index field (`IndDecl.indexFields`, `fieldRefs`).
-4. **Model congruence** for `t` avoiding `d.name` (`Knot.Avoids`): `runT K* t F* = runT K t F*`. The run reads `recOf` only at a name it finds (`.tind`, `.ctor`, matches, `meanV` of `.val`); `read`/`car`/`tyR` are the universal signature's. Template `AssignCongr.runT_congrA` (516 lines). This is piece 1/2 of `Decomposition.lean` in a narrowed form.
+- D160: `teleFrame` types the fields not yet bound `err`; `TeleFrameGuard.lean` pins the checker's frame.
+- `Knot/Congr.lean`: `runT_congrR`, the model congruence (no assumed fact). `Avoids` restated (no embedded value; `avoidsOld_gap`).
+- `Knot/Steady.lean`: `steadyAt_knotK` (assumes `DecLocal`, label-free globals).
+- `Knot/Grammar.lean`: `spineB`/`spineArgsB`/`GrammarOk` (decidable), `spineB_sound`.
+- `Knot/Exists.lean`: `knot_exists`, PROVED, assuming five named facts (`GrammarOk`, `hpar`, `ParamTyLocal`, `DecLocal`, label-free globals). `SteadyAt` and `knotK_agree` now ask the earlier fields to be MEMBERS of their field types (FieldsTyped at the knot's model), not to fit the shapes; `GlobalsTyped` is no longer needed for the knot.
 
-Then: `mono_prop`, `truth_exists` (piece 5; attack first, especially the monotonicity induction), `globals_typed`, `DecAt` threading (when a consumer needs it; recipe below), pieces 6, 7, assembly. The knot's `pEntry` is `pEntryTy` (what `Step2` used); piece 6 (records' parameter clauses) may need value parameters' entries read small instead.
+- `CrossSortCE.lean`: the checker accepts nesting across sorts that Lean rejects. Rule (A*) ADOPTED by the lead (subject to measurement); its predicates are `Knot/Grammar.lean`'s `occSortB`/`NestSortB`/`AStarOk` (checker6's spec: keep them exact). My first claim that `hpar` is false for `E` was WRONG: `hpar_E`/`fields_E` check that E's canonical record is parametric and faithful; the knot does not need (A*); truth-first does.
+- `TruthCE.lean`: `truth_exists` as written is false (kernel-checked; no hypothesis on earlier records). `PropMono.lean`: `mono_prop` proved (its content is its hypothesis).
+
+## Next: the truth-first construction (`General.truth_exists`, restated, `sorry`)
+
+Done for it: `PropMono.mono_prop` (generalized to `ShapeLe`: equal shapes, weaker proposition leaves, or `Prop`-sorted sub-records with inhabitation implied), `Truth.lean` (`lfpP`, `lfpP_fixed`: the least fixed point of a monotone operator, impredicative), the restated statement (hypotheses `hstar` (rule (A*)), `hmono` (earlier records `ShapeLe`-monotone), `hpty`, `hD`, `hK`; conclusions: the truth predicate, `d`'s own records `ShapeLe`-monotone (for the induction), faithfulness with members as earlier fields).
+1. DONE: the grammar hypothesis `hgram : PGrammarOk K.Γ d` (`Grammar.lean`: `PSpine`, `pspineB`, `pspineB_sound`).
+2. The interpreter for a `Prop`-sorted `d` (copy `Interp.lean`): `semT` reads `d(ā)` as `.ty (TyM.prop (T ā))` and `itpT` gives `.ty (TyM.prop (T ā))` (a proposition leaf); everything else as `ftyK`. `R_T ps` := the record whose kind/continuation at each key is that `FTy`'s (no knot needed: `R_T` does not read itself; build it with a `KnotSpec` whose `fty` ignores `R`, `recK` then is it, `recK_kind`/`recK_contRec`).
+3. `Φ T ps := ∃ member of d at R_T ps`; monotone via `mono_prop` (each key's shape is `ShapeLe` in `T` by `hmono` and (A*)); `T := lfpP Φ`; `lfpP_fixed` gives `uTyR d (R_T ps) = TyM.prop (T ps)` (`Nonempty (ucar ..) ↔ ∃ member`, `mem_iff_meanC`).
+4. Faithfulness: `knotK_agree`'s and `steadyAt_knotK`'s arguments (frame locality + `runT_congrR`) with a self-occurrence's run `tyM d ā = uTyR d (R_T ā) = prop (T ā)` by step 3.
+Then `globals_typed`, pieces 6, 7 and the assembly (which discharges `hpar` (canonical records are parametric: `CrossSortCE.hpar_E` is the pattern), `ParamTyLocal`, label-free globals, `hmono`).
 
 ## DecLocal, node by node (exists4, partly done)
 
