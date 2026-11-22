@@ -285,7 +285,7 @@ theorem itpArgsP_le (H : MonoHyp K d T T' ps ps') {M : IndDecl} (hMΓ : M ∈ K.
         M.sort = 0 := by
       by_cases hst : Steady d c a
       · exact .inl (e.2 hst)
-      · exact .inr (hA hst).2
+      · exact .inr (hA hst)
     have h' := h.snoc a _ _ h1 e.2 h3
     have := itpArgsP_le H hMΓ hrest _ _ h' (by simp [hj])
     simpa [List.append_assoc] using this

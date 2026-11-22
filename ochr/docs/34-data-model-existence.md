@@ -566,6 +566,24 @@ Ruled by the lead on `exists5`'s proposal (§18.6, last paragraph). `teleFrame` 
 
 **Also weakened in `Spine` (A).** It had also asked that a varying type argument stand at a parameter declared `Type`. The knot never used that, and it would exclude `d (P : Prop) := MkD(q : Q(P))`. Only "a varying applied declaration is data-sorted" remains.
 
+### 18.12 Acceptance gives the grammar (exists7, exists8, 2026-11-22)
+
+`Knot.grammar_of_checks` (`Exists/Knot/FromChecks.lean`, default build, standard axioms). Take a declaration that passes the checker's checks at the declarations `Γ0` before it. Then it satisfies the grammar of its sort (`GrammarOk` for a data-sorted one, `PGrammarOk` for a `Prop`-sorted one) in any program that declares it after `Γ0`, and no value parameter of it is nestable. The checks are bundled as `IndChecks Γ0 d` (`Checks.lean`): what `checkInd` establishes about the entry it stores. That is: a fresh name; the stored nestable set is `nestableSet`'s (D107, D120, D121); the fields are a telescope ([Ind], D64); and at every field type, pure mirrors of `firstOrderTerm` and `readViolation` pass, and `sortNestViolation` finds nothing. The mirrors look names up in the declarations the checker sees while checking the fields (`declEnv`, `d`'s entry with no constructors last). They are weaker than the checker wherever the grammar does not need a test.
+
+The theorem assumes three facts, besides `IndChecks` itself:
+- About resolution, enforced but not derived: `FieldsNoVal` (a declared field type holds no embedded value; no check of the checker establishes it).
+- For the assembly: `hval` (no earlier declaration's value parameter is nestable; it is the theorem's own third conclusion at each earlier declaration).
+- For the machine lane: the bridge from the checker's run, `CheckIndGivesChecks`. It says that when `checkInd` accepts `d`, it stores one entry, and that entry passes `IndChecks` at the declarations before it. It is read from `checkInd`'s code and is not yet proved.
+
+The bridge's conclusion was evaluated at every stored inductive declaration of every registered example block that finishes within the sweep's time (`Scratch/ChecksSweep.lean`, untracked). It holds at all of them; the heaviest case studies are reported in the lane's handoff.
+
+**The argument.** The checks and the grammar walk the same nodes: the field type and, inside `m(…)`, its arguments at type parameters (the spine), with calls, equations and value arguments off it.
+- An off-spine node is steady. It does not mention `d` (`firstOrderTerm`). Suppose it read a varying variable. Then, through declared types, it would read a nestable parameter or a field whose type mentions `d` (`deepVars_bad`, exists7; `deepVars` is the closure of a term's variables under declared types, `reach_of_deepVars`). A nestable parameter is excluded because the node is not a nestable position: `Term.nestOk` there is "not read", and a value parameter is never nestable. A field whose type mentions `d` is a D120 `readViolation`.
+- A type argument that is not steady mentions `d` or reads a varying variable. The spine's only variables are parameters, so it reads a varying parameter and, through the parameters' types, a nestable one (`deepVars_nest`). In both cases it stands at a nestable parameter: `firstOrderTerm`'s nesting test, or `Term.nestOk` along the path from the root. It stands in a declaration of `d`'s sort and is itself headed by one: `sortNestViolation`, or `Term.passOther` at the nestable parameter it reads, which `nestableSet` excluded.
+- `nestableSet`'s loop (`NestLoop.lean`) ends at a post-fixpoint below its start, because each round that changes the set removes a parameter. Every parameter in the result is a type parameter, is passed to no declaration of the other sort, and occurs only nestably in every field type, read against the result itself.
+
+**`PSpine` weakened.** It asked that a varying type argument of a `Prop`-sorted declaration stand at a parameter declared `Prop`. `truth_exists` never used that, and no check gives it, so exists8 dropped it, as exists7 dropped the `Type` half of (A) for `Spine`.
+
 ## Appendix: the probe programs
 
 In `Meaning/DataModel/Probes.lean`, checked when the file is elaborated, every verdict and every rejection's reason asserted by the build: `DMProbeAdv` (§13: the stuck type equations, `RE`, `RoseL`, `FP`, `H`, `LB`, `MM`), `DMProbeNest` (`Rose`, `CountF`, `F3`/`F2`, `Single`, `S1`, `S2`, `BW`, `BH`, the rejected W-type shapes `WT`, `WT2`) and `DMProbeLarge` (`TEq`, `te`, `te2`, `te3` rejected, `te4`, `LP`, `HL3`, `h3`, `h3bad` rejected, `H`, `RV`, `rv0`, `rv1`). `TEq`, `te`, `HL`, `hl`, `G`, `EqF`, `ef`, `NL` are also in `Examples/Fording.lean` (`InductiveModel`).

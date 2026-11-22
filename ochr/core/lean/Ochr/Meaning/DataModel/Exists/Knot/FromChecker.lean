@@ -17,8 +17,9 @@ Proved here (no assumed fact): `deepVars`' loop is an explicit iteration (`deepV
 everything reached through declared types within `np + k` steps (`mem_deepIter`, `mem_deepVars`); a
 varying variable (`varVaries`) reaches, within that many steps, a nestable parameter or a field whose
 declared type mentions `d` (`reach_varies`, given the [Ind] telescope rule `TeleOk`); so a term reading
-a varying variable deep-reads such a variable (`deepVars_bad`). Still to do (HANDOFF): `nestableSet`'s
-loop is a post-fixpoint, and the pure mirrors of `firstOrderTerm`/`readViolation` with the main induction.
+a varying variable deep-reads such a variable (`deepVars_bad`). The rest of step 2 (exists8): the mirrors
+and the bundle of checks (`Checks.lean`), `nestableSet`'s loop (`NestLoop.lean`), the main induction
+and the theorem `grammar_of_checks` (`FromChecks.lean`).
 -/
 
 namespace Ochr.Meaning.DataModel.Exists.Knot

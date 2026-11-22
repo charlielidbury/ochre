@@ -273,6 +273,9 @@ import Ochr.Meaning.DataModel.Exists.Knot.TruthMono
 import Ochr.Meaning.DataModel.Exists.Knot.TruthAgree
 import Ochr.Meaning.DataModel.Exists.Knot.TruthExists
 import Ochr.Meaning.DataModel.Exists.Knot.FromChecker
+import Ochr.Meaning.DataModel.Exists.Knot.Checks
+import Ochr.Meaning.DataModel.Exists.Knot.NestLoop
+import Ochr.Meaning.DataModel.Exists.Knot.FromChecks
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE
