@@ -531,11 +531,7 @@ theorem inv_pushBind {D : Decisions} {Γ : List IndDecl} {s : MState} {h : Hint}
     · cases e
       rw [bind_pushBindE_new s.env h ty v pf d fr hfr] at hbb
       cases hbb
-      refine .inl ⟨fun l c ev T hT => ⟨.tNat, by rw [hkb l c ev] at hT; cases hT; rfl⟩, fun hf => ?_⟩
-      rcases hv with hv | ⟨l, w, rfl, -⟩ | rfl
-      · rw [hv.not_fn] at hf; cases hf
-      · cases hf
-      · cases hf
+      exact .inl fun l c ev T hT => ⟨.tNat, by rw [hkb l c ev] at hT; cases hT; rfl⟩
     · rw [bind_pushBindE_ne s.env h ty v pf d fr hfr k i e] at hbb
       exact .inr ⟨k, i, bb, by rw [binds_pushTempE]; exact hbb, .inl rfl, rfl, rfl⟩
 
@@ -839,7 +835,7 @@ theorem inv_lend {D : Decisions} {Γ : List IndDecl} {s : MState} {f j : Nat} {b
     rw [hbinds2] at h
     rcases hb1c h with h' | e
     · exact .inr ⟨k, i, bb, h', .inl rfl, rfl, rfl⟩
-    · exact .inl ⟨fun l c ev => (by rw [e] at ev; cases ev), fun hf => (by rw [e] at hf; cases hf)⟩
+    · exact .inl (kindAt_of_loan e)
 
 theorem mem_allPos_of_binding {E : Env} {f j : Nat} {b : Binding}
     (h : E[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b) : Pos.bind f j ∈ allPos E := by

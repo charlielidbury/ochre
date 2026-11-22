@@ -385,12 +385,11 @@ theorem inv_stCJ2 (D : Decisions) : Inv D [] stCJ2 := by
   · intro σ l h; simp [stCJ2] at h
   · intro l h; exact absurd h (occurs_stCJ2 l)
   -- (K): the caller's `x` a number slot, the callee's `self` at `Π(n : Nat). Nat`, its parameter a number
-  · refine ⟨fun f i b hb => ?_, fun g hg => ?_⟩
+  · refine (fun f i b hb => ?_)
     · rcases bind_stCJ2 hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
-      · exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
-      · exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
-      · exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
-    · simp only [stCJ2, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; intro _; rfl
+      · exact fun l c e => (nomatch e)
+      · exact fun l c e => (nomatch e)
+      · exact fun l c e => (nomatch e)
 
 section
 variable {K : RunCtx} {ρ : Assignment}

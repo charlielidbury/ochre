@@ -219,9 +219,10 @@ with one label. -/
 def VEq (u v : Value) : Prop :=
   u = v ∨ (u.Bland ∧ v.Bland) ∨ ∃ l w w', u = .borrow l w ∧ v = .borrow l w' ∧ w.Num ∧ w'.Num
 
-/-- What a change owes (K): the globals kept, and every binding after it either meets (K) by itself or is a binding
-before it with the same types and a value every label-reading clause reads alike (`VEq`: equal, both bland, or borrows
-of numbers with one label). -/
+/-- What a change owes (K): every binding after it either meets (K) by itself or is a binding before it with the same
+types and a value every label-reading clause reads alike (`VEq`: equal, both bland, or borrows of numbers with one
+label). The globals kept: since the lead's ruling R1 (machine12, docs/31 D192) (K) asks nothing of the globals, and this
+conjunct is kept only so that the callers' proofs stand. -/
 def KindFrom (a b : MState) : Prop :=
   b.globals = a.globals ∧ ∀ (f i : Nat) (bb : Binding), b.env[f]?.bind (fun fr : Frame => fr.binds[i]?) = some bb →
     bb.KindAt ∨ ∃ (f' i' : Nat) (ba : Binding), a.env[f']?.bind (fun fr : Frame => fr.binds[i']?) = some ba ∧
@@ -242,30 +243,26 @@ theorem _root_.Ochr.Value.Bland.not_fn {v : Value} (h : v.Bland) : v.isFnVal = f
 
 /-- A binding holding a bland value meets (K) whatever its types. -/
 theorem kindAt_of_bland {b : Binding} (h : b.val.Bland) : b.KindAt :=
-  ⟨fun l c e => absurd e (h.not_borrow l c), fun e => by rw [h.not_fn] at e; cases e⟩
+  fun l c e => absurd e (h.not_borrow l c)
 
 /-- A binding holding a loan (the lender's side) meets (K) whatever its types. -/
 theorem kindAt_of_loan {b : Binding} {l : Nat} (h : b.val = .loan l) : b.KindAt :=
-  ⟨fun _ _ e => (by rw [h] at e; cases e), fun e => (by rw [h] at e; cases e)⟩
+  fun _ _ e => (by rw [h] at e; cases e)
 
 /-- (K) carries along `VEq` at the same types. -/
 theorem kindAt_of_veq {ba bb : Binding} (hk : ba.KindAt) (hv : VEq ba.val bb.val) (hty : ba.ty = bb.ty)
     (hlz : ba.lazyTy = bb.lazyTy) : bb.KindAt := by
   rcases hv with e | ⟨-, hb⟩ | ⟨l, w, w', e1, e2, -, -⟩
-  · obtain ⟨k1, k2⟩ := hk
-    refine ⟨fun l c h => ?_, fun h => ?_⟩
-    · intro T hT; exact k1 l c (e.trans h) T (hty.trans hT)
-    · rw [← hty]; exact k2 (e ▸ h)
+  · exact fun l c h T hT => hk l c (e.trans h) T (hty.trans hT)
   · exact kindAt_of_bland hb
-  · exact ⟨fun _ _ _ T hT => hk.1 l w e1 T (hty.trans hT), fun h => by rw [e2] at h; cases h⟩
+  · exact fun _ _ _ T hT => hk l w e1 T (hty.trans hT)
 
 /-- **(K) across a change**: from `a`'s and what the change owes (`KindFrom`). -/
 theorem kindTyped_of_from {a b : MState} (hk : KindTyped a) (h : KindFrom a b) : KindTyped b := by
-  refine ⟨fun f i bb hbb => ?_, fun g hg => ?_⟩
-  · rcases h.2 f i bb hbb with h' | ⟨f', i', ba, hba, hv, hty, hlz⟩
-    · exact h'
-    · exact kindAt_of_veq (hk.1 f' i' ba hba) hv hty hlz
-  · rw [h.1] at hg; exact hk.2 g hg
+  intro f i bb hbb
+  rcases h.2 f i bb hbb with h' | ⟨f', i', ba, hba, hv, hty, hlz⟩
+  · exact h'
+  · exact kindAt_of_veq (hk f' i' ba hba) hv hty hlz
 
 /-- A change that keeps every binding (the frames' bindings and the globals) owes (K) nothing new. -/
 theorem kindFrom_of_binds {a b : MState} (hg : b.globals = a.globals)

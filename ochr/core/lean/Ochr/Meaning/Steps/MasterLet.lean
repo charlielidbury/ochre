@@ -109,22 +109,31 @@ def _root_.Ochr.Meaning.TyM.IsPropCode : TyM → Prop
 
 /-- **(L1) The table is sound against the reference at every place under the binding** (a statement about the TABLE,
 mixed: the decisions against the reference's result type; NEW, lead28, docs/31 D189; UNREAD): where the reference's
-run of `u` succeeds with `ru` and `du` is the table's reading of `u`, at every place `p` rooted at the new binding, if
-the table reads `p` as an inductive `n` of `Γ` then the reference's type there is `n`'s data code; and at the join's
-grain, if the reference's type there is a proposition then the table reads `p` as a copy. FALSE today at the `J` above
-(the reference's type `⊤`, the table's reading `other`), until main's D131. -/
+run of `u` from `s` succeeds with `ru`, and `du` is the table's reading of `u` in `s`'s own scope (`scopeOf s`), at every
+place `p` rooted at the new binding, if the table reads `p` as an inductive `n` of `Γ` then the reference's type there
+is `n`'s data code; and at the join's grain, if the reference's type there is a proposition then the table reads `p` as
+a copy. FALSE today at the `J` above (the reference's type `⊤`, the table's reading `other`), until main's D131.
+Restated by machine12 (the lead's ruling, docs/31 D192): the scope was quantified apart from `s`, which made it false
+whatever the table (a scope reading `#0` as an inductive while `s`'s `#0` is a number); it is now `s`'s, as `OutL` reads
+`K.D.flags (scopeOf s) t` and `Rel` gives `topReadings st = scopeOf s` (`scopeOf_rel`). No consumer yet. -/
 def TableSoundL1 : Prop :=
-  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (sc : List DeclInfo) (u : Term) (s s₁ : SState) (ru : Res),
+  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (u : Term) (s s₁ : SState) (ru : Res),
     runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) →
     ∀ p : Place, p.steps.1 = 0 → ∀ s' T', Sem.follow K.dm K.Γ ru.2 ru.1 p.steps.2 = some (s', T') →
-      (∀ n args, K.D.placeDecl (K.D.declOf sc u :: sc) p = .ind n args → (K.Γ.find? (·.name == n)).isSome →
+      (∀ n args, K.D.placeDecl (K.D.declOf (scopeOf s) u :: scopeOf s) p = .ind n args → (K.Γ.find? (·.name == n)).isSome →
         (T'.m.dataRec?).map Prod.fst = some n) ∧
-      (GrainOk K.D K.Γ (K.D.declOf sc u :: sc) p → T'.m.IsPropCode → K.D.copy (K.D.placeDecl (K.D.declOf sc u :: sc) p) = true)
+      (GrainOk K.D K.Γ (K.D.declOf (scopeOf s) u :: scopeOf s) p → T'.m.IsPropCode →
+        K.D.copy (K.D.placeDecl (K.D.declOf (scopeOf s) u :: scopeOf s) p) = true)
 
 /-- **(L2) A member's checker value has its type's shape** (a statement about the MODEL: the meaning of checker values;
 NEW, lead28, docs/31 D189; UNREAD): a checker value whose meaning at a data type `n`'s code is a member is, at every
 sub-path, a constructor of `n` or a stand-in (`fitsInd n`) where the reference's type is `n`'s code there; and a
-checker value `⋆` at a sub-path means a proof only where the reference's type is a proposition. -/
+checker value `⋆` at a sub-path means a proof only where the reference's type is a proposition. READ FALSE as stated
+(machine12, docs/31 D192): `meanV` means `borrow_ℓ w` by `w`'s meaning, so `borrow_0(MkB)` at `B`'s data code is a
+member while at the empty path it is a borrow, not `fitsInd B`. Left as stated, for the next lead: restricting the first
+conjunct to values that are not borrows makes it true but then the derivation of `EvalFitsU` from (L1) and (L2) needs a
+third link, "where the table reads a place as an inductive, the checker's value there is not a borrow" (a place holding
+a borrow is read `.ref`; borrows are never inside data). No consumer yet. -/
 def MemShapeL2 : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (ψ : Future) (R : TyS) (v : Value),
     meanV K ρ ψ R v ∈ₛ[K.dm.read] R.m →
@@ -141,13 +150,12 @@ theorem fitsAt_of_eval {D : Decisions} {Γ : List IndDecl} {st st₀ st₁ : MSt
   rw [htop, ← hdu, ColumnC.topReadings_kern hk₀]
   exact h
 
-/-- **A typed or wanted run's value has its type's kind** (checker, NEW, lead28, docs/31 D188; UNREAD): from a state
-meeting the invariant, a run whose type is computed (typed, or untyped with the type wanted, as a `let` runs its
-right-hand side) returns a borrow only at a borrow type and a function value only at a function type written as one,
-where it returns a type at all. What the binding a `let` pushes owes the invariant's clause (K) (`LetPushG`'s
-hypothesis `v₀.KindOf T₀`). Read off the code as `EvalKindT` (`Steps/MasterKind.lean`, its typed half with "a type is
-returned"); the sweep's clause on temporaries (D104, every call depth) finds no borrow in flight at a type that is not
-a borrow type. -/
+/-- **A typed or wanted run's value has its type's kind** (lead28, docs/31 D188; restated by machine12 on the lead's
+rulings R1 and R3, docs/31 D192): from a state meeting the invariant, a run whose type is computed (typed, or untyped
+with the type wanted, as a `let` runs its right-hand side) returns a borrow only at a borrow type, where it returns a
+type at all (`Value.KindOf`, borrows only since R1). What the binding a `let` pushes owes the invariant's clause (K)
+(`LetPushG`'s hypothesis `v₀.KindOf T₀`). TO BE REPLACED BY `OutL`'s conclusion (R3); READ FALSE as a fact about the
+checker alone (machine12, `Machine/KindCE.lean`'s `stL`, which (K) admits since R2 was not added, and an ill-typed global). -/
 def EvalKindW : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (n : Nat) (typed : Bool) (u : Term) (hint : Option Value) (st₀ st₁ : MState)
     (bh : Nat) (v : Value) (T? : Option Value),

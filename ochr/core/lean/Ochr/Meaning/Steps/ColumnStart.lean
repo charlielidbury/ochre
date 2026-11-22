@@ -138,7 +138,7 @@ theorem inv_stC {Γ : List IndDecl} : Inv D Γ stC := by
   -- the label counter
   · intro l h; exact absurd h (occurs_stC l)
   -- (K): no binding, no global
-  · exact ⟨fun f i b hb => by simp [bind_stC] at hb, fun g hg => by simp [stC] at hg⟩
+  · exact fun f i b hb => by simp [bind_stC] at hb
 
 theorem asg_stC : Asg (KC dm D) ρ stC := by
   refine ⟨⟨?_, ?_, ?_, ?_⟩, ?_, ?_, ?_⟩

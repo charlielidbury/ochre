@@ -210,11 +210,10 @@ theorem inv_stP (D : Decisions) : Inv D [] stP := by
   · intro σ l h; rcases σ with _ | σ <;> simp [stP] at h
   · intro l h; exact absurd h (occurs_envN ha stP stP_env l)
   -- (K): the function's own binding at its Π-type, the parameter holds no borrow and no function
-  · refine ⟨fun f i b hb => ?_, fun g hg => ?_⟩
+  · refine (fun f i b hb => ?_)
     · rcases hbind hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
-      · exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
-      · exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
-    · simp only [stP, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; intro _; rfl
+      · exact fun l c e => (nomatch e)
+      · exact fun l c e => (nomatch e)
 
 section
 variable {dm : DataModel} {D : Decisions} {φ : Future}

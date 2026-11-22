@@ -211,17 +211,16 @@ theorem inv_stI : Inv D [] stI := by
   -- the label counter
   · intro l h; exact absurd h (occurs_stI l)
   -- (K): `I`'s own binding and global at `Π(n : Nat). Nat`; the parameter an unknown
-  · refine ⟨fun f i b hb => ?_, fun g hg => ?_⟩
+  · refine (fun f i b hb => ?_)
     · rcases f with _ | _ | f
       · simp [stI] at hb
       · rcases i with _ | _ | i
         · simp only [stI] at hb; cases hb
-          exact ⟨fun l c e => (nomatch e), fun _ T hT => (by cases hT; rfl)⟩
+          exact fun l c e => (nomatch e)
         · simp only [stI] at hb; cases hb
-          exact ⟨fun l c e => (nomatch e), fun hf => (nomatch hf)⟩
+          exact fun l c e => (nomatch e)
         · simp [stI] at hb
       · simp [stI] at hb
-    · simp only [stI, List.mem_cons, List.not_mem_nil, or_false] at hg; subst hg; intro _; rfl
 
 theorem find_gI {n : String} {g : GDef} (h : stI.globals.find? (·.name == n) = some g) : n = "I" ∧ g = gI := by
   simp only [stI, List.find?_cons, List.find?_nil] at h

@@ -1,30 +1,26 @@
 import Ochr.Meaning.Steps.MasterPlace
 import Ochr.Meaning.Steps.MasterSucc
-import Ochr.Meaning.Steps.Machine.StoredTypeCE
+import Ochr.Meaning.Steps.Machine.KindCE
 import Ochr.Examples.Nat
 
 /-!
-# (K), a binding's stored type has its value's kind: guards, the two counterexamples excluded, and what is left
-(lead28, 2026-11-22; docs/31 D188)
+# (K), a binding holding a borrow has a borrow type: guards, the counterexamples excluded, and what is left
+(lead28, 2026-11-22; docs/31 D188; restated by machine12 on the lead's rulings R1–R3, docs/31 D192)
 
-The invariant's clause `Form.KindTyped` (the lead's ruling on machine11's reading): where its type is stored, a
-binding holding a borrow stores a borrow type and one holding a function value (a global function, a closure) a
-function type written as one; a global whose value is a function value has a type written as one. A deferred type
-and a binding with no type are asked nothing.
+The invariant's clause `Form.KindTyped`: a binding holding a borrow stores a borrow type where its type is stored.
+Function values and globals are asked nothing (R1: the one consumer of "a function value sits at a function type" was
+the deferred call's record, `LaterPiG`, which the checker itself tests from main's D134). The syntactic clause on
+deferred borrow types (R2) is broken by a reachable state (a stuck block's codomain is an embedded type value) and was
+not added (docs/31 D192).
 
-* Checked on the checker's own states: at the holes of three real programs below (a borrow parameter, a closure in a
-  binding, the lazily typed bindings of a higher-order function's instance run), each guard paired with a broken copy
-  of the state that the mirror rejects; and by `lake exe sweep` (its clause (K)) over every example and case study at
-  call depth 0 (115,064 states) and, with `--deep-private`, at every call depth inside private copies too (every block,
-  the adversarial `SweepProbes.KindAttacks` included): no violation. 58,028 states hold a function value at a deferred
-  type and each such type evaluates (`bindTy?`) to a Π written as one; 70,742 states carry a deferred call's record,
-  each a Π written as one.
-* The two counterexamples machine11 pinned now fail the invariant: `StoredTypeCE.stB` (`x ↦ borrow_0(Z) : Nat`) is
-  refuted in the kernel (`not_kindTyped_stB`); `StoredTypeCE.stF` (`f ↦ g : Nat`, a global function at `Nat`) by guard.
-* What is still missing for the two facts, stated as named run facts (checker, UNREAD): `EvalKindT` (a typed run returns
-  a type, a borrow at a borrow type and a function value at a Π written as one), `ExpectRefNat` (`expectTy` of a borrow type
-  against `Nat` fails), from which `SuccArgNoBorrowT` follows (`succArgNoBorrowT_of`, PROVED); and `LaterPiG` (an
-  untyped deferred call records a Π written as one), the gap under `LetCallInvU`.
+* Checked on the checker's own states: at the holes of real programs below (a borrow parameter, a closure in a binding,
+  the lazily typed bindings of a higher-order function's instance run), and by `lake exe sweep --deep-private` over
+  every block with the clause mirrored exactly (machine12, docs/31 D192).
+* Excluded: machine11's `StoredTypeCE.stB` (`x ↦ borrow_0(Z) : Nat`, `not_kindTyped_stB`). Not excluded: by R1,
+  `StoredTypeCE.stF` (a global function stored at `Nat`); without R2, `KindCE.stL` (a borrow at a deferred type whose
+  component is `Nat`).
+* `EvalKindT`/`EvalKindW` (the borrow half) are to be replaced by `OutL`'s conclusion (R3); `ExpectRefNat` is PROVED
+  (`Machine.expectRefNat`).
 -/
 
 namespace Ochr.Meaning.Steps.Form.Master
@@ -35,24 +31,25 @@ open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
 
 /-- machine11's state for `SuccArgNoBorrowT` (`x ↦ borrow_0(Z)` stored at `Nat`) fails (K). -/
 theorem not_kindTyped_stB : ¬ KindTyped Machine.StoredTypeCE.stB := fun h => by
-  obtain ⟨A, hA⟩ := (h.1 0 1 _ rfl).1 0 .zero rfl .tNat rfl
+  obtain ⟨A, hA⟩ := (h 0 1 _ rfl) 0 .zero rfl .tNat rfl
   cases hA
 
-/-- A Bool mirror of (K), for guards: every binding of every frame, and every global. -/
+/-- A Bool mirror of (K), for guards: every binding of every frame. -/
 def kindAtB (b : Binding) : Bool :=
-  (match b.val, b.ty with
-    | .borrow .., some (.tRef _) => true
-    | .borrow .., some _ => false
-    | _, _ => true) &&
-  (if b.val.isFnVal then (match b.ty with | some T => T.piWritten | none => true) else true)
+  match b.val, b.ty with
+  | .borrow .., some (.tRef _) => true
+  | .borrow .., some _ => false
+  | _, _ => true
 
 def kindTypedB (st : MState) : Bool :=
-  st.env.toList.all (fun fr => fr.binds.toList.all kindAtB) &&
-    st.globals.all fun g => !g.val.isFnVal || g.ty.piWritten
+  st.env.toList.all (fun fr => fr.binds.toList.all kindAtB)
 
--- machine11's state for the gap under `LetCallInvU` (`f ↦ g`, a global function stored at `Nat`) fails (K)
-#guard !kindTypedB Machine.StoredTypeCE.stF
+-- R1: a global function stored at `Nat` (machine11's `stF`) is no longer excluded by (K)
+#guard kindTypedB Machine.StoredTypeCE.stF
 #guard !kindTypedB Machine.StoredTypeCE.stB
+-- R2 not added (docs/31 D192): a borrow at a deferred type whose component is `Nat` (machine12's `KindCE.stL`) is
+-- still admitted by (K)
+#guard kindTypedB Machine.KindCE.stL
 
 end Ochr.Meaning.Steps.Form.Master
 
@@ -94,14 +91,15 @@ def retype (st : MState) (i : Nat) (T : Option Value) : MState :=
 #guard kindTypedB (holeSt "AtBorrow")
 #guard !kindTypedB (retype (holeSt "AtBorrow") ((holeSt "AtBorrow").env.back!.binds.size - 1) (some .tNat))
 
--- a closure in a binding: `f ↦ clo …` at `Π(m : Nat). Nat`; stored at `Nat` instead, (K) fails
+-- a closure in a binding: `f ↦ clo …` at `Π(m : Nat). Nat`; stored at `Nat` instead, (K) is still met (R1: function
+-- values are asked nothing)
 #guard (holeSt "AtClosure").env.back!.binds.toList.any fun b => (b.val matches .clo ..) && (b.ty.map Value.piWritten == some true)
 #guard kindTypedB (holeSt "AtClosure")
-#guard !kindTypedB (retype (holeSt "AtClosure") ((holeSt "AtClosure").env.back!.binds.size - 1) (some .tNat))
+#guard kindTypedB (retype (holeSt "AtClosure") ((holeSt "AtClosure").env.back!.binds.size - 1) (some .tNat))
 
 -- the lazily typed bindings of `HO`'s instance run (`UseHO`): `f ↦ Idn` and `x` at deferred parameter types, every
 -- recorded state meets (K); `f`'s deferred type evaluates (`bindTy?`) to a Π written as one; `f` stored at `Nat`
--- instead, (K) fails
+-- instead, (K) is still met (R1)
 #guard (deepSts "UseHO").length > 0
 #guard (deepSts "UseHO").any fun st => st.env.toList.any (·.binds.toList.any fun b => (b.val matches .gfn "Idn") && b.ty.isNone && b.lazyTy.isSome)
 #guard (deepSts "UseHO").all kindTypedB
@@ -111,7 +109,7 @@ def retype (st : MState) (i : Nat) (T : Option Value) : MState :=
     match (runMachine (Ochr.bindTy? 1000 (.bind f i)) { st with tailDecl := none, headEval := false } 200000).1 with
     | .ok (some T) _ => T.piWritten
     | _ => false
-#guard (deepSts "UseHO").any fun st => !kindTypedB
+#guard (deepSts "UseHO").all fun st => kindTypedB
   { st with env := st.env.map fun fr => { fr with binds := fr.binds.map fun b => if b.val matches .gfn "Idn" then { b with ty := some .tNat } else b } }
 
 -- `DeferClearG` (the placeholder until main's D130): from the hole of `AtClosure` (`f` a closure), the untyped `let` of a
@@ -137,21 +135,22 @@ open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
 
 /-! ## What is still missing (named, checker, UNREAD) -/
 
-/-- **A typed run's value has its type's kind** (checker, NEW, lead28, docs/31 D188; UNREAD): from a state meeting the
-checker's invariant, a typed run of any term returns a type (read TRUE as `SuccStrictG`'s checker half), and a borrow
-only at a borrow type and a function value only at a function type written as one. The induction over `eval` whose base at a read is (K): a read of a variable returns its
-stored type (`placeType`), so (K) gives it; where the type is deferred, the read evaluates it (`bindTy?`), which is
-this fact's own obligation (the sweep: every such type evaluates to the right kind); `&p` returns `T.map .tRef`; a
-`let`/`;`/match returns its tail's; a call its codomain at the arguments (`callType`; a borrow result exactly at a
-borrow codomain, D48); an ascription its annotation (conversion keeps the kind). The generalisation of
-`SuccArgNoBorrowT` that `LetPushG` needs too: the binding a `let` pushes meets (K) exactly by it. -/
+/-- **A typed run's value has its type's kind** (lead28, docs/31 D188; restated by machine12 on the lead's rulings
+R1 and R3, docs/31 D192): from a state meeting the checker's invariant, a typed run of any term returns a type (read
+TRUE as `SuccStrictG`'s checker half), and a borrow only at a borrow type. TO BE REPLACED BY `OutL`'s conclusion (the
+lead's ruling R3: "a returned borrow comes with a borrow type" proved step by step inside `master`, from (K) at a read,
+R2 at a deferred one, and at a call from a clause in the context about the callee). As a fact about the checker alone
+it is READ FALSE (machine12, `Machine/KindCE.lean`): at a borrow held at a deferred type whose component is `Nat`
+(`stL`; (K)'s R2 clause, which would exclude it, is broken by a reachable state, docs/31 D192) and at a global whose body the checker never accepted (`gb`, `callGB`: `Pre`
+says nothing of globals' bodies). The function half was dropped (R1). -/
 def EvalKindT : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (n : Nat) (u : Term) (hint : Option Value) (st₀ st₁ : MState) (bh : Nat) (v : Value)
     (T? : Option Value),
     Pre K ρ st₀ → Runs (Ochr.eval n true u hint) st₀ bh (v, T?) st₁ →
-    ∃ T, T? = some T ∧ (∀ l c, v = .borrow l c → ∃ A, T = .tRef A) ∧ (v.isFnVal = true → T.piWritten = true)
+    ∃ T, T? = some T ∧ (∀ l c, v = .borrow l c → ∃ A, T = .tRef A)
 
-/-- **A borrow type does not convert to `Nat`** (checker, NEW, lead28; UNREAD): `expectTy` of `&A` against `Nat` fails. -/
+/-- **A borrow type does not convert to `Nat`** (checker, NEW, lead28; PROVED by machine12, `Machine.expectRefNat`):
+`expectTy` of `&A` against `Nat` fails. -/
 def ExpectRefNat : Prop :=
   ∀ (n : Nat) (w : String) (A : Value) (st st' : MState) (bh : Nat),
     ¬ Runs (Ochr.expectTy n w (some (.tRef A)) .tNat) st bh () st'
@@ -160,7 +159,7 @@ def ExpectRefNat : Prop :=
 borrow, the type would be `&A`, and `expectTy` of `&A` against `Nat` would fail. -/
 theorem succArgNoBorrowT_of (hK : EvalKindT) (hR : ExpectRefNat) : SuccArgNoBorrowT := by
   intro K ρ n u st₀ st₁ st₂ bh₁ bh₂ v₀ T₀ hp hu hx l w e
-  obtain ⟨T, rfl, hb, -⟩ := hK K ρ n u none st₀ st₁ bh₁ v₀ T₀ hp hu
+  obtain ⟨T, rfl, hb⟩ := hK K ρ n u none st₀ st₁ bh₁ v₀ T₀ hp hu
   obtain ⟨A, rfl⟩ := hb l w e
   exact hR n _ A st₁ st₂ bh₂ hx
 

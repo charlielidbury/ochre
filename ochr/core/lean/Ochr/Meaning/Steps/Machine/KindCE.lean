@@ -31,7 +31,13 @@ false there (each run below is the checker's own):
 Every reachable state is fine: the sweep's clause (K) checks deferred types by evaluating them (none wrong in 1,029,853
 states), its report on records finds every record a Π written as one, and an accepted global's body is typed.
 
-Minimal restatements (the lead's call; each consumer needs more than one line, so none is made here):
+The lead's rulings (docs/31 D192): R1, the function half of (K) and of the kind facts dropped (`stG`, `stU`, `readG`,
+`callU` need nothing; `LaterPiG` false until main's D134, then an inversion); R2, a syntactic clause for a borrow at a
+deferred type, swept and broken by a reachable state (a stuck block's codomain is an embedded `&A`), not added, so
+`stL` is still admitted; R3, the borrow half of `EvalKindT`/`EvalKindW` to be replaced by `OutL`'s conclusion, proved
+inside `master` (where the ill-typed global `gb` is a clause about the callee).
+
+Minimal restatements first proposed (superseded by the rulings above):
 1. (K) extended to deferred types, by evaluation: at a binding holding a borrow or a function value whose type is
    deferred, every successful `bindTy?` at it returns a type of the value's kind (a borrow at `&A`, a function value at
    a Π written as one). For borrows a syntactic form may do: the deferred domain or codomain is WRITTEN `&A` (a `.ref`
