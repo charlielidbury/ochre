@@ -86,13 +86,60 @@ def DomMembers (R : DataRead) (ds : List PiDom) (args : List Sem) : Prop :=
   args.length = ds.length ∧
     ∀ (i : Nat) (a : Sem) (d : PiDom), args[i]? = some a → ds[i]? = some d → a ∈ₛ[R] d.dom (args.take i)
 
+/-- **The labels a body's result holds past the body**, each with the type it is held at (docs/31 D141): the returned
+borrow's label at the codomain's content type. They are the labels the frame pop keeps live (`Run.lean`'s `.fix`,
+`keep`: at a data codomain a labelled result is ill-typed and its label is ended with the rest), so a data codomain's
+result holds none. The model's result holds at most one label (`TyS.label`, `BodyOut.retLabel`), as the checker's does:
+no borrow sits inside data (core D8, D48), and a borrow of a borrow is rejected (`Steps/BorrowParGuards.lean`). -/
+def _root_.Ochr.Meaning.BodyOut.held (out : PiCod) (args : List Sem) (o : BodyOut) : List (Nat × TyM) :=
+  if out.isRef then (o.retLabel.map fun k => (k, out.cod args)).toList else []
+
 /-- A body's output is good at arguments: its result is a member of the codomain there, and each
 borrow parameter's final content (`BodyOut.finals`, one per borrow parameter, in order) is a member
-of that parameter's content type, at every future (the body's borrows have ended). -/
+of that parameter's content type at every future TYPED FOR THE RESULT (docs/31 D141, the orchestrator's ruling): one
+that gives each label the result holds a member of the type it is held at (`HeldTyped` at `BodyOut.held`, the
+restriction of `TypedFut` to the result's labels). The body's own borrows have ended; a returned borrow's has not, and
+the final of a borrow parameter it reborrows or returns is what the caller leaves in it (`K (r : &Nat) : &Nat := r`:
+the final is the future at the returned label). At a data codomain the result holds no label and the clause is at
+every future, as before D141; as first stated it was at every future for every codomain, false for every function
+returning a borrow parameter (`ColumnW.not_outGood_K`). -/
 def OutGood (R : DataRead) (ds : List PiDom) (out : PiCod) (args : List Sem) (o : BodyOut) : Prop :=
   o.result ∈ₛ[R] out.cod args ∧
     ∀ (i : Nat) (d : PiDom), ds[i]? = some d → d.isRef = true →
-      ∃ f, o.finals[((ds.take i).filter (·.isRef)).length]? = some f ∧ ∀ ψ, f ψ ∈ₛ[R] d.dom (args.take i)
+      ∃ f, o.finals[((ds.take i).filter (·.isRef)).length]? = some f ∧
+        ∀ ψ, HeldTyped R (o.held out args) ψ → f ψ ∈ₛ[R] d.dom (args.take i)
+
+/-- A data codomain's result holds no label. -/
+theorem _root_.Ochr.Meaning.BodyOut.held_data {out : PiCod} (args : List Sem) (o : BodyOut) (h : out.isRef = false) :
+    o.held out args = [] := by
+  simp [BodyOut.held, h]
+
+/-- Every future is typed at no label. -/
+theorem heldTyped_nil (R : DataRead) (ψ : Future) : HeldTyped R [] ψ := fun _ _ h => by cases h
+
+/-- At a data codomain every future is typed for the result. -/
+theorem heldTyped_data {R : DataRead} {out : PiCod} (args : List Sem) (o : BodyOut) (h : out.isRef = false)
+    (ψ : Future) : HeldTyped R (o.held out args) ψ := by
+  rw [BodyOut.held_data args o h]; exact heldTyped_nil R ψ
+
+/-- The future that leaves a member `v` of the codomain in the returned borrow is typed for the result: what the
+closure's construction reads the finals at (`ClosureRef.refLeafFrom_start`). -/
+theorem heldTyped_upd {R : DataRead} {out : PiCod} {args : List Sem} {o : BodyOut} {k : Nat} (φ : Future) {v : Sem}
+    (href : out.isRef = true) (hk : o.retLabel = some k) (hv : v ∈ₛ[R] out.cod args) :
+    HeldTyped R (o.held out args) (φ.upd k v) := by
+  intro l T hm
+  simp only [BodyOut.held, href, if_true, hk, Option.map_some, Option.toList_some, List.mem_singleton,
+    Prod.mk.injEq] at hm
+  obtain ⟨rfl, rfl⟩ := hm
+  rw [Future.upd_same]; exact hv
+
+/-- A producer that shows the finals good at every future shows `OutGood`. -/
+theorem OutGood.of_every {R : DataRead} {ds : List PiDom} {out : PiCod} {args : List Sem} {o : BodyOut}
+    (hres : o.result ∈ₛ[R] out.cod args)
+    (hfin : ∀ (i : Nat) (d : PiDom), ds[i]? = some d → d.isRef = true →
+      ∃ f, o.finals[((ds.take i).filter (·.isRef)).length]? = some f ∧ ∀ ψ, f ψ ∈ₛ[R] d.dom (args.take i)) :
+    OutGood R ds out args o :=
+  ⟨hres, fun i d hi hd => (hfin i d hi hd).imp fun _ h => ⟨h.1, fun ψ _ => h.2 ψ⟩⟩
 
 /-- The rank of a call's decreasing argument (the global's `fix` names it; `0` for a function that
 does not recurse): `semRank`, the height of the meaning after the data-layer port (D73's R1–R3). -/

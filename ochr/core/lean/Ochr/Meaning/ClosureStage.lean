@@ -71,7 +71,12 @@ theorem fill_outGood (R : DataRead) (l : Nat) (ds : List PiDom) (rk : List Sem �
   · have hi : i < args.length := by
       rw [hm.1]; exact (List.getElem?_eq_some_iff.mp hd).1
     obtain ⟨a, ha⟩ : ∃ a, args[i]? = some a := ⟨args[i], List.getElem?_eq_getElem hi⟩
-    exact ⟨fun _ => a, refFinals_get ds args i d a hd ha hr, fun _ => hm.2 i a d ha hd⟩
+    exact ⟨fun _ => a, refFinals_get ds args i d a hd ha hr, fun _ _ => hm.2 i a d ha hd⟩
+
+/-- Below the bound the weakened codomain's result holds what the true codomain's does. -/
+theorem held_weakCod (l : Nat) (rk : List Sem → Nat) (b : Nat) (out : PiCod) (args : List Sem) (o : BodyOut)
+    (hlt : rk args < b) : o.held (weakCod l rk b out) args = o.held out args := by
+  simp [BodyOut.held, weakCod, hlt]
 
 /-- The stage function is good everywhere at the weakened codomain, given the stage good below the
 bound. -/
@@ -85,7 +90,7 @@ theorem stageFn_good (R : DataRead) (l : Nat) (ds : List PiDom) (rk : List Sem �
   intro args hm
   by_cases hlt : rk args < b
   · obtain ⟨o, hg, ⟨hres, hfin⟩, hlen⟩ := hgood args hm hlt
-    refine ⟨o, by simp [stageFn, hlt, hg], ⟨?_, hfin⟩, hlen⟩
+    refine ⟨o, by simp [stageFn, hlt, hg], ⟨?_, by rw [held_weakCod l rk b out args o hlt]; exact hfin⟩, hlen⟩
     show o.result ∈ₛ[R] (if rk args < b then out.cod args else fillTy l)
     rw [if_pos hlt]; exact hres
   · exact ⟨_, by simp [stageFn, hlt], fill_outGood R l ds rk b out args hm hlt,
@@ -188,7 +193,7 @@ theorem stageFn_good_ref (R : DataRead) (l : Nat) (hl : l ≠ 0) (ds : List PiDo
   by_cases hlt : rk args < b
   · obtain ⟨o, hg, ⟨hres, hfin⟩, ⟨k, hk, hinj⟩, hlen⟩ := hgood args hm hlt
     have hw : (weakCod l rk b out).cod args = out.cod args := by simp [weakCod, hlt]
-    refine ⟨o, by simp [stageFn, hlt, hg], ⟨by rw [hw]; exact hres, hfin⟩,
+    refine ⟨o, by simp [stageFn, hlt, hg], ⟨by rw [hw]; exact hres, by rw [held_weakCod l rk b out args o hlt]; exact hfin⟩,
       ⟨k, hk, fun ψ v w hv hw' => hinj ψ v w (by rwa [hw] at hv) (by rwa [hw] at hw')⟩, hlen⟩
   · exact ⟨_, by simp [stageFn, hlt], fill_outGood R l ds rk b out args hm hlt,
       fill_retGood R l hl ds rk b out args hlt, refFinals_length ds args hm.1⟩

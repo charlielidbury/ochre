@@ -154,7 +154,7 @@ theorem mkTelL_telL_some_ref (hL : L.Lawful) {Fit : TyM → Prop} (hF : L.Fits F
 
 /-- A good total function meets the returned-borrow leaf from the start of the telescope. -/
 theorem refLeafFrom_start {Fit : TyM → Prop} (φ : Future) (g : List Sem → Option BodyOut) (ds : List PiDom)
-    (out : PiCod) (hcod : ∀ args, DomMembers L.read ds args → Fit (out.cod args))
+    (out : PiCod) (href : out.isRef = true) (hcod : ∀ args, DomMembers L.read ds args → Fit (out.cod args))
     (htot : ∀ args, DomMembers L.read ds args →
       ∃ o, g args = some o ∧ OutGood L.read ds out args o ∧ RetGood L.read out args o ∧
         o.finals.length = (ds.filter (·.isRef)).length) :
@@ -162,13 +162,13 @@ theorem refLeafFrom_start {Fit : TyM → Prop} (φ : Future) (g : List Sem → O
   intro rest hrest
   have hm : DomMembers L.read ds rest := ⟨hrest.1, fun i a d ha hd => by simpa using hrest.2 i a d ha hd⟩
   obtain ⟨o, hg, ⟨hres, hfin⟩, ⟨k, hk, hinj⟩, hlen⟩ := htot rest hm
-  refine ⟨o, by simpa using hg, by simpa using hcod rest hm, by simpa using hres, k, hk, fun v _ => ⟨?_, ?_, ?_⟩,
+  refine ⟨o, by simpa using hg, by simpa using hcod rest hm, by simpa using hres, k, hk, fun v hv => ⟨?_, ?_, ?_⟩,
     fun v w hv hw h => hinj φ v w (by simpa using hv) (by simpa using hw) h⟩
   · simp [hlen]
   · intro j gd f hj; simp at hj
   · intro i d hd hdr
     obtain ⟨f, hf, hmem⟩ := hfin i d hd hdr
-    exact ⟨f (φ.upd k v), by simp [hf], by simpa using hmem (φ.upd k v)⟩
+    exact ⟨f (φ.upd k v), by simp [hf], by simpa using hmem (φ.upd k v) (heldTyped_upd φ href hk (by simpa using hv))⟩
 
 /-- **The closure lemma, membership half, at a returned borrow, at a level.** -/
 theorem closureL_mem_of_total_ref (hL : L.Lawful) {Fit : TyM → Prop} (hF : L.Fits Fit) (φ : Future)
@@ -179,7 +179,7 @@ theorem closureL_mem_of_total_ref (hL : L.Lawful) {Fit : TyM → Prop} (hF : L.F
         o.finals.length = (ds.filter (·.isRef)).length) :
     closureL L φ (telL L ds [] PUnit out).2 g ∈ₛ[L.read] piTyL L (telL L ds [] PUnit out).2 := by
   have hs := mkTelL_telL_some_ref L hL hF φ g out href ds [] PUnit _ (fun _ => []) [] mkFinOk_start finInv_start
-    (refLeafFrom_start L φ g ds out hcod htot)
+    (refLeafFrom_start L φ g ds out href hcod htot)
   obtain ⟨F, hF'⟩ := Option.isSome_iff_exists.mp hs
   unfold closureL
   rw [hF']
@@ -238,7 +238,7 @@ theorem closureL_apply_ref (hL : L.Lawful) {Fit : TyM → Prop} (hF : L.Fits Fit
     ∃ k s', callOfL L (telL L ds [] PUnit out).2 (closureL L φ (telL L ds [] PUnit out).2 g) args s =
       some ((o.result, ⟨out.cod (args.map (·.1)), some k⟩), s') := by
   have hs := mkTelL_telL_some_ref L hL hF φ g out href ds [] PUnit _ (fun _ => []) [] mkFinOk_start finInv_start
-    (refLeafFrom_start L φ g ds out hcod htot)
+    (refLeafFrom_start L φ g ds out href hcod htot)
   obtain ⟨F, hF'⟩ := Option.isSome_iff_exists.mp hs
   have hfit : ArgsFitL L (telL L ds [] PUnit out).2 (args.map (·.1)) :=
     argsFit_telL L hL hF out ds [] PUnit _ ⟨hmem.1, fun i a d ha hd => by simpa using hmem.2 i a d ha hd⟩

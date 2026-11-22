@@ -14,11 +14,23 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FIRST DATA TYPES `B` AND `Box`; A CAPTURE PINNED (lead21, 2026-11-22, `spine-lead21`; docs/31 D147 to D149)
+- Stated checker facts, unreviewed, guarded: `ColumnNot.SplitNotInv` (`Steps/DataNot.lean`), `ColumnBox.WrapInv`, `ColumnBox.UnboxInv` (`Steps/DataBox.lean`). For the machine lane.
+- Data-model hypotheses (named, one per column; each is `CtxS`'s data-model fields at the column's declarations; instances given): `ColumnNot.DataModelB` (`dataModelB_triv`), `ColumnBox.DataModelBox` (`dataModelBox_leafNat`).
+- Not built: `Unbox`'s and `Wrap`'s `TailSim` steps; the join after an arm (`UseO`); `Not`'s `.fix`-level column; the capture's `.fix` step (D149) and the ruling on `refTy` by name if a lambda's body must be simulated.
+
+## `K` CLOSED AT THE COLUMN LEVEL; `K`'S STEP; THE FIRST CALLER OF `K` (lead20, 2026-11-22, `spine-lead20`; docs/31 D141, D145, D146)
+
+- **D141 built**: `OutGood`'s final clause at the futures typed for the result (`HeldTyped` at `BodyOut.held`). `ColumnW.closure_mem_K`, **`ColumnW.column_K_ff` (NO assumed fact)**.
+- **`K`'s body step** `ColumnW.body_simK` ASSUMES 2 checker facts, unproved: `BodyKInv` (lead18) and `InvMoveBorrow` (NEW, state-level, `Steps/BorrowParStepK.lean`: a binding holding a borrow of a numeral over unknowns set to `⊥` with the borrow pushed as the top temporary keeps `Inv`; its `K` instance `#guard`ed). The relation after is the general `MoveOut.rel_moveOut` (no assumed fact).
+- **Facts about the checker (machine lane), stated and `#guard`ed, unproved:** `ColumnW.CallKInv` (`Steps/CallKGuards.lean`: `K(&x)` from `x ↦ S(Z)` returns `borrow₁ S(Z) : &Nat` or a borrow of a sealed call, ends at `stLY`: `x ↦ lent₁ loan₁`, counter 2).
+- Open: `L`'s call step (D146's list); `body_simK` at `K`'s concrete start; `Q`; `J2` (unchanged).
+
 ## THE BORROW-PARAMETER COLUMNS `W`, `K`; D138 BUILT; D137 (B)'S TEST (lead19, 2026-11-22, `spine-lead19`; docs/31 D140 to D144)
 
 - **D138 built**: a borrow parameter's cell is its label's loan site (`fixStep`). `rel_startW`, `rel_startK` (every clause of `Rel` at the start), no assumed fact. `FrameProp.FrameRel.lentCl` restated (a closure may lend at its cells).
 - **`W` closed at the column level with NO assumed fact**: `ColumnW.column_W_ff` (the reference forms `W`'s closure, a member of `Π(r : &Nat). Nat`, at the checker's table). The body step in the form, `body_simW`/`body_outW` (applied at the start with `pre_stW`, `rel_startW`, `sgood_SBW`), ASSUMES `BodyWInv`, `InvNumA` (checker facts, unproved).
-- **OPEN, RULING ASKED (D141)**: `OutGood` (`Steps/Statements.lean`) asks borrow-parameter finals to be members at every future; FALSE (K) for any function returning its borrow parameter (`ColumnW.not_outGood_K`, `closure_ref_hyp_false_K`): the final is the returned borrow's final content. Through `OutGood'` this makes `MemBelow` (`GlobalsOk`), `FixKnot`'s and `Consistency.lean`'s stage obligations false for such globals. Recommended: the final clause at futures that give the returned label a member of the codomain.
+- **D141 RULED AND BUILT (lead20)**: `OutGood`'s final clause is at the futures typed for the result (`HeldTyped` at `BodyOut.held`, beside `TypedFut`); a data codomain gives the old clause; no result holds two labels (core D48). `ColumnW.closure_mem_K` (`K`'s closure a member of `Π(r : &Nat). &Nat`), no assumed fact; `not_outGood_K` refutes the old clause (`OutGoodEvery`).
 - **`K`'s body step**: not written. Needs a new checker fact for `Inv` after moving a borrow into flight (proposed `InvMoveBorrow`) and the relation after the move (template: `ColumnLetB.rel_pushBind_borrow`, the inverse move).
 - **D137 (B)**: not dropped; its test is `Regress/BlockReadings.A3` (stored reading `.pi .other`, the model's `.other`); `KeepTP` closes no block.
 - Unchanged from lead18: `Q`'s step and column; `J2`'s `Pre`/`Rel` after the call, the `let`, `column_J2_ff`.
