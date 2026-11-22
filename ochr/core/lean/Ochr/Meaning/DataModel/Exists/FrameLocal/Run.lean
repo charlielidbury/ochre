@@ -817,6 +817,17 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
         exact comm_guarded (contentOk_qset K φ hA.twin.pre' p) fun _ =>
           readPlace_qset K φ hA.twin.pre' (rAvoid_of_vars hu (root_mem_place p)) true
       rcases hn with rfl | rfl | rfl <;> (rw [runT]; exact key _)
+    -- `split f in u`: its term's run at the form's hint and tail flag (docs/31 D175)
+    by_cases hsp : ∃ f u, n = "split" ∧ args = [.const f, u]
+    · obtain ⟨f, u, rfl, rfl⟩ := hsp
+      have hu : VarsAvoid Q s u := hVa u (by simp)
+      have cu := hall u (by simp) tl hint s β' hA hu hR
+      have key : Comm Q β' (fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "split" [.const f, u]))
+          (runT K ρ φ tl hint u) s) s := by
+        unfold Comm; dsimp only; rw [hA.scope]
+        exact comm_erasedIf cu
+      rw [runT]; exact key
+    have hs' : ∀ f u, n = "split" → args = [.const f, u] → False := fun f u e1 e2 => hsp ⟨f, u, e1, e2⟩
     have hJ' : ∀ (A a b P h t : Term), n = "J" → args = [A, a, b, P, h, t] → False :=
       fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
@@ -827,7 +838,7 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
     have f3 : ∀ h u, n = "rewrite" → args = [h, u] → False := fun h0 u0 a b => e3 ⟨h0, u0, a, b⟩
     have f4 : ∀ h u, n = "rewriteR" → args = [h, u] → False := fun h0 u0 a b => e4 ⟨h0, u0, a, b⟩
     rw [runT]
-    all_goals first | exact comm_fail _ | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3
+    all_goals first | exact comm_fail _ | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3 | exact hs'
   | tl, .pi hs ds c, hint, s, Q, β, β', hA, hV, hR => by
     unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
     have hB := runBinds_qset hK hD s Q β β' hA hR (.pi hs ds c) hV (K.D.paramDecls (scopeOf s) ds) ds [] []

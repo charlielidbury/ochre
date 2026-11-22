@@ -50,9 +50,21 @@ def pickBody : Option Term :=
   | some (.prim "split" [.const "IsZ", _]) => true
   | _ => false
 
-/-- **The reference fails on `split`**: `runT` has no clause for it. -/
-theorem run_split_fails (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (hint : TyS) (f : String) (u : Term)
-    (s : SState) : runT K ρ φ tl hint (.prim "split" [.const f, u]) s = none := by
+/-- **The reference runs `split f in u` as `u`** (docs/31 D175, the lead's ruling; it failed before, as
+`run_split_fails`): at the form's own hint and tail flag, wherever the table does not erase the split. `PickNotZero`'s
+body is of this shape. -/
+theorem run_split (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (hint : TyS) (f : String) (u : Term)
+    (s : SState) (hfl : K.D.flags (scopeOf s) (.prim "split" [.const f, u]) = (false, false)) :
+    runT K ρ φ tl hint (.prim "split" [.const f, u]) s = runT K ρ φ tl hint u s := by
+  rw [runT]
+  show SM.erasedIf (K.D.flags (scopeOf s) (.prim "split" [.const f, u])) (runT K ρ φ tl hint u) s = _
+  rw [hfl]
+  simp only [SM.erasedIf, SM.stmtIf]
+  rfl
+
+/-- The braces form has no clause yet (docs/31 D178: its core term binds `()` in place of the split value). -/
+theorem run_splitArms_fails (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (hint : TyS) (f : String)
+    (w : Term) (s : SState) : runT K ρ φ tl hint (.prim "splitArms" [.const f, w]) s = none := by
   rw [runT]
   all_goals first | rfl | (intros; simp_all)
 

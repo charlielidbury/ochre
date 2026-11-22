@@ -39,6 +39,9 @@ theorem runT_tl_indep {K : RunCtx} {ρ : Assignment} {φ : Future} (t : Term) (h
     by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
     · obtain ⟨u, hn, rfl⟩ := hc
       rcases hn with rfl | rfl | rfl <;> rw [runT, runT]
+    by_cases hsp : ∃ f u, n = "split" ∧ args = [.const f, u]
+    · obtain ⟨f, u, rfl, rfl⟩ := hsp; simp [tailShaped] at ht
+    have hs' : ∀ f u, n = "split" → args = [.const f, u] → False := fun f u e1 e2 => hsp ⟨f, u, e1, e2⟩
     have hJ' : ∀ (A a b P h t : Term), n = "J" → args = [A, a, b, P, h, t] → False :=
       fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
@@ -49,7 +52,7 @@ theorem runT_tl_indep {K : RunCtx} {ρ : Assignment} {φ : Future} (t : Term) (h
     have f3 : ∀ h u, n = "rewrite" → args = [h, u] → False := fun h0 u0 a b => e3 ⟨h0, u0, a, b⟩
     have f4 : ∀ h u, n = "rewriteR" → args = [h, u] → False := fun h0 u0 a b => e4 ⟨h0, u0, a, b⟩
     rw [runT, runT]
-    all_goals first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3
+    all_goals first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3 | exact hs'
   | _ => rw [runT.eq_def, runT.eq_def]
 
 /-! ## The checker's default case in tail position -/

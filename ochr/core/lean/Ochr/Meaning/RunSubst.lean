@@ -254,8 +254,10 @@ theorem headOf_substLoan (u : Term) (rd : Place → SM (Sem × TyS)) (rn : SM (S
 
 theorem run_prim_substSame (hD : DecInvariant K.D l w) (tl : Bool) (n : String) (args : List Term) (hint : TyS)
     (hfl : ∀ sc, K.D.flags sc (Term.substLoan l w (.prim n args)) = K.D.flags sc (.prim n args))
-    (hall : ∀ t ∈ args, ∀ hint, run K ρ ψ hint (Term.substLoan l w t) = run K ρ ψ hint t) :
+    (hallT : ∀ t ∈ args, ∀ tl' hint, runT K ρ ψ tl' hint (Term.substLoan l w t) = runT K ρ ψ tl' hint t) :
     runT K ρ ψ tl hint (Term.substLoan l w (.prim n args)) = runT K ρ ψ tl hint (.prim n args) := by
+  have hall : ∀ t ∈ args, ∀ hint, run K ρ ψ hint (Term.substLoan l w t) = run K ρ ψ hint t :=
+    fun t hm hint => hallT t hm false hint
   show runT K ρ ψ tl hint (.prim n (Term.substLoanList l w args)) = _
   have hfl' : ∀ sc, K.D.flags sc (.prim n (Term.substLoanList l w args)) = K.D.flags sc (.prim n args) := hfl
   funext s
@@ -297,6 +299,21 @@ theorem run_prim_substSame (hD : DecInvariant K.D l w) (tl : Bool) (n : String) 
     simp only [Term.substLoanList] at hfl' ⊢
     rcases hn with rfl | rfl | rfl <;>
       (rw [runT, runT]; simp only [hfl', hall u (by simp), headOf_substLoan])
+  by_cases hsp : ∃ f u, n = "split" ∧ args = [.const f, u]
+  · obtain ⟨f, u, rfl, rfl⟩ := hsp
+    show runT K ρ ψ tl hint (.prim "split" [.const f, Term.substLoan l w u]) s = _
+    have hfl'' : ∀ sc, K.D.flags sc (.prim "split" [.const f, Term.substLoan l w u]) =
+        K.D.flags sc (.prim "split" [.const f, u]) := hfl'
+    rw [runT, runT]; simp only [hfl'', hallT u (by simp)]
+  have hsp1 : ∀ f u, n = "split" → args = [.const f, u] → False := fun f u e1 e2 => hsp ⟨f, u, e1, e2⟩
+  have hsp2 : ∀ f u, n = "split" → Term.substLoanList l w args = [.const f, u] → False := by
+    intro f u hn hl
+    obtain ⟨x, y, hx⟩ := list_two args (by rw [← hlen, hl]; rfl)
+    subst hx
+    have hx' : Term.substLoan l w x = .const f := by
+      simp only [Term.substLoanList, List.cons.injEq] at hl; exact hl.1
+    have hxc : x = .const f := by cases x <;> simp only [Term.substLoan, reduceCtorEq] at hx' <;> rw [hx']
+    exact hsp ⟨f, y, hn, by rw [hxc]⟩
   have hJ' : ∀ (A a b P h t : Term), n = "J" → args = [A, a, b, P, h, t] → False :=
     fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩
   have hJs : ∀ (A a b P h t : Term), n = "J" → Term.substLoanList l w args = [A, a, b, P, h, t] → False := by
@@ -324,7 +341,7 @@ theorem run_prim_substSame (hD : DecInvariant K.D l w) (tl : Bool) (n : String) 
   have g4 : ∀ h u, n = "rewriteR" → Term.substLoanList l w args = [h, u] → False := fun h0 u0 a b => by
     obtain ⟨x, y, hx⟩ := list_two args (by rw [← hlen, b]; rfl); exact e4 ⟨x, y, a, hx⟩
   rw [runT, runT]
-  all_goals (first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact (hcs _ (.inl rfl)).1 | exact (hcs _ (.inr (.inl rfl))).1 | exact (hcs _ (.inr (.inr rfl))).1 | exact g1 | exact g2 | exact g3 | exact g4 | exact hJs | exact (hcs _ (.inl rfl)).2 | exact (hcs _ (.inr (.inl rfl))).2 | exact (hcs _ (.inr (.inr rfl))).2)
+  all_goals (first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact (hcs _ (.inl rfl)).1 | exact (hcs _ (.inr (.inl rfl))).1 | exact (hcs _ (.inr (.inr rfl))).1 | exact g1 | exact g2 | exact g3 | exact g4 | exact hJs | exact (hcs _ (.inl rfl)).2 | exact (hcs _ (.inr (.inl rfl))).2 | exact (hcs _ (.inr (.inr rfl))).2 | exact hsp1 | exact hsp2)
 
 end SubstPrim
 
@@ -524,9 +541,9 @@ theorem runT_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (t : Term) (h
       rw [run_fix_def, run_fix_def, hfl, hps, hds, hbs, codOf_subst_of K ρ ψ l w (hc false) hU, fixCod_subst_of K ρ ψ l w (hc false) hU, hmv,
         teleDecls_substLoan K l w hF.dec, hF.dec.2.2.2.2.2.1, fixG_bodyEq K ρ ψ (hb true), hco]
     | prim n args =>
-      have hall : ∀ t ∈ args, ∀ hint, run K ρ ψ hint (Term.substLoan l w t) = run K ρ ψ hint t :=
-        fun t hm hint => runAll_substSame hF args t hm hint
-      exact run_prim_substSame K ρ ψ l w hF.dec tl n args hint (fun sc => hF.dec.1 sc (.prim n args)) hall
+      have hallT : ∀ t ∈ args, ∀ tl' hint, runT K ρ ψ tl' hint (Term.substLoan l w t) = runT K ρ ψ tl' hint t :=
+        fun t hm tl' hint => runAll_substSame hF args t hm tl' hint
+      exact run_prim_substSame K ρ ψ l w hF.dec tl n args hint (fun sc => hF.dec.1 sc (.prim n args)) hallT
     | _ => rfl
 
 theorem meanV_substSame (hF : FillOK K ρ ψ l w) : ∀ (v : Value) (hint : TyS),
@@ -571,14 +588,14 @@ theorem meanV_substSame (hF : FillOK K ρ ψ l w) : ∀ (v : Value) (hint : TyS)
       simp only [meanParams_substSame hF]
     | _ => rfl
 
-theorem runAll_substSame (hF : FillOK K ρ ψ l w) : ∀ (ts : List Term) (t : Term), t ∈ ts → ∀ (hint : TyS),
-    run K ρ ψ hint (Term.substLoan l w t) = run K ρ ψ hint t
-  | [], t, h, _ => absurd h List.not_mem_nil
-  | a :: as, t, h, hint => by
+theorem runAll_substSame (hF : FillOK K ρ ψ l w) : ∀ (ts : List Term) (t : Term), t ∈ ts → ∀ (tl : Bool) (hint : TyS),
+    runT K ρ ψ tl hint (Term.substLoan l w t) = runT K ρ ψ tl hint t
+  | [], t, h, _, _ => absurd h List.not_mem_nil
+  | a :: as, t, h, tl, hint => by
     rw [List.mem_cons] at h
     rcases h with e | h
-    · rw [e]; exact runT_substSame hF false a hint
-    · exact runAll_substSame hF as t h hint
+    · rw [e]; exact runT_substSame hF tl a hint
+    · exact runAll_substSame hF as t h tl hint
 
 theorem runArm_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (arms : List (Hint × Term)) (hint : TyS) (c : Nat),
     runArm K ρ ψ tl hint c (Term.substLoanArms l w arms) = runArm K ρ ψ tl hint c arms

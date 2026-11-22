@@ -24,7 +24,7 @@ theorem runS_prim_other (n : String) (args : List Term) (tl : Bool) (hint : TyS)
     (h3 : ∀ h u, ¬ (n = "rewrite" ∧ args = [h, u])) (h4 : ∀ h u, ¬ (n = "rewriteR" ∧ args = [h, u]))
     (h5 : ∀ A a b P h t, ¬ (n = "J" ∧ args = [A, a, b, P, h, t]))
     (h6 : ∀ u, ¬ (n = "clone" ∧ args = [u])) (h7 : ∀ u, ¬ (n = "peek" ∧ args = [u]))
-    (h8 : ∀ u, ¬ (n = "inplace" ∧ args = [u])) :
+    (h8 : ∀ u, ¬ (n = "inplace" ∧ args = [u])) (h9 : ∀ f u, ¬ (n = "split" ∧ args = [.const f, u])) :
     runT K ρ φ tl hint (.prim n args) s = none := by
   rw [runT]
   · rfl
@@ -36,7 +36,9 @@ theorem runS_prim_other (n : String) (args : List Term) (tl : Bool) (hint : TyS)
   · exact fun u e1 e2 => h6 u ⟨e1, e2⟩
   · exact fun u e1 e2 => h7 u ⟨e1, e2⟩
   · exact fun u e1 e2 => h8 u ⟨e1, e2⟩
-/-- The `.prim` clauses: the four equality rules, `J`, the in-place reads, and failure otherwise. -/
+  · exact fun f u e1 e2 => h9 f u ⟨e1, e2⟩
+/-- The `.prim` clauses: the four equality rules, `J`, the in-place reads, `split f in u` (its term's run, docs/31
+D175), and failure otherwise. -/
 theorem fund_prim (hc : FundCtx K) (n : String) (args : List Term) (ha : ∀ t ∈ args, Fund K ρ φ t) :
     Fund K ρ φ (.prim n args) := by
   by_cases e1 : ∃ h, n = "symm" ∧ args = [h]
@@ -58,10 +60,13 @@ theorem fund_prim (hc : FundCtx K) (n : String) (args : List Term) (ha : ∀ t �
   by_cases e8 : ∃ u, n = "inplace" ∧ args = [u]
   · obtain ⟨u, rfl, rfl⟩ := e8
     intro tl hint s s' r hs h; rw [runT] at h; exact fund_inPlace hc (ha u (by simp)) tl hint s s' r hs h
+  by_cases e9 : ∃ f u, n = "split" ∧ args = [.const f, u]
+  · obtain ⟨f, u, rfl, rfl⟩ := e9
+    intro tl hint s s' r hs h; rw [runT] at h; exact fund_erasedS (ha u (by simp) tl hint) s s' r hs h
   intro tl hint s s' r hs h
   rw [runS_prim_other n args tl hint s (fun h e => e1 ⟨h, e⟩) (fun h k e => e2 ⟨h, k, e⟩)
     (fun h u e => e3 ⟨h, u, e⟩) (fun h u e => e4 ⟨h, u, e⟩) (fun A a b P h t e => e5 ⟨A, a, b, P, h, t, e⟩)
-    (fun u e => e6 ⟨u, e⟩) (fun u e => e7 ⟨u, e⟩) (fun u e => e8 ⟨u, e⟩)] at h
+    (fun u e => e6 ⟨u, e⟩) (fun u e => e7 ⟨u, e⟩) (fun u e => e8 ⟨u, e⟩) (fun f u e => e9 ⟨f, u, e⟩)] at h
   cases h
 
 variable (K ρ φ) in

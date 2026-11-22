@@ -254,10 +254,12 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
         (fun _ _ _ => rfl)
 
   | tl, .prim n args, hint, s, ha => by
-    have hall : ∀ t ∈ args, ∀ (hint : TyS) (s : SState),
-        run K ρ φ hint t s = run (KA K Δ') ρ' φ hint t s := fun t hm hint s =>
-      runAll_congrA args t hm hint s
+    have hallT : ∀ t ∈ args, ∀ (tl' : Bool) (hint : TyS) (s : SState),
+        runT K ρ φ tl' hint t s = runT (KA K Δ') ρ' φ tl' hint t s := fun t hm tl' hint s =>
+      runAll_congrA args t hm tl' hint s
         (fun σ h => ha σ (by simp only [Term.anyAtom]; exact anyAtomList_of_mem hm h))
+    have hall : ∀ t ∈ args, ∀ (hint : TyS) (s : SState),
+        run K ρ φ hint t s = run (KA K Δ') ρ' φ hint t s := fun t hm hint s => hallT t hm false hint s
     have hprem : ∀ xs : List Term, (∀ x ∈ xs, x ∈ args) →
         SM.onCopy (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k)
           (pure ((.proof, .plain (TyM.prop True)) : Res))) s =
@@ -297,6 +299,12 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
       rcases hn with rfl | rfl | rfl <;>
         (rw [hargs, runT, runT]
          exact SM.erasedIf_congr (SM.headOf_congr (fun p => rfl) (hall u hu _ _)))
+    by_cases hsp : ∃ f u, n = "split" ∧ args = [.const f, u]
+    · obtain ⟨f, u, rfl, hargs⟩ := hsp
+      have hu : u ∈ args := by rw [hargs]; simp
+      rw [hargs, runT, runT]
+      exact SM.erasedIf_congr (hallT u hu tl hint s)
+    have hs' : ∀ f u, n = "split" → args = [.const f, u] → False := fun f u e1 e2 => hsp ⟨f, u, e1, e2⟩
     have hJ' : ∀ (A a b P h t : Term), n = "J" → args = [A, a, b, P, h, t] → False :=
       fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
@@ -307,7 +315,7 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     have f3 : ∀ h u, n = "rewrite" → args = [h, u] → False := fun h0 u0 a b => e3 ⟨h0, u0, a, b⟩
     have f4 : ∀ h u, n = "rewriteR" → args = [h, u] → False := fun h0 u0 a b => e4 ⟨h0, u0, a, b⟩
     rw [runT, runT]
-    all_goals first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3
+    all_goals first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3 | exact hs'
   | tl, .fix self hs ds c dec body, hint, s, ha => by
     have hbs : bindsOf K ρ φ s ds = bindsOf (KA K Δ') ρ' φ s ds :=
       runBinds_congrA s (K.D.paramDecls (scopeOf s) ds) ds [] (fun σ h => ha σ (by simp [Term.anyAtom, h]))
@@ -390,15 +398,15 @@ theorem meanV_congrA : ∀ (v : Value) (hint : TyS),
   | .tUnit, _, _ => rfl
   | .sort _, _, _ => rfl
 
-theorem runAll_congrA : ∀ (ts : List Term) (t : Term), t ∈ ts → ∀ (hint : TyS) (s : SState),
+theorem runAll_congrA : ∀ (ts : List Term) (t : Term), t ∈ ts → ∀ (tl : Bool) (hint : TyS) (s : SState),
     (∀ σ, t.anyAtom (· == .abs σ) = true → AgreeA K Δ' ρ ρ' σ) →
-    run K ρ φ hint t s = run (KA K Δ') ρ' φ hint t s
-  | [], t, h, _, _, _ => absurd h List.not_mem_nil
-  | a :: as, t, h, hint, s, ha => by
+    runT K ρ φ tl hint t s = runT (KA K Δ') ρ' φ tl hint t s
+  | [], t, h, _, _, _, _ => absurd h List.not_mem_nil
+  | a :: as, t, h, tl, hint, s, ha => by
     rw [List.mem_cons] at h
     rcases h with e | h
-    · rw [e] at ha ⊢; exact runT_congrA false a hint s ha
-    · exact runAll_congrA as t h hint s ha
+    · rw [e] at ha ⊢; exact runT_congrA tl a hint s ha
+    · exact runAll_congrA as t h tl hint s ha
 
 theorem runBinds_congrA (s : SState) (dcs : List DeclInfo) : ∀ (ds : List Term) (pre : List PBind),
     (∀ σ, Term.anyAtomList (· == .abs σ) ds = true → AgreeA K Δ' ρ ρ' σ) →

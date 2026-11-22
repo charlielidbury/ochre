@@ -24,14 +24,15 @@ open Ochr Ochr.Meaning
 /-- **A term whose run out of tail position does not read its hint**: its head, after any `clone`,
 `peek` or `inplace` (which hand the hint to their argument), is not a constructor with its parameters
 left to the hint (written parameters, or a declaration without parameters, or no declaration of that
-name, are fine) and not an embedded value. -/
+name, are fine) and not an embedded value; a `split` (which runs its term at the hint, docs/31 D175) is counted
+hint-reading (no field type holds one). -/
 def hintFreeB (Γ : List IndDecl) : Term → Bool
   | .ctor ty _ _ ps _ => !ps.isEmpty || (match Γ.find? (·.name == ty) with
     | some M => M.params.isEmpty
     | none => true)
   | .val _ => false
   | .prim n [u] => if n == "clone" || n == "peek" || n == "inplace" then hintFreeB Γ u else true
-  | .prim n _ => !(n == "clone" || n == "peek" || n == "inplace")
+  | .prim n _ => !(n == "clone" || n == "peek" || n == "inplace" || n == "split")
   | _ => true
 
 theorem runT_hintFree (K : RunCtx) (ρ : Assignment) (φ : Future) (H H' : TyS) :
@@ -60,7 +61,7 @@ theorem runT_hintFree (K : RunCtx) (ρ : Assignment) (φ : Future) (H H' : TyS) 
       split <;> simp_all
   | .prim n [], ht | .prim n (_ :: _ :: _), ht => by
     simp only [hintFreeB, Bool.not_eq_true', Bool.or_eq_false_iff, beq_eq_false_iff_ne] at ht
-    obtain ⟨⟨h1, h2⟩, h3⟩ := ht
+    obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := ht
     rw [runT.eq_def, runT.eq_def]
     split <;> simp_all
   | .place _, _ | .borrow _, _ | .assign _ _, _ | .letIn _ _ _, _ | .seq _ _, _ | .matchNat _ _ _, _

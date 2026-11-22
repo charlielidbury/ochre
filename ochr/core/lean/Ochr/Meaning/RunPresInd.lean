@@ -141,11 +141,11 @@ theorem premises_some (xs : List Term) {s s' : SState} {r : Res}
   exact foldr_premises_label K ρ φ xs h1
 
 /-- A primitive's run: a proof (no state change, no label), one of its arguments' runs (`J`,
-`clone`/`peek` of a non-place, `inplace`), or a copying read. -/
+`clone`/`peek` of a non-place, `inplace`, `split f in u` at the form's tail flag: docs/31 D175), or a copying read. -/
 theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} {hint : TyS} {n : String} {args : List Term}
     {s s' : SState} {r : Res} (h : runT K ρ φ tl hint (.prim n args) s = some (r, s')) :
     (s' = s ∧ r.2.label = none) ∨
-    (∃ t, t ∈ args ∧ run K ρ φ hint t s = some (r, s')) ∨
+    (∃ t tl', t ∈ args ∧ runT K ρ φ tl' hint t s = some (r, s')) ∨
     (∃ p, readPlace K φ p true s = some (r, s')) ∨
     -- `J`: its transported term's entry, its run, its join
     (∃ t s₂, t ∈ args ∧ run K ρ φ (.plain TyM.err) t (matchEntry K φ true t s).1 = some (r, s₂) ∧
@@ -163,8 +163,9 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
   · obtain ⟨h0, u0, rfl, rfl⟩ := e4; rw [runT] at h; exact .inl (prem [h0, u0] h)
   have fail : ∀ (hJ : ∀ (A a b P h t : Term), n = "J" → args = [A, a, b, P, h, t] → False)
       (hc : ∀ u, n = "clone" → args = [u] → False) (hp : ∀ u, n = "peek" → args = [u] → False)
-      (hi : ∀ u, n = "inplace" → args = [u] → False), False := by
-    intro hJ hc hp hi
+      (hi : ∀ u, n = "inplace" → args = [u] → False) (hs : ∀ f u, n = "split" → args = [.const f, u] → False),
+      False := by
+    intro hJ hc hp hi hs
     rw [runT] at h
     · cases h
     · exact fun h0 a b => e1 ⟨h0, a, b⟩
@@ -175,6 +176,13 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
     · exact hc
     · exact hp
     · exact hi
+    · exact hs
+  by_cases hsp : ∃ f u, n = "split" ∧ args = [.const f, u]
+  · obtain ⟨f, u, rfl, rfl⟩ := hsp
+    rw [runT] at h
+    rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
+    · exact .inr (.inl ⟨u, tl, by simp, h⟩)
+    · exact .inl ⟨rfl, hl⟩
   by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
   · obtain ⟨A, a, b, P, h', t, rfl, rfl⟩ := hJ
     rw [runT] at h
@@ -201,16 +209,16 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
   by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
   · obtain ⟨u, hn, rfl⟩ := hc
     have key : ∀ b : Bool × Bool, SM.erasedIf b (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (run K ρ φ hint u)) s = some (r, s') →
-        (s' = s ∧ r.2.label = none) ∨ (∃ t, t ∈ [u] ∧ run K ρ φ hint t s = some (r, s')) ∨
+        (s' = s ∧ r.2.label = none) ∨ (∃ t tl', t ∈ [u] ∧ runT K ρ φ tl' hint t s = some (r, s')) ∨
         (∃ p, readPlace K φ p true s = some (r, s')) := by
       intro b h
       rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
       · rcases SM.headOf_some h with ⟨p, h⟩ | h
         · exact .inr (.inr ⟨p, (SM.guarded_some h).2⟩)
-        · exact .inr (.inl ⟨u, by simp, h⟩)
+        · exact .inr (.inl ⟨u, false, by simp, h⟩)
       · exact .inl ⟨rfl, hl⟩
     have key' : ∀ b : Bool × Bool, SM.erasedIf b (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (run K ρ φ hint u)) s = some (r, s') →
-        (s' = s ∧ r.2.label = none) ∨ (∃ t, t ∈ [u] ∧ run K ρ φ hint t s = some (r, s')) ∨
+        (s' = s ∧ r.2.label = none) ∨ (∃ t tl', t ∈ [u] ∧ runT K ρ φ tl' hint t s = some (r, s')) ∨
         (∃ p, readPlace K φ p true s = some (r, s')) ∨
         (∃ t s₂, t ∈ [u] ∧ run K ρ φ (.plain TyM.err) t (matchEntry K φ true t s).1 = some (r, s₂) ∧
           s' = joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim n [u]) s₂) :=
@@ -219,7 +227,7 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
   exfalso
   exact fail (fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩)
     (fun u e1 e2 => hc ⟨u, .inl e1, e2⟩) (fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩)
-    (fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩)
+    (fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩) (fun f u e1 e2 => hsp ⟨f, u, e1, e2⟩)
 
 /-- The position a `let`'s drop removes is the same after a pointwise change of the values. -/
 theorem dropped_mapVals (s : SState) (g : Pos → SVal → SVal) : (s.mapVals g).dropped = s.dropped := by
@@ -1024,9 +1032,9 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
       · exact .inl rfl) _ hi
     exact ⟨hi', (fun l hl => by cases hl), e', o'⟩
   | tl, .prim n args, hint, s, s', r, hi, h => by
-    rcases run_prim_cases K ρ φ h with ⟨rfl, hl⟩ | ⟨t, ht, h'⟩ | ⟨p, h'⟩ | ⟨t, s₂, ht, h', rfl⟩
+    rcases run_prim_cases K ρ φ h with ⟨rfl, hl⟩ | ⟨t, tl', ht, h'⟩ | ⟨p, h'⟩ | ⟨t, s₂, ht, h', rfl⟩
     · exact rinv_pure L hi hl
-    · exact runAll_rinv hK args t ht hint s s' r hi h'
+    · exact runAll_rinvT hK args t ht tl' hint s s' r hi h'
     · exact ⟨(readPlace_rinv K φ L h' hi).1, (readPlace_rinv K φ L h' hi).2, readPlace_envLe K φ h',
         readPlace_ordKeep K φ h' hi⟩
     · obtain ⟨hi₁, e₁, o₁⟩ := matchEntry_props K φ L true t hi
@@ -1057,6 +1065,16 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
       obtain ⟨hi₄, e₄, o₄⟩ := invalidate_props K φ L p hi₃
       exact ⟨hi₄, (fun l hl => by rw [hl₃] at hl; cases hl), e₁.trans (e₃.trans e₄),
         o₁.trans e₁ (o₃.trans e₃ o₄)⟩
+
+theorem runAll_rinvT (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (ts : List Term) (t : Term), t ∈ ts →
+    ∀ (tl' : Bool) (hint : TyS) (s s' : SState) (r : Res), RInv L s → runT K ρ φ tl' hint t s = some (r, s') →
+      RInv L s' ∧ LoU s' r.2.label ∧ EnvLe s s' ∧ OrdKeep L s s'
+  | [], t, ht, _, _, _, _, _, _, _ => absurd ht List.not_mem_nil
+  | a :: as, t, ht, tl', hint, s, s', r, hi, h => by
+    rw [List.mem_cons] at ht
+    rcases ht with e | ht'
+    · rw [e] at h; exact runT_rinv hK tl' a hint s s' r hi h
+    · exact runAll_rinvT hK as t ht' tl' hint s s' r hi h
 
 theorem runAll_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (ts : List Term) (t : Term), t ∈ ts →
     ∀ (hint : TyS) (s s' : SState) (r : Res), RInv L s → run K ρ φ hint t s = some (r, s') →

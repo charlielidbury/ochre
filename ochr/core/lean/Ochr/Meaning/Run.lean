@@ -1588,6 +1588,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT false hint u)) s
   | .prim "inplace" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "inplace" [u]))
       (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT false hint u)) s
+  -- `split f in u` ([Split], D61) is a typing device: the end-of-body check checks `u` in each world of the split at
+  -- the goal; once run it is its term, at the form's own hint and tail flag (docs/31 D175, the lead's ruling).
+  -- The braces form `split f { … }` has no clause: its core term binds `()` in place of the split value (D178)
+  | .prim "split" [.const f, u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "split" [.const f, u]))
+      (runT tl hint u) s
   | .prim _ _ => SM.fail
   -- STRICT: the term's value is a member of the annotation
   | .ascribe u A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ascribe u A)) (SM.strictS K.dm.read <| do
