@@ -589,8 +589,8 @@ theorem inv_envT {D : Decisions} {st : MState} {t : Value} (ht : t ∈ TVals) (h
   -- (K): `R`'s own binding at `Π(n : Nat). Nat`, the parameter `⊥`
   · refine (fun f i b hb => ?_)
     rcases hbind hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
-    · exact fun l c e => (nomatch e)
-    · exact fun l c e => (nomatch e)
+    · exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
+    · exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
 
 /-- World `Z`'s leaf with `Z` in flight (the kernel; `leafZR.withTempT Z (some Nat)` but for the temporary's
 stored type). -/

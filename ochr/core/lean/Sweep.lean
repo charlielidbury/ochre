@@ -1449,13 +1449,14 @@ def lazyRefWritten2 : Value → Nat → Bool
     if j < ds.length then (ds[j]?.map ok).getD false else ok c
   | _, _ => false
 
-/-- (K) the invariant clause `Form.KindTyped` (lead28, docs/31 D188; restated by machine12 on the lead's ruling R1,
-docs/31 D192), mirrored EXACTLY: a binding holding a borrow whose type is stored stores `&A`. A binding with a deferred
-type or none is asked nothing; function values are asked nothing (R1). Reported, NOT the clause: a borrow at a deferred
-type whose component is not the term `&A` (R2, not added), nor an embedded `&A` (R2's variant), and one whose deferred
-type does not evaluate to `&A`. -/
+/-- (K) the invariant clause `Form.KindTyped` (lead28, docs/31 D188; restated by machine12 on the lead's rulings R1 and
+R2, docs/31 D192, D194), mirrored EXACTLY: a binding holding a borrow whose type is stored stores `&A`; one whose type is
+deferred, `(P, ws, j)`, has `P` a Π written as one whose component `j` is a borrow type as written (the term `&A` or an
+embedded borrow type value, `lazyRefWritten2`, `Form`'s `Value.refAt`). A binding with neither is asked nothing; function
+values are asked nothing (R1). Reported, NOT the clause: the first wording of R2 (the term `&A` only), which a stuck
+block's codomain breaks (42 states of `CloseOffModel`, D192), and a deferred type that does not evaluate to `&A`. -/
 def kindTyped : Clause where
-  name := "(K) a binding holding a borrow, if its type is stored, stores &A"
+  name := "(K) a binding holding a borrow stores &A, or defers a component that is a borrow type as written"
   premises := [
     ("a binding holds a borrow", fun st => (bindings st.env).any fun (_, _, b) => b.val.isBorrow),
     ("... in an untyped run", fun st => !st.typing && (bindings st.env).any fun (_, _, b) => b.val.isBorrow),
@@ -1471,10 +1472,10 @@ def kindTyped : Clause where
           | none => []
           | some (P, _, j) =>
             let where_ := s!"{posName st.env (.bind f i)} : (deferred: component {j} of {clip P.pp 120}) = {clip b.val.pp}"
-            (if lazyRefWritten P j then [] else
-              [⟨"(not the clause; R2, not added) a borrow at a deferred type whose component is not the term &A", where_⟩]) ++
             (if lazyRefWritten2 P j then [] else
-              [⟨"(not the clause; R2's variant) a borrow at a deferred type whose component is neither &A nor an embedded &A", where_⟩]) ++
+              [⟨"a borrow at a deferred type whose component is not a borrow type as written", where_⟩]) ++
+            (if lazyRefWritten P j then [] else
+              [⟨"(not the clause; R2's first wording) a borrow at a deferred type whose component is not the term &A", where_⟩]) ++
             (match lazyEval st f i with
               | some (.tRef _) => []
               | some T => [⟨"(not the clause) a borrow whose deferred type evaluates to a type that is not a borrow type", s!"{posName st.env (.bind f i)} : {clip T.pp 120} = {clip b.val.pp}"⟩]

@@ -187,13 +187,13 @@ theorem inv_stW (D : Decisions) : Inv D [] stW := by
   · refine (fun f i b hb => ?_)
     · rcases f with _ | _ | f
       · rcases i with _ | i
-        · simp only [stW] at hb; cases hb; exact fun l c e => (nomatch e)
+        · simp only [stW] at hb; cases hb; exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
         · simp [stW] at hb
       · rcases i with _ | _ | i
         · simp only [stW] at hb; cases hb
-          exact fun l c e => (nomatch e)
+          exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
         · simp only [stW] at hb; cases hb
-          exact fun l c e T hT => ⟨.tNat, by cases hT; rfl⟩
+          exact ⟨fun l c e T hT => ⟨.tNat, by cases hT; rfl⟩, fun l c e hn => (by cases hn)⟩
         · simp [stW] at hb
       · simp [stW] at hb
 

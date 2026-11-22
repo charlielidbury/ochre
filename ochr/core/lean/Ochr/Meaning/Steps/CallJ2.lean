@@ -387,9 +387,9 @@ theorem inv_stCJ2 (D : Decisions) : Inv D [] stCJ2 := by
   -- (K): the caller's `x` a number slot, the callee's `self` at `Π(n : Nat). Nat`, its parameter a number
   · refine (fun f i b hb => ?_)
     · rcases bind_stCJ2 hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
-      · exact fun l c e => (nomatch e)
-      · exact fun l c e => (nomatch e)
-      · exact fun l c e => (nomatch e)
+      · exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
+      · exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
+      · exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
 
 section
 variable {K : RunCtx} {ρ : Assignment}

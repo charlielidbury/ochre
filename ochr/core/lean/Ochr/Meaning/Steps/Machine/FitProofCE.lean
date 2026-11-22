@@ -7,8 +7,8 @@ import Ochr.Examples.Nat
 machine12, at the merge of main's D131: `V1` is now REJECTED at the generic definition (`readingAgrees` at the typed
 `let`: "[D131] y is a proof (its type ⊤ is a proposition), but its declared type reads as data"). The run of the
 right-hand side is unchanged (the guards below still pass: `uJ`'s typed run returns `⋆` and `uJ` reads `other`, not a
-copy), so `EvalFitsT`, a statement about that run alone, is still false as stated at `stW`; the `let` no longer binds
-it. What machine11 found, before D131:
+copy), so `EvalFitsT`, then a statement about that run alone, was still false at `stW`; the `let` no longer binds it,
+and `EvalFitsT` is now asked of the value the `let` binds, the binding test's success a hypothesis (docs/31 D194). What machine11 found, before D131:
 
 READ FALSE: `Master.EvalFitsT` (`Steps/MasterLet.lean`), its second clause (C⋆), and with it the invariant's
 `ShapeFacts.proofCopy` at a state the checker reaches. Behind it, a CHECKER BUG: the generic call and an instance

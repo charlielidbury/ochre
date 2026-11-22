@@ -243,19 +243,21 @@ theorem _root_.Ochr.Value.Bland.not_fn {v : Value} (h : v.Bland) : v.isFnVal = f
 
 /-- A binding holding a bland value meets (K) whatever its types. -/
 theorem kindAt_of_bland {b : Binding} (h : b.val.Bland) : b.KindAt :=
-  fun l c e => absurd e (h.not_borrow l c)
+  ⟨fun l c e => absurd e (h.not_borrow l c), fun l c e => absurd e (h.not_borrow l c)⟩
 
 /-- A binding holding a loan (the lender's side) meets (K) whatever its types. -/
 theorem kindAt_of_loan {b : Binding} {l : Nat} (h : b.val = .loan l) : b.KindAt :=
-  fun _ _ e => (by rw [h] at e; cases e)
+  ⟨fun _ _ e => (by rw [h] at e; cases e), fun _ _ e => (by rw [h] at e; cases e)⟩
 
 /-- (K) carries along `VEq` at the same types. -/
 theorem kindAt_of_veq {ba bb : Binding} (hk : ba.KindAt) (hv : VEq ba.val bb.val) (hty : ba.ty = bb.ty)
     (hlz : ba.lazyTy = bb.lazyTy) : bb.KindAt := by
   rcases hv with e | ⟨-, hb⟩ | ⟨l, w, w', e1, e2, -, -⟩
-  · exact fun l c h T hT => hk l c (e.trans h) T (hty.trans hT)
+  · exact ⟨fun l c h T hT => hk.1 l c (e.trans h) T (hty.trans hT),
+      fun l c h hn P ws j hl => hk.2 l c (e.trans h) (hty.trans hn) P ws j (hlz.trans hl)⟩
   · exact kindAt_of_bland hb
-  · exact fun _ _ _ T hT => hk l w e1 T (hty.trans hT)
+  · exact ⟨fun _ _ _ T hT => hk.1 l w e1 T (hty.trans hT),
+      fun _ _ _ hn P ws j hl => hk.2 l w e1 (hty.trans hn) P ws j (hlz.trans hl)⟩
 
 /-- **(K) across a change**: from `a`'s and what the change owes (`KindFrom`). -/
 theorem kindTyped_of_from {a b : MState} (hk : KindTyped a) (h : KindFrom a b) : KindTyped b := by

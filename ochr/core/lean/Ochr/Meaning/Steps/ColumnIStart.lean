@@ -216,9 +216,9 @@ theorem inv_stI : Inv D [] stI := by
       · simp [stI] at hb
       · rcases i with _ | _ | i
         · simp only [stI] at hb; cases hb
-          exact fun l c e => (nomatch e)
+          exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
         · simp only [stI] at hb; cases hb
-          exact fun l c e => (nomatch e)
+          exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
         · simp [stI] at hb
       · simp [stI] at hb
 

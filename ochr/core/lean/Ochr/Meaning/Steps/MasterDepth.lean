@@ -69,7 +69,8 @@ def LetInvD : Prop :=
       Runs (Ochr.eval n true w none) stB bh₂ (r, T?) st₂ ∧
       Runs (Ochr.dropTopBind n) (st₂.withTempT r T?) bh₃ () st₃ ∧
       Kern st₃ (st'.withTempT v T?) ∧ Form.ModeEq st₃ st' ∧
-      DecTab D st₁ ∧ DecTab D st₂
+      DecTab D st₁ ∧ DecTab D st₂ ∧
+      (∀ T', T₀ = some T' → ∃ (s : MState) (b : Nat), Kern st₁ s ∧ Runs (Ochr.readingAgrees n h T' du v₀) s b () s)
 
 set_option maxHeartbeats 4000000 in
 /-- **`LetInvD`, PROVED**: `letInvR`'s proof; the mode at `u`'s entry is the `let`'s state with `wantTy` set. -/
@@ -141,7 +142,7 @@ theorem letInvD : LetInvD := by
     refine ⟨du', { s₂ with wantTy := true }, s₃,
       { s₃ with env := Env.pushBindE s₃.env x none v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
       s₈, s₁₀, v₀, r, none, s₃.lastProof || du'.isProof, _, _, _, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
-      hdr, ?_, ?_, ?_, ?_⟩
+      hdr, ?_, ?_, ?_, ?_, ?_⟩
     · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · exact ⟨rfl, rfl, rfl, rfl⟩
     · exact decTab_declOf_at hDst hdu
@@ -153,6 +154,7 @@ theorem letInvD : LetInvD := by
         ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
           (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
     · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
+    · intro T' e; cases e
   | some T' =>
     simp only at h₄
     obtain ⟨_, s₆', b₆', hra, h₄⟩ := Runs.bind_inv h₄
@@ -190,7 +192,7 @@ theorem letInvD : LetInvD := by
     refine ⟨du', { s₂ with wantTy := true }, s₃,
       { s₃ with env := Env.pushBindE s₃.env x (some T') v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
       s₈, s₁₀, v₀, r, (some T'), s₃.lastProof || du'.isProof, _, _, _, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
-      hdr, ?_, ?_, ?_, ?_⟩
+      hdr, ?_, ?_, ?_, ?_, ?_⟩
     · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · exact ⟨rfl, rfl, rfl, rfl⟩
     · exact decTab_declOf_at hDst hdu
@@ -202,6 +204,9 @@ theorem letInvD : LetInvD := by
         ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
           (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))))
     · exact DecTab.back hD (hg₂.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)))
+    · intro T'' e; cases e
+      refine ⟨_, _, ?_, hra⟩
+      exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- **`evalCore` of `S(u)`, at any erased depth** (lead24): the machine lane's `SuccInvR` with `ModeR` for `Mode` and
 the mode at `u`'s entry the entry's (`ModeEq`) where `SuccInvR` concludes `Mode`. -/
