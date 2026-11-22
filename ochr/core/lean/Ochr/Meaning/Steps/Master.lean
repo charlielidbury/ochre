@@ -120,6 +120,17 @@ theorem Kept.of_kern {a b : MState} (hk : Kern a b) (hm : ModeEq a b) : Kept a b
 
 /-! ## The statements -/
 
+/-- **The hint names only the state's unknowns** (the lead's ruling on docs/31 D176, D179): every unknown of the
+handed-down type is below the counter. The same condition `absBelow` puts on the term, on the other thing a run is
+handed. In tail position an untyped `let`/`;` hands its tail the hint after its first sub-run has extended the
+assignment above the counter, and moving the tail's run back (`runT_congrA`) needs the hint's meaning unchanged. -/
+def HintBelow (hint : Option Value) (n : Nat) : Prop := ∀ T, hint = some T → ∀ σ, T.hasAbs σ = true → σ < n
+
+theorem hintBelow_none (n : Nat) : HintBelow none n := fun _ h => by cases h
+
+theorem HintBelow.mono {hint : Option Value} {a b : Nat} (h : HintBelow hint a) (hab : a ≤ b) : HintBelow hint b :=
+  fun T hT σ hσ => Nat.lt_of_lt_of_le (h T hT σ hσ) hab
+
 /-- **The evaluation step at fuel `n`, for one term**: from a state in the plain mode at any erased depth
 (`ModeR`) with a frame,
 whose handed-down reading, if any, is the table's reading of `t`, meeting `Pre`, related to a good reference
@@ -131,7 +142,7 @@ def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : P
     ModeR st → (typed = true → st.tailNext = false) → 0 < st.env.size →
     (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
-    t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
+    t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → HintBelow hint st.absTy.size → t.hasHolePrim = false →
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
     ∀ bh, Runs (Ochr.eval n typed t hint) st bh (v, T?) st' →
@@ -183,7 +194,7 @@ def CoreSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     P st → TY typed → ModeR st → (typed = true → st.curTail = false) → st.tailNext = false → st.tailDecl = none →
     st.curDecl = some (K.D.declOf (DecideScope.topReadings st) t) → Pre K ρ st → Rel K ρ φ π st s →
     Strict.SGood K.dm K.Γ φ s →
-    t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
+    t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → HintBelow hint st.absTy.size → t.hasHolePrim = false →
     K.D.flags (scopeOf s) t = (false, false) →
     (typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
@@ -198,7 +209,7 @@ def EvalSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     P st → TY typed → ModeR st → (typed = true → st.tailNext = false) →
     (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
-    t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
+    t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → HintBelow hint st.absTy.size → t.hasHolePrim = false →
     K.D.flags (scopeOf s) t = (false, false) →
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
@@ -227,12 +238,13 @@ theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInv
     (hany : ∀ st, P st → K.D.declOf (DecideScope.topReadings st) t ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) t).isProof = false) (hc : CoreSimK K ρ φ n t P TY) :
     EvalSimK K ρ φ (n + 2) t P TY := by
-  intro st st' typed hint v T? s π hPs hty hm htl htd hp hr hS hv hab hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π hPs hty hm htl htd hp hr hS hv hab hhb hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, h₀, hk₁, hm₁⟩ :=
     hE n typed t hint st st' bh v T? K.D hm hD ht hcall (hany st hPs).1 (hany st hPs).2 htd h
   obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ hcd₀ (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS hv
-    (by rw [← hk₀.absTy]; exact hab) hnh hfl (by rw [hct]; exact hok) (DecTab.of_kern hk₁.symm hD) bh' h₀
+    (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl (by rw [hct]; exact hok)
+    (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'
   exact ⟨Out.of_kern hk₀ hk₁ hc', ((Kept.of_kern hk₀ hm₀).trans hkp).trans (Kept.of_kern hk₁ hm₁)⟩
 

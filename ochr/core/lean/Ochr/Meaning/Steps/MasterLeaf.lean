@@ -98,7 +98,7 @@ theorem runT_tt (tl : Bool) (hint : TyS) (s : SState) :
 /-- **`()`, at `evalCore`, at any erased depth**, from every state meeting `Pre` and every related reference
 state. -/
 theorem tt_coreSimK {n : Nat} {P : MState → Prop} {TY : Bool → Prop} : CoreSimK K ρ φ (n + 1) .tt P TY := by
-  intro st st' typed hint v T? s π _ _ _ _ _ _ _ hp hr _ _ _ _ _ _ _ bh h
+  intro st st' typed hint v T? s π _ _ _ _ _ _ _ hp hr _ _ _ _ _ _ _ _ bh h
   obtain ⟨rfl, rfl, hst⟩ := ttInvE n typed hint st st' bh v T? h
   subst st'
   have hinv : Inv K.D K.Γ (st.withTempT .unit (some .tUnit)).norm :=
@@ -110,7 +110,7 @@ theorem tt_coreSimK {n : Nat} {P : MState → Prop} {TY : Bool → Prop} : CoreS
 
 /-- **`Z`, at `evalCore`, at any erased depth.** -/
 theorem zero_coreSimK {n : Nat} {P : MState → Prop} {TY : Bool → Prop} : CoreSimK K ρ φ (n + 1) .zero P TY := by
-  intro st st' typed hint v T? s π _ _ _ _ _ _ _ hp hr _ _ _ _ _ _ hD bh h
+  intro st st' typed hint v T? s π _ _ _ _ _ _ _ hp hr _ _ _ _ _ _ _ hD bh h
   refine ⟨zero_core zeroInv invSteps s π hp hr hD h, ?_⟩
   obtain ⟨-, -, hst⟩ := zeroInvE n typed hint st st' bh v T? h
   subst st'
@@ -123,7 +123,7 @@ end
 /-- **The step for `Z`, in general**: `StepZero` for every context and future. ASSUMES NOTHING (the facts
 about the checker it uses are the machine lane's proved `evalLow`, `zeroInv`, `invSteps`, and `evalInvD`, `zeroInvE` proved here at any erased depth). -/
 theorem stepZero (K : RunCtx) (φ : Future) : StepZero K φ := by
-  intro n _ Δ ρ st st' typed hint v T? s π hm htl _ htd hp hr hS hv hab hnh hok hD bh h
+  intro n _ Δ ρ st st' typed hint v T? s π hm htl _ htd hp hr hS hv hab hhb hnh hok hD bh h
   by_cases hn : n < 3
   · exact absurd h (evalLow n typed .zero hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
@@ -134,11 +134,11 @@ theorem stepZero (K : RunCtx) (φ : Future) : StepZero K φ := by
   exact eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany zero_coreSimK
-    st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hnh (hfz _) hok hD bh h
+    st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hfz _) hok hD bh h
 
 /-- **The step for `()`, in general**: `StepTt` for every context and future. ASSUMES NOTHING. -/
 theorem stepTt (K : RunCtx) (φ : Future) : StepTt K φ := by
-  intro n _ Δ ρ st st' typed hint v T? s π hm htl _ htd hp hr hS hv hab hnh hok hD bh h
+  intro n _ Δ ρ st st' typed hint v T? s π hm htl _ htd hp hr hS hv hab hhb hnh hok hD bh h
   by_cases hn : n < 3
   · exact absurd h (evalLow n typed .tt hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
@@ -149,6 +149,6 @@ theorem stepTt (K : RunCtx) (φ : Future) : StepTt K φ := by
   exact eval_of_coreK (K := { K with Δ := Δ }) evalInvD (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany tt_coreSimK
-    st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hnh (hft _) hok hD bh h
+    st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hft _) hok hD bh h
 
 end Ochr.Meaning.Steps.Form.Master

@@ -103,7 +103,7 @@ theorem type_coreSimK (hIT : InvPushType) {n : Nat} {t : Term} {P : MState → P
     (hmean : ∀ (Δ : Nat → TyS) (ρ' : Assignment) (φ' : Future) (h : TyS),
       meanV { K with Δ := Δ } ρ' φ' h vt = .ty m) :
     CoreSimK K ρ φ (n + 1) t P TY := by
-  intro st st' typed hint v T? s π _ _ _ _ _ _ _ hp hr _ _ _ _ _ _ _ bh h
+  intro st st' typed hint v T? s π _ _ _ _ _ _ _ hp hr _ _ _ _ _ _ _ _ bh h
   obtain ⟨hv', hT', hst⟩ := hinv typed hint st st' bh v T? h
   subst v; subst T?; subst st'
   have hio : vt.InertO := by rcases hvt with rfl | rfl; exact inertO_tNat; exact inertO_tUnit
@@ -120,7 +120,7 @@ end
 /-- **The step for `Nat`, in general**: `StepNat` for every context and future. ASSUMES 1 fact about the
 checker, `InvPushType`. -/
 theorem stepNat (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepNat K φ := by
-  intro n _ Δ ρ st st' typed hint v T? s π hm htl _ htd hp hr hS hv hab hnh hok hD bh h
+  intro n _ Δ ρ st st' typed hint v T? s π hm htl _ htd hp hr hS hv hab hhb hnh hok hD bh h
   by_cases hn : n < 3
   · exact absurd h (evalLow n typed .nat hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
@@ -132,12 +132,12 @@ theorem stepNat (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepNat K φ :=
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany (type_coreSimK hIT .tNat TyM.nat (.inl rfl) (natInvE m) (fun _ _ _ => by rw [runT]; rfl)
       (fun _ _ _ _ => rfl))
-    st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hnh (hfz _) hok hD bh h
+    st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hfz _) hok hD bh h
 
 /-- **The step for `Unit`, in general**: `StepUnit` for every context and future. ASSUMES 1 fact about the
 checker, `InvPushType`. -/
 theorem stepUnit (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepUnit K φ := by
-  intro n _ Δ ρ st st' typed hint v T? s π hm htl _ htd hp hr hS hv hab hnh hok hD bh h
+  intro n _ Δ ρ st st' typed hint v T? s π hm htl _ htd hp hr hS hv hab hhb hnh hok hD bh h
   by_cases hn : n < 3
   · exact absurd h (evalLow n typed .unit hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
@@ -149,6 +149,6 @@ theorem stepUnit (hIT : InvPushType) (K : RunCtx) (φ : Future) : StepUnit K φ 
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
     hany (type_coreSimK hIT .tUnit TyM.unit (.inr rfl) (unitInvE m) (fun _ _ _ => by rw [runT]; rfl)
       (fun _ _ _ _ => rfl))
-    st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hnh (hfz _) hok hD bh h
+    st st' typed hint v T? s π trivial trivial hm htl htd hp hr hS hv hab hhb hnh (hfz _) hok hD bh h
 
 end Ochr.Meaning.Steps.Form.Master

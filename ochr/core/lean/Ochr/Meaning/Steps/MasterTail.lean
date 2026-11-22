@@ -97,9 +97,13 @@ theorem tStepOther (hT : TailOtherInv) (K : RunCtx) (φ : Future) : TStepOther K
   obtain ⟨m, st₀, st₁, v, T, b₁, b₂, hmn, hk₀, hme₀, htd₀, htn₀, hg₀, hev, hkr⟩ := hT n t k st st' bh ht hrun
   have hD₁ : DecTab K.D st₁ := hD.back (hk v T st₁ b₂ () st' hkr)
   have hab₀ : t.absBelow st₀.absTy.size := by rw [← hk₀.absTy]; exact hab
+  -- the hint handed down is the state's goal, whose unknowns `Pre`'s (WF6) bounds (`Refd.goal`; docs/31 D179)
+  have hgb : HintBelow st.goal st₀.absTy.size := fun G hG σ hσ => by
+    rw [← hk₀.absTy]
+    exact hp.inv.2.2.2.2.1.1 σ (MState.Refd.goal G hG hσ)
   have hO := (ih m (by omega) Δ ρ).1 t st₀ st₁ true st.goal v (some T) s π (hm.of_modeEq hme₀)
     (fun _ => htn₀.trans htn) (by rw [← ColumnC.size_of_erase hk₀.env]; exact hne)
-    (Or.inl (htd₀.trans htd)) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv hab₀ hnh (fun e => by cases e) hD₁ b₁ hev
+    (Or.inl (htd₀.trans htd)) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv hab₀ hgb hnh (fun e => by cases e) hD₁ b₁ hev
   refine ⟨st₁, v, T, ⟨b₂, st', hkr⟩, ?_, (Kept.of_kern hk₀ hme₀).trans hO.2⟩
   rw [runT_tl_indep t ht true st₀.tailNext]
   exact Out.of_kern hk₀ (Kern.rfl' _) hO.1

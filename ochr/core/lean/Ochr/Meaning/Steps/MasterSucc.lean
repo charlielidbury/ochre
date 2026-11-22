@@ -82,7 +82,7 @@ theorem heldLabel_succ (v : Value) : Value.heldLabel (.succ v) = none := rfl
 theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc : Strict.FundCtx K)
     {ρ : Assignment} {m : Nat} {u : Term} (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.succ u) (fun st => 0 < st.env.size) := by
-  intro st st' typed hint v T? s π hne _ hm hctl htn htd hcd hp hr hS hv hab hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π hne _ hm hctl htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, hme, hDb, hty⟩ :=
     Machine.succInvD m typed u hint st st' bh v T? htn htd h
   have hsz₀ : st₀.env.size = st.env.size := (ColumnC.size_of_erase hk₀.env).symm
@@ -106,7 +106,7 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc
     | none => rw [e] at hs; simp at hs
     | some _ => rfl
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ typed none v₀ T₀ s π (hm.of_modeEq hm₀) (fun _ => htn₀)
-    (by omega) (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS (by simpa [Term.valsOk] using hv) hab' hnh' hokU
+    (by omega) (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS (by simpa [Term.valsOk] using hv) hab' (hintBelow_none _) hnh' hokU
     (hDb K.D hD) bh₁ hu₀
   rw [htn₀] at hOu
   obtain ⟨⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx, hmean, hagr, -, hp₁, hr₁⟩, hK₁⟩ := hOu
@@ -165,7 +165,7 @@ theorem stepSucc (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc :
           (K.D.declOf (DecideScope.topReadings st) (.succ u)).isProof = false) := by
   intro n ih Δ ρ u
   by_cases hn : n < 3
-  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
+  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.succ u)

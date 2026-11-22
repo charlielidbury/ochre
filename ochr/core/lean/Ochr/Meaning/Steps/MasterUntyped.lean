@@ -212,13 +212,14 @@ theorem eval_of_coreK_notTail {K : RunCtx} {ρ : Assignment} {φ : Future} (hE :
       (K.D.declOf (DecideScope.topReadings st) t).isProof = false)
     (hc : CoreSimK K ρ φ n t (fun st => P st ∧ st.curTail = false) TY) :
     EvalSimK K ρ φ (n + 2) t (fun st => P st ∧ st.tailNext = false) TY := by
-  intro st st' typed hint v T? s π hPs hty hm htl htd hp hr hS hv hab hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π hPs hty hm htl htd hp hr hS hv hab hhb hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, h₀, hk₁, hm₁⟩ :=
     hE n typed t hint st st' bh v T? K.D hm hD ht hcall (hany st hPs.1).1 (hany st hPs.1).2 htd h
   obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π ⟨hP st st₀ hk₀ hPs.1, hct.trans hPs.2⟩ hty
     (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ hcd₀ (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS hv
-    (by rw [← hk₀.absTy]; exact hab) hnh hfl (by rw [hct]; exact hok) (DecTab.of_kern hk₁.symm hD) bh' h₀
+    (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl (by rw [hct]; exact hok)
+    (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'
   exact ⟨Out.of_kern hk₀ hk₁ hc', ((Kept.of_kern hk₀ hm₀).trans hkp).trans (Kept.of_kern hk₁ hm₁)⟩
 
@@ -243,7 +244,7 @@ variable {K : RunCtx} {φ : Future}
 theorem seq_coreU (hNH : HintSites.UntypedSeqTailNoHint) (hST : SeqTailDecl K.D) (hDV : DropValueG)
     (hVC : ValsCongrA) (hc : Strict.FundCtx K) {ρ : Assignment} {m : Nat} {u w : Term} (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.seq u w) (fun st => 0 < st.env.size ∧ st.curTail = false) (· = false) := by
-  intro st st' typed hint v T? s π hP hty hm _ htn htd hcd hp hr hS hv hab hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π hP hty hm _ htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
   subst hty
   obtain ⟨hne, hct⟩ := hP
   -- D124 at `;` (named, false today): out of tail position the run at the hint is the run at none
@@ -261,7 +262,7 @@ theorem seq_coreU (hNH : HintSites.UntypedSeqTailNoHint) (hST : SeqTailDecl K.D)
     revert hok'; simp only [bind, Option.bind]; cases runT K ρ φ false (.plain TyM.err) u s <;> simp
   -- the step for `u`, from the entry state itself
   have hOu := (ih m (by omega) K.Δ ρ).1 u st st₁ false none v₀ T₀ s π hm (fun e => by cases e) hne (.inl htd) hp hr hS
-    hv.1 habu hnhu (fun _ => by rw [htn]; exact hoku) hD₁ bh₁ hru
+    hv.1 habu (hintBelow_none _) hnhu (fun _ => by rw [htn]; exact hoku) hD₁ bh₁ hru
   rw [htn] at hOu
   obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
@@ -290,7 +291,7 @@ theorem seq_coreU (hNH : HintSites.UntypedSeqTailNoHint) (hST : SeqTailDecl K.D)
     exact ⟨a.symm, d.symm⟩
   have hOw := (ih m (by omega) Δ₁ ρ₁).1 w stW st' false none v T? (discardEnd ru.2 s₁) π₁
     (hm.of_modeEq hKW.mode) (fun e => by cases e) (by rw [hKW.size]; exact hne) htdW'
-    (hP₄.of_kern hkW) (hR₄.of_kern hkW) hS₂ (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habW) hnhw
+    (hP₄.of_kern hkW) (hR₄.of_kern hkW) hS₂ (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habW) (hintBelow_none _) hnhw
     (fun _ => by rw [htnW, ← runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hokw) hD bh₂ hrw
   rw [htnW] at hOw
   obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
@@ -320,7 +321,7 @@ theorem stepSeq_untyped (hNH : HintSites.UntypedSeqTailNoHint) (hST : SeqTailDec
           (K.D.declOf (DecideScope.topReadings st) (.seq u w)).isProof = false) ∧ st.tailNext = false) (· = false) := by
   intro n ih Δ ρ u w
   by_cases hn : n < 3
-  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
+  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.seq u w)
@@ -340,7 +341,7 @@ theorem letIn_coreU (hNH : HintSites.UntypedLetTailNoHint) (hLT : LetTailDecl K.
     (hVC : ValsCongrA) (hc : Strict.FundCtx K) {ρ : Assignment} {m : Nat} {x : Hint} {u w : Term}
     (hnc : ∀ f as hd, u ≠ .call f as hd) (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.letIn x u w) (fun st => 0 < st.env.size ∧ st.curTail = false) (· = false) := by
-  intro st st' typed hint v T? s π hP hty hm _ htn htd hcd hp hr hS hv hab hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π hP hty hm _ htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
   subst hty
   obtain ⟨hne, hct⟩ := hP
   -- D124 at a `let` (named, false today): out of tail position the run at the hint is the run at none
@@ -359,7 +360,7 @@ theorem letIn_coreU (hNH : HintSites.UntypedLetTailNoHint) (hLT : LetTailDecl K.
     revert hok'; simp only [bind, Option.bind]; cases runT K ρ φ false (.plain TyM.err) u s <;> simp
   -- the step for `u`
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ false none v₀ T₀ s π (hm.of_modeEq hm₀) (fun e => by cases e)
-    (by omega) (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) hnhu
+    (by omega) (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu
     (fun _ => by rw [htn₀]; exact hoku) hD₁ bh₁ hru
   rw [htn₀] at hOu
   obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
@@ -404,7 +405,7 @@ theorem letIn_coreU (hNH : HintSites.UntypedLetTailNoHint) (hLT : LetTailDecl K.
     exact ⟨a.symm, d.symm⟩
   have hOw := (ih m (by omega) Δ₁ ρ₁).1 w stB st₂ false none r T? _ π₁ (hm₁.of_modeEq hmeB)
     (fun e => by cases e) (by omega) htdB'
-    hpB hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) hnhw
+    hpB hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) (hintBelow_none _) hnhw
     (fun _ => by rw [htnB, ← runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hokw) hD₂ bh₂ hrw
   rw [htnB] at hOw
   obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
@@ -451,7 +452,7 @@ theorem stepLetIn_untyped (hNH : HintSites.UntypedLetTailNoHint) (hLT : LetTailD
         (· = false) := by
   intro n ih Δ ρ x u w hnc
   by_cases hn : n < 3
-  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
+  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.letIn x u w)
