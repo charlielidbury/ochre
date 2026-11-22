@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.ParSucc
 /-!
 # `I`'s body, `S(n)`, simulated from the generic state (lead13)
 
-`body_simI`: `eval_sim` for `S(var 0)` at every fuel, from every state whose variable `0` holds an
+`body_simI`: the evaluation step (`EvalSim`) for `S(var 0)` at every fuel, from every state whose variable `0` holds an
 unknown of type `Nat` (the parameter) and whose top frame reads `R`, assuming `ParDecI` of the table at
 `R` (the decisions' lane) and the facts `EvalInv`, `EvalLow`, `SuccInv`, `InvSteps` (proved by the
 machine lane), `VarNumAInv`, `InvNumA` (stated in `ParFacts`). At `I`'s generic state this is the
@@ -97,7 +97,7 @@ theorem var0_sim (hE : EvalInv) (hV : VarNumAInv) (hN : InvNumA) (hlow : EvalLow
       (fun st hst => ?_) (CoreSim.mono (varAbs_core hV hN).restrict (fun st h => h.1))
     rw [hst.2, hd.2.1]; exact ⟨fun e => (by cases e), rfl⟩
 
-/-- **`I`'s body, simulated**: `eval_sim` for `S(n)` at every fuel from every state whose parameter
+/-- **`I`'s body, simulated**: the evaluation step (`EvalSim`) for `S(n)` at every fuel from every state whose parameter
 holds an unknown of type `Nat` and whose top frame reads `R`, at a table meeting `ParDecI` there. -/
 theorem body_simI (hE : EvalInv) (hS : SuccInv) (hI : InvSteps) (hV : VarNumAInv) (hN : InvNumA) (hlow : EvalLow)
     {R : List DeclInfo} (hd : ParDecI K.D R) : ∀ n, EvalSim K ρ φ n bodyI (ParSt R) (· = true) := by

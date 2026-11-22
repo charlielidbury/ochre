@@ -16,10 +16,10 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 
 ## THE MASTER INDUCTION OF (II) (lead22, 2026-11-22, `spine-lead22`; docs/31 D150 to D153)
 
-`Steps/Master.master`: (II) for `eval` and `checkTail` at every fuel, `Δ`, assignment and term, ASSUMING the 32 step statements of `AllSteps` (no `sorry`). The table of the 32 is docs/31 D153. Proved in general: `stepZero`, `stepTt` (nothing assumed), `tStepOther` (assumes `TailOtherInv`), `stepLetIn_typed` (typed, unerased `let`; assumes `EvalTop`, `LetTailDecl`, `ValsCongrA`, `LetPushG`, `LetDropG`, `FundCtx`).
-- NEW FACTS, open: `TailOtherInv` (checker, guarded; `Steps/MasterTail.lean`), `EvalTop` (checker, guarded), `LetTailDecl` (table, guarded), `ValsCongrA` (model), `LetPushG`, `LetDropG` (each part checker, part model) (`Steps/MasterLet.lean`).
+`Steps/Master.master`: (II) for `eval` and `checkTail` at every fuel, `Δ`, assignment and term, ASSUMING the 32 step statements of `AllSteps` (no `sorry`). The table of the 32 is docs/31 D153. Proved in general: `stepZero`, `stepTt` (nothing assumed), `tStepOther` (assumes `TailOtherInv`), `stepLetIn_typed` (typed, unerased `let`; assumes `LetTailDecl`, `ValsCongrA`, `LetPushG`, `LetDropG`, `FundCtx`). Since lead23 (D154) `EvalAt`/`TailAt` conclude `Kept` (mode, frames, top readings) beside `Out`; `EvalTop` is gone.
+- NEW FACTS, open: `TailOtherInv` (checker, guarded; `Steps/MasterTail.lean`), `LetTailDecl` (table, guarded), `ValsCongrA` (model), `LetPushG`, `LetDropG` (each part checker, part model) (`Steps/MasterLet.lean`).
 - KNOWN FALSE as things stand: `StepPrim` at `clone`/`peek` of a non-place (`Steps/MasterGuards.lean`; ruling asked); `TStepLetIn`, `TStepSeq`, `TStepMatchNat`, `TStepMatchInd` at a tail that reads its hint (the model's tail positions hand no hint; ruling asked).
-- `Form.eval_sim` is false as stated (no mode, no handed-down reading); `EvalAt` is the statement (ruling asked to restate it).
+- `Form.eval_sim` (false: no mode, no handed-down reading) is DELETED (D154); `EvalAt` is the statement.
 
 ## THE FIRST DATA TYPES `B` AND `Box`; A CAPTURE PINNED (lead21, 2026-11-22, `spine-lead21`; docs/31 D147 to D149)
 - Stated checker facts, unreviewed, guarded: `ColumnNot.SplitNotInv` (`Steps/DataNot.lean`), `ColumnBox.WrapInv`, `ColumnBox.UnboxInv` (`Steps/DataBox.lean`). For the machine lane.

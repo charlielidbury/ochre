@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.FragAsg
 /-!
 # The fragment theorem (lead10, lead11, lead12)
 
-`frag_sim`: `eval_sim` for every term of the fragment, by induction on the typing, from the facts
+`frag_sim`: the evaluation step (`EvalSim`) for every term of the fragment, by induction on the typing, from the facts
 about the checker (and the decision table) bundled as `FragFacts`; every case is proved (lead12).
 -/
 
@@ -47,7 +47,7 @@ structure FragFacts (D : Decisions) : Prop where
   setBotNum : InvSetBotNum
   asgDeref : AssignDerefInvF
 
-/-- **The fragment theorem** (`eval_sim` at every fragment term): for every term the fragment types,
+/-- **The fragment theorem** (the evaluation step, `EvalSim`, at every fragment term): for every term the fragment types,
 every fuel, `Δ` and assignment, the step at `eval` from a state meeting `FSt`, by induction on the
 typing, each sub-term's step an induction hypothesis at every extension. Every case is proved: `Z`,
 `S`, the read (`fvar_core`), `let` (`letF_core`), `;` (`seqI_core`, `seqB_core`), `&x` (`borF_core`),

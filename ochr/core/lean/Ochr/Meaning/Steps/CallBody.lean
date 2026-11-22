@@ -11,7 +11,7 @@ caller's, the parameter LAZILY typed (`ty = none`, its type deferred to the Π-t
 (`Column.EvalSim` at `typed = false`), and proves it: the first untyped run and the first lazily typed
 binding the form meets.
 
-What fits as the form stands: `eval_sim`'s untyped hypothesis (`hok`, the strict run succeeds) is not
+What fits as the form stands: the evaluation step's untyped hypothesis (`hok`, the strict run succeeds) is not
 used: the strict run of `S(#0)` from a related state succeeds by itself (the read is a member of
 `Nat` by the relation, whose type for the lazily typed binding is its deferred type through
 `codeMeaning.paramTy`, `Env.hintAt`); the read in an untyped run returns NO type, and `Out`'s type

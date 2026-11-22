@@ -59,4 +59,22 @@ def bodyCP : Term := .letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ (.prim "cl
 -- `clone(x)` of the place itself is accepted (the case the reference reads in place)
 #guard isOk (checkDef { defCL with body := bodyCP }) {} 100000
 
+/-! ## Why `EvalAt` asks for the plain mode (docs/31 D150, D154)
+
+`Form.lean`'s deleted `eval_sim` quantified over every mode. Inside `clone(x)` (`let x = S(Z); let y = clone(x); x`)
+the checker reads `x` in copying mode and leaves it; the reference's plain run of the read moves it, and the
+states after are not related. -/
+
+/-- One frame, `x ↦ 1`, read `.other` at `Nat`. -/
+def stX : MState := { env := #[{ binds := #[{ hint := ⟨"x"⟩, ty := some .tNat, val := .succ .zero, decl := .other }] }] }
+
+open Ochr.Meaning.Regress.GenNeutralContent (outSt) in
+-- in copying mode the read of `x` succeeds and leaves `x`; in the plain mode it moves `x`
+#guard isOk (Ochr.eval 100 true (.place (.var 0)) none) { stX with copying := true } 100000 &&
+  (outSt (Ochr.eval 100 true (.place (.var 0)) none) { stX with copying := true } 100000).env[0]!.binds[0]!.val ==
+    .succ .zero
+open Ochr.Meaning.Regress.GenNeutralContent (outSt) in
+#guard isOk (Ochr.eval 100 true (.place (.var 0)) none) stX 100000 &&
+  (outSt (Ochr.eval 100 true (.place (.var 0)) none) stX 100000).env[0]!.binds[0]!.val == .bot
+
 end Ochr.Meaning.Steps.Form.MasterGuards

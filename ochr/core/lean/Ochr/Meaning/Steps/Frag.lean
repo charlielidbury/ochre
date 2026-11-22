@@ -10,7 +10,7 @@ variable, `x := u` at a number variable, `*y := u` through a borrow, nested arbi
 each label at one position each, every loan's borrow held at a binding pushed after its lender, the
 top frame's bindings typed and read as `Γ` says.
 
-The statement (`frag_sim`) is `eval_sim`'s at every fragment term, fuel, `Δ` and assignment: the
+The statement (`frag_sim`) is the evaluation step's (`EvalSim`) at every fragment term, fuel, `Δ` and assignment: the
 step at `eval` (`EvalSim`) from a state meeting `FSt Γ`. It is proved by induction on the typing,
 each sub-term's simulation an INDUCTION HYPOTHESIS at every extension of `Δ` and the assignment
 (a `let`'s tail runs after its right-hand side made unknowns). The facts about the checker it uses

@@ -82,7 +82,7 @@ end
 
 /-! ## `eval` around `evalCore` -/
 
-/-- **The step at `evalCore`**, for one term: the conclusion of `eval_sim`, for a run of `evalCore`
+/-- **The step at `evalCore`**, for one term: the evaluation step's conclusion (`Out`), for a run of `evalCore`
 entered as `eval` enters it (in `Mode`, the tail flag in `curTail`, the one-shot flag clear), the term
 not erased by the aligned table. -/
 def CoreSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True)
@@ -99,8 +99,8 @@ def CoreSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P
     ∀ bh, Runs (Ochr.evalCore n typed t hint) st bh (v, T?) st' →
     Out K ρ φ π st st' s (runT K ρ φ st.curTail (hintM K ρ hint) t) v T?
 
-/-- **The step at `eval`**, for one term the aligned table does not erase: `eval_sim` with `Mode` and
-the table's classification as hypotheses. -/
+/-- **The step at `eval`**, for one term the aligned table does not erase: `Master.EvalAt`'s `Out` (without
+`Kept`) on a class of states `P`, with the table's classification as a hypothesis. -/
 def EvalSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True)
     (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)

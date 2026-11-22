@@ -10,8 +10,6 @@ related good reference state, for a TYPED run of a `let` whose reading the table
 a proof (so the table leaves it unerased). Its proof is the fragment's (`FragLet.letF_core`) with every
 fragment-specific piece replaced by a general named fact, each stated here at the exact class it is used at:
 
-* `EvalTop` (a fact about the checker alone, NEW): a successful `eval` from the plain mode ends in it, with
-  the frames and the top frame's readings as they were (the fragment had it from `FragRun`);
 * `ValsCongrA` (a fact about the model, NEW): the embedded values' condition moves to an extension of the
   assignment and `Δ` that agrees at the term's unknowns (the body is checked at the extension);
 * `LetTailDecl` (a fact about the table, NEW): the table reads a `let` as its body in the scope extended by
@@ -22,7 +20,11 @@ fragment-specific piece replaced by a general named fact, each stated here at th
   meaning on the reference's, keeps `Pre` and `Rel` (the fragment's `push_frag`, for every value);
 * `LetDropG` (the drop, NEW; the inversion of `dropTopBind` is the checker's, the relation across the ends the
   model's): the checker's `dropTopBind` is matched by the reference's drop (`LetDrop`: the binding's held label
-  ended, or the borrows lent at it), with `Pre` and `Rel` after (the fragment's `drop_frag`, for every value).
+  ended, or the borrows lent at it), with `Pre` and `Rel` after (the fragment's `drop_frag`, for every value);
+  and, on the checker's side, the drop keeps the mode and the frames and pops the top binding's reading.
+
+What the run keeps (`Kept`: the mode, the frames, the top readings; lead23, D154) is proved from `letInv`'s mode
+facts, the sub-runs' induction hypotheses and the drop's; lead22's whole-machine `EvalTop` is gone.
 
 The rest is proved: `letInv` (the machine lane's), (I) at `u` and `w` (`Strict.fund_all`), `SGood` after the
 push (`Strict.sgood_pushBindShaped`), the body's reference run moved to the extended assignment
@@ -39,14 +41,6 @@ namespace Ochr.Meaning.Steps.Form.Master
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
 
 /-! ## The facts the general step assumes -/
-
-/-- **A successful `eval` from the plain mode ends in it, with the frames and the top frame's readings as they
-were** (a fact about the checker alone, NEW; a whole-machine induction, as `machineGrows`). -/
-def EvalTop : Prop :=
-  ∀ (n : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
-    (T? : Option Value),
-    Mode st → Runs (Ochr.eval n typed t hint) st bh (v, T?) st' →
-    Mode st' ∧ st'.env.size = st.env.size ∧ DecideScope.topReadings st' = DecideScope.topReadings st
 
 /-- **The table reads a `let` as its body in the extended scope** (a fact about the table, NEW): as the
 checker's `declOf` does. Where the checker's `declOf` of the `let` succeeds this is `DecTab` at its two
@@ -74,13 +68,16 @@ def LetPushG : Prop :=
 /-- **The drop of a `let`'s binding, on both sides** (NEW; the fragment's `drop_frag` for every value): the
 checker's successful `dropTopBind` from a state meeting `Pre`, related to a good reference state, is matched by
 the reference's drop of its top binding (`LetDrop`), keeping the temporaries, only growing the tables, with
-`Pre` and `Rel` after. -/
+`Pre` and `Rel` after; on the checker's side it keeps the mode and the frames and pops the top binding's
+reading. -/
 def LetDropG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (W st₃ : MState) (s₂ : SState) (n bh : Nat),
     0 < W.env.size → Pre K ρ W → Rel K ρ φ π W s₂ → Strict.SGood K.dm K.Γ φ s₂ →
     Runs (Ochr.dropTopBind n) W bh () st₃ →
     ∃ s₃, LetDrop K φ s₂ s₃ ∧ topTemps st₃.env = topTemps W.env ∧
-      (W.absTy.size ≤ st₃.absTy.size ∧ W.nextLoan ≤ st₃.nextLoan) ∧ Pre K ρ st₃ ∧ Rel K ρ φ π st₃ s₃
+      (W.absTy.size ≤ st₃.absTy.size ∧ W.nextLoan ≤ st₃.nextLoan) ∧ Pre K ρ st₃ ∧ Rel K ρ φ π st₃ s₃ ∧
+      ModeEq W st₃ ∧ st₃.env.size = W.env.size ∧
+      DecideScope.topReadings st₃ = (DecideScope.topReadings W).tail
 
 /-- **The embedded values' condition moves to an extension that agrees at the term's unknowns** (a fact about
 the model, NEW; at each embedded value by `runT_congrA`, whose run reads only the unknowns it holds). The
@@ -101,7 +98,7 @@ def bodyLL : Term := .letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ .tt (.plac
 /-- A state with one frame holding one binding read `.unit`. -/
 def stLL : MState := { env := #[{ binds := #[{ hint := ⟨"z"⟩, ty := some .tUnit, val := .unit, decl := .unit }] }] }
 
--- `EvalTop` at a concrete run: the run succeeds, in the plain mode, with the frames and the top readings kept
+-- `Kept` at a concrete run: the run succeeds, in the plain mode, with the frames and the top readings kept
 #guard isOk (Ochr.eval 100 true bodyLL none) stLL 100000
 #guard (outSt (Ochr.eval 100 true bodyLL none) stLL 100000).env.size == stLL.env.size
 #guard DecideScope.topReadings (outSt (Ochr.eval 100 true bodyLL none) stLL 100000) == DecideScope.topReadings stLL
@@ -115,6 +112,18 @@ def stLL : MState := { env := #[{ binds := #[{ hint := ⟨"z"⟩, ty := some .tU
   outVal (withLive true (Ochr.declOf 100 false [] [] (.place (.var 1)))) (scopeState stLL [.unit, .other]) 100000
 #guard outVal (withLive true (Ochr.declOf 100 false [] [] (.letIn ⟨"y"⟩ .tt (.place (.var 0)))))
     (scopeState stLL [.other]) 100000 == .unit
+
+/-- One frame holding `z` read `.unit` and, on top, `x ↦ 1` read `.other` at `Nat`. -/
+def stLL2 : MState := { env := #[{ binds := #[{ hint := ⟨"z"⟩, ty := some .tUnit, val := .unit, decl := .unit },
+  { hint := ⟨"x"⟩, ty := some .tNat, val := .succ .zero, decl := .other }] }] }
+
+-- `LetDropG`'s checker part at a concrete drop: `dropTopBind` keeps the frames and the mode and pops the top
+-- binding's reading
+#guard isOk (Ochr.dropTopBind 100) stLL2 100000
+#guard (outSt (Ochr.dropTopBind 100) stLL2 100000).env.size == stLL2.env.size
+#guard DecideScope.topReadings (outSt (Ochr.dropTopBind 100) stLL2 100000) == (DecideScope.topReadings stLL2).tail
+#guard let st' := outSt (Ochr.dropTopBind 100) stLL2 100000
+  !st'.copying && !st'.inPlace && !st'.headEval && st'.erasedDepth == 0
 
 end LetGuards
 
@@ -138,13 +147,13 @@ variable {K : RunCtx} {φ : Future}
 
 /-- **A typed, unerased `let`, at `evalCore`, in general.** From the induction hypothesis at the fuel of the
 `let`'s `eval` and the facts above. -/
-theorem letIn_core (hET : EvalTop) (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
+theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
     (hVC : ValsCongrA) (hc : Strict.FundCtx K) {ρ : Assignment} {m : Nat} {x : Hint} {u w : Term} (ih : IH K φ (m + 3)) :
-    CoreSim K ρ φ (m + 1) (.letIn x u w) (fun st => 0 < st.env.size) (· = true) := by
+    CoreSimK K ρ φ (m + 1) (.letIn x u w) (fun st => 0 < st.env.size) (· = true) := by
   intro st st' typed hint v T? s π hne hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hdu,
-    hkB, hmeB, htnB, hrw, hrd, hk₃, -, hD₁, hD₂⟩ := letInv m x u w hint st st' bh v T? K.D hm htn htd hD h
+    hkB, hmeB, htnB, hrw, hrd, hk₃, hme₃', hD₁, hD₂⟩ := letInv m x u w hint st st' bh v T? K.D hm htn htd hD h
   obtain ⟨habu, habw⟩ := absBelow_letIn hab
   have hnhu : u.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.1
   have hnhw : w.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.2
@@ -153,10 +162,12 @@ theorem letIn_core (hET : EvalTop) (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ true none v₀ T₀ s π hm₀ (by omega) (.inl htd₀)
     (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) hnhu (fun e => by cases e) hD₁ bh₁ hru
   rw [htn₀] at hOu
-  obtain ⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
   obtain ⟨hgu, hlabu, hlouu, hS₁⟩ := Strict.fund_all hc u hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
-  obtain ⟨hm₁, hsz₁, htop₁⟩ := hET m true u none st₀ st₁ bh₁ v₀ T₀ hm₀ hru
+  have hm₁ : Mode st₁ := hm₀.of_modeEq hK₁.mode
+  have hsz₁ := hK₁.size
+  have htop₁ := hK₁.top
   have hne₁ : 0 < st₁.env.size := by omega
   -- the push, on both sides
   obtain ⟨hpB, hrB⟩ := hPu { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ stB v₀ T₀ x p du ru s₁ hne₁ hp₁ hr₁ hS₁ hmu hau hlu
@@ -186,21 +197,31 @@ theorem letIn_core (hET : EvalTop) (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr
   have hOw := (ih m (by omega) Δ₁ ρ₁).1 w stB st₂ true none r T? _ π₁ (hm₁.of_modeEq hmeB) (by omega) htdB'
     hpB hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) hnhw (fun e => by cases e) hD₂ bh₂ hrw
   rw [htnB] at hOw
-  obtain ⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩ := hOw
+  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
   have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w
       (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) = some (rw', s₂) := by
     rw [runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hxw
   obtain ⟨-, -, -, hS₂⟩ := Strict.fund_all hc w hv.2 st.curTail (.plain TyM.err) _ s₂ rw' hSB hxw'
-  obtain ⟨-, hsz₂, -⟩ := hET m true w none stB st₂ bh₂ r T? (hm₁.of_modeEq hmeB) hrw
+  have hsz₂ := hK₂.size
   have hne₂ : 0 < st₂.env.size := by omega
   -- the drop
-  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
+  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃, hme₃, hsz₃, htop₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
     (by rw [size_withTempT]; exact hne₂) hp₂ hr₂ hS₂ hrd
   obtain rfl : v = r := popped_of_topTemps hne₂ htt hk₃
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
     (he₁.congr hk₀.absTy hk₀.nextLoan hkB.absTy hkB.nextLoan).trans
       ((he₂.grow hga hgl).congr rfl rfl (by rw [hk₃.absTy]; rfl) (by rw [hk₃.nextLoan]; rfl))
-  refine ⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃⟩
+  have hW : ModeEq st₂ (st₂.withTempT v T?) := ⟨rfl, rfl, rfl, rfl⟩
+  have hkept : Kept st st' := by
+    refine ⟨(ModeEq.of_modes hm hm₀).trans (hK₁.mode.trans (hmeB.trans (hK₂.mode.trans
+      (hW.trans (hme₃.trans hme₃'))))), ?_, ?_⟩
+    · have e1 := ColumnC.size_of_erase hk₃.env
+      rw [size_withTempT] at e1 hsz₃
+      omega
+    · rw [← topReadings_withTempT st' v T?, ← ColumnC.topReadings_kern hk₃, htop₃, topReadings_withTempT,
+        hK₂.top, htopB]
+      rfl
+  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃⟩, hkept⟩
   -- the reference's `let`
   rw [runT_letIn _ _ x u w s hfl, hxu']
   simp only [bind, Option.bind]
@@ -210,12 +231,12 @@ theorem letIn_core (hET : EvalTop) (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr
 /-- **The step for a typed `let` the table reads as decided data, in general**: from the induction
 hypothesis, at every fuel, `Δ` and assignment, for every right-hand side and body, `EvalSim` (`EvalAt` for typed
 runs from a state with a frame where the table reads the `let` as neither `.any` nor a proof, so it leaves it
-unerased). ASSUMES 5 facts: `EvalTop` (checker), `LetTailDecl` (table), `ValsCongrA` (model), `LetPushG` and
-`LetDropG` (each part checker, part model); and `Strict.FundCtx K` of the context. -/
-theorem stepLetIn_typed (hET : EvalTop) (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
+unerased), with what the run keeps (`EvalSimK`). ASSUMES 4 facts: `LetTailDecl` (table), `ValsCongrA` (model),
+`LetPushG` and `LetDropG` (each part checker, part model); and `Strict.FundCtx K` of the context. -/
+theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hDr : LetDropG)
     (hVC : ValsCongrA) (hc : Strict.FundCtx K) :
     ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (x : Hint) (u w : Term),
-      EvalSim { K with Δ := Δ } ρ φ n (.letIn x u w)
+      EvalSimK { K with Δ := Δ } ρ φ n (.letIn x u w)
         (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
           (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) (· = true) := by
   intro n ih Δ ρ x u w
@@ -223,12 +244,12 @@ theorem stepLetIn_typed (hET : EvalTop) (hLT : LetTailDecl K.D) (hPu : LetPushG)
   · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
-  have hc' : CoreSim { K with Δ := Δ } ρ φ (m + 1) (.letIn x u w)
+  have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.letIn x u w)
       (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.letIn x u w) ≠ .any ∧
         (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) (· = true) :=
-    fun st st' typed hint v T? s π hP => letIn_core (K := { K with Δ := Δ }) hET hLT hPu hDr hVC ⟨hc.globals, hc.sorts⟩ ih
+    fun st st' typed hint v T? s π hP => letIn_core (K := { K with Δ := Δ }) hLT hPu hDr hVC ⟨hc.globals, hc.sorts⟩ ih
       st st' typed hint v T? s π hP.1
-  exact eval_of_core (K := { K with Δ := Δ }) Machine.evalInvR
+  exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvR
     (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
       by rw [← ColumnC.topReadings_kern hk]; exact ha.2⟩)
     (fun w e => by cases e) (fun f as h e => by cases e) (fun st hst => hst.2) hc'

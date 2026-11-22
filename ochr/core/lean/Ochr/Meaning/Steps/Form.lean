@@ -165,21 +165,9 @@ theorem sim_seqS {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat}
   rw [hx₁]
   exact hx₂
 
-/-! ## The evaluation step -/
+/-! ## The evaluation step
 
-/-- **The evaluation step in (II)'s form**: from a checker state meeting `Pre`, a reference state
-related to it and good, a term with good embedded values (what (I) asks of it), whose unknowns are the
-state's and which holds no hole, the checker's run of `eval` (an untyped one only where the strict run
-succeeds: `hok`), with the decisions aligned at the state it reaches: the strict run of the term, in
-tail position exactly when the checker's is, at the type the context gives, simulates it. -/
-def eval_sim (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState) (typed : Bool) (t : Term) (hint : Option Value) (v : Value) (T? : Option Value)
-    (s : SState) (π : Nat → Nat),
-    Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
-    t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
-    (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
-    DecTab K.D st' →
-    ∀ bh, Runs (Ochr.eval fuel typed t hint) st bh (v, T?) st' →
-    Out K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T?
+The evaluation step's statement is `Master.EvalAt` (`Steps/Master.lean`). The `eval_sim` that stood here
+quantified over every mode and every handed-down reading, and was false (docs/31 D150, D154). -/
 
 end Ochr.Meaning.Steps.Form

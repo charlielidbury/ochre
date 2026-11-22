@@ -106,9 +106,11 @@ theorem stepZero (K : RunCtx) (φ : Future) : StepZero K φ := by
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .zero ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .zero).isProof = false :=
     fun st _ => by rw [hdz]; exact ⟨(fun e => by cases e), rfl⟩
-  exact eval_of_core (K := { K with Δ := Δ }) evalInvR (P := fun _ => True) (TY := fun _ => True)
+  exact eval_of_coreK (K := { K with Δ := Δ }) evalInvR (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
-    hany (ColumnC.zero_coreSim zeroInv invSteps)
+    hany (coreSimK_of (ColumnC.zero_coreSim zeroInv invSteps) fun typed hint st st' bh v T? hm h =>
+      let ⟨_, _, hk, hm'⟩ := zeroInv m typed hint st st' bh v T? h
+      Kept.of_kern hk (ModeEq.of_modes hm (hm' hm)))
     st st' typed hint v T? s π trivial trivial hm htd hp hr hS hv hab hnh (hfz _) hok hD bh h
 
 /-- **The step for `()`, in general**: `StepTt` for every context and future. ASSUMES NOTHING. -/
@@ -121,9 +123,11 @@ theorem stepTt (K : RunCtx) (φ : Future) : StepTt K φ := by
   have hany : ∀ st : MState, True → K.D.declOf (DecideScope.topReadings st) .tt ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) .tt).isProof = false :=
     fun st _ => by rw [hdt]; exact ⟨(fun e => by cases e), rfl⟩
-  exact eval_of_core (K := { K with Δ := Δ }) evalInvR (P := fun _ => True) (TY := fun _ => True)
+  exact eval_of_coreK (K := { K with Δ := Δ }) evalInvR (P := fun _ => True) (TY := fun _ => True)
     (fun _ _ _ _ => trivial) (fun w e => by cases e) (fun f as h e => by cases e)
-    hany tt_coreSim
+    hany (coreSimK_of tt_coreSim fun typed hint st st' bh v T? hm h =>
+      let ⟨_, _, hk, hm'⟩ := ttInv m typed hint st st' bh v T? h
+      Kept.of_kern hk (ModeEq.of_modes hm (hm' hm)))
     st st' typed hint v T? s π trivial trivial hm htd hp hr hS hv hab hnh (hft _) hok hD bh h
 
 end Ochr.Meaning.Steps.Form.Master
