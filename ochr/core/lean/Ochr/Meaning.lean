@@ -305,7 +305,7 @@ import Ochr.Meaning.Strict.FrameLocCE
 import Ochr.Meaning.Steps.Machine.HintFacts
 import Ochr.Meaning.Steps.Machine.TailOther
 import Ochr.Meaning.Steps.Machine.PlaceInv
-import Ochr.Meaning.Steps.Machine.CheckItem
+import Ochr.Meaning.Steps.Machine.CheckIndChecks
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
