@@ -183,6 +183,7 @@ import Ochr.Meaning.Steps.MasterSeq
 import Ochr.Meaning.Steps.MasterType
 import Ochr.Meaning.Steps.MasterSucc
 import Ochr.Meaning.Steps.MasterUntyped
+import Ochr.Meaning.Steps.FitGuards
 import Ochr.Meaning.Steps.LetCallGuards
 import Ochr.Meaning.Steps.MasterPlace
 import Ochr.Meaning.Steps.LaterGuards

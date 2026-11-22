@@ -9,7 +9,8 @@ the reference runs `u` with no hint, as the typed checker does, so the hypothesi
 `.succ` clause makes. Proved here: the checker's inversion at any depth (`Machine.succInvD`), (I) at `u`
 (`Strict.fund_all`, for the strict test of an untyped run's result is the clause's own), what the run keeps.
 
-ASSUMES 3 facts (and `Strict.FundCtx K`), each at the exact class it is used at:
+ASSUMES 5 facts (and `Strict.FundCtx K`), each at the exact class it is used at (lead27 restated `SuccFlightG` and added
+the last two, docs/31 D185):
 * `SuccStrictG` (mixed): in a TYPED run, the strict test at `S`'s result passes: the argument's reference result `r`
   has `r.1.succ` a number. Its checker half: a typed `eval` returns a type (`T₀` is `some`), and `expectTy T₀ Nat`
   passed; its model half: conversion to `Nat` is sound (`T₀` means `Nat`, so `r.2.m = Nat`, D101) and a value the
@@ -21,7 +22,11 @@ ASSUMES 3 facts (and `Strict.FundCtx K`), each at the exact class it is used at:
 * `SuccFlightG` (mixed): the value in flight changes from `v₀` (at `T₀`) to `S(v₀)` (at `Nat`) across the quiet stretch
   and `expectTy` after `u`: `Pre` (its invariant the checker's) and `Rel` (the model's) survive. For a number, the
   column's `popInert`/`pushInert` and `rel_withTempT_num`; for every value at `Nat` (unknowns, sealed programs) it is
-  stated here.
+  stated here. RESTATED (lead27): the argument's value `v₀` is not a borrow. As first stated (`SuccFlightG_old`) it was
+  FALSE in an untyped run, where nothing stops `v₀` being a borrow (`S(&x)`).
+* `SuccArgNoBorrowT` (checker, typed only): a typed argument whose type passes `expectTy _ Nat` is not a borrow.
+* `SuccRefNoLabel` (model, untyped only): where the reference's `S(u)` succeeds, `u`'s result carries no label. FALSE as
+  the model stands (a borrow means its content, so `S(&x)` passes the reference's test); ruling asked.
 -/
 
 namespace Ochr.Meaning.Steps.Form.Master
@@ -44,8 +49,11 @@ def SuccMeanG : Prop :=
     (meanV K ρ ψ R v).succ ∈ₛ[K.dm.read] TyM.nat →
     (meanV K ρ ψ (.plain TyM.nat) v).succ = (meanV K ρ ψ R v).succ
 
-/-- **The value in flight becomes `S(v₀)`** (mixed; see the header). -/
-def SuccFlightG : Prop :=
+/-- **The value in flight becomes `S(v₀)`, as first stated: FALSE** (machine10's reading, lead27's record, docs/31 D185):
+nothing stops `v₀` being a borrow in an untyped run (the checker's untyped run of `S(&x)` returns `S(borrow_l v)`,
+`SuccGuards` below), and then the conclusion's state holds a borrow inside data in a temporary, which breaks the
+invariant's first clause (`succFlight_old_breaks_wf1`, kernel-checked at every state with a frame). Kept as the record. -/
+def SuccFlightG_old : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (n : Nat) (typed : Bool) (st₁ st' : MState)
     (v₀ : Value) (T₀ : Option Value) (s₁ : SState),
     Pre K ρ (st₁.withTempT v₀ T₀) → Rel K ρ φ π (st₁.withTempT v₀ T₀) s₁ → Strict.SGood K.dm K.Γ φ s₁ →
@@ -53,6 +61,54 @@ def SuccFlightG : Prop :=
     (typed = true → ∃ (st₂ : MState) (bh₂ : Nat),
       Runs (Ochr.expectTy n "the argument of S" T₀ .tNat) st₁ bh₂ () st₂ ∧ Kern st₂ st') →
     Pre K ρ (st'.withTempT (.succ v₀) (some .tNat)) ∧ Rel K ρ φ π (st'.withTempT (.succ v₀) (some .tNat)) s₁
+
+/-- **The value in flight becomes `S(v₀)`** (mixed; see the header; RESTATED by lead27, docs/31 D185: `v₀` is not a
+borrow, the hypothesis the first form lacked; WF1 at the premise already excludes a borrow below the root). -/
+def SuccFlightG : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (n : Nat) (typed : Bool) (st₁ st' : MState)
+    (v₀ : Value) (T₀ : Option Value) (s₁ : SState),
+    (∀ l w, v₀ ≠ .borrow l w) →
+    Pre K ρ (st₁.withTempT v₀ T₀) → Rel K ρ φ π (st₁.withTempT v₀ T₀) s₁ → Strict.SGood K.dm K.Γ φ s₁ →
+    Quiet st₁ st' →
+    (typed = true → ∃ (st₂ : MState) (bh₂ : Nat),
+      Runs (Ochr.expectTy n "the argument of S" T₀ .tNat) st₁ bh₂ () st₂ ∧ Kern st₂ st') →
+    Pre K ρ (st'.withTempT (.succ v₀) (some .tNat)) ∧ Rel K ρ φ π (st'.withTempT (.succ v₀) (some .tNat)) s₁
+
+/-- **A typed `S`'s argument is not a borrow** (checker, NEW, lead27, docs/31 D185; UNREAD): a typed run of the
+argument from a state meeting the checker's invariant, whose type passes `expectTy _ Nat`, returns no borrow. Read off
+the code: a typed run returns a borrow only at a borrow type (`&p` returns `T.map .tRef`; a read returns the place's
+stored type, and every binder stores a borrow at the type of what it bound: a `let` at its right-hand side's, a
+parameter at its declared `&A`), and `conv (&A) Nat` fails. Its truth at every state `Pre` allows needs that the
+invariant ties a binding holding a borrow to a borrow type, which is not one of its clauses (to be read). Guarded:
+`S(&x)` and `S(y)` with `y : &Nat` are rejected typed (`SuccGuards`). -/
+def SuccArgNoBorrowT : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (n : Nat) (u : Term) (st₀ st₁ st₂ : MState) (bh₁ bh₂ : Nat) (v₀ : Value)
+    (T₀ : Option Value),
+    Pre K ρ st₀ → Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, T₀) st₁ →
+    Runs (Ochr.expectTy n "the argument of S" T₀ .tNat) st₁ bh₂ () st₂ → ∀ l w, v₀ ≠ .borrow l w
+
+/-- **The reference's `S` takes no borrow** (model, NEW, lead27, docs/31 D185): where the reference's `S(u)` succeeds
+(the untyped step's entry condition, `hok`), `u`'s result carries no label. FALSE as the model stands: the reference
+means a borrow by its content (`meanV`'s `.borrow` clause) and its `&x` returns the content's meaning with the label on
+the type (`borrowPlace`), so `S(&x)` at `x : Nat` passes the strict test at `S`. A ruling is asked (D185): (A) the
+reference's `S` fails when its argument's result carries a label, which makes this a lemma of the clause; or (B) the
+checker's untyped `S` rejects a borrow argument. -/
+def SuccRefNoLabel : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (hint : TyS) (u : Term) (s : SState),
+    K.D.flags (scopeOf s) (.succ u) = (false, false) → (runT K ρ φ tl hint (.succ u) s).isSome →
+    ∀ r s₁, runT K ρ φ false (.plain TyM.err) u s = some (r, s₁) → r.2.label = none
+
+/-- **The first form's conclusion fails at a borrow in flight** (kernel-checked, lead27): at every state with a frame,
+`S(borrow_l w)` in a temporary breaks the invariant's first clause, so `Pre` fails there. With the guard below (the
+checker's untyped run of `S(&x)` returns `S(borrow_0 (S(Z)))`) and machine10's reading that the premises hold there,
+this is why `SuccFlightG_old` is false. -/
+theorem succFlight_old_breaks_wf1 (st : MState) (hne : 0 < st.env.size) (l : Nat) (w : Value) (T? : Option Value) :
+    ¬ WF1 (st.withTempT (.succ (.borrow l w)) T?).norm.env := by
+  intro h
+  obtain ⟨p, hp, hv⟩ := Machine.mem_values_iff.mp (mem_values_withTempT st _ T? hne)
+  have h1 := h.1 p hp
+  rw [hv] at h1
+  exact h1 (by simp [Value.hasBorrow, Value.anyAtom])
 
 namespace SuccGuards
 
@@ -70,6 +126,24 @@ def stS : MState := { env := #[{ binds := #[bS] }], nextAbs := 1, absTy := #[.tN
 -- untyped: the same value, no type checked
 #guard (outVal (Ochr.eval 100 false (.succ (.place (.var 0))) none) stS 100000).1 == .succ (.abs 0)
 
+/-- One frame, `x ↦ S(Z)` at `Nat`. -/
+def bN : Binding := { hint := ⟨"x"⟩, ty := some .tNat, val := .succ .zero, decl := .other }
+def stN : MState := { env := #[{ binds := #[bN] }] }
+/-- One frame, `x ↦ S(Z)` at `Nat` lent to `y ↦ &x` at `&Nat`. -/
+def stB : MState := { env := #[{ binds := #[{ bN with val := .loan 0 },
+  { hint := ⟨"y"⟩, ty := some (.tRef .tNat), val := .borrow 0 (.succ .zero), decl := .ref .other }] }], nextLoan := 1 }
+
+-- `SuccFlightG_old`'s counterexample: the UNTYPED run of `S(&x)` succeeds with a borrow inside data, at `Nat`
+-- (`Value.exact` compares constructors; a wrong expectation, `S(S(Z))`, fails)
+#guard Value.exact (outVal (Ochr.eval 100 false (.succ (.borrow (.var 0))) none) stN 100000).1 (.succ (.borrow 0 (.succ .zero)))
+#guard !Value.exact (outVal (Ochr.eval 100 false (.succ (.borrow (.var 0))) none) stN 100000).1 (.succ (.succ .zero))
+#guard (outVal (Ochr.eval 100 false (.succ (.borrow (.var 0))) none) stN 100000).2 == some .tNat
+-- `SuccArgNoBorrowT`: the TYPED runs of `S(&x)` and of `S(y)` at `y : &Nat` are rejected (and `S(x)` is accepted, so the
+-- guard distinguishes)
+#guard !isOk (Ochr.eval 100 true (.succ (.borrow (.var 0))) none) stN 100000
+#guard !isOk (Ochr.eval 100 true (.succ (.place (.var 0))) none) stB 100000
+#guard isOk (Ochr.eval 100 true (.succ (.place (.var 0))) none) stN 100000
+
 end SuccGuards
 
 section
@@ -79,7 +153,8 @@ variable {K : RunCtx} {φ : Future}
 theorem heldLabel_succ (v : Value) : Value.heldLabel (.succ v) = none := rfl
 
 /-- **`S(u)`, at `evalCore`, in general.** -/
-theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc : Strict.FundCtx K)
+theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hNT : SuccArgNoBorrowT)
+    (hNU : SuccRefNoLabel) (hc : Strict.FundCtx K)
     {ρ : Assignment} {m : Nat} {u : Term} (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.succ u) (fun st => 0 < st.env.size) := by
   intro st st' typed hint v T? s π hne _ hm hctl htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
@@ -110,7 +185,7 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc
     (hDb K.D hD) bh₁ hu₀
   replace hOu := outK_of_outLK hOu
   rw [htn₀] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx, hmean, hagr, -, hp₁, hr₁⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx, hmean, hagr, hlab, hp₁, hr₁⟩, hK₁⟩ := hOu
   have hx' : runT K ρ φ false (.plain TyM.err) u s = some (r, s₁) := hx
   obtain ⟨hgu, -, -, hS₁⟩ := Strict.fund_all hc u (by simpa [Term.valsOk] using hv) false (.plain TyM.err) s s₁ r hS hx'
   -- the reference's `S(u)`, where its strict test passes
@@ -142,7 +217,19 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc
   have hmv : meanV { K with Δ := Δ₁ } ρ₁ (fun l => φ (π₁ l)) (.plain TyM.nat) (.succ v₀) = r.1.succ := by
     show (meanV { K with Δ := Δ₁ } ρ₁ (fun l => φ (π₁ l)) (.plain TyM.nat) v₀).succ = _
     rw [hSM { K with Δ := Δ₁ } ρ₁ (fun l => φ (π₁ l)) r.2 v₀ (by rw [hmean]; exact hmem), hmean]
-  obtain ⟨hpF, hrF⟩ := hSF { K with Δ := Δ₁ } ρ₁ φ π₁ m typed st₁ st' v₀ T₀ s₁ hp₁ hr₁ hS₁ hq hty
+  -- the argument is not a borrow: typed, by the checker's fact; untyped, by the reference's success (`hok`) and the
+  -- label the result carries (`Out`'s label clause)
+  have hnb : ∀ l w, v₀ ≠ .borrow l w := by
+    cases typed with
+    | true =>
+      obtain ⟨st₂, bh₂, hx₂, -⟩ := hty rfl
+      exact hNT K ρ m u st₀ st₁ st₂ bh₁ bh₂ v₀ T₀ (hp.of_kern hk₀) hu₀ hx₂
+    | false =>
+      intro l w e
+      have h0 := hNU K ρ φ st.curTail (hintM K ρ hint) u s hfl (hok rfl) r s₁ hx'
+      rw [hlab, e] at h0
+      cases h0
+  obtain ⟨hpF, hrF⟩ := hSF { K with Δ := Δ₁ } ρ₁ φ π₁ m typed st₁ st' v₀ T₀ s₁ hnb hp₁ hr₁ hS₁ hq hty
   have hkept : Kept st st' := by
     refine ⟨hm₀.trans (hK₁.mode.trans hme), ?_, ?_⟩
     · rw [← ColumnC.size_of_erase hq.env, hK₁.size, hsz₀]
@@ -157,9 +244,11 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc
 
 /-- **The step for `S(u)`, in general**: from the induction hypothesis, at every fuel, `Δ` and assignment, for every
 argument, typed or untyped, `EvalSimK` from a state with a frame where the table reads `S(u)` as neither `.any` nor a
-proof (so it leaves it unerased). ASSUMES 3 facts: `SuccStrictG` (mixed), `SuccMeanG` (model), `SuccFlightG` (mixed);
-and `Strict.FundCtx K`. -/
-theorem stepSucc (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc : Strict.FundCtx K) :
+proof (so it leaves it unerased). ASSUMES 5 facts: `SuccStrictG` (mixed, typed), `SuccMeanG` (model), `SuccFlightG`
+(mixed, restated by lead27: the argument is not a borrow), `SuccArgNoBorrowT` (checker, typed; unread),
+`SuccRefNoLabel` (model, untyped; FALSE as the model stands, ruling asked, docs/31 D185); and `Strict.FundCtx K`. -/
+theorem stepSucc (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hNT : SuccArgNoBorrowT)
+    (hNU : SuccRefNoLabel) (hc : Strict.FundCtx K) :
     ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (u : Term),
       EvalSimK { K with Δ := Δ } ρ φ n (.succ u)
         (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.succ u) ≠ .any ∧
@@ -172,7 +261,7 @@ theorem stepSucc (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hc :
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.succ u)
       (fun st => 0 < st.env.size ∧ K.D.declOf (DecideScope.topReadings st) (.succ u) ≠ .any ∧
         (K.D.declOf (DecideScope.topReadings st) (.succ u)).isProof = false) :=
-    fun st st' typed hint v T? s π hP => succ_coreG (K := { K with Δ := Δ }) hST hSM hSF ⟨hc.globals, hc.sorts⟩ ih
+    fun st st' typed hint v T? s π hP => succ_coreG (K := { K with Δ := Δ }) hST hSM hSF hNT hNU ⟨hc.globals, hc.sorts⟩ ih
       st st' typed hint v T? s π hP.1
   exact eval_of_coreK (K := { K with Δ := Δ }) Machine.evalInvD
     (fun a b hk ha => ⟨by rw [← ColumnC.size_of_erase hk.env]; exact ha.1,
