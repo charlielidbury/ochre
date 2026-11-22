@@ -882,7 +882,10 @@ a chain of inductives (at a computed value parameter, under `Box`), a type funct
 itself (directly, under `Box`, at an index field, at a nested occurrence), an equation, a borrow,
 a parameter that is a type function (applied in a field, applied by a global, given a lambda that
 mentions the type). A value parameter whose type is a type parameter, with the type nested at it,
-is positive and accepted. -/
+was accepted as positive (`T1`, given an earlier field of `T1` itself); Lean's kernel rejects it
+("nested inductive datatypes parameters cannot contain local variables"), the data model cannot
+build it (its value argument carries the model's record of `T1`), and D120 rejects it. With a value
+argument of an unrelated type the nesting stays accepted (`T2`). -/
 
 ochr PositivityRoutes {
   inductive Void : Type
@@ -913,7 +916,9 @@ ochr PositivityRoutes {
   -- twin of Bad10, Bad11: `H2` given the type at no parameter
   inductive Ok10 := MkOk10(h : H2(NegT, Unit))
   inductive G1 (A : Type) (a : A) := MkG1(x : A)
-  inductive T1 := Leaf1 | Node1(t : T1, g : G1(T1, t))
+  reject inductive T1 := Leaf1 | Node1(t : T1, g : G1(T1, t))
+  inductive G2 (A : Type) (n : Nat) := MkG2(x : A)
+  inductive T2 := Leaf2 | Node2(n : Nat, g : G2(T2, n))
 }
 
 #guard (run "PositivityRoutes" PositivityRoutes).rejectedWith [
@@ -928,7 +933,8 @@ ochr PositivityRoutes {
   ("Bad9", "field r of MkBad9: no borrows inside data"),
   ("H1", "field x of MkH1 : G(0): fields are first-order data"),
   ("Bad10", "field h of MkBad10 : H2(NegT, Bad10): Bad10 occurs at the parameter A of H2, which is not nestable in H2"),
-  ("Bad11", "field h of MkBad11 : H2(")]
+  ("Bad11", "field h of MkBad11 : H2("),
+  ("T1", "field g of Node1 : G1(T1, t): the argument at the value parameter a of G1 reads t, whose declared type T1 mentions T1")]
 
 /-! While a declaration is checked, its entry in Σ has no constructors yet, and a reader of that
 entry would answer as if the type were empty (D107). A value argument in a field type may be any
@@ -953,10 +959,11 @@ ochr PositivityDeclaring uses Lists {
   reject inductive EC := LeafC | NodeC(b : EC, t : Tag(let x = LeafC; 0))
   -- an earlier field of the type read twice: it is not known to be a copy
   reject inductive ED := LeafD | NodeD(b : ED, t : Tag(let x = b; let y = b; 0))
-  -- twins: what reads no constructor of the type being declared is accepted
+  -- twins: what reads no constructor of the type being declared passes D107 (`EOk`); reading an
+  -- earlier field of the type at all, as `EOnce` and `EClone` do, is rejected by D120
   inductive EOk (h : False) := LeafOk | NodeOk(b : EOk(h), w : W(let k : False = match h {}; k))
-  inductive EOnce := LeafO | NodeO(b : EOnce, t : Tag(let x = b; 0))
-  inductive EClone := LeafCl | NodeCl(b : EClone, t : Tag(let x = clone(b); 0))
+  reject inductive EOnce := LeafO | NodeO(b : EOnce, t : Tag(let x = b; 0))
+  reject inductive EClone := LeafCl | NodeCl(b : EClone, t : Tag(let x = clone(b); 0))
   -- a copy declaration counts the type itself as a copy (D53), whatever its entry says
   inductive Box (A : Type) := MkBox(x : A)
   copy inductive ECopy := LeafCp | NodeCp(b : Box(ECopy))
@@ -969,7 +976,9 @@ ochr PositivityDeclaring uses Lists {
   ("EA", "a match on b reads the constructors of EA, which are not known while EA is declared (D107)"),
   ("EJ", "b.0 reads the constructors of EJ, which are not known while EJ is declared (D107)"),
   ("EC", "the constructor LeafC reads the constructors of EC, which are not known while EC is declared (D107)"),
-  ("ED", "[Read] b was moved out or its borrow ended")]
+  ("ED", "[Read] b was moved out or its borrow ended"),
+  ("EOnce", "field t of NodeO : Tag(let x = b; 0): the argument at the value parameter n of Tag reads b, whose declared type EOnce mentions EOnce"),
+  ("EClone", "field t of NodeCl : Tag(let x = clone(b); 0): the argument at the value parameter n of Tag reads b, whose declared type EClone mentions EClone")]
 
 /-! Nested declarations that stay accepted: each nests the type at a parameter that the inner
 inductive uses only as a whole field type or at nestable parameters, its own occurrences
@@ -1135,6 +1144,162 @@ ochr PositivityControls uses Nats, Bools {
   ("E", "field p of MkE : P(E, true): E occurs at the parameter A of P, which is not nestable in P"),
   ("f", "[D45] a match on a proof of POr returns a non-proof"),
   ("get", "[D45] a match on a proof of PS returns a non-proof")]
+
+/-! ## Lean's rules for nested declarations (D120, D121)
+
+Three kinds of declaration were accepted that Lean's kernel rejects, and at each the data model's
+construction fails (docs/34 §18.6): a nested occurrence whose value argument is an earlier field of
+the type itself (`R1`, Lean: "nested inductive datatypes parameters cannot contain local
+variables"); an equation, or any argument off the field type's spine, reading an earlier field
+whose type mentions the type, directly or through a parameter the type is nested at later (`R4`,
+`W1`/`U1`); and a type of data nested through a proposition at a `Prop` parameter (`D1`, Lean:
+"mutually inductive types must live in the same universe"), and, further in, a type nested through
+a declaration of the other sort at a parameter (`DE`, `QE`). None was a hole: a field type in these
+shapes sees only a container's shape, or carries the type's values as positive data. They are
+rejected by two of Lean's rules. D120: a variable mentions what its declared type mentions, so an
+equation, a type function's argument or a value argument may not read a variable whose type
+mentions the type being declared, and a parameter read so is not nestable. D121: a nested
+occurrence passes only through declarations of its own sort (a type of data through types of data,
+a proposition through propositions), and a parameter passed to a declaration of the other sort is
+not nestable. Each rejected shape is beside its smallest neighbour that stays accepted. Lean rejects
+every row rejected here. Two accepted rows differ from Lean, which rejects them: `K1` (a nested
+occurrence's value argument reads a field of an unrelated type: Lean allows no local variable
+there) and `K8` (a type nested at its own parameter, D107). `DF` passes a closed value at a
+parameter whose declared type mentions the parameter the type is nested at; Lean accepts it, and so
+does the checker. -/
+
+ochr NestReads uses Logic, Nats, Lists {
+  inductive Tag (n : Nat) := MkTag
+  inductive Fin1 (n : Nat) := MkFin1
+  inductive Pt (A : Type) (a : A) := MkPt
+  inductive Pn (A : Type) (n : Nat) := MkPn(x : A)
+  def TF (n : Nat) : Type := (match n { Z => Nat, S(k) => Unit })
+  -- a value argument of a nested occurrence, reading the type directly (kind 1)
+  reject inductive R1 := L1 | N1(x : R1, p : Pt(R1, x))
+  -- twins: the nested occurrence's value argument reads a field of an unrelated type, or is closed
+  inductive K1 := KL1 | KN1(n : Nat, p : Pn(K1, n))
+  inductive K1c := KL1c | KN1c(p : Pn(K1c, 3))
+  def k1 : K1 := KN1(2, MkPn[K1, 2](KN1(0, MkPn[K1, 0](KL1))))
+  -- a value argument of a declaration the type is not nested in, reading the type directly
+  reject inductive R2 := L2 | N2(x : R2, t : Tag(let y = x; 0))
+  -- the same through a container, by a match in the argument
+  reject inductive R3 := L3 | N3(xs : List(R3), t : Tag(match xs { Nil => 0, Cons(h, r) => 1 }))
+  -- twins: a dependent field indexed by an earlier field of an unrelated type; a container of
+  -- the type that nothing off the spine reads
+  inductive K3 := MkK3(n : Nat, x : Fin1(n))
+  inductive K3b := L3b | N3b(xs : List(K3b))
+  -- an equation side reading a container of the type (kind 2), and the type directly
+  reject inductive R4 := L4 | N4(xs : List(R4), e : Eq(Nat, match xs { Nil => 0, Cons(h, r) => 1 }, 1))
+  reject inductive R4b := L4b | N4b(x : R4b, e : Eq(Nat, (let y = x; 0), 0))
+  -- twin: an invariant on a field of an unrelated type, beside a container of the type
+  inductive K4 := L4k | N4k(n : Nat, e : Eq(Nat, n, n), xs : List(K4))
+  -- a type function's argument: closed already, as an argument is a variable, a numeral or a
+  -- first-order type (D36), and no type function declared earlier takes the type's values
+  reject inductive R5 := L5 | N5(xs : List(R5), y : TF(match xs { Nil => 0, Cons(h, r) => 1 }))
+  -- twin: a type function's argument reading a field of an unrelated type
+  inductive K5 := L5k | N5k(n : Nat, y : TF(n), xs : List(K5))
+  -- the type's own value parameter, at its recursive occurrence, reading a container of the type
+  reject inductive R6 (k : Nat) := L6 | N6(xs : List(R6(0)), r : R6(match xs { Nil => 0, Cons(h, t) => 1 }))
+  -- twin: reading a field of an unrelated type there
+  inductive K6 (k : Nat) := L6k | N6k(m : Nat, r : K6(m))
+  -- a field of an unrelated type beside the read of a container of the type
+  reject inductive R7 := L7 | N7(xs : List(R7), n : Nat, e : Eq(Nat, Add(n, match xs { Nil => 0, Cons(h, r) => 1 }), 1))
+  -- the type nested at its own parameter, which a field reads through a variable of that type
+  reject inductive R8 (A : Type) := L8 | N8(x : A, t : Tag(let y = x; 0), r : R8(R8(A)))
+  -- twin: the parameter not read
+  inductive K8 (A : Type) := L8k | N8k(x : A, r : K8(K8(A)))
+  -- through a parameter nested later: an equation reading a container of the parameter (kind 2)
+  inductive W1 (A : Type) := WL1 | WN1(ws : List(A), e : Eq(Nat, match ws { Nil => 0, Cons(h, t) => 1 }, 1))
+  reject inductive U1 := MkU1(w : W1(U1))
+  def w1 : W1(Nat) := WN1[Nat](Cons(0, Nil), refl)
+  -- ... a value argument reading a field of the parameter's type
+  inductive W2 (A : Type) := WN2(y : A, t : Tag(let z = y; 0))
+  reject inductive U2 := UL2 | MkU2(w : W2(U2))
+  -- ... a value parameter typed by the parameter, read
+  inductive W3 (A : Type) (a : A) := WN3(t : Tag(let z = a; 0))
+  reject inductive U3 := UL3 | MkU3(x : U3, w : W3(U3, x))
+  -- ... a value parameter typed by a container of the parameter, read by an equation
+  inductive W4 (A : Type) (l : List(A)) := WN4(e : Eq(Nat, match l { Nil => 0, Cons(h, t) => 1 }, 1))
+  reject inductive U4 := UL4 | MkU4(x : U4, w : W4(U4, Cons(x, Nil)))
+  -- ... through two declarations: the parameter passed on to one that reads it
+  inductive W5 (A : Type) := WN5(w : W1(A))
+  reject inductive U5 := MkU5(w : W5(U5))
+  -- twin: a container of the parameter that nothing off the spine reads, and an equation on a
+  -- field of an unrelated type
+  inductive WK (A : Type) := WNK(ws : List(A), n : Nat, e : Eq(Nat, n, 1))
+  inductive UK := MkUK(w : WK(UK))
+  -- a closed value at a parameter whose declared type mentions the nested parameter (Lean accepts)
+  inductive Void0 : Type
+  def NegF (X : Type) (b : Nat) : Type := (match b { Z => Unit, S(k) => Π(x : X). Void0 })
+  inductive NF (A : Type) (n : Nat) (f : NegF(A, n)) := MkNF(y : A)
+  inductive DF := LeafF | NodeF(p : NF(DF, 0, ()))
+}
+
+#guard (run "NestReads" NestReads).rejectedWith [
+  ("R1", "field p of N1 : Pt(R1, x): the argument at the value parameter a of Pt reads x, whose declared type R1 mentions R1, and a variable mentions what its declared type mentions"),
+  ("R2", "field t of N2 : Tag(let y = x; 0): the argument at the value parameter n of Tag reads x, whose declared type R2 mentions R2"),
+  ("R3", "field t of N3 : Tag(match xs { Nil => 0, Cons => 1 }): the argument at the value parameter n of Tag reads xs, whose declared type List(R3) mentions R3"),
+  ("R4", "field e of N4 : Eq(Nat, match xs { Nil => 0, Cons => 1 }, 1): the equation reads xs, whose declared type List(R4) mentions R4"),
+  ("R4b", "field e of N4b : Eq(Nat, let y = x; 0, 0): the equation reads x, whose declared type R4b mentions R4b"),
+  ("R5", "field y of N5 : TF(match xs { Nil => 0, Cons => 1 }): fields are first-order data"),
+  ("R6", "field r of N6 : R6(match xs { Nil => 0, Cons => 1 }): the argument at the value parameter k of R6 reads xs, whose declared type List(R6(0)) mentions R6"),
+  ("R7", "field e of N7 : Eq(Nat, Add(n, match xs { Nil => 0, Cons => 1 }), 1): the equation reads xs, whose declared type List(R7) mentions R7"),
+  ("R8", "field r of N8 : R8(R8(A)): R8 occurs at the parameter A of R8, which is not nestable in R8: a field of R8 reads, in an equation, a call or a value argument, a variable whose declared type mentions it"),
+  ("U1", "field w of MkU1 : W1(U1): U1 occurs at the parameter A of W1, which is not nestable in W1: a field of W1 reads, in an equation, a call or a value argument, a variable whose declared type mentions it"),
+  ("U2", "field w of MkU2 : W2(U2): U2 occurs at the parameter A of W2, which is not nestable in W2: a field of W2 reads"),
+  ("U3", "field w of MkU3 : W3(U3, x): U3 occurs at the parameter A of W3, which is not nestable in W3: a field of W3 reads"),
+  ("U4", "field w of MkU4 : W4(U4, Cons(x, Nil)): U4 occurs at the parameter A of W4, which is not nestable in W4: a field of W4 reads"),
+  ("U5", "field w of MkU5 : W5(U5): U5 occurs at the parameter A of W5, which is not nestable in W5: W5 passes it to a type function, an equation, a value or a parameter that is not nestable")]
+
+ochr NestProps uses Logic, Lists {
+  inductive PP (A : Type) : Prop := MkPP(x : A)
+  inductive Q (P : Prop) := MkQ(h : P)
+  inductive QQ (P : Prop) : Prop := MkQQ(h : P)
+  inductive Wrap (P : Prop) := MkWrap(h : P)
+  inductive Box (A : Type) := MkBox(x : A)
+  -- a type of data through a proposition (kind 3), deeper, through propositions only, at the type's
+  -- own `Prop` parameter, and directly in a proposition at its `Type` parameter
+  reject inductive D1 := MkD1(q : Q(PP(D1)))
+  reject inductive D2 := MkD2(q : Q(And(PP(D2), True)))
+  reject inductive D3 := MkD3(q : QQ(PP(D3)))
+  reject inductive D4 (P : Prop) := L4 | N4(h : P, r : D4(PP(D4(P))))
+  reject inductive D5 := MkD5(h : PP(D5))
+  -- through a parameter nested later: `E` and `F` are accepted, their `A` is not nestable
+  inductive E (A : Type) := MkE(p : PP(A))
+  reject inductive DE := MkDE(e : E(DE))
+  inductive F (A : Type) := MkF(q : Q(PP(A)))
+  reject inductive G := MkG(f : F(G))
+  def eNat : E(Nat) := MkE[Nat](MkPP[Nat](0))
+  def fNat : F(Nat) := MkF[Nat](MkQ[PP(Nat)](MkPP[Nat](0)))
+  -- a proposition through a type of data: directly, through a parameter nested later
+  reject inductive QW : Prop := MkQW(w : Wrap(QW))
+  reject inductive E3 : Prop := MkE3(q : Q(E3))
+  inductive E2 (P : Prop) : Prop := MkE2(w : Wrap(P))
+  reject inductive QE : Prop := MkQE(e : E2(QE))
+  inductive FP (P : Prop) := MkFP(q : Q(And(P, True)))
+  reject inductive EP : Prop := MkEP(f : FP(EP))
+  -- twins: a proposition nested through propositions, a type of data through types of data
+  inductive P1 : Prop := MkP1(h : And(P1, True))
+  inductive P2 : Prop := MkP2(q : QQ(P2))
+  inductive B1 := L1 | N1(b : Box(B1), l : List(Box(B1)))
+  -- twins: a proposition in data and data in a proposition at no occurrence of the type
+  inductive WithPP := MkWithPP(n : Nat, p : PP(Nat))
+  inductive PWith (A : Type) : Prop := MkPWith(l : List(A))
+  inductive UsePW : Prop := MkUsePW(p : PWith(Nat))
+}
+
+#guard (run "NestProps" NestProps).rejectedWith [
+  ("D1", "field q of MkD1 : Q(PP(D1)): D1, a type of data, occurs inside an argument of PP, a proposition, and a nested occurrence passes only through declarations of its own sort (D121"),
+  ("D2", "field q of MkD2 : Q(PP(D2) ∧ ⊤): D2, a type of data, occurs inside an argument of And, a proposition"),
+  ("D3", "field q of MkD3 : QQ(PP(D3)): D3, a type of data, occurs inside an argument of QQ, a proposition"),
+  ("D4", "field r of N4 : D4(PP(D4(P))): D4 occurs at the parameter P of D4, which is not nestable in D4: D4 passes it to a declaration of the other sort"),
+  ("D5", "field h of MkD5 : PP(D5): D5, a type of data, occurs inside an argument of PP, a proposition"),
+  ("DE", "field e of MkDE : E(DE): DE occurs at the parameter A of E, which is not nestable in E: E passes it to a declaration of the other sort, and a nested occurrence passes only through declarations of its own sort (D121"),
+  ("G", "field f of MkG : F(G): G occurs at the parameter A of F, which is not nestable in F: F passes it to a declaration of the other sort"),
+  ("QW", "field w of MkQW : Wrap(QW): QW, a proposition, occurs inside an argument of Wrap, a type of data"),
+  ("E3", "field q of MkE3 : Q(E3): E3, a proposition, occurs inside an argument of Q, a type of data"),
+  ("QE", "field e of MkQE : E2(QE): QE occurs at the parameter P of E2, which is not nestable in E2: E2 passes it to a declaration of the other sort"),
+  ("EP", "field f of MkEP : FP(EP): EP occurs at the parameter P of FP, which is not nestable in FP: FP passes it to a declaration of the other sort")]
 
 /-! ## Decisions read an unknown by the reading frozen when it was made (D96)
 
