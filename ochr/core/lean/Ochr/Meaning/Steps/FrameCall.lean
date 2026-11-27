@@ -288,6 +288,40 @@ theorem frameRel_callData (hr : FrameRel σ s₀ ks s s') (hs₀ : FrameStart s�
     rw [headD_len_takes]; exact hcells
   exact frameRel_mapFix ht hs₀ hc (fun _ => (refL.zip fs).filterMap fun lf => lf.1.map (·, lf.2)) (fun _ l _ _ => hsr l)
 
+
+/-- `callOfL`'s fixes for a returned borrow, as written (a `match` on the decoded final content of the fresh label `k`),
+are `fixVals` of the fixes read off the future at `k`. -/
+theorem fixVals_dec {X : Type} (dec : Sem → Option X) (k : Nat) (A : X → List (Nat × Sem)) (B : List (Nat × Sem)) :
+    (fun (_ : Pos) (v : SVal) (φ' : Future) => match dec (φ' k) with
+      | some x => v (φ'.updList (A x))
+      | none => v (φ'.updList B)) =
+    fixVals (fun φ' => match dec (φ' k) with | some x => A x | none => B) := by
+  funext p v φ'
+  simp only [fixVals]
+  cases dec (φ' k) <;> rfl
+
+/-- **A call returning a borrow: its fixes against the frame relation** (`callOfL`'s ref case, after the takes and the
+fresh label): every position reads the consumed labels at the backward function's components at the fresh label's final
+content, decoded; in place at the image of the closure's fresh label, so the in-place fixes are the renamed closure's at
+the renamed future (`frameRel_mapFix`). -/
+theorem frameRel_callRefFix (hr : FrameRel σ s₀ ks s s') (hs₀ : FrameStart s₀ ks)
+    (hcells : ks.length ≤ (s'.env.headD {}).binds.length) (hsr : ∀ l, σ l ∈ ks ∨ s₀.nextLoan ≤ σ l)
+    {X : Type} (dec : Sem → Option X) (k : Nat) (A : X → List (Nat × Sem)) (B : List (Nat × Sem)) :
+    FrameRel σ s₀ ks
+      (s.mapVals fun _ v φ' => match dec (φ' (σ k)) with
+        | some x => v (φ'.updList (renFix σ (A x)))
+        | none => v (φ'.updList (renFix σ B)))
+      (s'.mapVals fun _ v φ' => match dec (φ' k) with
+        | some x => v (φ'.updList (A x))
+        | none => v (φ'.updList B)) := by
+  rw [fixVals_dec, fixVals_dec]
+  have e : (fun φ' : Future => match dec (φ' (σ k)) with | some x => renFix σ (A x) | none => renFix σ B) =
+      fun ψ => renFix σ ((fun φ' : Future => match dec (φ' k) with | some x => A x | none => B) (renF σ ψ)) := by
+    funext ψ; simp only [renF]; cases dec (ψ (σ k)) <;> rfl
+  rw [e]
+  exact frameRel_mapFix hr hs₀ hcells (fun φ' => match dec (φ' k) with | some x => A x | none => B)
+    fun _ l _ _ => hsr l
+
 end
 
 end Ochr.Meaning.Steps.Form.FrameEnd
