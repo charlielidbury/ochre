@@ -3476,6 +3476,9 @@ def closeCall (fuel : Nat) (n : Nat) (kind : Kind) (res : DeclInfo := .other)
   match kind with
   | .ref =>
     let k ← freshLoan
+    -- D137: no η here. A fill at a place declared `Unit` keeps the hole `k` like any other: `()`
+    -- would leave `k` in no place, so writes through the returned borrow would be observed nowhere
+    -- (`ClosingOff.UnitFill`, `QU`)
     for ((i, l, _), j) in bs.zipIdx do
       let fill := wrapL (.letIn ⟨"r"⟩ (C 0) (.seq (.assign (.deref (.var 0)) (.val (.loan k))) (peek (cell 1 j))))
       -- D115: the argument's borrow is consumed (its content is the program's cell `cⱼ`), as [End]
