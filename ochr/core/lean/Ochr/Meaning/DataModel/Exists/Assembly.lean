@@ -30,7 +30,9 @@ one's exact statement and status):
 * about the checker: `ItemFacts` (read true; all but its `IndChecks` part proved by machine10),
   `NamesFact` (read true for resolved items), `VaryValFact` and `FieldHeads` (read true since main's
   D128, merged into this line by machine12; not derived);
-* about resolution: `NoValFact` (no embedded value in an inductive item's types; read true, not derived);
+* about resolution: `NoValFact` (no embedded value in an inductive item's types), PROVED for the items a
+  program resolves to (exists12, `Steps.Machine.noVal_runResolve`); a separate hypothesis of
+  `exists_dataModel_facts`, discharged by `Consistency.exists_dataModel` from the resolution;
 * obligations on the checker's decisions: `DecLocal` at every state (its `join` part proved for the
   checker's decisions, machine11's `Steps.Machine.decLocal_join_chain`; the other parts read true) and
   `DecStable` (at the states the checker reaches).
@@ -325,13 +327,11 @@ def ItemFacts : Prop :=
     (∀ d, it = .defn d → st'.inds = st.inds ∧ st.globals <+: st'.globals)
 
 /-- **Resolution builds no embedded value** (a fact about the program's items as resolution produces
-them, NOT about the checker, which accepts core declarations holding one: `FactsCE.EV`, `FactsCE.EP`;
-not derived): no parameter type and no field type of an inductive item holds an embedded value
-(`Term.val`). Stated, as `NamesFact` is, of the items `exists_dataModel` is given, which
-`consistencyBounded_assembled` takes to be the ones the program resolves to. A derivation reads
-`Ochr/Surface.lean`: `resolveDecl`'s inductive case (parameter types from `binders`, i.e. `bindersF`,
-field types from `resolve`, i.e. `resolveF`) and `resolveF`, no clause of which builds `Term.val`
-(the only builder of a term resolution has; `succFn` is a closed constant term with none). -/
+them, NOT about the checker, which accepts core declarations holding one: `FactsCE.EV`, `FactsCE.EP`):
+no parameter type and no field type of an inductive item holds an embedded value (`Term.val`). Stated
+of the items `exists_dataModel` is given. PROVED for the items a program resolves to (exists12,
+`Steps.Machine.noVal_runResolve`, with machine12's `RRet` tool: no clause of `resolveF`, `bindersF` or
+`resolveDecl` builds a `Term.val`; `Consistency.noValFact_of_resolvesTo`). -/
 def NoValFact : Prop :=
   ∀ d, Item.ind d ∈ items → Knot.FieldsNoVal d ∧ ParamsNoVal d
 
@@ -457,12 +457,13 @@ theorem paramsNoVal_of_params {d d' : IndDecl} (h : d'.params = d.params) (hv : 
     ParamsNoVal d' := fun j => by have := hv j; unfold Knot.paramTerm at this ⊢; rw [h]; exact this
 
 /-- **The facts the existence of the data model rests on**, together (`exists_dataModel_facts`): about
-the checker, `ItemFacts`, `NamesFact`, `VaryValFact`, `FieldHeads`; about resolution, `NoValFact`;
-obligations on the checker's decisions, `DecLocal` at every state and `DecStable`. The one fact about
-the model, `GlobalCallLevels`, is proved (`globalCallLevels`, exists12) and no longer a field. -/
+the checker, `ItemFacts`, `NamesFact`, `VaryValFact`, `FieldHeads`; obligations on the checker's
+decisions, `DecLocal` at every state and `DecStable`. No longer fields (exists12): the fact about the
+model, `GlobalCallLevels`, proved (`globalCallLevels`); the fact about resolution, `NoValFact`, proved
+for the items a program resolves to (`Steps.Machine.noVal_runResolve`), which `exists_dataModel_facts`
+takes as its own hypothesis and `Consistency.exists_dataModel` derives from the resolution. -/
 structure DataFacts : Prop where
   item : ItemFacts
-  noVal : NoValFact items
   varyVal : VaryValFact fuel items
   names : NamesFact D fuel items
   heads : FieldHeads fuel items
@@ -991,14 +992,15 @@ theorem exists_dataModel' (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryV
   obtain ⟨dm, h⟩ := inv_all D fuel items hIF hNV hVV hN hFH hGC hDL hDS hpre items.length (Nat.le_refl _)
   exact ⟨dm, exists_of_inv D fuel items h hpre⟩
 
-/-- **The data model exists**, from the facts it rests on (`DataFacts`); the stage prefix fact is
-machine10's PROVED `Steps.Machine.indsOf_take_prefix`. -/
-theorem exists_dataModel_facts (hF : DataFacts D fuel items) :
+/-- **The data model exists**, from the facts it rests on (`DataFacts`) and the items' having no
+embedded value (`NoValFact`, true of a resolved program: `Consistency.noValFact_of_resolvesTo`); the
+stage prefix fact is machine10's PROVED `Steps.Machine.indsOf_take_prefix`. -/
+theorem exists_dataModel_facts (hNV : NoValFact items) (hF : DataFacts D fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
-  exists_dataModel' D fuel items hF.item hF.noVal hF.varyVal hF.names hF.heads (globalCallLevels D fuel items)
+  exists_dataModel' D fuel items hF.item hNV hF.varyVal hF.names hF.heads (globalCallLevels D fuel items)
     hF.decLocal hF.decStable
     (fun k _ => Steps.Machine.indsOf_take_prefix {} fuel items k)
 

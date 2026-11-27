@@ -5,6 +5,7 @@ import Ochr.Meaning.Steps.Knot
 import Ochr.Meaning.Steps.FixKnot
 import Ochr.Meaning.DecisionsFF
 import Ochr.Meaning.DataModel.Exists.Assembly
+import Ochr.Meaning.Steps.Machine.NoVal
 
 /-!
 # Milestone 4: the assembly of `consistencyBounded` (docs/18 Corollaries 15 and 16)
@@ -29,9 +30,9 @@ the leaves below and the step lemmas (`Steps/*.lean`). Writing them found the kn
 A data model covering and faithful to every accepted program exists (`exists_dataModel`, docs/34),
 which turns the relative statement into `consistencyBounded`. It is proved (exists10 to exists12,
 `DataModel/Exists/Assembly.lean`) assuming the facts bundled in `DataFacts` (docs/34 §18.16, §18.17):
-seven, about the checker, resolution and the checker's decisions, each read true against today's
-checker (main's D128 and D129, which made three of them true, are on this line); the one fact about
-the model, `GlobalCallLevels`, is proved (exists12).
+six, about the checker and its decisions, each read true against today's checker (main's D128 and
+D129, which made three of them true, are on this line); the one fact about the model,
+`GlobalCallLevels`, and the one about resolution, `NoValFact`, are proved (exists12).
 `consistencyBounded_assembled` takes `DataFacts` as a hypothesis.
 
 What the assembly covers as the run stands (docs/31 D12): definitions whose Π-type is in `Type₀`
@@ -385,6 +386,19 @@ theorem consistency_rel (q : Program) (fuel : Nat)
 
 end
 
+/-- **`NoValFact` of a resolved program** (PROVED, exists12, from machine12's `RRet` tool): every
+item resolution produces holds no embedded value in a field or parameter type
+(`Steps.Machine.noVal_runResolve`: no clause of `resolveF`, `bindersF` or `resolveDecl` builds a
+`Term.val`). -/
+theorem noValFact_of_resolvesTo (p : Program) (fuel : Nat) (items : List Item) (hres : ResolvesTo p fuel items) :
+    DataModel.Exists.Assembly.NoValFact items := by
+  intro d hd
+  obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hd
+  have hlt : i < p.length := by
+    rw [← hres.1]; exact (List.getElem?_eq_some_iff.1 hi).1
+  obtain ⟨st, hrun, -⟩ := hres.2 i p[i] (.ind d) (List.getElem?_eq_getElem hlt) hi
+  exact Steps.Machine.noVal_runResolve p p[i] fuel false hrun d rfl
+
 /-- **A data model covering and faithful to every accepted program exists** (docs/34), under the
 checker's decisions, read with no fuel (`DecisionsFF.chainDecisions`, docs/31 D84: the fixed-fuel
 instance never met `DecTab`; an existential choice of decisions could make the runs faithfulness asks
@@ -400,13 +414,13 @@ checker, kept as an assumption of the construction, not a hypothesis here: the c
 decides that two applications of a type former to different arguments are different (a record
 keeps what field types read of the parameters, not the parameters; docs/34 §8, §13).
 
-**Assumes seven facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17 state each exactly):
+**Assumes six facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17 state each exactly), and
+that `items` is the resolution of a program (`hres`), from which `NoValFact` is PROVED
+(`noValFact_of_resolvesTo`):
 * `ItemFacts` (about the checker; read true, all but its `IndChecks` part proved by machine10's
   `checkItem_tables`): an accepted inductive declaration appends one entry passing `Knot.IndChecks`
   with the item's parameters and constructors and leaves the globals; an accepted definition leaves
   the declarations and extends the globals;
-* `NoValFact` (about resolution, not the checker; read true, not derived): no parameter or field type
-  of an inductive item holds an embedded value;
 * `VaryValFact` (about the checker; read true since main's D128, not derived): no field type of an
   accepted declaration reads a varying value parameter;
 * `NamesFact` (about the checker and resolution; read true for resolved items): the names an accepted
@@ -420,13 +434,14 @@ keeps what field types read of the parameters, not the parameters; docs/34 §8, 
 The model fact `GlobalCallLevels` is proved (`Assembly.globalCallLevels`, exists12), and with
 `FieldHeads` gives the field types' level (`FieldLevel.fieldLevel0_of`). The stage prefix fact is
 machine10's `Steps.Machine.indsOf_take_prefix`. -/
-theorem exists_dataModel (items : List Item) (fuel : Nat)
+theorem exists_dataModel (p : Program) (items : List Item) (fuel : Nat) (hres : ResolvesTo p fuel items)
     (hF : DataModel.Exists.Assembly.DataFacts (chainDecisions fuel) fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithful dm (chainDecisions fuel) (indsOf {} fuel items)
         (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
-  DataModel.Exists.Assembly.exists_dataModel_facts (chainDecisions fuel) fuel items hF
+  DataModel.Exists.Assembly.exists_dataModel_facts (chainDecisions fuel) fuel items
+    (noValFact_of_resolvesTo p fuel items hres) hF
 
 /-- (leaf, checker) **Every stage's declarations are a prefix of the whole program's** (docs/31 D174):
 along accepted items Σ's inductive declarations only grow at the end (a definition adds none; a
@@ -457,7 +472,7 @@ theorem consistencyBounded_assembled (q : Program) (fuel : Nat)
       DataModel.Exists.Assembly.DataFacts (chainDecisions fuel) fuel items) :
     ∀ d ∈ q, ¬ d.IsFalseConst := by
   obtain ⟨items, hres⟩ := resolves_of_accepted (Prelude.decls ++ q) fuel acc
-  obtain ⟨dm, hcov, hfaith⟩ := exists_dataModel items fuel (hdata items hres)
+  obtain ⟨dm, hcov, hfaith⟩ := exists_dataModel _ items fuel hres (hdata items hres)
   refine consistency_rel dm (chainDecisions fuel) (indsOf {} fuel items) q fuel holes levels acc
     (fun d' hd' => hcov d' (by rw [progMeaning_inds]; exact hd')) (fun items' h' => ?_) (fun items' h' => ?_)
     (chainDecisions_aligned fuel)
