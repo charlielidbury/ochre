@@ -14,6 +14,12 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FIXPOINT EQUATION; A STUCK BLOCK IS NOT A FUNCTION (lead37, 2026-11-27, `spine-lead37`; docs/31 D232 to D234)
+
+- `FixEqDesc.fixEqG_of` PROVED: the fixpoint equation of every accepted global from `RecDescG` (RESTATED: closures of good functions; as first stated FALSE by reading) and `FnGoodG` (NEW: the knot's output). Both OPEN as clauses: established at acceptance by the knot's simulation, which is FALSE today at a stuck block calling the definition (`MB0r`, D232: kernel-checked `StageBlockCE`) until main's D139 and the model clause (i) are in.
+- MODEL FAULT (D233), no recursion: the model reads a stuck block as a closure over every value of its captures (`NTr`; `closureL_err_of_none`, `step_pred_zero`), the checker checks it at its captured values. Ruled (i) closure-style clause + (ii)/(alpha) in the checker (main's D139). (i) BUILT IN PART on `spine-lead37-blockwip`; STOPPED at the substitution lemmas (D234: owed the closure application equality and OwnIrr, or a block mark, or (gamma)).
+- `FixEqG` now at the forming state `formG`; `callInPlace_of` unchanged otherwise.
+
 ## A PROOF'S DATA FIELD; THE CALL IN PLACE FROM THE FRAME PROPERTY (lead36, 2026-11-27, `spine-lead36`; docs/31 D228 onward)
 
 - Main's amendment to D136 merged (D228): the guards flipped; no statement changed.

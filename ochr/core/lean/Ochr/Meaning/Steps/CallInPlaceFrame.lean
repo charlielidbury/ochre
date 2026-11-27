@@ -41,29 +41,6 @@ open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form Ochr.Meaning.S
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- A global's forming state: `meanV` reads `.clo [] t []` by the `.fix` clause from it (`GlobalsOk.fn`). -/
-def formG : SState := stateOf 0 []
-
-/-- The closure's binders, body hint and codomain reading at a global's code (`run_fix_def`'s `fb`, at `formG`). -/
-noncomputable def fbG (ds : List Term) (c : Term) : List PBind × (List Sem → TyS) × DeclInfo :=
-  (bindsOf K ρ φ formG ds, fixCod K ρ φ formG (bindsOf K ρ φ formG ds) (ds.map Term.isRefTy) c,
-    K.D.typeDecl (K.D.teleDecls (scopeOf formG) ds) c)
-
-/-- Its domains and codomain. -/
-noncomputable def psG (ds : List Term) : List PiDom := runDoms K ρ φ formG ds
-noncomputable def outG (ds : List Term) (c : Term) : PiCod :=
-  codOf K ρ φ formG (bindsOf K ρ φ formG ds) (ds.map Term.isRefTy) c
-
-/-- The declared sort, the function type, the closure's function (`fixG`, from the counter `0`) and the global's meaning
-(its closure), all at `formG`. -/
-noncomputable def lG (hs : List Hint) (ds : List Term) (c : Term) : Nat := K.D.piSort (scopeOf formG) (.pi hs ds c)
-noncomputable def piTG (hs : List Hint) (ds : List Term) (c : Term) : TyM :=
-  piTyAt K.dm.read (lG K hs ds c) (psG K ρ φ ds) (outG K ρ φ ds c)
-noncomputable def GG (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) : List Sem → Option BodyOut :=
-  fixG K ρ φ (fbG K ρ φ ds c) (lG K hs ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) (piTG K ρ φ hs ds c) 0 dec body
-noncomputable def selfG (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) : Sem :=
-  closureAt K.dm.read (lG K hs ds c) φ (psG K ρ φ ds) (outG K ρ φ ds c) (GG K ρ φ hs ds c dec body)
-
 /-- The in-place state after the push (`runBodyRef`'s, at a global: no captures). -/
 noncomputable def inStart (fres : Res) (ds : List Term) (c : Term) (args : List Res) (s : SState) : SState :=
   callFrame K ρ φ [] [] fres (fbG K ρ φ ds c).2.2 (fbG K ρ φ ds c).1 args s
@@ -547,7 +524,7 @@ theorem callInPlace_of (hst : CallStartG K ρ φ) (hpop : CallPopG K ρ φ) (hc 
     InPlaceAgree K ρ φ (runCallRef K ρ φ (K.C.global g) [] (.fix self hs ds c dec body) [] args s)
       (callOf K.dm.read (K.C.global g) args s) := by
   -- the fixpoint equation at the global's forming state, at the arguments
-  have he := hfix g gd self hs ds c dec body hfind hcur hfn ρ φ formG (args.map fun a : Res => a.1)
+  have he := hfix g gd self hs ds c dec body hfind hcur hfn ρ φ (args.map fun a : Res => a.1)
     (hdom : DomMembers K.dm.read (runDoms K ρ φ formG ds) (args.map fun a : Res => a.1))
   -- the start, then the frame property at the body (`body_agree`)
   have hmem' : selfG K ρ φ hs ds c dec body ∈ₛ[K.dm.read] piTG K ρ φ hs ds c := by rw [← hselfV, ← hselfT]; exact hmem

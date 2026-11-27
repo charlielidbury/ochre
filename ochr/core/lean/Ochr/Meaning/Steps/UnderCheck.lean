@@ -134,30 +134,47 @@ def CallAcceptedG (K : RunCtx) (φ : Future) : Prop :=
       Pre { K with Δ := Δ' } ρ' (st₁.withTempT v T?) ∧ Rel { K with Δ := Δ' } ρ' φ π' (st₁.withTempT v T?) s') ∧
     Kept stc st₁
 
-/-- **The body descends** (MODEL; a clause of the context for each accepted recursive global, like `FixEqG`; docs/31
-D207, the answer to the lead's second question: no conclusion of the general statement carries "every recursive call
-is at a lower rank", so it is this clause, established at the global's acceptance). The reference's run of the body at
-arguments `a` depends on `self` only through `self`'s applications at argument lists of rank below `a`'s: two selves
-whose applications agree there (and whose function types have the same parameter codes, so the arguments are run and
-tested alike) give the same body output. `FixEqG` follows by induction on the rank (stage `rank a + 1` at `a` binds
-`self` to stage `rank a` at the weakened type, which agrees with the global's function below `rank a` by the same
-induction: the stabilisation). Established at acceptance from the simulation of the global's own check at every bound
-(the knot): its conclusion makes the reference's output the meaning of the checker's leaf, which depends on `K.C.global
-g` only through the sealed programs of calls of `g` (D135 closes every such call off), each made where [Rec] tested its
-decreasing argument against the entry (typed sites; at untyped sites, the per-run form of principle 10, D205), so at a
-rank below the entry's. Principle 10 (recursion descends) and principle 1 (a recursive function means its limit by
-stages). -/
+/-- **The body descends** (MODEL; a clause of the context for each accepted global, like `FnGoodG`; docs/31 D207,
+RESTATED by D232). The reference's run of the global's body at member arguments `args` (from its forming state `formG`)
+depends on its own binding only through that binding's function below `args`' rank: for two selves that are closures over
+the global's domains at its sort (`closureAt` at a codomain of the true one's kind), each of a function good at every
+member argument (`OutGood'`) with a type that fits (`PiFits`), whose functions and codomains agree at the member argument
+lists of rank below `args`', the body's outputs agree. Without a decreasing parameter (`dec = none`, rank `0`) the body
+ignores its own binding (D31: it cannot name itself).
+
+**As first stated (D207) it was FALSE, by reading** (D232): it asked of the selves only their parameter codes and their
+calls below the rank; the whole-state test after a write at a field path reads every binding, `self` included, so at an
+argument of rank `0` (no agreement asked) a member and `err` give different outputs on a body that writes a field there.
+The selves are now closures of good functions, the only selves the reference ever binds (the stage closures, and the
+global's own closure).
+
+**Where it comes from** (D213 corrected by D232, D233; not built): at the global's acceptance, after the knot
+(`FnGoodG`, membership), from the simulation of the global's own check under two contexts whose meanings of the global are
+the two selves (one of them the global's own closure at its true type, which `MemBelow` must be widened to admit), the
+reference's output being the meaning of the checker's leaf under each; that meaning reads the global only through the
+values `.gfn g` the leaf's sealed programs hold (as a head call, or, until main's D139, as a stuck block's argument:
+`RecDescAttack.MB0`), each call of it [Rec]-tested against the entry (entries stay on the stack while block arms are
+checked), so at member arguments of rank below `args`', where the two selves agree (the closure application lemma).
+Attacked on `R`, `AH` (two arguments, the second decreasing), `MT`/`MB`/`MB0r` (a recursive call under a match on another
+argument), `TB`/`TBB` (returning a borrow of the argument): `Steps/RecDescAttack`. -/
 def RecDescG (K : RunCtx) (st : MState) : Prop :=
-  ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (j : Nat) (body : Term),
+  ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
     st.globals.find? (·.name == n) = some gd → K.cur.map (·.1) ≠ some n →
-    gd.fn? = some (.fix self hs ds c (some j) body) →
-    ∀ (ρ : Assignment) (φ : Future) (s : SState) (args : List Sem) (X Y : Sem) (TX TY : TyM),
-      DomMembers K.dm.read (runDoms K ρ φ s ds) args →
-      (∀ as : List Sem, TX.paramAt? K.dm.read as = TY.paramAt? K.dm.read as) →
-      (∀ (bs : List Res) (s' : SState), fixRank (some j) (bs.map (·.1)) < fixRank (some j) args →
-        callOf K.dm.read (X, .plain TX) bs s' = callOf K.dm.read (Y, .plain TY) bs s') →
-      let fb := (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
-      fixBodyAt K ρ φ fb s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c) TX s.nextLoan body X args =
-        fixBodyAt K ρ φ fb s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c) TY s.nextLoan body Y args
+    gd.fn? = some (.fix self hs ds c dec body) →
+    ∀ (ρ : Assignment) (φ : Future) (args : List Sem), DomMembers K.dm.read (psG K ρ φ ds) args →
+    ∀ (outX outY : PiCod) (gX gY : List Sem → Option BodyOut),
+      outX.isRef = (outG K ρ φ ds c).isRef → outY.isRef = (outG K ρ φ ds c).isRef →
+      PiFits K.dm.read (lG K hs ds c) (psG K ρ φ ds) outX (fun _ => True) →
+      PiFits K.dm.read (lG K hs ds c) (psG K ρ φ ds) outY (fun _ => True) →
+      (∀ a, DomMembers K.dm.read (psG K ρ φ ds) a → ∃ o, gX a = some o ∧ OutGood' K.dm.read (psG K ρ φ ds) outX a o) →
+      (∀ a, DomMembers K.dm.read (psG K ρ φ ds) a → ∃ o, gY a = some o ∧ OutGood' K.dm.read (psG K ρ φ ds) outY a o) →
+      (∀ bs, DomMembers K.dm.read (psG K ρ φ ds) bs → fixRank dec bs < fixRank dec args →
+        gX bs = gY bs ∧ outX.cod bs = outY.cod bs) →
+      fixBodyAt K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c)
+          (piTyAt K.dm.read (lG K hs ds c) (psG K ρ φ ds) outX) 0 body
+          (closureAt K.dm.read (lG K hs ds c) φ (psG K ρ φ ds) outX gX) args =
+        fixBodyAt K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c)
+          (piTyAt K.dm.read (lG K hs ds c) (psG K ρ φ ds) outY) 0 body
+          (closureAt K.dm.read (lG K hs ds c) φ (psG K ρ φ ds) outY gY) args
 
 end Ochr.Meaning.Steps.Form.Master
