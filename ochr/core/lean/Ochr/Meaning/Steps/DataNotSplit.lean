@@ -479,8 +479,9 @@ theorem inv_envBT {D : Decisions} {rest : List IndDecl} (hdec : DecNot D) {st : 
   -- (K): `Not`'s own binding at its Π-type, the parameter a constructor of `B`
   · refine (fun f i b hb => ?_)
     · rcases hbind hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
-      · exact fun l c e => (nomatch e)
-      · exact fun l c e => (by rcases hv' with rfl | rfl <;> exact nomatch e)
+      · exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
+      · exact ⟨fun l c e => (by rcases hv' with rfl | rfl <;> exact nomatch e),
+          fun l c e => (by rcases hv' with rfl | rfl <;> exact nomatch e)⟩
 
 /-- World `T`'s leaf with `F` in flight (the kernel; `leafT.withTempT F (some B)` but for the temporary's stored
 type). -/

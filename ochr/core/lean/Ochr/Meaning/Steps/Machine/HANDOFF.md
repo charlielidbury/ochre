@@ -569,6 +569,61 @@ equations: `split <;> try (injections <;> subst_vars)` and `contradiction`. (6) 
 is too little for Lean's threads); `inductive Q3 (A : Type) (n : Nat) (x : Q3(A, n, n)) := MkQ3` makes the checker run
 away (a run was SIGTERMed): never unguarded.
 
+### machine12 (2026-11-22): main merged twice (D128, D130, D132, D133; then D131, D134); the kind facts read; rulings R1–R3
+
+Branch `spine-machine13` (worktree `ochre-machine5`). Merges: no conflict, no regeneration of `machineGrows` (body
+changes; D131's `readingAgrees` and D134's `callPi` sit outside the mutual block, their `@[grows]` lemmas are in
+`MachineLeaves.lean`). docs/31 D191 (first merge), D192 (rulings), D193 (second merge, `EvalFitsT` re-read).
+
+PROVED: `expectRefNat` (`KindFacts.lean`); `LetCallInvU` restated (D130, D132) and re-proved; `evalAt_invF`/`EvalInvD`
+restated for D130 (the core starts with the flag clear, `deferHere` the entry's flag, the record clear).
+
+READ (verdicts and states in scratchpad `reports/machine12.md`; counterexamples in `KindCE.lean`): (K) TRUE at reachable
+states; `EvalKindT`/`EvalKindW`/`LaterPiG` FALSE at states `Pre` admits (deferred types; an ill-typed global; an unknown
+head); `TableSoundL1` FALSE as stated (restated at `scopeOf s`); `MemShapeL2` false at a borrow (note left);
+`VaryValFact`, `FieldHeads`' parameter part, `NamesFact`'s parameter part TRUE after D128/D133; `EvalFitsT`'s proof
+clause still FALSE as stated (about the run alone) but no `let` binds the counterexample since D131 (attacks:
+`SweepProbes.ProofReadAttacks`).
+
+RULINGS built: R1 (function half of (K) dropped); R2 (syntactic clause for a deferred borrow) NOT added, broken by a
+stuck block's codomain `.val (&Nat)` (`CloseOffModel`), its variant ("`&A` or embedded `&A`") holds on every block that
+has deferred borrows (awaiting the lead's re-ruling); R3 recorded in docstrings.
+
+FOR THE NEXT LEAD LANE (the lead's ruling (b)): the `let` steps' entry-class conjunct `st.deferCallTy = false` is no longer
+needed at `eval`'s entry (`EvalInvD` hands the core `deferCallTy = false`); deleting it means giving `eval_of_coreK` two
+classes (entry `P`, core `P ∧ flag clear`).
+
+LATER (same session): R2 re-ruled and BUILT (the deferred component is a borrow type as written: the term `&A` or an
+embedded `.val (&A)`; docs/31 D194); `EvalFitsT` restated at the value the `let` binds (`LetInvD` exposes D131's test);
+`spine-lead29` merged (8c32025e).
+
+`LaterPiG` with D134 (NOT PROVED; what stands in the way): (a) AS STATED IT IS STILL FALSE for a call the pre-pass ERASES
+(the statement has no hypothesis excluding it): `evalAt` runs an erased call inside `inStatement`, whose private copy is
+discarded with the record `callFn` set, so the run returns no type and no record. Since main's D132 the `let` never sets
+the flag for an erased call, so the fix is a hypothesis "the pre-pass does not erase the call" (`preFlags` not
+`(true, _)`), which `LetCallInvU`'s deferred branch can expose (its `erasedU = false`). (b) Then a full inversion of
+`eval`/`evalAt`/`evalCall`/`callFn`: a proof head returns a type (`want` holds); otherwise `B = none` iff `later`, and
+`later` passed `callPi` (D134: `.tPi _ (.pi …) _`); the class-2 return comes right after the first `setLater` with only
+state-reading decisions between (check `endBorrowArgs` runs no evaluation); the main path ends with the second
+`setLater`; nothing after `callFn` (`evalCall`'s and `evalAt`'s epilogues for a `.call`: `getFlags`, the pre-pass
+assertion) touches the record. `RetP` (`BorrowRead.lean`) is the tool; budget ~200 lines.
+
+NOT DONE: `NoValFact` (work in progress, NOT in the repo, at scratchpad `NoVal.lean.wip`, copy it to
+`Steps/Machine/NoVal.lean`: the `RRet` tool for the resolver's monad (`RRun_bind`, `RRun_tryCatch`, pure/bind/onFail/
+mapM/forIn/map lemmas) and the walk `rret_walk` work; three goals left, all in `resolveF`'s `matchGen` arm loop: the
+`forIn` body (its `match List.find? …` and `<$>` were simp'd before the walk reached them: run the walk before the
+closing `simp_all`) and two `Term.anyAtomArms … out.toList = false` (from the loop invariant via `anyAtomArms_noVal`);
+then `bindersF` (the `sorry` after it), `resolveDecl`'s `.ind` branch, and `ResolvesTo → NoValFact`); `DeferClearG`'s induction
+(see whether `machineGrows`' generated skeleton can be reused: `GrowsIn` is fixed to `TablesGrow`, so it needs its own
+relation or a parallel generated family); `NamesFact`, `CheckIndGivesChecks`, `DecLocal`'s other parts, `ReadInvD`,
+`checkDef`/`checkFix` inversion.
+
+TRAPS: (1) the do-notation duplicates a `let`'s continuation into each branch of an `if` with a `match` in it (D131's
+`if typed then if let some T' := T then …`): split on the scrutinee (`cases T₀`) and run the same tail script twice
+(`scratchpad/fixlet.py` did it mechanically). (2) `split at h` on a `match` of a local variable substitutes it everywhere;
+use `by_cases` on the equation when the variable must keep its name. (3) Lean's structure-instance fields must start at
+or right of the first field's column. (4) Do not rebuild `sweep` while a sweep runs from `.lake/build/bin/sweep`.
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed

@@ -76,10 +76,25 @@ def _root_.Ochr.Value.isFnVal : Value → Bool
   | .gfn _ | .clo .. => true
   | _ => false
 
-/-- (K) at one binding (restated by machine12 on the lead's ruling R1, docs/31 D192): a binding holding a borrow whose
-type is stored stores `&A`. -/
+/-- A borrow type as written, in either form the checker writes one: the term `&A`, or an embedded type value that is a
+borrow type (what `closeBlock` puts in a stuck block's function type). -/
+def _root_.Ochr.Term.refWritten : Term → Bool
+  | .ref _ => true
+  | .val (.tRef _) => true
+  | _ => false
+
+/-- Component `j` of a Π-type written as one (parameter `j`, or the codomain at `j = |ds|`, as `Machine.bindTy?` reads a
+deferred type) is a borrow type as written (`Term.refWritten`). -/
+def _root_.Ochr.Value.refAt : Value → Nat → Bool
+  | .tPi _ (.pi _ ds c) _, j => if j < ds.length then (ds[j]?.map Term.refWritten).getD false else c.refWritten
+  | _, _ => false
+
+/-- (K) at one binding (restated by machine12 on the lead's rulings R1 and R2, docs/31 D192, D194): a binding holding a
+borrow stores `&A` where its type is stored, and where its type is deferred, `(P, ws, j)`, `P` is a Π written as one
+whose component `j` is a borrow type as written. -/
 def _root_.Ochr.Binding.KindAt (b : Binding) : Prop :=
-  ∀ l c, b.val = .borrow l c → ∀ T, b.ty = some T → ∃ A, T = .tRef A
+  (∀ l c, b.val = .borrow l c → ∀ T, b.ty = some T → ∃ A, T = .tRef A) ∧
+  (∀ l c, b.val = .borrow l c → b.ty = none → ∀ P ws j, b.lazyTy = some (P, ws, j) → P.refAt j = true)
 
 /-- (K) for a value and the type it is held at, if any: what a binder pushing `v` at `T?` keeps. -/
 def _root_.Ochr.Value.KindOf (v : Value) (T? : Option Value) : Prop :=
@@ -89,11 +104,14 @@ def _root_.Ochr.Value.KindOf (v : Value) (T? : Option Value) : Prop :=
 lead's ruling R1, docs/31 D192), about the checker's state alone:
 * a binding holding a borrow (`borrow_ℓ c`; a loan `loan_ℓ` and a lent mark `lent_ℓ c` are the LENDER's side and are
   asked nothing: a lender stores its content's type) whose type is stored stores a borrow type `&A`;
-* a binding whose type is DEFERRED (`lazyTy`) or absent is asked nothing. A borrow IS held at a deferred type, in a
-  sealed program's re-run (ClosingOff's `AddToOneZero''`); the syntactic clause "its deferred component is the term
-  `&A`" (the lead's ruling R2) is broken by a reachable state: a stuck block's function type has its codomain as an
-  embedded type value, `.val (&Nat)` (`closeBlock`; ClosingOff's `CoBlockBorrow`, `r : (deferred: component 4 of
-  Π(n : Nat) (m : Nat) (a : &Nat) (b : &Nat). &Nat) = borrow_16 …`), so it was not added (docs/31 D192);
+* a binding holding a borrow whose type is DEFERRED (`lazyTy = (P, ws, j)`, `ty = none`) defers a borrow type as written
+  (the lead's ruling R2, re-ruled, docs/31 D194): `P` is a Π-type written as one whose parameter `j` (or codomain, at
+  `j = |ds|`) is the term `&A` or an embedded borrow type value (`closeBlock` writes a stuck block's codomain as
+  `.val (&A)`: the first wording, the term only, failed on 42 reachable states of `CloseOffModel`, docs/31 D192). Fixed
+  by the state's text; by the checker's D48 (`&` only as the whole declared type of a parameter, a result or an
+  annotated term) the deferred type evaluates to `&A'`. Reached in a sealed program's re-run (ClosingOff's
+  `AddToOneZero''`, `CoBlockBorrow`);
+* a binding with neither a stored nor a deferred type is asked nothing;
 * function values and globals are asked nothing (R1: the one consumer of "a function value sits at a function type"
   was the deferred call's record, `LaterPiG`, which the checker itself tests from main's D134).
 Temporaries are not positions of this clause: `Inv` reads the kernel (`MState.norm`), which erases their stored types

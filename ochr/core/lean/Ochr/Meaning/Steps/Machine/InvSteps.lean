@@ -531,7 +531,8 @@ theorem inv_pushBind {D : Decisions} {Γ : List IndDecl} {s : MState} {h : Hint}
     · cases e
       rw [bind_pushBindE_new s.env h ty v pf d fr hfr] at hbb
       cases hbb
-      exact .inl fun l c ev T hT => ⟨.tNat, by rw [hkb l c ev] at hT; cases hT; rfl⟩
+      exact .inl ⟨fun l c ev T hT => ⟨.tNat, by rw [hkb l c ev] at hT; cases hT; rfl⟩,
+        fun l c ev hn => by rw [hkb l c ev] at hn; cases hn⟩
     · rw [bind_pushBindE_ne s.env h ty v pf d fr hfr k i e] at hbb
       exact .inr ⟨k, i, bb, by rw [binds_pushTempE]; exact hbb, .inl rfl, rfl, rfl⟩
 

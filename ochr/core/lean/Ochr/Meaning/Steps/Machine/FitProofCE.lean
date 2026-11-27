@@ -2,7 +2,13 @@ import Ochr.Meaning.Steps.Statements
 import Ochr.Examples.Nat
 
 /-!
-# A proof read as data: `EvalFitsT` and the invariant's (C⋆) are false (machine11, 2026-11-22)
+# A proof read as data: `EvalFitsT` and the invariant's (C⋆) are false (machine11, 2026-11-22; machine12: `V1` rejected)
+
+machine12, at the merge of main's D131: `V1` is now REJECTED at the generic definition (`readingAgrees` at the typed
+`let`: "[D131] y is a proof (its type ⊤ is a proposition), but its declared type reads as data"). The run of the
+right-hand side is unchanged (the guards below still pass: `uJ`'s typed run returns `⋆` and `uJ` reads `other`, not a
+copy), so `EvalFitsT`, then a statement about that run alone, was still false at `stW`; the `let` no longer binds it,
+and `EvalFitsT` is now asked of the value the `let` binds, the binding test's success a hypothesis (docs/31 D194). What machine11 found, before D131:
 
 READ FALSE: `Master.EvalFitsT` (`Steps/MasterLet.lean`), its second clause (C⋆), and with it the invariant's
 `ShapeFacts.proofCopy` at a state the checker reaches. Behind it, a CHECKER BUG: the generic call and an instance
@@ -32,8 +38,10 @@ open Ochr.Test
 
 ochr FitProofCE uses Nats {
   def PropF (n : Nat) : Type₁ := Prop
-  def V1 (k : Nat) : Unit := (let y = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); match k { Z => (let z = y; ()), S(j) => () }; let w = y; ())
-  -- BUG: the generic call accepts `V1`, its instance rejects it (the join drops the `⋆` read as data)
+  -- REJECTED at the generic definition since main's D131 (machine12's merge; accepted before, the bug below): `y`
+  -- holds `⋆` at the proposition `⊤` while its declared type reads as data (`readingAgrees`)
+  reject def V1 (k : Nat) : Unit := (let y = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); match k { Z => (let z = y; ()), S(j) => () }; let w = y; ())
+  -- before D131: the generic call accepted `V1`, its instance rejected it (the join drops the `⋆` read as data)
   reject def V2 : Unit := V1(Z)
   -- controls: the codomain written `Prop`
   def V3 (k : Nat) : Unit := (let y = J(Nat, Z, Z, λ(x : Nat) : Prop => ⊤, refl, refl); match k { Z => (let z = y; ()), S(j) => () }; let w = y; ())

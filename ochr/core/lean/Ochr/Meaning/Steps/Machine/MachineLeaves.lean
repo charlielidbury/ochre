@@ -191,4 +191,18 @@ theorem keep_noteStateAt (l : Option Loc) (exit : Bool) (v : Option (Value × Op
 @[grows] theorem growsIn_locatedTail (t : Term) {x : M Unit} (hx : GrowsIn G x) : GrowsIn G (locatedTail t x) := by
   unfold locatedTail; grows_go
 
+set_option maxHeartbeats 4000000 in
+/-- Main's D131: the reading's agreement with the stored type and the value, a test (it reads, never writes). -/
+theorem keep_readingAgrees (fuel : Nat) (h : Hint) (T : Value) (d : DeclInfo) (v : Value) :
+    Keep (readingAgrees fuel h T d v) := by
+  unfold readingAgrees; keep_go
+  all_goals first | exact (decideKeep _).2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1 _ | skip
+
+@[grows] theorem growsIn_readingAgrees (fuel : Nat) (h : Hint) (T : Value) (d : DeclInfo) (v : Value) :
+    GrowsIn G (readingAgrees fuel h T d v) := growsIn_of_keep (keep_readingAgrees fuel h T d v)
+
+/-- Main's D134: a call's head type taken apart, or an error. -/
+@[grows] theorem growsIn_callPi (piTy : Value) (n : Nat) : GrowsIn G (callPi piTy n) := by
+  unfold callPi; grows_go
+
 end Ochr.Meaning.Steps.Machine

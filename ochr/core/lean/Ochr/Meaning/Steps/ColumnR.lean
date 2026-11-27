@@ -221,8 +221,8 @@ theorem inv_stR (D : Decisions) : Inv D [] stR := by
   -- (K): the function's own binding at its Π-type, the parameter holds no borrow and no function
   · refine (fun f i b hb => ?_)
     · rcases hbind hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
-      · exact fun l c e => (nomatch e)
-      · exact fun l c e => (nomatch e)
+      · exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
+      · exact ⟨fun l c e => (nomatch e), fun l c e => (nomatch e)⟩
 
 section
 variable {dm : DataModel} {D : Decisions} {G : Sem × TyS} {b : Nat}

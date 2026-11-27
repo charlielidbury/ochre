@@ -8,17 +8,17 @@ import Ochr.Examples.Nat
 (lead28, 2026-11-22; docs/31 D188; restated by machine12 on the lead's rulings R1–R3, docs/31 D192)
 
 The invariant's clause `Form.KindTyped`: a binding holding a borrow stores a borrow type where its type is stored.
-Function values and globals are asked nothing (R1: the one consumer of "a function value sits at a function type" was
-the deferred call's record, `LaterPiG`, which the checker itself tests from main's D134). The syntactic clause on
-deferred borrow types (R2) is broken by a reachable state (a stuck block's codomain is an embedded type value) and was
-not added (docs/31 D192).
+Where its type is deferred, the deferred component is a borrow type as written: the term `&A` or an embedded borrow
+type value (R2 re-ruled, docs/31 D194; the term-only wording failed on a stuck block's codomain, D192). Function values
+and globals are asked nothing (R1: the one consumer of "a function value sits at a function type" was the deferred
+call's record, `LaterPiG`, which the checker itself tests from main's D134).
 
 * Checked on the checker's own states: at the holes of real programs below (a borrow parameter, a closure in a binding,
   the lazily typed bindings of a higher-order function's instance run), and by `lake exe sweep --deep-private` over
   every block with the clause mirrored exactly (machine12, docs/31 D192).
-* Excluded: machine11's `StoredTypeCE.stB` (`x ↦ borrow_0(Z) : Nat`, `not_kindTyped_stB`). Not excluded: by R1,
-  `StoredTypeCE.stF` (a global function stored at `Nat`); without R2, `KindCE.stL` (a borrow at a deferred type whose
-  component is `Nat`).
+* Excluded: machine11's `StoredTypeCE.stB` (`x ↦ borrow_0(Z) : Nat`, `not_kindTyped_stB`) and machine12's `KindCE.stL`
+  (a borrow at a deferred type whose component is `Nat`, by guard). Not excluded, by R1: `StoredTypeCE.stF` (a global
+  function stored at `Nat`).
 * `EvalKindT`/`EvalKindW` (the borrow half) are to be replaced by `OutL`'s conclusion (R3); `ExpectRefNat` is PROVED
   (`Machine.expectRefNat`).
 -/
@@ -31,15 +31,16 @@ open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
 
 /-- machine11's state for `SuccArgNoBorrowT` (`x ↦ borrow_0(Z)` stored at `Nat`) fails (K). -/
 theorem not_kindTyped_stB : ¬ KindTyped Machine.StoredTypeCE.stB := fun h => by
-  obtain ⟨A, hA⟩ := (h 0 1 _ rfl) 0 .zero rfl .tNat rfl
+  obtain ⟨A, hA⟩ := (h 0 1 _ rfl).1 0 .zero rfl .tNat rfl
   cases hA
 
 /-- A Bool mirror of (K), for guards: every binding of every frame. -/
 def kindAtB (b : Binding) : Bool :=
-  match b.val, b.ty with
-  | .borrow .., some (.tRef _) => true
-  | .borrow .., some _ => false
-  | _, _ => true
+  match b.val, b.ty, b.lazyTy with
+  | .borrow .., some (.tRef _), _ => true
+  | .borrow .., some _, _ => false
+  | .borrow .., none, some (P, _, j) => P.refAt j
+  | _, _, _ => true
 
 def kindTypedB (st : MState) : Bool :=
   st.env.toList.all (fun fr => fr.binds.toList.all kindAtB)
@@ -47,9 +48,15 @@ def kindTypedB (st : MState) : Bool :=
 -- R1: a global function stored at `Nat` (machine11's `stF`) is no longer excluded by (K)
 #guard kindTypedB Machine.StoredTypeCE.stF
 #guard !kindTypedB Machine.StoredTypeCE.stB
--- R2 not added (docs/31 D192): a borrow at a deferred type whose component is `Nat` (machine12's `KindCE.stL`) is
--- still admitted by (K)
-#guard kindTypedB Machine.KindCE.stL
+-- R2 (re-ruled, docs/31 D194): a borrow at a deferred type whose component is `Nat` (machine12's `KindCE.stL`) is
+-- excluded; with the component the term `&Nat`, or the embedded value `&Nat` (a stuck block's codomain), it is not
+#guard !kindTypedB Machine.KindCE.stL
+def stLAt (P : Value) (j : Nat) : MState :=
+  { Machine.KindCE.stL with env := Machine.KindCE.stL.env.modify 0 fun fr =>
+    { fr with binds := fr.binds.modify 1 ({ · with lazyTy := some (P, [.zero], j) }) } }
+#guard kindTypedB (stLAt (.tPi [] (.pi [⟨"m"⟩] [.ref .nat] .nat) []) 0)
+#guard kindTypedB (stLAt (.tPi [] (.pi [⟨"m"⟩] [.nat] (.val (.tRef .tNat))) []) 1)
+#guard !kindTypedB (stLAt (.tPi [] (.pi [⟨"m"⟩] [.nat] (.val .tNat)) []) 1)
 
 end Ochr.Meaning.Steps.Form.Master
 
@@ -141,7 +148,7 @@ TRUE as `SuccStrictG`'s checker half), and a borrow only at a borrow type. TO BE
 lead's ruling R3: "a returned borrow comes with a borrow type" proved step by step inside `master`, from (K) at a read,
 R2 at a deferred one, and at a call from a clause in the context about the callee). As a fact about the checker alone
 it is READ FALSE (machine12, `Machine/KindCE.lean`): at a borrow held at a deferred type whose component is `Nat`
-(`stL`; (K)'s R2 clause, which would exclude it, is broken by a reachable state, docs/31 D192) and at a global whose body the checker never accepted (`gb`, `callGB`: `Pre`
+(`stL`, now excluded by (K)'s R2 clause, docs/31 D194) and at a global whose body the checker never accepted (`gb`, `callGB`: `Pre`
 says nothing of globals' bodies). The function half was dropped (R1). -/
 def EvalKindT : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (n : Nat) (u : Term) (hint : Option Value) (st₀ st₁ : MState) (bh : Nat) (v : Value)

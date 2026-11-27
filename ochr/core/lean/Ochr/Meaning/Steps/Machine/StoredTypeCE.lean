@@ -76,6 +76,8 @@ def runC : Option (Value × Option Value × Option (Value × List Value)) :=
   | .ok r _ => some r
   | _ => none
 
-#guard runC == some (.zero, none, some (.tNat, [.zero]))
+-- since main's D134 (machine12's merge) the deferred path tests the head type when it records it (`callPi`): the call
+-- FAILS ("not a function type: Nat"); before D134 it returned `Z` with no type and recorded `(Nat, [Z])`
+#guard runC == none
 
 end Ochr.Meaning.Steps.Machine.StoredTypeCE
