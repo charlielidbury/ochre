@@ -239,6 +239,15 @@ theorem frameRel_freshLoan (hr : FrameRel σ s₀ ks s s') :
         have := hr.fresh (1 + j)
         rw [← Nat.add_assoc, ← Nat.add_assoc] at this; exact this) }⟩
 
+/-- Every label the closure has made has an image below the in-place counter (the fresh labels correspond, and `σ` is one
+to one). -/
+theorem sigma_lt (hr : FrameRel σ s₀ ks s s') {l : Nat} (hl : l < s'.nextLoan) : σ l < s.nextLoan := by
+  refine Nat.lt_of_not_le fun hc => ?_
+  have e := hr.fresh (σ l - s.nextLoan)
+  rw [Nat.add_sub_cancel' hc] at e
+  have := hr.inj _ _ e
+  omega
+
 /-- A borrow parked in a fresh temporary of the top frame, lent at the sites `xs`, with its content type and record:
 `borrowPlace`'s and `callOfL`'s last steps. -/
 noncomputable def park (t : SState) (v : SVal) (l : Nat) (xs : List Site) (T : TyM) (m : Sem) : SState :=
@@ -626,20 +635,42 @@ structure FrameInv (K : RunCtx) (φ : Future) (σ : Nat → Nat) (s₀ : SState)
   end, a call's lending and an entry's lending copy sites; so nothing is lent at a temporary, where a result is parked
   (what [Entry]'s lending of the result's label needs to keep lending well founded, `LendWF`). -/
   bsites : ∀ m (y : Site), y ∈ s.lent m → y.pos.frameOf = s₀.topIdx → ∃ i, y.pos = .bind s₀.topIdx i
+  /-- (lead35, docs/31 D222) every site of a LIVE label in the callee's frame is at an existing position: a `let`'s end
+  empties the position it drops of live labels' sites (the held borrow's end re-roots every site at its holder;
+  `letLenders`' access ends every live label lent there), and no other operation lends at a position that does not exist.
+  A `let` binding a result pushes a binding at a new position, which the result's label then holds: with this, no live
+  label is lent there, so lending stays well founded (`LendWF`). A dead label's sites may be stale (no run reads them). -/
+  psites : ∀ m (y : Site), s.Live m → y ∈ s.lent m → y.pos.frameOf = s₀.topIdx → y.pos ∈ s.positions
+  /-- (lead35, D222) the records of every label the closure has made (below its counter) correspond, live or not, as
+  `FrameRel.held` asks of the live ones: records are written only when a label is made, alike on the two sides. A `let`
+  or an assignment holding a run's result again, live or not, holds it at corresponding records. -/
+  heldAll : ∀ l, l < s'.nextLoan → s.heldTy (σ l) = s'.heldTy l ∧ (σ l ∉ ks → s.heldMem (σ l) = s'.heldMem l)
+  /-- (lead35, D222) `AccInv.order` and `AccInv.mono` for every label the closure has made: both counters advance in
+  step, so a label made later is above on both sides, and the parameter labels (the cells') come first. -/
+  orderAll : ∀ l l', l < s'.nextLoan → l' < s'.nextLoan → σ l ∈ ks → σ l' ∉ ks → l < l'
+  monoAll : ∀ l l', l < s'.nextLoan → l' < s'.nextLoan → σ l ∉ ks → σ l' ∉ ks → l < l' → σ l < σ l'
+
+/-- (lead35, D222) The closure's result label was made below its counter, and lends nothing if it is dead (the closure-side
+twin of `ResAtTemp`'s second clause). -/
+def ResDead (t : SState) (lab : Option Nat) : Prop :=
+  ∀ k, lab = some k → k < t.nextLoan ∧ (¬ t.Live k → t.lent k = [])
 
 /-- **A result's label, if live, is held by a temporary of the callee's frame** (lead34, D219): a result is parked
 (`pushTempShaped`: a borrow, a move of a borrow, a call returning one) and every later step of the clause that returns it
 only clears holders (an end, an access, a drop of a binding). [Entry]'s lending at a match's result label needs it: with
 `FrameInv.bsites` nothing is lent at the label's holder, so lending it further keeps lending well founded. -/
 def ResAtTemp (s₀ t : SState) (lab : Option Nat) : Prop :=
-  ∀ k, lab = some k → t.Live k → ∃ j, t.shape (.temp s₀.topIdx j) = some k
+  ∀ k, lab = some k → (t.Live k → ∃ j, t.shape (.temp s₀.topIdx j) = some k) ∧
+    /- (lead35, docs/31 D222) a dead result label lends nothing: it was ended, which empties its sites, and [Entry]'s
+    lending lends only a live label; so a `let` or an assignment that holds the result again revives no stale site -/
+    (¬ t.Live k → t.lent k = [])
 
 /-- `FrameAgree` with the internal relation concluded (what the induction over `runT` carries; the third referee's R9:
 `FrameAgree` concludes `FrameRel` only), and the in-place result's label parked (`ResAtTemp`). -/
 def FrameAgreeI (K : RunCtx) (φ : Future) (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) :
     Option (Res × SState) → Option (Res × SState) → Prop
   | some (r, t), some (r', t') => r.1 = r'.1 ∧ r.2 = { r'.2 with label := r'.2.label.map σ } ∧ FrameInv K φ σ s₀ ks t t' ∧
-      ResAtTemp s₀ t r.2.label
+      (ResAtTemp s₀ t r.2.label ∧ ResDead t' r'.2.label)
   | none, none => True
   | _, _ => False
 
@@ -663,7 +694,7 @@ variable {K : RunCtx} {φ : Future} {σ : Nat → Nat} {s₀ : SState} {ks : Lis
 
 /-- **`RunFrame`'s hypotheses give the internal relation, with seven more**: lending well founded in place, parameter
 labels lent in the callee's frame only as fills, the renaming's order on the closure's labels (two clauses), the
-counter, the renaming's range (lead34) and the callee's frame's sites at bindings (lead34). `RunFrame` as stated (FrameRec) lacks them; by reading it is false at a state no call makes (two parameter
+counter, the renaming's range (lead34), the callee's frame's sites at bindings (lead34) and live labels' sites at existing positions (lead35). `RunFrame` as stated (FrameRec) lacks them; by reading it is false at a state no call makes (two parameter
 labels lent at each other's holders, reached by one access in orders the renaming reverses: the sites left differ),
 as each earlier restatement was (D129, D201, D203). -/
 theorem frameInv_of (hr : FrameRel σ s₀ ks s s')
@@ -675,7 +706,11 @@ theorem frameInv_of (hr : FrameRel σ s₀ ks s s')
     (horder : ∀ l l', s'.Live l → s'.Live l' → σ l ∈ ks → σ l' ∉ ks → l < l')
     (hmono : ∀ l l', s'.Live l → s'.Live l' → σ l ∉ ks → σ l' ∉ ks → l < l' → σ l < σ l')
     (hcounter : s₀.nextLoan ≤ s.nextLoan) (hsrange : ∀ l, σ l ∈ ks ∨ s₀.nextLoan ≤ σ l)
-    (hbsites : ∀ m (y : Site), y ∈ s.lent m → y.pos.frameOf = s₀.topIdx → ∃ i, y.pos = .bind s₀.topIdx i) :
+    (hbsites : ∀ m (y : Site), y ∈ s.lent m → y.pos.frameOf = s₀.topIdx → ∃ i, y.pos = .bind s₀.topIdx i)
+    (hpsites : ∀ m (y : Site), s.Live m → y ∈ s.lent m → y.pos.frameOf = s₀.topIdx → y.pos ∈ s.positions)
+    (hheldAll : ∀ l, l < s'.nextLoan → s.heldTy (σ l) = s'.heldTy l ∧ (σ l ∉ ks → s.heldMem (σ l) = s'.heldMem l))
+    (horderAll : ∀ l l', l < s'.nextLoan → l' < s'.nextLoan → σ l ∈ ks → σ l' ∉ ks → l < l')
+    (hmonoAll : ∀ l l', l < s'.nextLoan → l' < s'.nextLoan → σ l ∉ ks → σ l' ∉ ks → l < l' → σ l < σ l') :
     FrameInv K φ σ s₀ ks s s' where
   acc :=
   { rel := hr
@@ -698,6 +733,10 @@ theorem frameInv_of (hr : FrameRel σ s₀ ks s s')
   counter := hcounter
   srange := hsrange
   bsites := hbsites
+  psites := hpsites
+  heldAll := hheldAll
+  orderAll := horderAll
+  monoAll := hmonoAll
 
 end
 

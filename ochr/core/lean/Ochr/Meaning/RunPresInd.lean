@@ -697,7 +697,9 @@ theorem matchEntry_lend (ent : Bool) (mt : Term) (s : SState) (lab : Option Nat)
     split
     · unfold entryLend
       split
-      · exact .inr ⟨_, _, rfl⟩
+      · split
+        · exact .inr ⟨_, _, rfl⟩
+        · exact .inl rfl
       · exact .inl rfl
     · exact .inl rfl
   · exact .inl rfl

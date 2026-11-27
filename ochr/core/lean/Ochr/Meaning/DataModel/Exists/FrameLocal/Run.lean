@@ -508,10 +508,10 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
         | some a =>
           obtain ⟨⟨r, R⟩, X⟩ := a
           obtain ⟨hA₂, -, e₂⟩ := Adm.after K ρ φ hK hA₁ hR₁ h2 cw0
-          obtain ⟨ej, -, ok⟩ := joinDrop_qset K φ hA₁.decl ⟨hA₂.twin.pre, hA₂.twin.pre', hA₂.twin.fix, e₂⟩
+          obtain ⟨ej, hTj, ok⟩ := joinDrop_qset K φ hA₁.decl ⟨hA₂.twin.pre, hA₂.twin.pre', hA₂.twin.fix, e₂⟩
             (movedPlaces φ S₁) (Term.matchNat p z u) (joinMoves_avoid K φ hD hA₁ (hV.of_envLe e₁) _)
           simp only [Option.map_some, Option.bind_eq_bind, Option.bind_some]
-          rw [propext ok, ej, hL]
+          rw [propext ok, ej, hL _ _ hTj.pre.shape]
           by_cases hj : JoinDropOk K φ (movedPlaces φ S₁) (Term.matchNat p z u) X
           · simp [optCheck, hj]
           · simp [optCheck, hj]
@@ -570,10 +570,10 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
         | some a =>
           obtain ⟨⟨r, R⟩, X⟩ := a
           obtain ⟨hA₂, -, e₂⟩ := Adm.afterArm K ρ φ hK hA₁ hR₁ h2 ca0
-          obtain ⟨ej, -, ok⟩ := joinDrop_qset K φ hA₁.decl ⟨hA₂.twin.pre, hA₂.twin.pre', hA₂.twin.fix, e₂⟩
+          obtain ⟨ej, hTj, ok⟩ := joinDrop_qset K φ hA₁.decl ⟨hA₂.twin.pre, hA₂.twin.pre', hA₂.twin.fix, e₂⟩
             (movedPlaces φ S₁) (Term.matchInd p n arms) (joinMoves_avoid K φ hD hA₁ (hV.of_envLe e₁) _)
           simp only [Option.map_some, Option.bind_some]
-          rw [propext ok, ej, hL]
+          rw [propext ok, ej, hL _ _ hTj.pre.shape]
           by_cases hj : tg.isProof = true ∨ oneCtor K.Γ n = true ∨ JoinDropOk K φ (movedPlaces φ S₁) (Term.matchInd p n arms) X
           · simp only [if_pos hj, Option.bind_some, Option.map_some]
             cases tg <;> dsimp only <;> (try split) <;> rfl

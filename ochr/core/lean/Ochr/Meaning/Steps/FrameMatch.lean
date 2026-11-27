@@ -388,14 +388,33 @@ structure Shrinks (t u : SState) : Prop where
   sites : ∀ m (y : Site), y ∈ u.lent m → ∃ (m' : Nat) (z : Site), z ∈ t.lent m' ∧ z.pos = y.pos
   positions : u.positions = t.positions
   next : u.nextLoan = t.nextLoan
+  /-- (lead35) a live label's site lies where a live label's site lay (an end passes on the sites of a live label) -/
+  liveSites : ∀ m (y : Site), u.Live m → y ∈ u.lent m → ∃ (m' : Nat) (z : Site), t.Live m' ∧ z ∈ t.lent m' ∧ z.pos = y.pos
+  /-- (lead35) a label dead after lends nothing if it was live before (it was ended) or lent nothing before -/
+  deadLent : ∀ m, ¬ u.Live m → (t.Live m ∨ t.lent m = []) → u.lent m = []
+  /-- (lead35) the records stay -/
+  records : u.heldTy = t.heldTy ∧ u.heldMem = t.heldMem
 
-theorem Shrinks.refl (t : SState) : Shrinks t t := ⟨fun _ _ h => h, fun m y hy => ⟨m, y, hy, rfl⟩, rfl, rfl⟩
+theorem Shrinks.refl (t : SState) : Shrinks t t :=
+  ⟨fun _ _ h => h, fun m y hy => ⟨m, y, hy, rfl⟩, rfl, rfl, fun m y hm hy => ⟨m, y, hm, hy, rfl⟩,
+    fun _ hm h => h.resolve_left hm, rfl, rfl⟩
+
+theorem Shrinks.live {t u : SState} (h : Shrinks t u) {m : Nat} (hm : u.Live m) : t.Live m := by
+  obtain ⟨p, hp, hs⟩ := (SState.live_iff u m).1 hm
+  exact (SState.live_iff t m).2 ⟨p, by rw [← h.positions]; exact hp, h.shape p m hs⟩
 
 theorem Shrinks.trans {t u v : SState} (h₁ : Shrinks t u) (h₂ : Shrinks u v) : Shrinks t v :=
   ⟨fun p l h => h₁.shape p l (h₂.shape p l h), fun m y hy => by
     obtain ⟨m', z, hz, e⟩ := h₂.sites m y hy
     obtain ⟨m'', w, hw, e'⟩ := h₁.sites m' z hz
-    exact ⟨m'', w, hw, e'.trans e⟩, h₂.positions.trans h₁.positions, h₂.next.trans h₁.next⟩
+    exact ⟨m'', w, hw, e'.trans e⟩, h₂.positions.trans h₁.positions, h₂.next.trans h₁.next, fun m y hm hy => by
+    obtain ⟨m', z, hm', hz, e⟩ := h₂.liveSites m y hm hy
+    obtain ⟨m'', w, hm'', hw, e'⟩ := h₁.liveSites m' z hm' hz
+    exact ⟨m'', w, hm'', hw, e'.trans e⟩, fun m hm h => by
+    refine h₂.deadLent m hm ?_
+    by_cases hu : u.Live m
+    · exact .inl hu
+    · exact .inr (h₁.deadLent m hu h), h₂.records.1.trans h₁.records.1, h₂.records.2.trans h₁.records.2⟩
 
 theorem shrinks_foldl {α : Type} (f : SState → α → SState) (h : ∀ t x, Shrinks t (f t x)) :
     ∀ (xs : List α) (t : SState), Shrinks t (xs.foldl f t)
@@ -407,11 +426,17 @@ theorem shrinks_endLabel (t : SState) (l : Nat) : Shrinks t (t.endLabel l) := by
   | none => rw [SState.endLabel_of_none hh]; exact Shrinks.refl t
   | some r =>
     rw [SState.endLabel_eq hh]
-    refine ⟨fun p k hp => ?_, fun m y hy => ?_, SState.endAt_positions t l r, ?_⟩
-    · rw [SState.endAt_shape] at hp; dsimp only at hp
+    have hshape : ∀ p k, (t.endAt l r).shape p = some k → t.shape p = some k := fun p k hp => by
+      rw [SState.endAt_shape] at hp; dsimp only at hp
       split at hp
       · cases hp
       · exact hp
+    have hlive : ∀ m, (t.endAt l r).Live m → t.Live m := fun m hm => by
+      obtain ⟨p, hp, hs⟩ := (SState.live_iff _ m).1 hm
+      exact (SState.live_iff t m).2 ⟨p, by rw [← SState.endAt_positions t l r]; exact hp, hshape p m hs⟩
+    have hll : t.Live l := (SState.live_iff t l).2 ⟨r, (SState.holderOf_spec hh).1, (SState.holderOf_spec hh).2⟩
+    refine ⟨hshape, fun m y hy => ?_, SState.endAt_positions t l r, ?_, fun m y hm hy => ?_, fun m hm hpre => ?_,
+      rfl, rfl⟩
     · by_cases hml : m = l
       · subst hml; rw [endAt_lent, relend_eq, if_pos rfl] at hy; cases hy
       rw [endAt_lent, mem_relend hml] at hy
@@ -419,6 +444,22 @@ theorem shrinks_endLabel (t : SState) (l : Nat) : Shrinks t (t.endLabel l) := by
       · exact ⟨m, y, hy, rfl⟩
       · exact ⟨l, z, hz, (relendSite_pos _ _).symm⟩
     · rw [← SState.endLabel_eq hh]; exact nextLoan_endLabel t l
+    · by_cases hml : m = l
+      · subst hml; rw [endAt_lent, relend_eq, if_pos rfl] at hy; cases hy
+      rw [endAt_lent, mem_relend hml] at hy
+      rcases hy with ⟨hy, -⟩ | ⟨x₀, -, -, z, hz, rfl⟩
+      · exact ⟨m, y, hlive m hm, hy, rfl⟩
+      · exact ⟨l, z, hll, hz, (relendSite_pos _ _).symm⟩
+    · by_cases hml : m = l
+      · subst hml; rw [endAt_lent, relend_eq, if_pos rfl]
+      · have hdead : ¬ t.Live m := fun htm => hm (by
+          obtain ⟨p, hp, hs⟩ := (SState.live_iff t m).1 htm
+          refine (SState.live_iff _ m).2 ⟨p, by rw [SState.endAt_positions]; exact hp, ?_⟩
+          rw [SState.endAt_shape]; dsimp only
+          rw [if_neg (fun e => by subst e; rw [(SState.holderOf_spec hh).2] at hs; exact hml (Option.some.inj hs).symm)]
+          exact hs)
+        have h0 := hpre.resolve_left hdead
+        rw [endAt_lent, relend_eq, if_neg hml, h0]; rfl
 
 theorem shrinks_access (t : SState) (p : Pos) (hit : List Step → Bool) : Shrinks t (t.access p hit) := by
   unfold SState.access
@@ -426,7 +467,11 @@ theorem shrinks_access (t : SState) (p : Pos) (hit : List Step → Bool) : Shrin
 
 theorem shrinks_setAt (t : SState) (p : Pos) (v : SVal) : Shrinks t (t.setAt p v) :=
   ⟨fun q l h => by rwa [SState.shape_setAt] at h, fun m y hy => ⟨m, y, by rwa [setAt_lent] at hy, rfl⟩,
-    SState.positions_setAt t p v, SState.nextLoan_setAt' t p v⟩
+    SState.positions_setAt t p v, SState.nextLoan_setAt' t p v,
+    fun m y hm hy => ⟨m, y, (SState.live_setAt _ _ _ m).1 hm, by rwa [setAt_lent] at hy, rfl⟩,
+    fun m hm h => by
+      rw [setAt_lent]; exact h.resolve_left fun ht => hm ((SState.live_setAt _ _ _ m).2 ht),
+    setAt_heldTy t p v, setAt_heldMem t p v⟩
 
 theorem shrinks_setContent {K : RunCtx} {φ : Future} {pos : Pos} {steps : List Step} {v : Sem} {t u : SState}
     {x : PUnit} (h : setContent K φ pos steps v t = some (x, u)) : Shrinks t u := by
@@ -503,13 +548,24 @@ theorem BSites.shrinks {s₀ t u : SState} (h : BSites s₀ t) (hs : Shrinks t u
   obtain ⟨m', z, hz, e⟩ := hs.sites m y hy
   rw [← e] at hf ⊢; exact h m' z hz hf
 
+theorem ResDead.shrinks {t u : SState} {lab : Option Nat} (h : ResDead t lab) (hs : Shrinks t u) : ResDead u lab :=
+  fun k hk => ⟨by rw [hs.next]; exact (h k hk).1, fun hd => hs.deadLent k hd (by
+    by_cases ht : t.Live k
+    · exact .inl ht
+    · exact .inr ((h k hk).2 ht))⟩
+
 theorem ResAtTemp.shrinks {s₀ t u : SState} {lab : Option Nat} (h : ResAtTemp s₀ t lab) (hu : t.Uniq)
-    (hs : Shrinks t u) : ResAtTemp s₀ u lab := fun k hk hl => by
-  obtain ⟨q, hq, hqs⟩ := (SState.live_iff u k).1 hl
-  have hqt := hs.shape q k hqs
-  obtain ⟨j, hj⟩ := h k hk ((SState.live_iff t k).2 ⟨q, by rw [← hs.positions]; exact hq, hqt⟩)
-  refine ⟨j, ?_⟩
-  rw [hu _ _ _ hqt hj] at hqs; exact hqs
+    (hs : Shrinks t u) : ResAtTemp s₀ u lab := fun k hk => by
+  refine ⟨fun hl => ?_, fun hd => ?_⟩
+  · obtain ⟨q, hq, hqs⟩ := (SState.live_iff u k).1 hl
+    have hqt := hs.shape q k hqs
+    obtain ⟨j, hj⟩ := (h k hk).1 ((SState.live_iff t k).2 ⟨q, by rw [← hs.positions]; exact hq, hqt⟩)
+    refine ⟨j, ?_⟩
+    rw [hu _ _ _ hqt hj] at hqs; exact hqs
+  · refine hs.deadLent k hd ?_
+    by_cases ht : t.Live k
+    · exact .inl ht
+    · exact .inr ((h k hk).2 ht)
 
 /-! ## A label lent at more places: [Entry]'s lending, a call's -/
 
@@ -646,10 +702,17 @@ variable {K : RunCtx} {φ : Future} {σ : Nat → Nat} {s₀ : SState} {ks : Lis
 /-- The internal relation after operations that keep `AccInv`, keep both states good, and in place only clear holders
 and pass sites on (`Shrinks`: the counter, the bindings' sites). -/
 theorem FrameInv.of_ops {s s' t t' : SState} (h : FrameInv K φ σ s₀ ks s s') (hacc : AccInv K σ s₀ ks t t')
-    (hg : Strict.SGood K.dm K.Γ φ t) (hg' : Strict.SGood K.dm K.Γ φ t') (hsh : Shrinks s t) :
+    (hg : Strict.SGood K.dm K.Γ φ t) (hg' : Strict.SGood K.dm K.Γ φ t') (hsh : Shrinks s t) (hsh' : Shrinks s' t') :
     FrameInv K φ σ s₀ ks t t' :=
   { acc := hacc, good := hg, good' := hg', counter := hsh.next ▸ h.counter, srange := h.srange,
-    bsites := BSites.shrinks (s₀ := s₀) h.bsites hsh }
+    bsites := BSites.shrinks (s₀ := s₀) h.bsites hsh,
+    psites := fun m y hm hy hf => by
+      obtain ⟨m', z, hm', hz, e⟩ := hsh.liveSites m y hm hy
+      rw [hsh.positions, ← e]; exact h.psites m' z hm' hz (by rw [e]; exact hf),
+    heldAll := fun l hl => by
+      rw [hsh.records.1, hsh.records.2, hsh'.records.1, hsh'.records.2]; exact h.heldAll l (by rw [← hsh'.next]; exact hl)
+    orderAll := fun l l' hl hl' => h.orderAll l l' (by rw [← hsh'.next]; exact hl) (by rw [← hsh'.next]; exact hl')
+    monoAll := fun l l' hl hl' => h.monoAll l l' (by rw [← hsh'.next]; exact hl) (by rw [← hsh'.next]; exact hl') }
 
 /-- **The tag step of a match** (its strict test, its access) keeps the internal relation. -/
 theorem tag_frameInv (hs₀ : FrameStart s₀ ks) {s s' : SState} (h : FrameInv K φ σ s₀ ks s s') (p : Place)
@@ -677,7 +740,7 @@ theorem tag_frameInv (hs₀ : FrameStart s₀ ks) {s s' : SState} (h : FrameInv 
         obtain ⟨tg', t'⟩ := y'
         obtain ⟨rfl, hacc⟩ := hc
         exact ⟨rfl, h.of_ops hacc (Strict.sgood_tagOf h.good ht e1) (Strict.sgood_tagOf h.good' ht' e2)
-          (shrinks_tagOf K φ e1)⟩
+          (shrinks_tagOf K φ e1) (shrinks_tagOf K φ e2)⟩
   · rw [if_neg ht, if_neg (fun h' => ht (hok.2 h'))]; trivial
 
 /-- **[Entry] of a match** (`matchEntry`'s state, its strict test): related states after, the same test, and the same
@@ -704,7 +767,7 @@ theorem entry_frameInv (hs₀ : FrameStart s₀ ks) {s s' : SState} (h : FrameIn
     have g1 := Strict.sgood_matchEntry (K := K) (φ := φ) h.good true mt hme
     have g2 := Strict.sgood_matchEntry (K := K) (φ := φ) h.good' true mt ((e1' true).2 fun _ => hok.1 hme')
     rw [e2] at g1 ⊢; rw [e2'] at g2 ⊢
-    exact h.of_ops hacc g1 g2 (shrinks_entryAccess K φ _ _)
+    exact h.of_ops hacc g1 g2 (shrinks_entryAccess K φ _ _) (shrinks_entryAccess K φ _ _)
 
 end
 
@@ -740,9 +803,13 @@ def capSites (bc2 : List (Place × Nat)) (t : SState) : List Site :=
   bc2.filterMap fun qk => if qk.2 == 1 then (resolve t qk.1).map fun ps => ({ pos := ps.1, path := ps.2, fill := true } : Site)
     else none
 
-theorem entryLend_eq (bc : List Place × List (Place × Nat)) (snap : List Site) (k : Nat) (t : SState) :
+theorem entryLend_eq (bc : List Place × List (Place × Nat)) (snap : List Site) (k : Nat) (t : SState) (hk : t.Live k) :
     entryLend bc snap (some k) t = t.setLent k (t.lent k ++ (capSites bc.2 t ++ snap)) := by
-  unfold entryLend capSites; simp only [List.append_assoc]
+  unfold entryLend capSites; dsimp only; rw [if_pos (show k ∈ t.liveLabels from hk)]; simp only [List.append_assoc]
+
+theorem entryLend_dead (bc : List Place × List (Place × Nat)) (snap : List Site) (k : Nat) (t : SState)
+    (hk : ¬ t.Live k) : entryLend bc snap (some k) t = t := by
+  unfold entryLend; dsimp only; rw [if_neg (show k ∉ t.liveLabels from hk)]
 
 theorem capSites_corr (h : FrameRel σ s₀ ks t t') (bc2 : List (Place × Nat)) :
     capSites bc2 t' = (capSites bc2 t).map (upSite ks.length) := by
@@ -862,22 +929,52 @@ theorem capSites_pos {bc2 : List (Place × Nat)} {t t' : SState} (h : FrameRel �
   | bind f i => rw [e] at hfr; exact ⟨i, by simp only [Pos.frameOf] at hfr; rw [hfr]⟩
   | temp f i => rw [e] at hb; exact absurd trivial hb
 
+/-- **A label is live in the closure exactly when its image is in place** (the paper's (F6) with (F9)): an in-place
+holder of an image is in the callee's frame, since the caller holds only its own labels, below the call's counter and no
+parameter's (`FrameStart.callerHeld`), and every image is a parameter label or at or above the counter (`FrameInv.srange`). -/
+theorem live_corr {s s' : SState} (h : FrameInv K φ σ s₀ ks s s') (hs₀ : FrameStart s₀ ks) (l : Nat) :
+    s.Live (σ l) ↔ s'.Live l := by
+  refine ⟨fun hl => ?_, live_img h.acc.rel h.acc.shape⟩
+  obtain ⟨p, hp, hps⟩ := (SState.live_iff s _).1 hl
+  have hpf : p.frameOf < s.env.length := frameOf_lt_of_mem hp
+  rw [h.acc.rel.frames.1] at hpf
+  by_cases hlt : p.frameOf < s₀.topIdx
+  · rw [h.acc.rel.lowerShape p hlt] at hps
+    obtain ⟨hk, hl'⟩ := hs₀.callerHeld p _ hlt hps
+    rcases h.srange l with e | e
+    · exact absurd e hk
+    · omega
+  · have hpf' : p.frameOf = s₀.topIdx := by unfold SState.topIdx at hlt ⊢; omega
+    rw [h.acc.rel.topShape p hpf'] at hps
+    cases e : s'.shape (upPos ks.length p) with
+    | none => rw [e] at hps; cases hps
+    | some l' =>
+      rw [e] at hps
+      have := h.acc.rel.inj _ _ (Option.some.inj hps); subst this
+      exact (SState.live_iff s' _).2 ⟨_, h.acc.shape' _ _ e, e⟩
+
 /-- **[Entry]'s lending after the join keeps the internal relation** (the paper's row "A match": the result's label is
 held in the callee's frame; its new sites are corresponding places of the callee's frame and the snapshot; (F8) kept;
 `P2`'s case when the arm returns a borrow parameter, (I3)). Given the result's label parked (`ResAtTemp`): nothing is
 lent at its holder, so lending it further keeps lending well founded. -/
 theorem lend_frameInv (hs₀ : FrameStart s₀ ks) {t t' : SState} (h : FrameInv K φ σ s₀ ks t t')
     (bc : List Place × List (Place × Nat)) {snap snap' : List Site} (hsn : SnapRel σ s₀ ks snap snap')
-    (lab' : Option Nat) (hres : ResAtTemp s₀ t (lab'.map σ)) :
+    (lab' : Option Nat) (hres : ResAtTemp s₀ t (lab'.map σ)) (hresD : ResDead t' lab')
+    (hsnapPos : ∀ x ∈ snap, x.pos.frameOf = s₀.topIdx → x.pos ∈ t.positions) :
     FrameInv K φ σ s₀ ks (entryLend bc snap (lab'.map σ) t) (entryLend bc snap' lab' t') ∧
-      ResAtTemp s₀ (entryLend bc snap (lab'.map σ) t) (lab'.map σ) := by
+      (ResAtTemp s₀ (entryLend bc snap (lab'.map σ) t) (lab'.map σ) ∧ ResDead (entryLend bc snap' lab' t') lab') := by
   cases lab' with
-  | none => exact ⟨h, hres⟩
+  | none => exact ⟨h, hres, hresD⟩
   | some l =>
     simp only [Option.map_some] at hres ⊢
-    rw [entryLend_eq, entryLend_eq, capSites_corr h.acc.rel bc.2]
+    by_cases hkl : t.Live (σ l)
+    rotate_left
+    · have hkl' : ¬ t'.Live l := fun h' => hkl (live_img h.acc.rel h.acc.shape h')
+      rw [entryLend_dead _ _ _ _ hkl, entryLend_dead _ _ _ _ hkl']; exact ⟨h, hres, hresD⟩
+    have hkl' : t'.Live l := (live_corr h hs₀ l).1 hkl
+    rw [entryLend_eq _ _ _ _ hkl, entryLend_eq _ _ _ _ hkl', capSites_corr h.acc.rel bc.2]
     have hpark : t.Live (σ l) → ∀ q, t.shape q = some (σ l) → ∃ j, q = .temp s₀.topIdx j := fun hk q hq => by
-      obtain ⟨j, hj⟩ := hres (σ l) rfl hk
+      obtain ⟨j, hj⟩ := (hres (σ l) rfl).1 hk
       exact ⟨j, h.acc.uniq _ _ _ hq hj⟩
     have hnotb : t.Live (σ l) → ∀ (y : Site), t.shape y.pos = some (σ l) →
         y.pos.frameOf = s₀.topIdx ∧ ∀ i, y.pos ≠ .bind s₀.topIdx i := fun hk y hy => by
@@ -914,15 +1011,28 @@ theorem lend_frameInv (hs₀ : FrameStart s₀ ks) {t t' : SState} (h : FrameInv
         · obtain ⟨-, -, i, hi⟩ := capSites_pos h.acc.rel hy; exact hnb i hi
         · obtain ⟨i, hi⟩ := hsn.bind y hy hf; exact hnb i hi)
     refine ⟨⟨hacc, Strict.sgood_setLent h.good _ _, Strict.sgood_setLent h.good' _ _, h.counter, h.srange,
-      fun m y hy hf => ?_⟩, hres⟩
-    simp only [SState.setLent] at hy
-    split at hy
-    · rcases List.mem_append.mp hy with hy | hy
-      · exact h.bsites _ y hy hf
+      fun m y hy hf => ?_, fun m y hm hy hf => ?_, h.heldAll, h.orderAll, h.monoAll⟩,
+      fun k e => by cases e; exact ⟨(hres _ rfl).1, fun hd => absurd hkl hd⟩,
+      fun k e => by cases e; exact ⟨(hresD _ rfl).1, fun hd => absurd hkl' hd⟩⟩
+    · simp only [SState.setLent] at hy
+      split at hy
       · rcases List.mem_append.mp hy with hy | hy
-        · exact (capSites_pos h.acc.rel hy).2.2
-        · exact hsn.bind y hy hf
-    · exact h.bsites m y hy hf
+        · exact h.bsites _ y hy hf
+        · rcases List.mem_append.mp hy with hy | hy
+          · exact (capSites_pos h.acc.rel hy).2.2
+          · exact hsn.bind y hy hf
+      · exact h.bsites m y hy hf
+    · show y.pos ∈ t.positions
+      have hm' : t.Live m := hm
+      simp only [SState.setLent] at hy
+      split at hy
+      · rename_i e; subst e
+        rcases List.mem_append.mp hy with hy | hy
+        · exact h.psites _ y hm' hy hf
+        · rcases List.mem_append.mp hy with hy | hy
+          · obtain ⟨-, q, steps, hq⟩ := mem_capSites hy; exact resolve_mem hq
+          · exact hsnapPos y hy hf
+      · exact h.psites m y hm' hy hf
 
 end
 
@@ -963,12 +1073,12 @@ theorem agreeI_erasedIf (fl : Bool × Bool) {x x' : SM Res} {s s' : SState} (h :
       cases f2 with
       | true =>
         simp only [SM.erasedIf, if_true, hxs, hxs']
-        cases v <;> first | trivial | exact ⟨rfl, rfl, h, fun _ e => by cases e⟩
+        cases v <;> first | trivial | exact ⟨rfl, rfl, h, ⟨fun _ e => (by cases e), fun _ e => (by cases e)⟩⟩
       | false =>
         cases f1 with
         | true =>
           simp only [SM.erasedIf, SM.stmtIf, if_true, Bool.false_eq_true, if_false, hxs, hxs', Option.map_some]
-          exact ⟨rfl, by subst hR; rfl, h, fun _ e => by cases e⟩
+          exact ⟨rfl, by subst hR; rfl, h, ⟨fun _ e => (by cases e), fun _ e => (by cases e)⟩⟩
         | false =>
           simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, hxs, hxs']
           exact ⟨rfl, hR, hI, hres⟩
@@ -1005,40 +1115,87 @@ theorem oagree_bind {α : Type 3} {R : SState → SState → Prop} {o o' : Optio
 theorem agreeI_bind {o o' : Option (Res × SState)} (h : FrameAgreeI K φ σ s₀ ks o o')
     {f f' : Res × SState → Option (Res × SState)}
     (hf : ∀ (v : Sem) (R R' : TyS) (t t' : SState), R = { R' with label := R'.label.map σ } →
-      FrameInv K φ σ s₀ ks t t' → ResAtTemp s₀ t R.label → FrameAgreeI K φ σ s₀ ks (f ((v, R), t)) (f' ((v, R'), t'))) :
+      FrameInv K φ σ s₀ ks t t' → ResAtTemp s₀ t R.label ∧ ResDead t' R'.label →
+      FrameAgreeI K φ σ s₀ ks (f ((v, R), t)) (f' ((v, R'), t'))) :
     FrameAgreeI K φ σ s₀ ks (o >>= f) (o' >>= f') := by
   match o, o', h with
   | none, none, _ => trivial
   | some ((v, R), t), some ((v', R'), t'), ⟨e, hR, hI, hres⟩ => simp only at e; subst e; exact hf v R R' t t' hR hI hres
+
+/-- The snapshot an entry takes lies at existing positions (`FrameInv.psites`: it is the sites of live labels). -/
+theorem snapshot_pos {t t' : SState} (h : FrameInv K φ σ s₀ ks t t') {bc : List Place × List (Place × Nat)} {x : Site}
+    (hx : x ∈ entrySnapshot bc t) (hf : x.pos.frameOf = s₀.topIdx) : x.pos ∈ t.positions := by
+  unfold entrySnapshot at hx
+  obtain ⟨qk, -, hq⟩ := List.mem_flatMap.mp hx
+  split at hq
+  · split at hq
+    · rename_i pos hr
+      split at hq
+      · rename_i j hj
+        obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hq
+        exact h.psites j y ((SState.live_iff t j).2 ⟨pos, resolve_mem hr, hj⟩) hy hf
+      · cases hq
+    · cases hq
+  · cases hq
+
+/-- `agreeI_bind` with the in-place outcome's equation (what a run property of that run needs, e.g. `runT_rinv`). -/
+theorem agreeI_bind_eq {o o' : Option (Res × SState)} (h : FrameAgreeI K φ σ s₀ ks o o')
+    {f f' : Res × SState → Option (Res × SState)}
+    (hf : ∀ (v : Sem) (R R' : TyS) (t t' : SState), o = some ((v, R), t) → R = { R' with label := R'.label.map σ } →
+      FrameInv K φ σ s₀ ks t t' → ResAtTemp s₀ t R.label ∧ ResDead t' R'.label →
+      FrameAgreeI K φ σ s₀ ks (f ((v, R), t)) (f' ((v, R'), t'))) :
+    FrameAgreeI K φ σ s₀ ks (o >>= f) (o' >>= f') := by
+  match o, o', h with
+  | none, none, _ => trivial
+  | some ((v, R), t), some ((v', R'), t'), ⟨e, hR, hI, hres⟩ =>
+    simp only at e; subst e; exact hf v R R' t t' rfl hR hI hres
+
+/-- A match's arm keeps the frames' bindings (`runT_rinv`, along the arms). -/
+theorem runArm_envLe (hK : ∀ n, (K.C.global n).2.label = none) {L : Nat → Prop} :
+    ∀ (arms : List (Hint × Term)) (c : Nat) (tl : Bool) (hint : TyS) (s s' : SState) (r : Res), SState.RInv L s →
+      runArm K ρ φ tl hint c arms s = some (r, s') → EnvLe s s'
+  | [], _, _, _, _, _, _, _, h => by simp [runArm, SM.fail] at h
+  | (_, a) :: rest, c, tl, hint, s, s', r, hi, h => by
+    simp only [runArm] at h
+    split at h
+    · exact (runT_rinv K ρ φ L hK tl a hint s s' r hi h).2.2.1
+    · exact runArm_envLe hK rest (c - 1) tl hint s s' r hi h
 
 /-- **The join and [Entry]'s lending after an arm** (the paper's row "A match", after the arm): from the internal relation
 before the entry (`t`, `t'`: the entry's places and lending are read from it) and after the arm, the join's drop and the
 lending keep the internal relation and the result's label parked. -/
 theorem joinLend_frameInv (hs₀ : FrameStart s₀ ks) {t t' : SState} (h₀ : FrameInv K φ σ s₀ ks t t') (ent : Bool)
     (mt : Term) (hme : MatchEntryOk K φ ent mt t) (entry : List Place) {u u' : SState} (h : FrameInv K φ σ s₀ ks u u')
-    (lab' : Option Nat) (hres : ResAtTemp s₀ u (lab'.map σ)) (hj : JoinDropOk K φ entry mt u) :
+    (lab' : Option Nat) (hres : ResAtTemp s₀ u (lab'.map σ)) (hresD : ResDead u' lab') (hj : JoinDropOk K φ entry mt u)
+    (henv : EnvLe (matchEntry K φ ent mt t).1 u) :
     FrameInv K φ σ s₀ ks ((matchEntry K φ ent mt t).2 (lab'.map σ) (joinDrop K φ entry mt u))
         ((matchEntry K φ ent mt t').2 lab' (joinDrop K φ entry mt u')) ∧
-      ResAtTemp s₀ ((matchEntry K φ ent mt t).2 (lab'.map σ) (joinDrop K φ entry mt u)) (lab'.map σ) := by
+      (ResAtTemp s₀ ((matchEntry K φ ent mt t).2 (lab'.map σ) (joinDrop K φ entry mt u)) (lab'.map σ) ∧
+        ResDead ((matchEntry K φ ent mt t').2 lab' (joinDrop K φ entry mt u')) lab') := by
   obtain ⟨hjacc, hjok⟩ := joinDrop_corr (φ := φ) hs₀ entry mt h.acc
   have hsh := shrinks_joinDrop K φ entry mt u
+  have hsh' := shrinks_joinDrop K φ entry mt u'
   have hJ : FrameInv K φ σ s₀ ks (joinDrop K φ entry mt u) (joinDrop K φ entry mt u') :=
     h.of_ops hjacc (Strict.sgood_joinDrop h.good entry mt hj) (Strict.sgood_joinDrop h.good' entry mt (hjok.1 hj)) hsh
+      hsh'
   have hresJ : ResAtTemp s₀ (joinDrop K φ entry mt u) (lab'.map σ) := hres.shrinks h.acc.uniq hsh
+  have hresJ' : ResDead (joinDrop K φ entry mt u') lab' := hresD.shrinks hsh'
   have hbc : K.D.blockCaps (scopeOf t) (movedPlaces φ t) mt = K.D.blockCaps (scopeOf t') (movedPlaces φ t') mt := by
     rw [scopeOf_corr h₀.acc.rel, movedPlaces_corr φ h₀.acc.rel h₀.acc.shape h₀.acc.loc]
   cases ent with
-  | false => exact ⟨hJ, hresJ⟩
+  | false => exact ⟨hJ, hresJ, hresJ'⟩
   | true =>
     have hE := (entry_frameInv hs₀ h₀ true mt).2 hme
-    unfold matchEntry at hE ⊢
-    simp only [if_true] at hE ⊢
+    unfold matchEntry at hE henv ⊢
+    simp only [if_true] at hE henv ⊢
     rw [← hbc] at hE ⊢
-    generalize K.D.blockCaps (scopeOf t) (movedPlaces φ t) mt = bc at hE ⊢
+    generalize K.D.blockCaps (scopeOf t) (movedPlaces φ t) mt = bc at hE henv ⊢
     rw [← scopeOf_corr hE.acc.rel]
     split
-    · exact lend_frameInv hs₀ hJ bc (entrySnapshot_rel hE.acc hE.bsites bc) lab' hresJ
-    · exact ⟨hJ, hresJ⟩
+    · refine lend_frameInv hs₀ hJ bc (entrySnapshot_rel hE.acc hE.bsites bc) lab' hresJ hresJ' fun x hx hxf => ?_
+      refine EnvLe.mem (joinDrop_envLe K φ entry mt u) (EnvLe.mem henv ?_)
+      exact snapshot_pos hE hx hxf
+    · exact ⟨hJ, hresJ, hresJ'⟩
 
 end
 
@@ -1049,7 +1206,8 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future} {σ : Nat → Nat} {s₀ :
 
 /-- **An arm of a match, then the join's drop and [Entry]'s lending** (the part of the match clause after the entry):
 from the internal relation before the entry, the arm's frame property gives the whole tail. -/
-theorem matchArm_agree (hs₀ : FrameStart s₀ ks) {t t' : SState} (ht : FrameInv K φ σ s₀ ks t t') (ent : Bool)
+theorem matchArm_agree (hK : ∀ n, (K.C.global n).2.label = none) (hs₀ : FrameStart s₀ ks) {t t' : SState}
+    (ht : FrameInv K φ σ s₀ ks t t') (ent : Bool)
     (mt : Term) (hme : MatchEntryOk K φ ent mt t) {w : Term} (ihw : TermFrame K ρ φ σ s₀ ks w) (tl : Bool) (hint : TyS) :
     FrameAgreeI K φ σ s₀ ks
       (runT K ρ φ tl hint w (matchEntry K φ ent mt t).1 >>= fun x =>
@@ -1060,21 +1218,24 @@ theorem matchArm_agree (hs₀ : FrameStart s₀ ks) {t t' : SState} (ht : FrameI
         optCheck (JoinDropOk K φ (movedPlaces φ (matchEntry K φ ent mt t').1) mt x.2) >>= fun _ =>
           some ((x.1.1, x.1.2), (matchEntry K φ ent mt t').2 x.1.2.label
             (joinDrop K φ (movedPlaces φ (matchEntry K φ ent mt t').1) mt x.2))) := by
-  refine agreeI_bind (ihw tl hint _ _ ((entry_frameInv hs₀ ht ent mt).2 hme)) fun v R R' a a' hR ha hres => ?_
+  have hE := (entry_frameInv hs₀ ht ent mt).2 hme
+  refine agreeI_bind_eq (ihw tl hint _ _ hE) fun v R R' a a' hrun hR ha hres => ?_
+  have henv : EnvLe (matchEntry K φ ent mt t).1 a := (runT_rinv K ρ φ (fun _ => True) hK tl w hint _ a (v, R)
+    hE.good.acyc hrun).2.2.1
   dsimp only
   have hlab : R.label = R'.label.map σ := by rw [hR]
   obtain ⟨-, hjok⟩ := joinDrop_corr (φ := φ) hs₀ (movedPlaces φ (matchEntry K φ ent mt t').1) mt ha.acc
   by_cases hj : JoinDropOk K φ (movedPlaces φ (matchEntry K φ ent mt t').1) mt a
   · rw [optCheck_of hj, optCheck_of (hjok.1 hj)]
     rw [hlab] at hres ⊢
-    obtain ⟨hF, hres'⟩ := joinLend_frameInv hs₀ ht ent mt hme _ ha R'.label hres hj
-    exact ⟨rfl, hR, hF, by show ResAtTemp s₀ _ R.label; rw [hlab]; exact hres'⟩
+    obtain ⟨hF, hres'⟩ := joinLend_frameInv hs₀ ht ent mt hme _ ha R'.label hres.1 hres.2 hj henv
+    exact ⟨rfl, hR, hF, by show ResAtTemp s₀ _ R.label ∧ _; rw [hlab]; exact hres'⟩
   · rw [optCheck_neg hj, optCheck_neg (fun h => hj (hjok.2 h))]; trivial
 
 /-- **The frame property's clause for a match on a number** (the paper's row "A match", `<sec-frame-proof>`): the tag
 (`tag_frameInv`), [Entry]'s accesses and invalidation (`entry_frameInv`), the arm (the induction: `ihz`, `ihu`), the join's
 drop and [Entry]'s lending (`matchArm_agree`, `joinLend_frameInv`). -/
-theorem runFrameI_matchNat (hs₀ : FrameStart s₀ ks) {p : Place} {z u : Term}
+theorem runFrameI_matchNat (hK : ∀ n, (K.C.global n).2.label = none) (hs₀ : FrameStart s₀ ks) {p : Place} {z u : Term}
     (ihz : TermFrame K ρ φ σ s₀ ks z) (ihu : TermFrame K ρ φ σ s₀ ks u) :
     TermFrame K ρ φ σ s₀ ks (.matchNat p z u) := by
   intro tl hint s s' hI
@@ -1089,8 +1250,8 @@ theorem runFrameI_matchNat (hs₀ : FrameStart s₀ ks) {p : Place} {z u : Term}
     rw [optCheck_of hme, optCheck_of (hmeI.1 hme), movedPlaces_corr φ hE.acc.rel hE.acc.shape hE.acc.loc]
     rcases tg.asNat with _ | _ | n
     · trivial
-    · exact matchArm_agree hs₀ ht _ _ hme ihz _ _
-    · exact matchArm_agree hs₀ ht _ _ hme ihu _ _
+    · exact matchArm_agree hK hs₀ ht _ _ hme ihz _ _
+    · exact matchArm_agree hK hs₀ ht _ _ hme ihu _ _
   · rw [optCheck_neg hme, optCheck_neg (fun h => hme (hmeI.2 h))]; trivial
 
 /-- An erased match on a proof with other than one arm (`SM.anyArm`): the arms on copies, the first that runs to a
@@ -1125,12 +1286,13 @@ theorem anyArm_agree {n : Nat} {f f' : Nat → SM Res} {s s' : SState} (h : Fram
       | some y' =>
         obtain ⟨⟨v, R⟩, t⟩ := y; obtain ⟨⟨v', R'⟩, t'⟩ := y'
         rintro ⟨e, hR, -, -⟩; simp only at e; subst e
-        exact ⟨rfl, by subst hR; rfl, h, fun _ e => by cases e⟩
+        exact ⟨rfl, by subst hR; rfl, h, ⟨fun _ e => (by cases e), fun _ e => (by cases e)⟩⟩
   · trivial
 
 /-- **The arm of a match on an inductive, not on a proof**, then the join's drop and [Entry]'s lending, or, on a type with
 one constructor (D93), neither. -/
-theorem matchIndArm_agree (hs₀ : FrameStart s₀ ks) {t t' : SState} (ht : FrameInv K φ σ s₀ ks t t') (ent : Bool)
+theorem matchIndArm_agree (hK : ∀ n, (K.C.global n).2.label = none) (hs₀ : FrameStart s₀ ks) {t t' : SState}
+    (ht : FrameInv K φ σ s₀ ks t t') (ent : Bool)
     (mt : Term) (hme : MatchEntryOk K φ ent mt t) {arms : List (Hint × Term)}
     (iharms : ∀ a ∈ arms, TermFrame K ρ φ σ s₀ ks a.2) (c : Nat) (tl : Bool) (hint : TyS) (one : Bool) :
     FrameAgreeI K φ σ s₀ ks
@@ -1142,8 +1304,10 @@ theorem matchIndArm_agree (hs₀ : FrameStart s₀ ks) {t t' : SState} (ht : Fra
         optCheck (false = true ∨ one = true ∨ JoinDropOk K φ (movedPlaces φ (matchEntry K φ ent mt t').1) mt x.2) >>= fun _ =>
           some ((x.1.1, x.1.2), if one = true then x.2 else (matchEntry K φ ent mt t').2 x.1.2.label
             (joinDrop K φ (movedPlaces φ (matchEntry K φ ent mt t').1) mt x.2))) := by
-  refine agreeI_bind (runArm_agree arms iharms c tl hint _ _ ((entry_frameInv hs₀ ht ent mt).2 hme))
-    fun v R R' a a' hR ha hres => ?_
+  have hE := (entry_frameInv hs₀ ht ent mt).2 hme
+  refine agreeI_bind_eq (runArm_agree arms iharms c tl hint _ _ hE) fun v R R' a a' hrun hR ha hres => ?_
+  have henv : EnvLe (matchEntry K φ ent mt t).1 a :=
+    runArm_envLe hK arms c tl hint _ a (v, R) (L := fun _ => True) hE.good.acyc hrun
   dsimp only
   cases one with
   | true =>
@@ -1156,8 +1320,8 @@ theorem matchIndArm_agree (hs₀ : FrameStart s₀ ks) {t t' : SState} (ht : Fra
     · rw [optCheck_of (Or.inr (Or.inr hj)), optCheck_of (Or.inr (Or.inr (hjok.1 hj)))]
       simp only [Bool.false_eq_true, if_false]
       rw [hlab] at hres ⊢
-      obtain ⟨hF, hres'⟩ := joinLend_frameInv hs₀ ht ent mt hme _ ha R'.label hres hj
-      exact ⟨rfl, hR, hF, by show ResAtTemp s₀ _ R.label; rw [hlab]; exact hres'⟩
+      obtain ⟨hF, hres'⟩ := joinLend_frameInv hs₀ ht ent mt hme _ ha R'.label hres.1 hres.2 hj henv
+      exact ⟨rfl, hR, hF, by show ResAtTemp s₀ _ R.label ∧ _; rw [hlab]; exact hres'⟩
     · have n1 : ¬ (false = true ∨ false = true ∨ JoinDropOk K φ (movedPlaces φ (matchEntry K φ ent mt t').1) mt a) := by
         simp [hj]
       have n2 : ¬ (false = true ∨ false = true ∨ JoinDropOk K φ (movedPlaces φ (matchEntry K φ ent mt t').1) mt a') := by
@@ -1181,7 +1345,8 @@ theorem proofArm_agree {t t' : SState} (ht : FrameInv K φ σ s₀ ks t t') {arm
 /-- **The frame property's clause for a match on an inductive** (the paper's row "A match"): as for a number, the arm by
 index (`runArm_agree`), no entry and no join on a proof or on a type with one constructor (D93), and an erased match on a
 proof with other than one arm runs its arms on copies (`SM.anyArm`). -/
-theorem runFrameI_matchInd (hs₀ : FrameStart s₀ ks) {p : Place} {n : String} {arms : List (Hint × Term)}
+theorem runFrameI_matchInd (hK : ∀ n, (K.C.global n).2.label = none) (hs₀ : FrameStart s₀ ks) {p : Place} {n : String}
+    {arms : List (Hint × Term)}
     (iharms : ∀ a ∈ arms, TermFrame K ρ φ σ s₀ ks a.2) :
     TermFrame K ρ φ σ s₀ ks (.matchInd p n arms) := by
   intro tl hint s s' hI
@@ -1204,7 +1369,7 @@ theorem runFrameI_matchInd (hs₀ : FrameStart s₀ ks) {p : Place} {n : String}
       dsimp only [Sem.isProof]
       rcases Sem.asNat _ with _ | c
       · trivial
-      · exact matchIndArm_agree hs₀ ht _ _ hme iharms c tl _ _
+      · exact matchIndArm_agree hK hs₀ ht _ _ hme iharms c tl _ _
   · rw [optCheck_neg hme, optCheck_neg (fun h => hme (hmeI.2 h))]; trivial
 
 end

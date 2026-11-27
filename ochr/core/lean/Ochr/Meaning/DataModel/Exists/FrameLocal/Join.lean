@@ -174,17 +174,27 @@ theorem entrySnapshot_qset {s : SState} (h : Pre Q β s) (bc : List Place × Lis
     entrySnapshot bc (qset Q β s) = entrySnapshot bc s := by
   unfold entrySnapshot; simp only [qset_resolve, qset_shape_eq h.shape, qset_lent]
 
-theorem entryLend_qset (bc : List Place × List (Place × Nat)) (snap : List Site) (lab : Option Nat) (s : SState) :
+theorem entryLend_qset (bc : List Place × List (Place × Nat)) (snap : List Site) (lab : Option Nat) (s : SState)
+    (hsh : ∀ p, Q p → s.shape p = none) :
     entryLend bc snap lab (qset Q β s) = qset Q β (entryLend bc snap lab s) := by
   unfold entryLend; cases lab with
   | none => rfl
-  | some k => simp only [qset_resolve, qset_lent]; rfl
+  | some k =>
+    -- lead35 (docs/31 D222): only a live label is lent; `qset` keeps the live labels where `Q` holds no borrow
+    rw [qset_liveLabels hsh]
+    by_cases hk : k ∈ s.liveLabels
+    · dsimp only; rw [if_pos hk, if_pos hk]; simp only [qset_resolve, qset_lent]; rfl
+    · dsimp only; rw [if_neg hk, if_neg hk]
 
 theorem Twin.entryLend {s₀ s : SState} (h : Twin Q β β' s₀ s) (bc : List Place × List (Place × Nat)) (snap : List Site)
     (lab : Option Nat) : Twin Q β β' s₀ (entryLend bc snap lab s) := by
   unfold Ochr.Meaning.entryLend; cases lab with
   | none => exact h
-  | some k => exact h.setLent _ _
+  | some k =>
+    dsimp only
+    split
+    · exact h.setLent _ _
+    · exact h
 
 theorem matchEntry_qset (hd : ∀ p, Q p → (β' p).decl = (β p).decl)
     (hinv : ∀ sc p q, q ∈ K.D.invalidated sc p → q.root = p.root) {s : SState} (h : Twin Q β β' s s)
@@ -192,7 +202,7 @@ theorem matchEntry_qset (hd : ∀ p, Q p → (β' p).decl = (β p).decl)
     (hA : ∀ qk ∈ (K.D.blockCaps (scopeOf s) (movedPlaces φ s) mt).2, RAvoid Q s qk.1)
     {S₁ : SState} {L : Option Nat → SState → SState} (he : matchEntry K φ ent mt s = (S₁, L)) :
     ∃ L', matchEntry K φ ent mt (qset Q β' s) = (qset Q β' S₁, L') ∧ Twin Q β β' s S₁ ∧
-      (∀ lab s₂, L' lab (qset Q β' s₂) = qset Q β' (L lab s₂)) ∧
+      (∀ lab s₂, (∀ p, Q p → s₂.shape p = none) → L' lab (qset Q β' s₂) = qset Q β' (L lab s₂)) ∧
       (∀ lab s₂, Twin Q β β' s s₂ → Twin Q β β' s (L lab s₂)) ∧
       (MatchEntryOk K φ ent mt (qset Q β' s) ↔ MatchEntryOk K φ ent mt s) := by
   unfold matchEntry at he ⊢
@@ -201,15 +211,15 @@ theorem matchEntry_qset (hd : ∀ p, Q p → (β' p).decl = (β p).decl)
   cases ent
   · simp only [Bool.false_eq_true, if_false, Prod.mk.injEq] at he ⊢
     obtain ⟨rfl, rfl⟩ := he
-    exact ⟨_, ⟨rfl, rfl⟩, h, fun _ _ => rfl, fun _ _ h => h, ⟨fun _ h => (by cases h), fun _ h => (by cases h)⟩⟩
+    exact ⟨_, ⟨rfl, rfl⟩, h, fun _ _ _ => rfl, fun _ _ h => h, ⟨fun _ h => (by cases h), fun _ h => (by cases h)⟩⟩
   · obtain ⟨e, t, o⟩ := entryAccess_qset K φ hd hinv h _ hA
     simp only [if_true, Prod.mk.injEq] at he ⊢
     obtain ⟨rfl, rfl⟩ := he
     rw [e, scopeOf_qset t.fix hd, entrySnapshot_qset t.pre']
-    refine ⟨_, ⟨rfl, rfl⟩, t, fun lab s₂ => ?_, fun lab s₂ h₂ => ?_, imp_congr_right fun _ => o⟩
+    refine ⟨_, ⟨rfl, rfl⟩, t, fun lab s₂ hsh => ?_, fun lab s₂ h₂ => ?_, imp_congr_right fun _ => o⟩
     · dsimp only
       split
-      · exact entryLend_qset _ _ _ _
+      · exact entryLend_qset _ _ _ _ hsh
       · rfl
     · dsimp only
       split

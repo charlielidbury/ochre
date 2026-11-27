@@ -90,6 +90,31 @@ theorem takes_nextLoan : ∀ (C : List Nat) (t : SState), (C.foldl SState.takeLa
   | [], _ => rfl
   | l :: C, t => by rw [List.foldl_cons, takes_nextLoan C, takeLabel_nextLoan']
 
+theorem takes_positions : ∀ (C : List Nat) (t : SState), (C.foldl SState.takeLabel t).positions = t.positions
+  | [], _ => rfl
+  | l :: C, t => by rw [List.foldl_cons, takes_positions C, SState.takeLabel_positions]
+
+theorem takeLabel_heldTy' (t : SState) (l : Nat) : (t.takeLabel l).heldTy = t.heldTy := by
+  unfold SState.takeLabel; split
+  · rename_i r _; show (t.setAt r fun _ => .moved).heldTy = t.heldTy; exact setAt_heldTy _ _ _
+  · rfl
+
+theorem takeLabel_heldMem' (t : SState) (l : Nat) : (t.takeLabel l).heldMem = t.heldMem := by
+  unfold SState.takeLabel; split
+  · rename_i r _; show (t.setAt r fun _ => .moved).heldMem = t.heldMem; exact setAt_heldMem _ _ _
+  · rfl
+
+theorem takes_heldTy : ∀ (C : List Nat) (t : SState), (C.foldl SState.takeLabel t).heldTy = t.heldTy
+  | [], _ => rfl
+  | l :: C, t => by rw [List.foldl_cons, takes_heldTy C, takeLabel_heldTy']
+
+theorem takes_heldMem : ∀ (C : List Nat) (t : SState), (C.foldl SState.takeLabel t).heldMem = t.heldMem
+  | [], _ => rfl
+  | l :: C, t => by rw [List.foldl_cons, takes_heldMem C, takeLabel_heldMem']
+
+theorem mapVals_heldTy (t : SState) (g : Pos → SVal → SVal) : (t.mapVals g).heldTy = t.heldTy := rfl
+theorem mapVals_heldMem (t : SState) (g : Pos → SVal → SVal) : (t.mapVals g).heldMem = t.heldMem := rfl
+
 theorem mapVals_lent (t : SState) (g : Pos → SVal → SVal) : (t.mapVals g).lent = t.lent := rfl
 theorem mapVals_shape (t : SState) (g : Pos → SVal → SVal) : (t.mapVals g).shape = t.shape := rfl
 theorem mapVals_nextLoan (t : SState) (g : Pos → SVal → SVal) : (t.mapVals g).nextLoan = t.nextLoan := rfl
@@ -165,7 +190,19 @@ theorem callData_frameInv (h : FrameInv K φ σ s₀ ks s s') (hs₀ : FrameStar
       show s₀.nextLoan ≤ (((C.map σ).foldl SState.takeLabel s)).nextLoan
       rw [takes_nextLoan]; exact h.counter
     srange := h.srange
-    bsites := fun m y hy hf => h.bsites m y (by rw [mapVals_lent, takes_lent] at hy; exact hy) hf }
+    bsites := fun m y hy hf => h.bsites m y (by rw [mapVals_lent, takes_lent] at hy; exact hy) hf
+    psites := fun m y hm hy hf => by
+      rw [SState.positions_mapVals, takes_positions]
+      exact h.psites m y (live_takes_fix hm) (by rw [mapVals_lent, takes_lent] at hy; exact hy) hf
+    heldAll := fun l hl => by
+      rw [mapVals_nextLoan, takes_nextLoan] at hl
+      rw [mapVals_heldTy, mapVals_heldTy, takes_heldTy, takes_heldTy, mapVals_heldMem, mapVals_heldMem, takes_heldMem,
+        takes_heldMem]
+      exact h.heldAll l hl
+    orderAll := fun l l' hl hl' => by
+      rw [mapVals_nextLoan, takes_nextLoan] at hl hl'; exact h.orderAll l l' hl hl'
+    monoAll := fun l l' hl hl' => by
+      rw [mapVals_nextLoan, takes_nextLoan] at hl hl'; exact h.monoAll l l' hl hl' }
 
 end
 
@@ -208,6 +245,28 @@ theorem pushTempShaped_lent (t : SState) (v : SVal) (k : Nat) : (t.pushTempShape
 
 theorem pushTempShaped_nextLoan (t : SState) (v : SVal) (k : Nat) : (t.pushTempShaped v k).nextLoan = t.nextLoan := by
   unfold SState.pushTempShaped; dsimp only; split <;> rfl
+
+theorem pushTempShaped_heldTy (t : SState) (v : SVal) (k : Nat) : (t.pushTempShaped v k).heldTy = t.heldTy := by
+  unfold SState.pushTempShaped; dsimp only; split <;> rfl
+
+theorem pushTempShaped_heldMem (t : SState) (v : SVal) (k : Nat) : (t.pushTempShaped v k).heldMem = t.heldMem := by
+  unfold SState.pushTempShaped; dsimp only; split <;> rfl
+
+theorem setLent_heldTy' (t : SState) (l : Nat) (xs : List Site) : (t.setLent l xs).heldTy = t.heldTy := rfl
+theorem setLent_heldMem' (t : SState) (l : Nat) (xs : List Site) : (t.setLent l xs).heldMem = t.heldMem := rfl
+
+theorem park_heldTy (t : SState) (v : SVal) (l : Nat) (xs : List Site) (T : TyM) (m : Sem) (n : Nat) :
+    (park t v l xs T m).heldTy n = if n = l then T else t.heldTy n := by
+  show (if n = l then T else ((t.pushTempShaped v l).setLent l xs).heldTy n) = _
+  rw [setLent_heldTy', pushTempShaped_heldTy]
+
+theorem park_heldMem (t : SState) (v : SVal) (l : Nat) (xs : List Site) (T : TyM) (m : Sem) (n : Nat) :
+    (park t v l xs T m).heldMem n = if n = l then m else t.heldMem n := by
+  show (if n = l then m else (((t.pushTempShaped v l).setLent l xs).setHeldTy l T).heldMem n) = _
+  rw [SState.setHeldTy_heldMem, setLent_heldMem', pushTempShaped_heldMem]
+
+theorem park_nextLoan (t : SState) (v : SVal) (l : Nat) (xs : List Site) (T : TyM) (m : Sem) :
+    (park t v l xs T m).nextLoan = t.nextLoan := pushTempShaped_nextLoan t v l
 
 theorem headD_len_pushTempShaped (t : SState) (v : SVal) (k : Nat) (h : t.topIdx ≠ 0) :
     ((t.pushTempShaped v k).env.headD {}).binds.length = (t.env.headD {}).binds.length := by
@@ -284,9 +343,11 @@ theorem callRef_frameInv (h : FrameInv K φ σ s₀ ks s s') (hs₀ : FrameStart
       (refState ((C.map σ).foldl SState.takeLabel s)
         (refFix dec (σ s'.nextLoan) (fun x => renFix σ (A x)) (renFix σ B)) v T (lentOf ((C.map σ).foldl SState.takeLabel s).freshLoan.2 (C.map σ)) (σ s'.nextLoan))
       (refState (C.foldl SState.takeLabel s') (refFix dec s'.nextLoan A B) v T (lentOf (C.foldl SState.takeLabel s').freshLoan.2 C) s'.nextLoan) ∧
-    ResAtTemp s₀ (refState ((C.map σ).foldl SState.takeLabel s)
+    (ResAtTemp s₀ (refState ((C.map σ).foldl SState.takeLabel s)
         (refFix dec (σ s'.nextLoan) (fun x => renFix σ (A x)) (renFix σ B)) v T (lentOf ((C.map σ).foldl SState.takeLabel s).freshLoan.2 (C.map σ)) (σ s'.nextLoan))
-      (some (σ s'.nextLoan)) := by
+      (some (σ s'.nextLoan)) ∧
+      ResDead (refState (C.foldl SState.takeLabel s') (refFix dec s'.nextLoan A B) v T
+        (lentOf (C.foldl SState.takeLabel s').freshLoan.2 C) s'.nextLoan) (some s'.nextLoan)) := by
   have e1 : lentOf ((C.map σ).foldl SState.takeLabel s).freshLoan.2 (C.map σ) = lentOf s (C.map σ) := by
     unfold lentOf; rw [show (((C.map σ).foldl SState.takeLabel s).freshLoan.2).lent = s.lent from takes_lent _ _]
   have e2 : lentOf (C.foldl SState.takeLabel s').freshLoan.2 C = lentOf s' C := by
@@ -326,13 +387,28 @@ theorem callRef_frameInv (h : FrameInv K φ σ s₀ ks s s') (hs₀ : FrameStart
     · exact ft_refFix (hA.noParam p hp) dec hkks A B p
     · exact ft_refFix (FT.const _ _) dec hkks A B p
     · exact FT.const _ _
+  have hpos3 : ∀ q ∈ s.positions, q ∈ (((C.map σ).foldl SState.takeLabel s).freshLoan.2.mapVals
+      (refFix dec (σ s'.nextLoan) (fun x => renFix σ (A x)) (renFix σ B))).positions := fun q hq => by
+    rw [SState.positions_mapVals]; show q ∈ ((C.map σ).foldl SState.takeLabel s).positions
+    rw [takes_positions]; exact hq
+  have hheld3 : (((C.map σ).foldl SState.takeLabel s).freshLoan.2.mapVals
+      (refFix dec (σ s'.nextLoan) (fun x => renFix σ (A x)) (renFix σ B))).heldTy = s.heldTy := takes_heldTy _ _
+  have hmem3 : (((C.map σ).foldl SState.takeLabel s).freshLoan.2.mapVals
+      (refFix dec (σ s'.nextLoan) (fun x => renFix σ (A x)) (renFix σ B))).heldMem = s.heldMem := takes_heldMem _ _
+  have hheld3' : ((C.foldl SState.takeLabel s').freshLoan.2.mapVals (refFix dec s'.nextLoan A B)).heldTy = s'.heldTy :=
+    takes_heldTy _ _
+  have hmem3' : ((C.foldl SState.takeLabel s').freshLoan.2.mapVals (refFix dec s'.nextLoan A B)).heldMem = s'.heldMem :=
+    takes_heldMem _ _
+  have hnext3' : ((C.foldl SState.takeLabel s').freshLoan.2.mapVals (refFix dec s'.nextLoan A B)).nextLoan =
+      s'.nextLoan + 1 := by
+    show (C.foldl SState.takeLabel s').nextLoan + 1 = _; rw [takes_nextLoan]
   have hc3 : ks.length ≤ ((((C.foldl SState.takeLabel s').freshLoan.2.mapVals
       (refFix dec s'.nextLoan A B)).env.headD {}).binds.length) := by rw [headD_len_mapVals]; exact hc
   simp only [refState_park] at hg hg' hri' ⊢
   generalize ((C.map σ).foldl SState.takeLabel s).freshLoan.2.mapVals
-    (refFix dec (σ s'.nextLoan) (fun x => renFix σ (A x)) (renFix σ B)) = t3 at hfix hsh3 hlent3 hnext3 hg ⊢
+    (refFix dec (σ s'.nextLoan) (fun x => renFix σ (A x)) (renFix σ B)) = t3 at hfix hsh3 hlent3 hnext3 hpos3 hheld3 hmem3 hg ⊢
   generalize (C.foldl SState.takeLabel s').freshLoan.2.mapVals (refFix dec s'.nextLoan A B) = t3'
-    at hfix hsh3' hsa3' hnoP3 hc3 hg' hri' ⊢
+    at hfix hsh3' hsa3' hnoP3 hc3 hheld3' hmem3' hnext3' hg' hri' ⊢
   -- the parked results, with no site
   obtain ⟨F, F', hF, hF', hTR⟩ := top_rel hfix
   have htop3 : t3.topIdx = s₀.topIdx := topIdx_eq hfix
@@ -436,7 +512,8 @@ theorem callRef_frameInv (h : FrameInv K φ σ s₀ ks s s') (hs₀ : FrameStart
     (fun _ y hy hs => by
       obtain ⟨a, z, hz, e⟩ := hsitesK y hy
       rw [← e] at hs; exact hshP z a hz hs)
-  refine ⟨{ acc := hS, good := hg, good' := hg', counter := ?_, srange := h.srange, bsites := ?_ }, ?_⟩
+  refine ⟨{ acc := hS, good := hg, good' := hg', counter := ?_, srange := h.srange, bsites := ?_, psites := ?_,
+             heldAll := ?_, orderAll := ?_, monoAll := ?_ }, ?_, ?_⟩
   · show s₀.nextLoan ≤ (t3.pushTempShaped (fun _ => v) (σ s'.nextLoan)).nextLoan
     rw [pushTempShaped_nextLoan, hnext3]; have := h.counter; omega
   · intro m y hy hf
@@ -448,11 +525,56 @@ theorem callRef_frameInv (h : FrameInv K φ σ s₀ ks s s') (hs₀ : FrameStart
     · rename_i hne
       rw [park_lent_ne _ _ _ _ hne, pushTempShaped_lent, hlent3] at hy
       exact h.bsites m y hy hf
-  · intro k0 e _
+  · intro m y hm hy hf
+    have hposP : ∀ q ∈ s.positions, q ∈ (park t3 (fun _ => v) (σ s'.nextLoan) [] T v).positions := fun q hq => by
+      show q ∈ (t3.pushTempShaped (fun _ => v) (σ s'.nextLoan)).positions
+      rw [SState.positions_pushTempShaped]; exact SState.mem_positions_pushTemp _ _ (hpos3 q hq)
+    show y.pos ∈ (park t3 (fun _ => v) (σ s'.nextLoan) [] T v).positions
+    simp only [SState.setLent] at hy
+    split at hy
+    · rw [park_lent_self, List.nil_append] at hy
+      simp only [lentOf, List.mem_map, List.mem_flatMap] at hy
+      obtain ⟨z, ⟨_, ⟨l, hl, rfl⟩, hz⟩, rfl⟩ := hy
+      exact hposP _ (h.psites _ z (live_img hA.rel hA.shape (hlive l hl)) hz hf)
+    · rename_i hne
+      rw [park_lent_ne _ _ _ _ hne, pushTempShaped_lent, hlent3] at hy
+      have hm' : (park t3 (fun _ => v) (σ s'.nextLoan) [] T v).Live m := hm
+      rcases live_park_cases hF hm' with e | ⟨q, hq⟩
+      · exact absurd e hne
+      · exact hposP _ (h.psites m y ((SState.live_iff s m).2 ⟨q, hA.shape q m (hsh3 q m hq), hsh3 q m hq⟩) hy hf)
+  · intro l hl
+    rw [SState.setLent_nextLoan, park_nextLoan, hnext3'] at hl
+    rw [setLent_heldTy', setLent_heldTy', setLent_heldMem', setLent_heldMem', park_heldTy, park_heldTy, park_heldMem,
+      park_heldMem, hheld3, hheld3', hmem3, hmem3']
+    by_cases e : l = s'.nextLoan
+    · subst e; simp
+    · have e' : σ l ≠ σ s'.nextLoan := fun h' => e (hA.rel.inj _ _ h')
+      rw [if_neg e', if_neg e, if_neg e', if_neg e]
+      exact h.heldAll l (by omega)
+  · intro l l' hl hl' hlk hl'k
+    rw [SState.setLent_nextLoan, park_nextLoan, hnext3'] at hl hl'
+    by_cases e : l = s'.nextLoan
+    · subst e; exact absurd hlk hkks
+    by_cases e' : l' = s'.nextLoan
+    · omega
+    · exact h.orderAll l l' (by omega) (by omega) hlk hl'k
+  · intro l l' hl hl' hlk hl'k hll
+    rw [SState.setLent_nextLoan, park_nextLoan, hnext3'] at hl hl'
+    by_cases e' : l' = s'.nextLoan
+    · subst e'; rw [hk]; exact sigma_lt hA.rel (by omega)
+    · exact h.monoAll l l' (by omega) (by omega) hlk hl'k hll
+  · intro k0 e
     cases e
-    refine ⟨F.temps.length, ?_⟩
-    show (park t3 (fun _ => v) (σ s'.nextLoan) [] T v).shape _ = _
-    rw [shape_park hF, if_pos (by rw [htop3])]
+    have hsh : (park t3 (fun _ => v) (σ s'.nextLoan) [] T v).shape (.temp s₀.topIdx F.temps.length) =
+        some (σ s'.nextLoan) := by
+      rw [shape_park hF, if_pos (by rw [htop3])]
+    exact ⟨fun _ => ⟨F.temps.length, hsh⟩, fun hd => absurd ((SState.live_iff _ _).2 ⟨_, (hg.acyc.2.2 _ _ hsh).1, hsh⟩) hd⟩
+  · intro k0 e
+    cases e
+    have hsh' : (park t3' (fun _ => v) s'.nextLoan [] T v).shape (.temp t3'.topIdx F'.temps.length) = some s'.nextLoan := by
+      rw [shape_park hF', if_pos rfl]
+    refine ⟨?_, fun hd => absurd ((SState.live_iff _ _).2 ⟨_, (hg'.acyc.2.2 _ _ hsh').1, hsh'⟩) hd⟩
+    rw [SState.setLent_nextLoan, park_nextLoan, hnext3']; omega
 
 end
 
@@ -475,9 +597,11 @@ theorem callRef_frameInv' (h : FrameInv K φ σ s₀ ks s s') (hs₀ : FrameStar
       (refState ((C.map σ).foldl SState.takeLabel s) G v T
         (lentOf ((C.map σ).foldl SState.takeLabel s).freshLoan.2 (C.map σ)) (σ s'.nextLoan))
       (refState (C.foldl SState.takeLabel s') G' v T (lentOf (C.foldl SState.takeLabel s').freshLoan.2 C) s'.nextLoan) ∧
-    ResAtTemp s₀ (refState ((C.map σ).foldl SState.takeLabel s) G v T
+    (ResAtTemp s₀ (refState ((C.map σ).foldl SState.takeLabel s) G v T
         (lentOf ((C.map σ).foldl SState.takeLabel s).freshLoan.2 (C.map σ)) (σ s'.nextLoan))
-      (some (σ s'.nextLoan)) := by
+      (some (σ s'.nextLoan)) ∧
+      ResDead (refState (C.foldl SState.takeLabel s') G' v T (lentOf (C.foldl SState.takeLabel s').freshLoan.2 C)
+        s'.nextLoan) (some s'.nextLoan)) := by
   subst hG hG'
   exact callRef_frameInv h hs₀ C hlive dec A B v T hg hg' hri'
 
@@ -517,7 +641,8 @@ theorem callOfL_agree.{u} (L : Lvl.{u}) {Cd : Type u} (tel : Tel L.Code PUnit Cd
     cases res with
     | data r T finals =>
       simp only [happ] at hg hg' hri' ⊢
-      exact ⟨rfl, rfl, callData_frameInv h hs₀ _ _ (hg _ _ rfl) (hg' _ _ rfl) (hri' _ _ rfl), fun _ e => by cases e⟩
+      exact ⟨rfl, rfl, callData_frameInv h hs₀ _ _ (hg _ _ rfl) (hg' _ _ rfl) (hri' _ _ rfl), ⟨fun _ e => (by cases e),
+        fun _ e => by cases e⟩⟩
     | ref U c fwd back =>
       simp only [happ] at hg hg' hri' ⊢
       refine ⟨rfl, rfl, callRef_frameInv' h hs₀ (refL.filterMap id) hlive' (L.dec c)
@@ -536,29 +661,6 @@ end
 
 section
 variable {K : RunCtx} {φ : Future} {σ : Nat → Nat} {s₀ : SState} {ks : List Nat} {s s' : SState}
-
-/-- **A label is live in the closure exactly when its image is in place** (the paper's (F6) with (F9)): an in-place
-holder of an image is in the callee's frame, since the caller holds only its own labels, below the call's counter and no
-parameter's (`FrameStart.callerHeld`), and every image is a parameter label or at or above the counter (`FrameInv.srange`). -/
-theorem live_corr (h : FrameInv K φ σ s₀ ks s s') (hs₀ : FrameStart s₀ ks) (l : Nat) : s.Live (σ l) ↔ s'.Live l := by
-  refine ⟨fun hl => ?_, live_img h.acc.rel h.acc.shape⟩
-  obtain ⟨p, hp, hps⟩ := (SState.live_iff s _).1 hl
-  have hpf : p.frameOf < s.env.length := frameOf_lt_of_mem hp
-  rw [h.acc.rel.frames.1] at hpf
-  by_cases hlt : p.frameOf < s₀.topIdx
-  · rw [h.acc.rel.lowerShape p hlt] at hps
-    obtain ⟨hk, hl'⟩ := hs₀.callerHeld p _ hlt hps
-    rcases h.srange l with e | e
-    · exact absurd e hk
-    · omega
-  · have hpf' : p.frameOf = s₀.topIdx := by unfold SState.topIdx at hlt ⊢; omega
-    rw [h.acc.rel.topShape p hpf'] at hps
-    cases e : s'.shape (upPos ks.length p) with
-    | none => rw [e] at hps; cases hps
-    | some l' =>
-      rw [e] at hps
-      have := h.acc.rel.inj _ _ (Option.some.inj hps); subst this
-      exact (SState.live_iff s' _).2 ⟨_, h.acc.shape' _ _ e, e⟩
 
 /-- **The strict test of a call holds on both sides or on neither** (`BorrowArgsTyped`: each borrow argument's label live
 at its parameter's content type; (F6) and (F7)). -/
@@ -665,7 +767,7 @@ theorem agreeI_stmtIf (b : Bool) {x x' : SM Res} {s s' : SState} (h : FrameInv K
         obtain ⟨⟨v', R'⟩, t'⟩ := y'
         obtain ⟨hv, hR, -, -⟩ := hx
         simp only at hv; subst hv
-        exact ⟨rfl, by subst hR; rfl, h, fun _ e => by cases e⟩
+        exact ⟨rfl, by subst hR; rfl, h, ⟨fun _ e => (by cases e), fun _ e => (by cases e)⟩⟩
 
 /-- Two argument lists' runs agree: the in-place results are the closure's with their labels renamed, from related
 states. -/
@@ -787,7 +889,8 @@ theorem readCopy_agree (hs₀ : FrameStart s₀ ks) (h : FrameInv K φ σ s₀ k
         by_cases hw : v.whole
         · by_cases hr : ReadGood K.dm.read T'.m v
           · simp only [hw, hr, not_true_eq_false, if_false, if_true] at g1 g2 ⊢
-            exact ⟨rfl, rfl, h.of_ops hacc (g1 _ _ rfl) (g2 _ _ rfl) (shrinks_contentOf e1), fun _ e => by cases e⟩
+            exact ⟨rfl, rfl, h.of_ops hacc (g1 _ _ rfl) (g2 _ _ rfl) (shrinks_contentOf e1) (shrinks_contentOf e2),
+              ⟨fun _ e => (by cases e), fun _ e => (by cases e)⟩⟩
           · simp only [hw, hr, not_true_eq_false, not_false_eq_true, if_false, if_true]; trivial
         · simp only [hw, not_false_eq_true, if_true]; trivial
   · rw [if_neg hk, if_neg (fun h' => hk (hok.2 h'))]; trivial

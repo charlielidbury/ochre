@@ -905,12 +905,20 @@ noncomputable def entrySnapshot (bc : List Place × List (Place × Nat)) (s : SS
 
 /-- After the arm and the join of a borrow-typed non-tail match (`joinEnds`): the result's label
 is lent, as fills, the places the block takes by `&` and the snapshot (its reserved label's marks,
-handed to the result by `LendOp.ended g [k]`). -/
+handed to the result by `LendOp.ended g [k]`).
+
+Only a LIVE result label is lent (lead35, docs/31 D222). The checker lends a borrow-typed match's result at its join
+only when the arm returns a live borrow in flight: an arm whose result borrow has been ended is rejected where it ends
+(main's D106 in `ochr/core/DECISIONS.md`: an access that ends a borrow a value in flight holds is an error). As first written the model lent the
+label whatever, so a dead result label gained sites, which a later `let` binding the result made live again with them
+(`pushBindShaped`), possibly lent at its own new holder (its site at a binding the inner `let` dropped, re-created at the
+same index): a state the checker never makes, in which lending is not well founded (`LendWF`, which the frame property's
+commutation of ends needs). Lending only a live label keeps "a dead result label lends nothing" (`ResAtTemp`). -/
 noncomputable def entryLend (bc : List Place × List (Place × Nat)) (snap : List Site) (lab : Option Nat)
     (s : SState) : SState :=
   match lab with
-  | some k => s.setLent k (s.lent k ++ (bc.2.filterMap fun qk => if qk.2 == 1 then
-      (resolve s qk.1).map fun ps => ({ pos := ps.1, path := ps.2, fill := true } : Site) else none) ++ snap)
+  | some k => if k ∈ s.liveLabels then s.setLent k (s.lent k ++ (bc.2.filterMap fun qk => if qk.2 == 1 then
+      (resolve s qk.1).map fun ps => ({ pos := ps.1, path := ps.2, fill := true } : Site) else none) ++ snap) else s
   | none => s
 
 /-- A proof's meaning, `⋆`. -/
