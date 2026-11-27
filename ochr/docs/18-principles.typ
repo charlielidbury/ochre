@@ -671,3 +671,198 @@ _Next._
 - *`hintLater`* (@sec-a6): show it is never stored, or give hints a type distinct from `Value`, so principle 7's "one maker" is structural.
 - The audits the first draft left: principle 1's open (B2) condition of D120; principle 2's question for each identification site, whether it is preserved by every refinement; principle 4's tests made only by untyped runs. The first draft's suggestion of a generated differential for principle 4 is withdrawn (the user ruled out generated testing): the answer is its redesign, one evaluator (@sec-a4).
 - docs/18's own section on principles (`<sec-principles>` of the plan) still lists the seven of 2 November; once this file is accepted it replaces that section, and the plan's "lemmas each step uses" should cite these twelve.
+
+= The referee's report <sec-referee>
+
+_Written by `referee1`, 27 November 2026, as the adversarial referee of @sec-argument, after reading the paper whole (with its appendix and the fragment proof), `RULES.md` whole, the principles and the argument above closely, and the plan's section on the shape of the argument (the set model, conversion, meaning preservation and the strict reference run). Programs were run with `lake env lean` on the checker of `main` at c830346b6, whose checker sources are those of 105021637; each is self-contained, "with the `Nat` prelude" meaning `uses Nats`. Nothing in the author's sections was changed._
+
+== Verdict
+
+The argument does not show what its summary says it shows. Its cases are, read one at a time, mostly sound reasoning about the design, and the decomposition into nine cases by risk is a useful map; but "the argument closes in every case, citing the principles and nothing else" is true only because four of the twelve principles are not properties of the design that a check enforces: they are the open theorems of the consistency proof itself (the existence of the set model, the soundness of conversion for code, the frame property, and the preservation of the borrow invariants), so what the section proves is a reduction to them, of the same kind as the paper's conditional theorem for the fragment F. Two further faults lie in the induction rather than in any case: the claim it carries is stated pointwise in a future that the end of a borrow changes, and it carries membership as a conclusion of every step of the checker, including the untyped runs, which is the form the mechanisation tried and abandoned on 20 November, here asserted for untyped runs without an argument. Three steps rest on a principle in a form that the author's own audit, or the code, shows false: that nothing but [Close] makes a sealed program; that a run of the body under check before its acceptance can only fail to end, D135 not being on `main`; and that a stuck block's captures are read from the code alone. No program was found that the checker accepts and that proves `False`, and no accepted empty type; every attack on the design itself (a stuck block's returned borrow passed to a lemma that needs writes through it visible, a borrow of a borrow, the universe rules, fuel) was rejected or held. So the result is: the design survives this referee, and the proof does not yet exist; the objections below say where it is missing.
+
+== Objections, most serious first
+
+=== O1. The principles that carry the argument are the proof's open theorems
+
+*Where.* The summary ("proves, case by case ... citing the principles and nothing else. The argument closes in every case"), @sec-arg-statement, and the verdict line of every case.
+
+*Objection.* A principle, by @sec-what, is a sentence about the design that the checker makes true by construction or by checks at enumerable sites. Four of the twelve are not that:
+- Principle 1 (_meanings exist_) is the existence of the data model. The plan's own statement of it (`exists_dataModel`) assumes eight named facts, of which one is an unproved fact about the model (a global heading a field's type has a small result at every argument, with a hard case at a domain in a higher universe) and six are read true but not derived from the code. The syntactic conditions principle 1 lists (positivity, nesting, D120, D121, D128, D133, …) are necessary conditions found one at a time by the lanes building the model; that they suffice is the theorem.
+- Principle 2 (_identifications hold_) is the soundness of conversion. The plan proves it in Lean only for values that hold no code; for the two function rules it is part of the simulation (the plan's (V4) and (V5)). Case 7 argues it rule by rule, so it is not merely assumed; but its function rules rest on case 4's untyped runs (O3), and principle 2 as written lacks the plan's typing hypothesis (O5).
+- Principle 6 (_effects stay local_) is the frame property. The mechanisation found it false as stated four times (item 2 below) and has no current statement; cases 1, 3, 4, 5 and 7 use it.
+- Principle 12's clause that every step keeps the borrows a forest with exact lending is the preservation of well-formedness, which the author's audit records as swept on 2,137,352 states and not proved; case 1's injectivity and every field write rest on it.
+
+The author's "Where the argument is weakest" names three of these steps; it does not name principle 1 or principle 2, and the summary and @sec-arg-found still say the argument closes.
+
+*Evidence.* The plan's paragraph on the general proof of the model (eight facts) and its status of conversion (for code, and for the premises of the two function rules: open); item 2 below; the author's own audit row for principle 12. With the `Nat` prelude, the hard case of the model's fact (6) is accepted by the checker:
+#measured[
+```
+def FT (A : Type₁) : Type := Nat
+inductive WT (A : Type₁) := MkWT(x : FT(A))
+```
+Accepted. A data type in `Type₀` whose field's type is a call of a global whose domain is `Type₁`: the case the plan's fact (6) calls hard. The argument's principle 1 says only "its field types read only through what the model can follow".]
+
+*Kind.* The argument is incomplete, and its summary overclaims.
+
+*What would settle it.* Restate the theorem as conditional on principles 1, 2 (for code), 6 and 12's preservation, as the paper's fragment theorem is conditional on naturality and the machine's invariants; mark in @sec-principles which principles are theorems of the proof rather than properties enforced at sites; and correct the summary and @sec-arg-found. Or prove the four.
+
+=== O2. The induction's claim does not survive the end of a borrow
+
+*Where.* @sec-arg-induction: "for every assignment γ of Ω ... and every future φ, (i) the reference run of t from Ω's meaning is defined, returns v's meaning, and leaves Ω'’s meaning”. And case 9: "An end fixes the future at its holder's content ...; it only loses information."
+
+*Objection.* The meaning of a state is defined pointwise, under one assignment γ and one future φ: a loan of ℓ means φ(ℓ). When a step ends ℓ (at every access, drop, join and observation), the loan's place afterwards holds the holder's content, whatever φ(ℓ) was. So for every φ with φ(ℓ) different from that content, Ω''s meaning at φ is not obtained by any run from Ω's meaning at φ, which has forgotten who holds ℓ and what it holds now: claim (i), read with the argument's own definitions, is false at every step that ends a borrow, and the conclusion does not survive the next step. It is repairable only by changing what (i) is about: a reference state that keeps which position holds which label and its current content, as the plan's strict reference run does (meanings as functions of the future, reads taken at the future that gives each live borrow its record, each end tested at every typed future). Case 9's justification of an end, "it only loses information", is the information order the plan used first and abandoned because comparing by the order admitted wrong states; the claim (i) demands equality, and an end replaces a meaning, it does not lose one. "Good states", quantified over every future of whole members, is consistent with the plan's typed futures, but nothing in the argument says at which future a read is taken; the plan's example `let r = &p; let z = (*r).0; let w = q; (*r).0 := z; w` shows that the obvious choice (each borrow's current content) is not a future of whole members in mid-run.
+
+*Evidence.* The reasoning above; the plan's definition of the strict reference run (where a read is taken) and its note on the abandoned order.
+
+*Kind.* The argument is wrong as stated (a conclusion that does not survive the next step), and repairable.
+
+*What would settle it.* State the inner claim over reference states with labels and records, as in the plan, with reads at the record future; and re-derive case 9's end as an equality of reference states.
+
+=== O3. Membership is carried on the checker's run, and asserted for untyped runs
+
+*Where.* @sec-arg-induction: "(ii) v's meaning is a member of A's"; "An untyped run (a callee's body run in place, a sealed program's re-run, a generic call a comparison makes) satisfies (i) and (iii) for code whose meaning is a member of its type, which the outer hypothesis supplies (@sec-arg-call)”. Case 4, all three bullets.
+
+*Objection.* This is the second form of the plan's route: "a simulation by a reference run that was not strict, carried membership as a second conclusion of every step of the checker". Stating it in Lean showed that no step concluded membership of the value an evaluation returns: a value in flight had no type, the check at a function's return does nothing on a value with no dependent constructor (so `0` passed at `Unit`), and a known callee's body binds positions at types it never checks. The argument returns to that form without addressing any of the three. For untyped runs it asserts (i) and (iii) and gives no induction for them: case 4's bullets say that the callee's meaning is a member, that the run in place is the run in isolation (principle 6), and that it decides as its meaning does (principle 4). None of these gives (iii), that every position an untyped run binds holds a member of its stored type: an untyped run binds a callee's parameters and its `let`s at types it never compares with the values; its temporaries may have no stored type (D104, "none where an untyped run computed none"), and its `let` of a call has a type computed later (D82, D132, D134), about which "good" says nothing. And "decides as its meaning does" is about decisions, not about the values the run computes, which is what (i) needs.
+
+This matters most during the check of a recursive definition, where an untyped run of the body under check computes values that a type then uses. The outer hypothesis gives only that the definition at a smaller size is _a member of its type_; for the checker's type to mean the reference run's, the in-place run must compute the definition's meaning at that size, which is exactly the untyped-run claim. The ruling meant to remove this (D135: while a function is being checked, a call of it closes off at once) is not on `main`.
+#measured[
+```
+def Sel (n : Nat) : Nat by n := match n { Z => Z, S(m) => match m { Z => (let e : Eq(Nat, Sel(m), Z) = refl; Z), S(k) => Z, }, }
+```
+With the `Nat` prelude: accepted on `main`. While `Sel` is being checked, the type `Eq(Nat, Sel(m), Z)` at `m = Z` is computed by running `Sel`'s own body in place, untyped, to `Z`, and `refl` is accepted against it. The reference run reads the same type as `Eq(Nat, ⟦Sel⟧(0), 0)`, which is `True` only if the untyped run computed the stage.]
+
+*Kind.* Incomplete (a step asserted, in the form that failed when it was mechanised); covers items 1, 3, 4 and 5 below.
+
+*What would settle it.* Either adopt the plan's split: a strict reference run whose membership is the model's own fundamental lemma, so that the checker owes only that the strict run succeeds; or give the untyped runs their own simulation lemma, proved by induction on the untyped run inside the outer induction, saying what a position bound or held in flight by an untyped run means; and land D135 or prove that the in-place run of the body under check computes the stage below.
+
+=== O4. "What the argument does not use" uses D135's gap
+
+*Where.* Case 4: "before acceptance such a run can only fail to end, which is undecided (principle 5), never an acceptance. D135 is a fault of termination, not of consistency"; repeated in @sec-arg-unused and @sec-arg-found.
+
+*Objection.* As a description of the checker this is false: before acceptance, a run of the body under check can end and decide a type (`Sel` above). The conclusion, that no wrong program is accepted through it, may still hold, but the argument offered for it is that in an accepted definition every run of its own body is at a smaller size, and that reaches consistency only through O3's untyped-run claim for the definition under check, which is what D135 was ruled to make unnecessary. The ruling is described as if in force; it is recorded as "not landed yet" in docs/32, and the checker of `main` still runs the body.
+
+*Kind.* The argument is wrong in a stated fact, and incomplete in the step that matters.
+
+*What would settle it.* Land D135 (and then case 4 needs no claim about the body under check), or prove O3's claim for it.
+
+=== O5. Two clauses the argument relies on are false as written
+
+*Where.* Case 7: "a sealed program has [Close]’s shape (principle 7: nothing else makes one)”. Principle 2: "Wherever the checker identifies two things ..., the two mean the same element under every assignment".
+
+*Objection.* (a) Principle 7's "nothing else makes a sealed program" is false at the code: `hintLater` (`Machine.lean`, line 828) builds a sealed value whose head is no call, `⌈⋄hint P w̄⌉`, the deferred hint of a called body. The author's own audit found it (@sec-a6) and @sec-next lists it as to do, yet case 7's verdict "closes" depends on the clause without mentioning it. Reading the sites where a run hands on or reads a hint (the `.val`, `rewrite`, `hole`, constructor and `split` cases of `evalCore`), each either forces the hint (`forceHint`) before storing it or returning it as a type, or passes it on unread (`split`; `hole` is stuck in an untyped run before it reads one), so I found no route by which it reaches a stored position or a comparison; but nothing structural prevents one. (b) Principle 2 as stated has no hypothesis, and the plan's lemma needs one: both sides well typed inside at one type. The plan's counterexample is a pair of convertible propositions with different meanings, `Eq(Nat, And(True, Nat), Nat)` and `Eq(Nat, Nat, Nat)`; no accepted program forms the first, which is what the hypothesis says. The argument never carries "well typed inside", so it cannot discharge the hypothesis at the sites where it uses principle 2 (cases 1, 3, 5, 7 and the conclusion).
+
+*Kind.* (a) a principle is not enforced (no structural guarantee); (b) a principle is misstated.
+
+*What would settle it.* (a) as @sec-next says: give hints a type distinct from `Value`. (b) add the typing hypothesis to principle 2, and derive it at each use from membership (the plan's lemma that a value whose meaning fits a type is well typed inside at it).
+
+=== O6. The frame property is used five times and never stated
+
+*Where.* Case 1: "Each side's run at the call site is its run at the generic state plugged into the caller: it reaches the caller only through the loans its borrow parameters hold (principle 6)"; case 4's second bullet; cases 3, 5 and 7.
+
+*Objection.* Principle 6 is a sentence ("a running body names and changes only its own frame and what its borrows lend; a call exchanges only what it is passed"), and the steps use it as an equation between two runs, "plugged in". That equation is the frame property, which was false as first written four times when stated in Lean: a dead label read through the renaming of labels; a callee state that is not itself well formed; no cell for a borrow parameter; and the caller's frames compared only by value. The argument does not say which equation it means, so none of the four can be checked against it, and case 1's hypothesis direction (a hypothesis true at the call site is true generically) depends on its exact form: it must relate every owner's context, not values only, which is precisely the fourth failure.
+
+*Kind.* A principle is missing in the form the argument uses (an equation, over good states, with labels).
+
+*What would settle it.* The author's first "next" item: a precise statement over good states, with how labels are renamed and what the isolated run's cells are, checked against the four failures before it is used.
+
+=== O7. Two producers of returned borrows are missing from case 1
+
+*Where.* Case 1: "A context is built only by the steps that place a loan: ... a stuck call returning a borrow (... the callee's backward function, injective by principle 1 for an unknown callee and by the outer hypothesis for a checked one) ...".
+
+*Objection.* Two other things return a borrow whose hole lands in the caller's places: a stuck match whose declared type is a borrow, closed off as a block (its result is lent what the block takes by `&` and what its by-move borrow variables lend), and a local closure returning a borrow. A block is not a definition, so the outer hypothesis does not cover it, and it is not an unknown callee; a closure is checked by its own [Def] inside the current derivation, not by the outer hypothesis. Injectivity of their backward functions is therefore not established by the case as written. The design does observe them: the attack below is rejected because the checker observes both fills.
+#measured[
+```
+def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+def QB (n : Nat) (a : Nat) (b : Nat) : False := (let r : &Nat = match n { Z => &a, S(k) => &b, }; PF(r, refl))
+def QB2 (n : Nat) (a : Nat) : False := (let r : &Nat = match n { Z => &a, S(k) => &a, }; PF(r, refl))
+```
+With the `Nat` prelude: `PF` accepted; `QB` and `QB2` rejected ("argument 2 (e) has type ⊤, expected" a conjunction over the fills of `a` and `b`, resp. of `a`). Had either been accepted, `QB(0, 0, 0)` would be a closed proof of `False`.]
+
+*Kind.* Incomplete.
+
+*What would settle it.* Add the two producers: a block's backward function is injective because each arm's returned borrow derives from its by-`&` captures or its by-move borrow variables, checked at the arm's return; a closure's by the inner claim at its own [Def].
+
+=== O8. Local recursive functions have no induction
+
+*Where.* @sec-arg-induction (the outer induction is on $d_k$'s position and its decreasing argument), case 6: "the stage below is the function itself there, which is membership, and the outer hypothesis covers the call".
+
+*Objection.* A `fix go (…) by y` inside a body is checked by its own [Def] as a node of $d_k$'s derivation, and its recursive calls are on `go`'s own argument, not on $d_k$'s. The outer hypothesis says nothing about `go` at smaller sizes, and the inner induction is on the derivation, in which `go`'s check is one node; membership of `go` needs an induction on `go`'s decreasing argument at that node, which the argument does not set up. Such functions are accepted, proofs among them:
+#measured[
+```
+def AddZ (n : Nat) : Eq(Nat, Add(clone(n), Z), n) := (fix go (y : Nat) : Eq(Nat, Add(clone(y), Z), y) by y := match y { Z => refl, S(p) => go(p), })(n)
+```
+With the `Nat` prelude: accepted.]
+
+*Kind.* Incomplete (routine to repair).
+
+*What would settle it.* A third induction, on the local function's decreasing argument under the assignments of its generic call, nested at its [Def] node.
+
+=== O9. Principle 4 for a block's captures reads values
+
+*Where.* Case 5: "The block's entry, the places it moves and their grain are read from the code (principle 4)"; the author lists D90's first obligation as open.
+
+*Objection.* At the code, the capture modes are partly a function of values: `blockCaptures` (`Machine.lean`, around line 4188) treats a variable as a borrow variable if its stored type is a borrow type _or its current value is a borrow_ (`b.val.isBorrow`), and the granularity step (around line 4239) splits a capture by the constructor its content holds. Both are consumed by the entry of a match run directly (which accesses the captures, invalidates the dependent fields of those taken by `&`, and lends a borrow-typed result the places taken by `&`), in typed and untyped runs alike. In an untyped run a `let` of a call has its type deferred, so the reading of a borrow variable there is its value. I tried the one shape where that could differ (a let-bound borrow ended before a borrow-typed match, assigned whole in an arm the run does not take), and it did not:
+#measured[
+```
+def Mkb (x : &Nat) : &Nat := x
+def F (a : Nat) (b : Nat) (c : Nat) (d : Nat) : Nat := (let y = Mkb(&a); let a2 = a; let k = Z; let r : &Nat = match k { Z => &c, S(j) => (y := &b; &c), }; y := &d; *r := 5; c)
+def T : Eq(Nat, F(0, 0, 0, 0), 5) := refl
+```
+With the `Nat` prelude: both accepted (the typed check and the closed call agree).]
+
+*Kind.* A principle is not enforced by construction; no fault found.
+
+*What would settle it.* Compute modes from declared readings only (the typed run's stored type is the declared reading; an untyped run should consult the same reading, not the value), or prove D90's first obligation.
+
+=== O10. Open and partly moved members are used and not defined
+
+*Where.* @sec-arg-statement: "Good states. ... holds a member of that type, or an open member (a value of a dependent type in the middle of a mutation, or partly moved: principle 9)"; case 2.
+
+*Objection.* The argument defines neither. Principle 9 says a value "may be open ... only while the code that opened it runs", but a partly moved local stays partly moved until its scope ends (a match binds places, so `match xs { Cons(h, t) => t }` leaves `xs` partly moved), and a partly moved value is compared in `Id` and `Eq` (`⊥ = ⊥` is `True`), so its meaning matters beyond the code that moved it. The plan needed three definitions (two refuted in Lean, by a rewritten index and by tuples compared only with tuples) before it reached a structural one, field by field, with completions of the moved earlier fields. Case 2's steps are only as good as the definition they keep.
+
+*Kind.* Unclear (a definition missing).
+
+*What would settle it.* Take the plan's definition of whole, partly moved and open members and check case 2 against it.
+
+== On what the argument says it does not use
+
+Read skeptically, as the brief asked. _Principle 11's adequacy clauses_ (footprint sufficiency, [Id-typestate], [Obs-ref], the order of conjuncts): agreed, not used. The model's `Id` is the equality of the observations at the footprint, so nothing about what a continuation could read enters; and at a call site the sides run in the pushed parameter frame and can name no place of the caller, so [Id-typestate]’s clause against ending an outside borrow protects nothing that consistency needs. _Principle 4's clauses about untyped runs as such_ (only checked code runs, every accepted form runs, the same tests): the second and third are type safety's, agreed; the first is used, through the body under check (O4). _Principle 3's converse_ (W2): agreed, not used; the replacing direction is enforced at every site I read (a declared type of declared sort `Prop` is always a proposition: `Eq`, `Id`, a `Prop` inductive, a `Π` into one, a variable declared `: Prop`, a call whose codomain is written `Prop`). _Hole parametricity_ (case 3): agreed, not needed, since no run meets a live hole (D97); this is one real simplification over the paper's route.
+
+== The fourteen items
+
+#table(columns: (24%, 46%, 30%), align: left, table.header([*Item*], [*Where the argument handles it, and by which principle*], [*Referee's reading*]),
+  [1. A value in flight had no type; a function's return check did nothing on some values (`0` at `Unit`).], [Claim (ii) of the inner induction, for typed steps; nothing for untyped steps.], [*Not handled.* The argument carries membership in the form that failed (O3).],
+  [2. The frame property, false as stated four times.], [Principle 6, cited in cases 1, 3, 4, 5, 7.], [*Not handled.* No statement given; none of the four failures discussed (O6).],
+  [3. A recursive function's body run in place while it is being checked.], [Case 4: "D135 is a fault of termination, not of consistency"; principle 10's order.], [*Not handled.* D135 is not on `main`; `Sel` shows the run's value used in a type; the needed step is O3's (O4).],
+  [4. A borrow returned at a result type not written as a borrow type; a binding whose type is computed later.], [Principle 4 ("a function type's class and [Close] row") for the first; nothing for deferred types.], [*First handled:* the surface rejects `&T` anywhere but a written type (`IdT(&Nat)` as an argument: "Nat is not a place"). *Second not handled:* "good" is about positions with a stored type, and says nothing of a deferred one (O3).],
+  [5. An untyped run's binding is not tested; an erased call's private copy discards its records.], [Principle 6 for the private copy ("leaves nothing behind but fresh names and facts"); nothing for untyped bindings.], [*Not handled* for bindings (O3). The private copy is handled for consistency; D132 was a type-safety fault.],
+  [6. The existence of the data model.], [Principle 1, its list of syntactic conditions (D107, D120, D121, D128, D133).], [*Assumed*, not argued (O1). The higher-universe head is accepted (`WT`); the parameter that varies under nesting, the own name in parameters and nesting across sorts are rejected by D128, D133, D121.],
+  [7. A live borrow's future; the end of a borrow as a failure point; members of what, when partly moved or open.], [The meaning of a state under a future; principle 12 (ends over whole contents); principle 9.], [*Partly handled.* Futures are introduced but the claim is pointwise in them (O2); the end as a failure point of the strict run is not discussed; open membership undefined (O10).],
+  [8. One holder per label; a place lent twice; a borrow whose content is a borrow.], [Principle 12 ("one holder", "lends exactly the places that hold its loan, fill or mark").], [*Handled in the statement*; its preservation is unproved (O1). `let y = &x` with `x : &Nat` is rejected ("a borrow of a borrow-typed place").],
+  [9. A split on a stuck call generalised to an unknown, its record, the same call met again after a refinement.], [Case 3, "Generalising": principles 2 (exact keys, D108), 7, 8.], [*Handled.* Not discussed: a record whose text a later refinement changes no longer matches, so the call is a fresh neutral; sound, incomplete.],
+  [10. The join: a place moved in one arm only; re-rooting; an arm never run and never checked.], [Case 5, principle 4 (the join from syntax and declared types).], [*Handled for paths that split.* An arm skipped on a known constructor is not mentioned; it is harmless only because the scrutinee is that constructor at every instance, which the argument should say.],
+  [11. Conversion of functions by running at fresh unknowns; `Eq` on values holding code.], [Case 7: observation of the generic call, least relation, injectivity and disjointness.], [*Handled*, modulo O3 (the observation's runs are untyped) and O5.],
+  [12. Impredicative `Prop`, large elimination, subsingleton elimination, universe levels.], [Principle 1's list (predicativity of `Type₀`, subsingleton elimination), case 6 (no recursion on a proof).], [*Partly handled.* Where the model needs impredicativity and how a Π-type's sort is computed is not discussed. Probes hold: `Π(A : Type) (a : A). A` declared in `Type` is rejected ("has type Type₁"); a borrow of a proof is rejected (D66).],
+  [13. The hint a tail is handed; what an untyped run decides differently.], [Case 4: principle 4, "the hint is a decision" (D124); untyped-only tests marked type safety's.], [*Handled* in principle; the one hint that is a value (`hintLater`) is O5 (a).],
+  [14. A decision taken with less fuel than another run had.], [Principle 5: "running out of fuel is undecided".], [*Handled.* The checker's monad puts fuel exhaustion in its own exception, outside the one `catchStuck` catches (`Env.lean`, line 280; `Catch.lean`), and every fuel-bounded reader throws on exhaustion; so a run with less fuel is undecided, never decided differently.],
+)
+
+== The cases, restated
+
+#table(columns: (14%, 43%, 43%), align: left, table.header([*Case*], [*What it claims, from what*], [*Referee's reading*]),
+  [Statement], [Every accepted definition means a member of its type; a constant of type `False` is impossible.], [Fine as a target; "means" needs the structured reference state (O2).],
+  [Induction], [Outer on program order and decreasing size; inner on the typed derivation, with (i) exact meanings, (ii) membership, (iii) goodness; untyped runs get (i), (iii).], [O2 (pointwise in the future), O3 (membership on the checker's run; untyped runs asserted), O8 (local recursion).],
+  [1 `Id`, [Call-type]], [Computing `Id` is exact; a statement transfers between the generic call and a call site in both directions by joint injectivity of contexts.], [The strongest case; rests on O6 and principle 12's preservation; missing producers (O7). The attack `QB` is rejected.],
+  [2 Dependent fields], [Invalidation, typing by position, strong updates and [Repack] keep open membership; writes find their paths at every future.], [Rests on an undefined open membership (O10) and an unproved measurement (no live loan on a written path).],
+  [3 Closing off], [A sealed program rebuilds the call; re-runs compute the text's meaning; generalisation is a path condition.], [Sound reasoning; "the re-run computes the text's meaning" is O3's claim for untyped runs.],
+  [4 Calls in place], [The callee's meaning is a member; the run in place is the isolated run; it decides as its meaning.], [O3 and O4; principle 6's equation (O6).],
+  [5 Split and join], [Each assignment takes one arm; the block means the arm; the state after the block is the arm's.], [Sound given principle 4 for captures (O9) and principle 6.],
+  [6 Recursion], [[Rec] at the generic call gives descent at every instance; the stage below is the function.], [Sound for top-level definitions; local recursive functions need their own induction (O8).],
+  [7 Conversion], [Each conversion rule is an equality of meanings.], [Needs the typing hypothesis (O5 (b)) and one maker of sealed programs (O5 (a)); the function rules rest on O3.],
+  [8 Erasure], [Erased terms leave nothing; `⋆` only at propositions.], [Sound; the converse (W2) is indeed not used.],
+  [9 Leaf rules], [Accesses end what is touched; reads, writes and drops keep meanings.], [The end step is argued by the abandoned order (O2).],
+)
+
+== For a second referee
+
+The objections above are on the argument's structure and on three principles' enforcement; the design itself held against every program tried. What was not done: the frame property's four failures were not each turned into a program against this argument's use of principle 6 (O6); principle 12's preservation was not attacked beyond the borrow-of-a-borrow probe; the dependent-field case (2) was read but not attacked with programs; and O9's value-dependent captures were tried in one shape only (the granularity split by a content's constructor was not tried). The probes are in this report; the runner is `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` from `ochr/core/lean`.
