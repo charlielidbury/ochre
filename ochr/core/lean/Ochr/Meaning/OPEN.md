@@ -14,6 +14,16 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FUNCTION UNDER CHECK, THE CLOSED-OFF CALL, THE IN-PLACE BRANCH; THE END'S BOOKKEEPING (lead31, 2026-11-27, `spine-lead31`; docs/31 D204 to D209)
+
+- `Master.CallUnderCheckG` (X, the D135 step for a global under check), entry condition `RecCurG` (X, NEW): stated, attacked on the checker (`Steps/UnderCheckAttack`), holds for globals; OPEN.
+- FINDING D205, awaiting the lead's ruling: a LOCAL recursive function under check has no counterpart in the model (the checker recognises it by code; the model's `K.cur` is a global's name, `meanV` of a closure is its real closure, `refTy` reads a marked binding by name): its own check's simulation needs its membership. Proposed: `RunCtx.cur` by code, `meanV` of a function value under check = its stage closure.
+- `Master.SealRerunG` (X, the re-run of a sealed program), `CallClosedG` (lead29's branch, its obligations read against `callOf`): stated / read; nothing refuted; OPEN.
+- `Master.CallAcceptedG` (X, the in-place branch from `RunFrame` + `FixEqG` + `RetKindG` + `RecCurG`), `Master.RecDescG` (M, NEW context clause: the body depends on `self` only below the activation's rank; `FixEqG` follows by induction on the rank): stated; OPEN.
+- The frame property's remaining groups (D208, by reading): `.fix` in the body needs the internal relation at a DEPTH; a match needs `σ` monotone on the callee's labels; field path and `Id` with parameters hold under D201 and `run_frame_obs`'s injectivity.
+- [End] against `FrameRel` (D209): holders and shape/label/counter clauses PROVED (`Steps/FrameEndShape`, from `Uniq` and `ShapeAt` in place); the top frames, `lowerSkel`, the cells after the end and `relend` OPEN.
+- `RecCheckedG`: DELETED (D204).
+
 ## THE FRAME PROPERTY, GROUP 1 (lead30, 2026-11-22, `spine-lead30`; docs/31 D201)
 
 - `Steps/FrameFrag.RunFrameS` RESTATED: both states good (`SGood` of the closure's state added). The D129 form (`RunFrameS_old`) is FALSE, kernel-checked (`Strict/FrameCellCE.runFrameS_false`: a frame-0 binding of the closure outside its type fails the closure's `StateOk` after `x.0 := c`). OPEN in general; proved on the label-free fragment (`run_frameS_lf`).
