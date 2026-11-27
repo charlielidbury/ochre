@@ -19,7 +19,7 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - MODEL FAULT D210 (the second referee's R1), FIXED: later domains and the codomain are read as [Def] reads them (`Run.extendBy` = forming state under a fresh bottom frame + `paramPush`, a borrow parameter at a fresh label with a cell). `G1` (accepted, `e : False` at [Def]) had an empty type in the model before. No headline statement changed. Owed by the simulation at [Call-type]: statement transfer between the call site and `extendBy`'s state (`18-principles` case 2), not stated in Lean.
 - Ruling R-A (D205): no local recursion (main's D136, pending); `GoH` accepted until then; nothing owed for local recursive functions.
 - (P) of the paper's frame proof: FALSE on the checker (`Steps/ParamCellAttack`: `P2`, `P3`). The [Access] lemma of the frame property must rest on commutation of ends (`RelendComm.relend_comm`, `SState.endLabel_comm`), not on (P) or on `σ`'s order. OPEN.
-- [End] against `FrameRel`: PROVED (`Steps/FrameEndRel.frameRel_endAt`, `frameRel_endLabel`; from `FrameRel`, `FrameStart`, `Uniq`, `ShapeAt`, the cells clause).
+- [End] against `FrameRel`: PROVED (`Steps/FrameEndRel.frameRel_endAt`, `frameRel_endLabel`; from `FrameRel`, `FrameStart`, `Uniq`, `ShapeAt`, the cells clause). Toward [Access]: `frameRel_foldEnd`, `reached_corr` PROVED; the reorder by commutation and the rounds OPEN (docs/31 D212's plan).
 - `RecDescG`, `FixEqG`: where each is established and from what (D213); neither proved.
 
 ## THE FUNCTION UNDER CHECK, THE CLOSED-OFF CALL, THE IN-PLACE BRANCH; THE END'S BOOKKEEPING (lead31, 2026-11-27, `spine-lead31`; docs/31 D204 to D209)

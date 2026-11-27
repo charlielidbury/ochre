@@ -448,4 +448,70 @@ theorem frameRel_foldEnd (hs₀ : FrameStart s₀ ks) : ∀ (L : List Nat) {s s'
       (hu.endLabel _) (shapeAt_endLabel hsa _) (by rw [headD_len_endLabel]; exact hc) (fun m hm => ?_) hnd'.2
     exact SState.live_endLabel (hl m (by simp [hm])) (fun e => hnd'.1 (e ▸ hm))
 
+/-! ## The labels an access reaches -/
+
+theorem frameOf_lt_of_mem {t : SState} {p : Pos} (h : p ∈ t.positions) : p.frameOf < t.env.length := by
+  rw [SState.mem_positions] at h
+  cases p with
+  | bind f i =>
+    simp only [SState.lookup, Pos.frameOf] at h ⊢
+    cases e : t.env[f]? with
+    | none => rw [e] at h; simp at h
+    | some fr => exact (List.getElem?_eq_some_iff.1 e).1
+  | temp f i =>
+    simp only [SState.lookup, Pos.frameOf] at h ⊢
+    cases e : t.env[f]? with
+    | none => rw [e] at h; simp at h
+    | some fr => exact (List.getElem?_eq_some_iff.1 e).1
+
+/-- **The labels an access of a top-frame place reaches correspond**: in place they are exactly the images of those the
+closure's access of the corresponding place reaches. A caller's label is never reached there (its sites are in the
+caller's frames); a reached label is held in the top frame (`lentImg`, `topShape`), and its site corresponds (`lentTop`).
+Parameter labels included (D211: an entry may have lent one at a top-frame place). So the two accesses end
+corresponding SETS of labels; their ORDERS (label order on each side) differ where `σ` is not monotone (`P3`). -/
+theorem reached_corr (hr : FrameRel σ s₀ ks s s') (hs₀ : FrameStart s₀ ks) (hsa : ShapeAt s) (hsa' : ShapeAt s')
+    {q : Pos} (hq : q.frameOf = s₀.topIdx) (hit : List Step → Bool) (m : Nat) :
+    (s.Live m ∧ s.reached q hit m = true) ↔
+      ∃ l, m = σ l ∧ s'.Live l ∧ s'.reached (upPos ks.length q) hit l = true := by
+  constructor
+  · rintro ⟨hl, hre⟩
+    obtain ⟨p, hp, hps⟩ := (SState.live_iff s m).1 hl
+    simp only [SState.reached, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hre
+    obtain ⟨x, hx, hxq, hxh⟩ := hre
+    have hxf : x.pos.frameOf = s₀.topIdx := by rw [hxq]; exact hq
+    have hpf : p.frameOf = s₀.topIdx := by
+      have h1 := frameOf_lt_of_mem hp
+      rw [hr.frames.1] at h1
+      have h2 : p.frameOf ≤ s₀.topIdx := by unfold SState.topIdx; omega
+      rcases Nat.lt_or_eq_of_le h2 with h3 | h3
+      · exfalso
+        have h4 : s₀.shape p = some m := by rw [← hr.lowerShape p h3]; exact hps
+        rw [hr.lentCaller m p h3 h4] at hx
+        have := hs₀.callerLent p m x h3 h4 hx
+        omega
+      · exact h3
+    obtain ⟨l, rfl⟩ := hr.lentImg m x hxf ⟨p, hps⟩ hx
+    have hsh : (s'.shape (upPos ks.length p)).map σ = some (σ l) := by rw [← hr.topShape p hpf]; exact hps
+    obtain ⟨l', hl'⟩ : ∃ l', s'.shape (upPos ks.length p) = some l' := by
+      cases e : s'.shape (upPos ks.length p) with
+      | none => rw [e] at hsh; cases hsh
+      | some l' => exact ⟨l', rfl⟩
+    rw [hl'] at hsh
+    have hll : l' = l := hr.inj _ _ (Option.some.inj hsh)
+    subst hll
+    refine ⟨l', rfl, (SState.live_iff s' l').2 ⟨_, hsa' _ _ hl', hl'⟩, ?_⟩
+    simp only [SState.reached, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq]
+    exact ⟨_, (hr.lentTop l' x hxf ⟨p, hps⟩).mp hx, by simp [hxq], hxh⟩
+  · rintro ⟨l, rfl, hl, hre⟩
+    obtain ⟨q', -, hq's⟩ := (SState.live_iff s' l).1 hl
+    obtain ⟨p, hpf, rfl⟩ := hr.clShape q' l hq's
+    have hps : s.shape p = some (σ l) := by rw [hr.topShape p hpf, hq's]; rfl
+    simp only [SState.reached, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hre ⊢
+    obtain ⟨y, hy, hyq, hyh⟩ := hre
+    refine ⟨(SState.live_iff s _).2 ⟨p, hsa p _ hps, hps⟩, { y with pos := q }, ?_, rfl, hyh⟩
+    refine (hr.lentTop l { y with pos := q } hq ⟨p, hps⟩).mpr ?_
+    obtain ⟨yp, yπ, yf⟩ := y
+    simp only at hyq ⊢
+    rw [← hyq]; exact hy
+
 end Ochr.Meaning.Steps.Form.FrameEnd
