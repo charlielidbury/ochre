@@ -608,7 +608,9 @@ _The tail form_ (`TailAt`): for every continuation that only extends the tables 
 
 _The induction hypothesis_ (`IH`): at every smaller fuel, every `Δ` and every assignment, `EvalAt` and `TailAt` for every term, typed and untyped alike (an untyped run with (E4) as its entry condition). Every `Δ` and assignment, because a later sub-run starts under the extension an earlier one handed on.
 
-_Two facts it names that are not yet proved:_ `DeferClearG` (a successful run ends with the deferral flag clear: read true of the checker, unproved), and (E1)'s "each global's meaning a member of its declared type", which for the definition under check holds of its stage at the weakened type only (`FixEqG` excludes it): the outer induction supplies the stage (@sec-tw-induction). #a-lean (`master`), the steps open but the fragment's
+_Two facts it names that are not yet proved:_ `DeferClearG` (a successful run ends with the deferral flag clear: read true of the checker, unproved), and (E1)'s "each global's meaning a member of its declared type", which for the definition under check holds of its stage at the weakened type only (`FixEqG` excludes it): the outer induction supplies the stage (@sec-tw-induction).
+
+_Status._ The induction `master` #a-lean, assuming the step statements; the steps are proved for the fragment of case 8 and open beyond it.
 
 == The induction <sec-tw-induction>
 
