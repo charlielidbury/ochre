@@ -132,7 +132,7 @@ theorem holderOf_end_SPr2 (T : TyM) (c : Sem) : ((SPr2 selfB d T c r).endLabel 0
 
 end
 
-theorem callFrame_id1r (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ S₂r.pushFrame [.ref .nat]) :
+theorem callFrame_id1r (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) :
     callFrame (Kc dm) ρ φ [] [] (fresId1 dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] S₂r
       = SPr (selfId1P dm ρ φ cd) ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) (.el0 Nat 2) := by
   subst hb
@@ -153,15 +153,15 @@ theorem id1_inPlace_typed :
         (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Nat 2, T), s') ∧ T.label = some 1 ∧
       s'.positions = (SC1 dm).positions ∧ s'.shape = (SC1 dm).shape ∧ s'.lent 1 = (SC1 dm).lent 1 ∧
       ∀ (p : Pos) (ψ : Future) (n : Nat), ψ 1 = .el0 Nat n → s'.valAt p ψ = (SC1 dm).valAt p ψ := by
-  have hs₀ : (capsState (capsVals (Kc dm) ρ φ []) (capsTys (Kc dm) ρ φ [])).foldl SState.pushBind
-      S₂r.pushFrame = S₂r.pushFrame := by
+  -- docs/31 D230: the callee's types are read in the closure value's forming state, `stateOf 0 []` for a global
+  have hs₀ : capsState (capsVals (Kc dm) ρ φ []) (capsTys (Kc dm) ρ φ []) = [] := by
     simp [capsState, capsVals, capsTys]
   have hres : ((Attack.S₂ yB 0 (.el0 Nat 2)).freshLoan).2.setLent ((Attack.S₂ yB 0 (.el0 Nat 2)).freshLoan).1
       ((([(.el0 Nat 2, { yB.ty with label := some 0 })] : List Res).filterMap (·.2.label)).flatMap
         (Attack.S₂ yB 0 (.el0 Nat 2)).lent |>.map fun x : Site => { x with fill := true }) = S₂r := by
     simp [S₂r, Attack.S₂, SState.freshLoan]
-  let cd := (Kc dm).D.typeDecl ((Kc dm).D.teleDecls (scopeOf S₂r.pushFrame) [.ref .nat]) (.ref .nat)
-  let d := ((bindsOf (Kc dm) ρ φ S₂r.pushFrame [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
+  let cd := (Kc dm).D.typeDecl ((Kc dm).D.teleDecls (scopeOf (stateOf 0 [])) [.ref .nat]) (.ref .nat)
+  let d := ((bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
   have hpop := popCallFrame_two 2 (SPr2 (selfId1P dm ρ φ cd) d T₀.m (.el0 Nat 2) (.el0 Nat 2)) 0 2 1 1 (.temp 1 0)
     (liveLabels_SPr2 _ _ _ _) (holderOf_SPr2 _ _ _ _) rfl (by decide) (holderOf_end_SPr2 _ _ _ _)
   -- the pop's strict end (ruling (A)): `x`'s label `0` ends over `x`'s content, which reads the

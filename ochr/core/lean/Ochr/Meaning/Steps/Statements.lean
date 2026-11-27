@@ -2122,7 +2122,8 @@ def etaUnit_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
 (`runBodyRef`'s `let`s; `bodyAt`'s at a global, whose captures are none). -/
 noncomputable def bodyFrame (fres : Res) (cs : List Value) (rd : List (DeclInfo × Value)) (ds : List Term) (c : Term)
     (args : List Res) (s : SState) : SState × PiCod :=
-  let s₀ := (capsState (capsVals K ρ φ cs) (capsTys K ρ φ rd)).foldl SState.pushBind s.pushFrame
+  -- docs/31 D230: the closure value's forming state (`runBodyRef`)
+  let s₀ := stateOf 0 (capsState (capsVals K ρ φ cs) (capsTys K ρ φ rd))
   let bs := bindsOf K ρ φ s₀ ds
   (callFrame K ρ φ cs rd fres (K.D.typeDecl (K.D.teleDecls (scopeOf s₀) ds) c) bs args s, codOf K ρ φ s₀ bs (ds.map Term.isRefTy) c)
 

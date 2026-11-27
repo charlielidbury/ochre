@@ -460,7 +460,7 @@ noncomputable def SP (cd d : DeclInfo) (c r : Sem) : SState :=
     heldTy := fun m => if m = 0 then yB.ty.m else TyM.err,
     heldMem := fun m => if m = 0 then r else .err }
 
-theorem callFrame_inc (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]) :
+theorem callFrame_inc (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) :
     callFrame (Kc dm) ρ φ [] [] (fresInc dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
       = SP dm ρ φ cd ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) (.el0 Nat 2) := by
   subst hb
@@ -647,11 +647,11 @@ theorem inc_inPlace :
         (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Unit (), T), s') ∧
       s'.positions = [.bind 0 0, .temp 0 0] ∧ (∀ ψ, s'.valAt (.bind 0 0) ψ = .el0 Nat 3) ∧
       (∀ ψ, s'.valAt (.temp 0 0) ψ = .moved) ∧ s'.shape = fun _ => none := by
-  have hs₀ : (capsState (capsVals (Kc dm) ρ φ []) (capsTys (Kc dm) ρ φ [])).foldl SState.pushBind
-      (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame = (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame := by
+  -- docs/31 D230: the callee's types are read in the closure value's forming state, `stateOf 0 []` for a global
+  have hs₀ : capsState (capsVals (Kc dm) ρ φ []) (capsTys (Kc dm) ρ φ []) = [] := by
     simp [capsState, capsVals, capsTys]
-  let cd := (Kc dm).D.typeDecl ((Kc dm).D.teleDecls (scopeOf (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame) [.ref .nat]) .unit
-  let d := ((bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
+  let cd := (Kc dm).D.typeDecl ((Kc dm).D.teleDecls (scopeOf (stateOf 0 [])) [.ref .nat]) .unit
+  let d := ((bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
   obtain ⟨hp, hv, ht, hsh⟩ := popCallFrame_SP (r := .el0 Nat 2) dm ρ φ cd d (.el0 Nat 3)
   refine ⟨{ (TyS.plain TyM.unit) with label := none }, popCallFrame 1 none (SP dm ρ φ cd d (.el0 Nat 3) (.el0 Nat 2)), ?_,
     hp, hv, ht, hsh⟩
@@ -1391,7 +1391,7 @@ end SPgLemmas
 noncomputable def selfId1P (cd : DeclInfo) : SBinding :=
   { ty := { (fresId1 dm ρ φ).2 with label := none }, val := fun _ => (fresId1 dm ρ φ).1, decl := .pi cd }
 
-theorem callFrame_id1 (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]) :
+theorem callFrame_id1 (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) :
     callFrame (Kc dm) ρ φ [] [] (fresId1 dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
       = SPg (selfId1P dm ρ φ cd) ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) (.el0 Nat 2) := by
   subst hb

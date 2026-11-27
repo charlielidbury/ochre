@@ -69,7 +69,12 @@ noncomputable def runBodyRef (fres : Res) (cs : List Value) (t : Term) (rd : Lis
     (args : List Res) : SM Res := fun s =>
   match t with
   | .fix _ _ ds c _ body =>
-    let s₀ := (capsState (capsVals K ρ φ cs) (capsTys K ρ φ rd)).foldl SState.pushBind s.pushFrame
+    -- docs/31 D230: the parameter types, the codomain and its reading are the closure value's, read in ITS
+    -- forming state (`meanV`'s `.clo` clause: `stateOf 0` of the captures), as the closure's own run reads them
+    -- (the paper's C4, `<sec-frame-stmt>`: "equal by definition"). Read on the caller's state with the
+    -- capture frame pushed (as first written) they were equal to the closure's only through a frame
+    -- independence of type runs that nothing stated, and the frame property's start needs them equal
+    let s₀ := stateOf 0 (capsState (capsVals K ρ φ cs) (capsTys K ρ φ rd))
     let bs := bindsOf K ρ φ s₀ ds
     let out := codOf K ρ φ s₀ bs (ds.map Term.isRefTy) c
     let cd := K.D.typeDecl (K.D.teleDecls (scopeOf s₀) ds) c
