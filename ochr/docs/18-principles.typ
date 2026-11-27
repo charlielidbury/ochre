@@ -40,6 +40,20 @@
 #let refrun(t) = $upright("Run") lr(( #t ))$
 // Dereference of a place, as the paper writes it.
 #let dr = $ast$
+// The set a sort means in the set model (Carneiro's U): `Prop` the two truth values, `Type_i` a stage V_(κ_i).
+#let univ(s) = $cal(U)_(#s)$
+// The stage of the cumulative hierarchy at the i-th inaccessible.
+#let vk(i) = $V_(kappa_(#i))$
+// The data model's family for a declaration d.
+#let fam(d) = $cal(M)_(#d)$
+// The meaning of a field type b with the declared type's own occurrences read through the family x.
+#let ftm(b, x) = $lr(⟦ #b ⟧)^(#x)$
+// The data model of the first k items' declarations.
+#let dmodel(k) = $cal(M)^(#k)$
+// The stage operator of a data-sorted declaration d.
+#let stageop(d) = $Phi_(#d)$
+// The typed domain of a declaration's parameters.
+#let pardom(d) = $"Par"_(#d)$
 
 // A principle, numbered on its own counter: P1, P2, ...
 #let pcount = counter("principle")
@@ -69,11 +83,11 @@
 #align(center, text(size: 16pt, weight: "bold")[Why the Ochr checker is correct])
 #align(center, text(size: 11pt)[A small set of principles of the design, the decisions and faults each explains, where the code enforces each, and where it does not])
 #v(0.3em)
-#align(center, text(size: 9pt, fill: muted-ink)[Draft by the agents `theory1` (ledger, audits), `theory2` (first argument, revision), `theory3` (the theorem restated, the argument in two halves), `theory4` (the frame property) `theory5` (resolved determination, the frame property against Lean, exclusive access, N3, N7, N8) and `theory6` (the observation's design, a proof's data fields, the frame property against `RunFrameI`), 27 November 2026 · to replace the section "The principles the checker enforces" of docs/18])
+#align(center, text(size: 9pt, fill: muted-ink)[Draft by the agents `theory1` (ledger, audits), `theory2` (first argument, revision), `theory3` (the theorem restated, the argument in two halves), `theory4` (the frame property) `theory5` (resolved determination, the frame property against Lean, exclusive access, N3, N7, N8) `theory6` (the observation's design, a proof's data fields, the frame property against `RunFrameI`) and `theory7` (N1, the data model), 27 November 2026 · to replace the section "The principles the checker enforces" of docs/18])
 #v(0.6em)
 
 #align(center, box(width: 92%, align(left)[
-  *Summary.* The checker has accepted closed proofs of `False` eight times since October, and about 135 decisions record a rule added or tightened after a counterexample. Each fix was local. This document states the reasons the design is correct as twelve principles, each one sentence about the design, and tests them two ways. Against the history: every decision and every known proof of `False` is classified by the principle it restores (@sec-ledger), which found five principles nobody had written down (@sec-residue). Against the consistency argument: a first argument from the principles alone (@sec-argument, now superseded) was refereed (@sec-referee), and the referee showed it to be a reduction, not a proof: four of its principles were the proof's open theorems in disguise, and its induction was in a form that fails at the end of a borrow. So the theorem is now stated honestly (@sec-theorems): consistency holds _if_ six named theorems hold (a model of the data types exists; conversion is sound for code; the frame property; every step preserves exclusive access; the checker's decisions are the reference's; [Repack] is sound at a read), a seventh being proved in Lean (the model's fundamental lemma). @sec-twohalves gives the argument in the form the mechanisation uses, two halves over a structured reference state, and redoes every case in it, riskiest first, saying of each step whether it is argued in full or reduced to a named theorem. @sec-frame states the frame property once more, after a second referee (@sec-referee2) showed the previous proof did not exist, and argues it clause by clause against the model's definitions; it needs three changes to the model, names the uses that are not its instances (the block lemma N8), and lists what is not proved. Neither found a place where the design is wrong; the checker rule that a function under check is never run (D135, now on `main`) removes the one step the first argument could not justify. @sec-rd states and proves _resolved determination_, the property that the caller's places, once the right borrows end, determine what a callee wrote through a borrow (without it a statement `Id` proved at a function's own check could be false at a call site), attacks it on the checker without finding a failure, and says which borrows an observation must end; doing so found three faults of type safety, none of consistency. @sec-frame now states the frame property as Lean's `RunFrameI`, hypothesis for hypothesis (@sec-frame-lean); @sec-excl argues every clause of exclusive access; @sec-clo-fix, @sec-n3, @sec-n7 and @sec-n8 argue a closure's fixpoint equation, conversion on code, [Repack] and the block lemma. @sec-obs measures five places where a callee's observation tests its caller (each an accepted function whose call at a known argument is rejected), states exactly a design in which an observation never looks below its own frame and compares, for each borrow lent from below, what was last written through it, attacks it (no wrong acceptance found), and compares it on one page with today's observation and with the patch of @sec-rd-ends; it recommends that design, which removes resolved determination from every call site. @sec-proof-fields says what the model must read at a proof's data fields (a witness) for the simulation to hold, and what "a proof is irrelevant" then means. For each principle, @sec-audits gives the cases that consume it, its enforcement, the audits of principles 4, 3 and 5 from the code, and the redesign that would make it hold by construction.
+  *Summary.* The checker has accepted closed proofs of `False` eight times since October, and about 135 decisions record a rule added or tightened after a counterexample. Each fix was local. This document states the reasons the design is correct as twelve principles, each one sentence about the design, and tests them two ways. Against the history: every decision and every known proof of `False` is classified by the principle it restores (@sec-ledger), which found five principles nobody had written down (@sec-residue). Against the consistency argument: a first argument from the principles alone (@sec-argument, now superseded) was refereed (@sec-referee), and the referee showed it to be a reduction, not a proof: four of its principles were the proof's open theorems in disguise, and its induction was in a form that fails at the end of a borrow. So the theorem is now stated honestly (@sec-theorems): consistency holds _if_ six named theorems hold (a model of the data types exists; conversion is sound for code; the frame property; every step preserves exclusive access; the checker's decisions are the reference's; [Repack] is sound at a read), a seventh being proved in Lean (the model's fundamental lemma). @sec-twohalves gives the argument in the form the mechanisation uses, two halves over a structured reference state, and redoes every case in it, riskiest first, saying of each step whether it is argued in full or reduced to a named theorem. @sec-frame states the frame property once more, after a second referee (@sec-referee2) showed the previous proof did not exist, and argues it clause by clause against the model's definitions; it needs three changes to the model, names the uses that are not its instances (the block lemma N8), and lists what is not proved. Neither found a place where the design is wrong; the checker rule that a function under check is never run (D135, now on `main`) removes the one step the first argument could not justify. @sec-rd states and proves _resolved determination_, the property that the caller's places, once the right borrows end, determine what a callee wrote through a borrow (without it a statement `Id` proved at a function's own check could be false at a call site), attacks it on the checker without finding a failure, and says which borrows an observation must end; doing so found three faults of type safety, none of consistency. @sec-frame now states the frame property as Lean's `RunFrameI`, hypothesis for hypothesis (@sec-frame-lean); @sec-excl argues every clause of exclusive access; @sec-clo-fix, @sec-n3, @sec-n7 and @sec-n8 argue a closure's fixpoint equation, conversion on code, [Repack] and the block lemma. @sec-obs measures five places where a callee's observation tests its caller (each an accepted function whose call at a known argument is rejected), states exactly a design in which an observation never looks below its own frame and compares, for each borrow lent from below, what was last written through it, attacks it (no wrong acceptance found), and compares it on one page with today's observation and with the patch of @sec-rd-ends; it recommends that design, which removes resolved determination from every call site. @sec-proof-fields says what the model must read at a proof's data fields (a witness) for the simulation to hold, and what "a proof is irrelevant" then means. @sec-n1 states N1, that a model of the data types exists, exactly; proves it on paper by the construction (a least fixed point per declaration over its parameters, built from the field types the reference run computes, truth first for propositions), naming the check of the checker each step uses; and places each of the eight facts the Lean theorem assumes, the model fact with a hard case (a function from `Type₁` heading a field's type) argued true with the three Lean steps it needs. @sec-n1-attack attacks the checks of a declaration with 193 programs, one per way a declaration could have no model: nothing wrong is accepted. For each principle, @sec-audits gives the cases that consume it, its enforcement, the audits of principles 4, 3 and 5 from the code, and the redesign that would make it hold by construction.
 ]))
 #v(0.4em)
 #outline(depth: 2, indent: auto)
@@ -133,7 +147,7 @@ _Design half only, the checks each step makes._ That every step therefore keeps 
 _Written by `theory3`; N4 restated, N8 and N9 added by `theory4`._ The principles are what the checker enforces. They do not prove consistency by themselves: the proof needs a few facts about the model and about every run of the checker, which are theorems to be proved, not properties a check can enforce. Here they are, by name. Each is stated precisely, with its status (_proved in Lean_; _argued on paper here_; _open_), what it would take to prove, and the principles it rests on. The argument of @sec-twohalves uses them and nothing else beyond the principles.
 
 #table(columns: (13%, 40%, 25%, 22%), align: left, table.header([*Name*], [*Statement*], [*Status*], [*Rests on; what it would take*]),
-  [N1 _A model exists_], [For every accepted, hole-free program there is a data model covering every declaration its meaning reaches, faithful to the checker's reading of field and parameter types; with it every type value an accepted program forms means a set in its universe, `False` means $emptyset$, a proposition $emptyset$ or ${bullet}$, and a function type returning a borrow means only functions whose backward functions are injective (the plan's relation $R$).], [*Proved in Lean, under eight named facts* (`Assembly.exists_dataModel`, the bundle `DataFacts`): one, that a global heading a field's type has a small result at every argument, is an unproved fact about the model with a hard case the checker accepts (the referee's `WT`); six are read true against the code and not derived; one is proved in part. Also assumed: the checker never refutes an equation between two applications of one type former.], [Principle 1. To prove: the model fact (6), and the six facts derived from the checker's code.],
+  [N1 _A model exists_], [For every accepted, hole-free program there is a data model of its declarations (@sec-n1-stmt): for each declaration a family on its parameters, of small sets of trees (data) or of truth values (`Prop`), the least one closed under its constructors with the field types the reference run computes, monotone in its nestable parameters, and stable as the program grows. With it constructors are injective and disjoint, every element is a finite tree, and every type value an accepted program forms means a set in its universe: `False` means $emptyset$, a proposition $emptyset$ or ${bullet}$, and a function type returning a borrow only functions whose backward functions are injective (the plan's relation $R$).], [*Argued on paper* (@sec-n1), by the construction, from the checks of [Ind-decl] (@fig-n1-checks), with no bound on universe levels; every step in full but the other type formers, which are the plan's. *Proved in Lean under eight named facts* (`Assembly.exists_dataModel`, the bundle `DataFacts`), each placed in @fig-n1-facts: the model fact with a hard case (a global with a domain in `Type₁` heading a field's type, the referee's `WT`) is true, argued on paper, with the three Lean steps it needs; six are read true against the code and not derived; one is proved but for one assembly. The checker never refutes an equation between two types, so the model may identify them. Attacked with 193 programs (@sec-n1-attack): nothing found.], [Principle 1. To prove in Lean: `GlobalCallLevels` by its three steps; the six read facts derived from the checker's code; `CheckIndGivesChecks`'s assembly.],
   [N2 _The fundamental lemma_, half (I)], [From a good reference state (every position an open member of its stored type at every typed future, one holder per label, records members), a strict reference run that succeeds returns a good result and leaves a good state; a proof that runs proves a true proposition.], [*Proved in Lean* (`fund_all`, on `spine`, every clause of the strict run, nothing beneath it unproved; its context has a kernel-checked instance; applied to seven concrete runs).], [N1 only. Not covered: the frame operations of a call run in place (push, pop), which are N4's.],
   [N3 _Conversion is sound_], [If $v equiv w$ at a state the checker reaches, and both are well typed inside at one type, then they mean the same under every assignment; if `Eq` computes to $P$ on two sides that are `⊥` or whole members, $P$ means that the sides mean the same; and the same for open members compared field by field, `⊥` as a value of its own, which an observation meets at a caller's owner under the repair of @sec-rd-ends, whether the caller left it open or the side opened it (the fourth referee's F5; under the finals design of @sec-obs no caller owner is compared, and this extension is not needed).], [*Proved in Lean for values that hold no code* (branch `rules-trial`, both halves composed, under named hypotheses). *Argued on paper for code* (@sec-n3): sealed programs by their [Close] shape and the model's congruence, closures and [Conv-fun] by (II) for the generic calls' untyped runs and FR's C1 and C6, Π-types by (II) under (M1); attacked, nothing found.], [Principles 2, 3, 4, 7. To prove: the comparison of code, from "every sealed program held in the state has [Close]'s shape" (principle 7; swept on 625,140 sealed programs, not proved).],
   [N4 _The frame property_], [Theorem FR of @sec-frame: a body run in place, its frame pushed on the caller's, and the same body run in the function's own frame with a cell for each borrow parameter, from related states that are both good and local, both fail or both succeed with the same result and related states. Its uses are corollaries: a call in place computes `callOf` (C1, with the fixpoint equation, which RecDesc gives: a body depends on its own binding only below the call's rank); a statement read at a call site means what the model's domain means (C2); a closure's value and the start's parameter types (C3, C4, by definition under (M1), (M2)); a sealed program's re-run and the step from (II) to the theorem (C5, C6: the renaming lemma RL, FR's case with no caller).], [*Argued on paper* in @sec-frame for every clause of the strict run but two (a Π-type formed in the body, and a closure's own types, need (M2) widened, D220; a `let`'s binding needs an invariant neither statement has), stated as Lean's `RunFrameI` hypothesis for hypothesis (@sec-frame-lean: the start state after the push, (H12) the renaming's range, (H13) sites at bindings, a parked result, (H7) in place only, `Id` over a parameter excluded), over the model with (M1) made; `Id` over a parameter in lemma OBS, reduced to resolved determination, which @sec-rd proves from N5's (X5) under the fourth referee's hypotheses; a closure's fixpoint equation immediate under D136; C3 and a deferred parameter type read after the call point #a-np. *Lean:* stated (`RunFrameI` with `FrameInv`; `FixEqG`, `RecDescG`, `run_counter_indep`, `run_frame_obs`, the last false as stated); proved: [Access] by commutation (`frameRel_access`), [End] (`frameRel_endLabel`, `frameRel_foldEnd`), the write, fresh labels, pushes, moves, drops, reads (`Steps/FrameOps`), the clause for a match (`runFrameI_matchNat`, `runFrameI_matchInd`), a call's fixes (`frameRel_mapFix`, `frameRel_callData`), the label-free fragment (`run_frameS_lf`), the fixpoint equation for one function (`fixEq_R`). Under the finals design of @sec-obs, `Id` would be an ordinary clause.], [Principles 4, 5, 6, 10, 12, N1 and N5. To prove: the remaining lemmas of @sec-frame-proof in Lean, the start lemma, C3; the model changes made.],
@@ -522,9 +536,9 @@ Rejected: "field z of MkQ : Q(Q(A, n), 1): Q occurs at the parameter A of Q, whi
 
 *How it is enforced today.* By checks in one function, `Check.checkInd`, each before the declaration enters Σ and each read from syntax and earlier declarations: first-order fields (D36), the nesting condition with the greatest set of nestable parameters stored with the declaration (D64, D107), no read of a value of the type off a field's spine (D120), one sort per knot (D121), a type parameter written as a sort (D128), the own name only in fields (D133), the declaration's own constructors unreadable while it is declared (D107); and elsewhere: `&A` only for `A : Type₀` (D66), subsingleton elimination (D45), inference of a constructor's parameters only where the model follows (D105).
 
-*The audit, by `theory2`, of the condition the first draft named first.* D120 records a third condition of the model's grammar, (B2): a value argument does not stand at a parameter whose declared type mentions an earlier parameter whose argument varies. The checker does not enforce it: `NF (A : Type) (n : Nat) (f : NegF(A, n)) := MkNF(y : A)` with `DF := LeafF | NodeF(p : NF(DF, 0, ()))` is accepted (asserted in `NestReads`), as by Lean. So (B2) is #s-not, and principle 1 holds there only if the model's construction is extended to it, which is open. No route to `False` is known, and none is expected from the argument: the value argument stands where no field reads it (`f` is not in `MkNF`'s fields), and a value argument that used the declared type negatively would have to be a closed function out of the type being declared, which cannot be written while its constructors are unreadable (D107). The rest of the first draft's note:  The history suggests where to look: six of the conditions above (D105, D107, D120, D121, D128, D133) were found by the lanes building the model, each the model failing at a declaration the checker accepted. The model's grammar has one condition the checker does not state, (B2) of D120 ("a value argument does not stand at a parameter whose declared type mentions an earlier parameter whose argument varies"), recorded as open; that is the first site to test. #s-open
+*The audit, by `theory7`, every site.* A site of principle 1 is a check that makes a declaration meet a condition of the model's construction. @fig-n1-checks lists them, each with the step of the construction (@sec-n1-proof) that uses it and the program that shows what goes wrong without it. Each is a named check in `checkInd`, made on syntax and the earlier declarations before the declaration is stored: #s-check for fresh names, the sort, the telescope (D64), first-order fields (D36), the declared type only on the spine (D71), nesting at the greatest set of nestable parameters, own occurrences included (D107), a variable mentioning what its declared type mentions (D120), one sort per knot (D121), the type's constructors unreadable while it is declared (D107), field levels with syntactic sorts and type parameters written as sorts (D55, D128), names declared and the own name only in the fields (D118, D133), and no borrows (D71). Elsewhere, #s-check for subsingleton elimination in every position, types and value arguments included (D45), recursion only on data ([Rec]), borrows only of `Type₀` (D66), a borrow result with a borrow parameter (D44), and parameters inferred only where the model reads them back (D105). One site is #s-not: a value argument at a parameter whose own type reads a nestable parameter, D120's condition (B2) (`NF (A : Type) (n : Nat) (f : NegF(A, n)) := MkNF(y : A)` with `DF := LeafF | NodeF(p : NF(DF, 0, ()))` is accepted, as by Lean). The construction does not need it: a family never reads a value parameter its field types do not read, and a value argument is a meaning fixed by its own term (the reference, like the checker, gives it no hint, D172), so the argument stays fixed along the construction (S3). Nor can it be reached by a value that varies: a value of a type built from the declared type would have to name it, read a field of it, or take its parameter from a hint, and each is rejected (@sec-n1-attack, group H). Measured with the 193 programs of @sec-n1-attack: no route to a declaration without a model. Two incompletenesses were found on the way, neither a fault of consistency: a parameter typed by a Π over an earlier type parameter is rejected with a message naming the checker's internal variable κ (`VF`), and a constant that is a type is not admitted as a field type (`B10`).
 
-*The redesign.* The conditions are a grammar: declarations the model's construction accepts. Write the grammar once, as a syntactic predicate on a declaration in its own module (as `Decide.lean` is for decisions), with the model's construction proved against the same predicate, and make `checkInd` call only it. Cost: restating six checks as one; deletes the drift between the model's grammar and the checker's tests, which is how D120's (B2) is open today.
+*The redesign.* The conditions are a grammar: declarations the model's construction accepts. The Lean side has written it once, as decidable predicates (`Knot/Grammar.lean`: `spineB`, `GrammarOk`, `PGrammarOk`, and the pure mirrors of `firstOrderTerm`, `readViolation` and `sortNestViolation` in `IndChecks`), with the construction proved against them (`grammar_of_checks`). Move that predicate into its own module of the checker (as `Decide.lean` is for decisions) and make `checkInd` call only it. Cost: restating the checks of @fig-n1-checks as one predicate; it deletes the drift between the model's grammar and the checker's tests (how D120's (B2) stayed open), and makes the one open part of `ItemFacts` (`CheckIndGivesChecks`) hold by construction.
 
 == Principle 2: identifications hold <sec-a2>
 
@@ -1320,6 +1334,405 @@ def H3 (n : Nat) : Nat by n := match n { Z => Z, S(m) => (let g = H3; g(clone(m)
 ```
 `LocBy` rejected (D136); `Shadow` rejected ("Shadow is not in scope in its own body", D31); `H1`, `UseH1` accepted and `UseH1` with `2` rejected; `H1Bad` rejected by [Rec] ("not a strict subterm"); `H2`, whose closures are formed by untyped runs and called after the call that formed them returns, and `UseH2` accepted, with `4` rejected; `H3` rejected ("[Rec] H3 occurs in its own body other than as the head of a call").]
 
+= A model of the data types exists (N1) <sec-n1>
+
+_Written by `theory7`._ The argument reads every type as a set, and a data type as a set built from its declaration. N1 says that such sets exist for every program the checker accepts, built from what the checker reads in each declaration, and that they are the right sets: the least ones, whose constructors are injective and never overlap, and whose elements are all finitely deep. A match on data, `Eq`'s injectivity and disjointness, [Rec]'s order and the meaning of a match on a proof all read those properties, and every other named theorem assumes N1. Most accepted proofs of `False` in the project's history came from this corner: a declaration that mentions itself negatively behind a type function, a parameter or its own nesting (D36, D107), a proposition with two constructors eliminated into data (D45), a sort hidden from the checker's reading (D55, D128), a variable read off the spine of a nested occurrence (D120), nesting across sorts (D121), a type named in its own parameters (D133). This section states N1 exactly (@sec-n1-stmt), lists the checks of the checker the construction uses (@sec-n1-checks), says what it takes from Lean's metatheory and where Ochr's declarations go beyond it (@sec-n1-carneiro), proves N1 on paper by the construction (@sec-n1-proof), and places the eight facts the Lean theorem assumes (@sec-n1-facts). @sec-n1-attack attacks the checks with programs aimed at each way a declaration could have no model, or the wrong one.
+
+== The statement <sec-n1-stmt>
+
+*Universes.* Fix inaccessible cardinals $kappa_0 < kappa_1 < dots$, one for each universe level the program writes and one above. A sort means a set: #univ($ty("Prop")$) $= {emptyset, {bullet}}$ and #univ($ty("Type")_i$) $= vk(i)$, as in Carneiro's model (thesis §6.2: $U_0 = {emptyset, {bullet}}$, $U_(n+1) = V_(kappa_n)$). A set in #vk(0) is _small_.
+
+*Trees.* A data value means a _tree_: the name of its declaration $ty("D")$, one of its constructors $ty("C")$, and the meanings of $ty("C")$'s fields in order, a proof field's being $bullet$. Write it $ty("D").ty("C")(v_1, dots, v_k)$. A tree records no parameter. So two trees are equal exactly when they have the same declaration, the same constructor and equal fields. This is the plan's "a data value means a tree", without the record, which the Lean model keeps only because Lean cannot quantify over sets (@sec-n1-facts).
+
+*Which programs.* A program is a list of items (inductive declarations and definitions), the library's first, checked in order by `checkItem`; it is _accepted_ when every item is, and _hole-free_ when it has no hole. $Sigma_k$ is the signature after its first $k$ items. In Lean the statement is at every fuel and, under `consistencyBounded` (docs/31, D2), for programs that write no sort above `Type₁`; on paper there is no bound.
+
+*The loose and the typed domain.* Let $ty("D")(x_1 : X_1, dots, x_l : X_l)$ be a declaration. A type parameter is written at a sort (D128) and ranges over that sort's meaning, a fixed set. A value parameter's type has a declared sort $s_j$, read from syntax (D55), and the parameter ranges over #univ($s_j$) itself, which holds every member of every type of that sort (each #univ($s$) is transitive). The _loose domain_ of $ty("D")$ is the product of these ranges, every tuple of meanings the parameters could hold. The _typed domain_ #pardom($ty("D")$) is the subset of tuples $overline(a)$ in which each $a_j$ is a member of the meaning of $X_j$ at $a_1, dots, a_(j-1)$, that meaning being the strict reference run of the term $X_j$ in the frame binding the earlier parameters ($refrun(dot)$, the plan's).
+
+*Field types.* For a constructor $ty("C")_(i) (g_1 : B_1, dots, g_k : B_k)$ of $ty("D")$, a tuple $overline(a)$ and meanings $v_1, dots, v_(j-1)$ of the earlier fields, $deno(B_j)(overline(a), v_1 dots v_(j-1))$ is the strict reference run of the term $B_j$ in the frame that binds the parameters to $overline(a)$, the earlier fields to $v_1, dots, v_(j-1)$ and the later ones to nothing (as the checker's `fieldTele` binds them), reading every declaration through the data model, $ty("D")$ itself included. Where that run fails, the field type means $emptyset$.
+
+*Definition (a data model).* A data model of a signature Σ gives each inductive declaration $ty("D")$ of Σ a family #fam($ty("D")$) on its loose domain, with values sets of trees of $ty("D")$ if $ty("D")$ is declared in `Type₀`, and truth values if it is declared in `Prop`, such that:
+- (DM1, faithful fields) at every $overline(a)$ of the loose domain, for a data-sorted $ty("D")$, $fam(ty("D")) (overline(a)) = {ty("D").ty("C")_(i) (v_1, dots, v_k) mid(|) v_j in deno(B_(i j))(overline(a), v_1 dots v_(j-1)) "for each" j}$, and for a `Prop`-sorted one, $fam(ty("D")) (overline(a)) = {bullet}$ exactly when that set is not empty;
+- (DM2, faithful parameters) #pardom($ty("D")$) is computed by the reference runs of the parameter-type terms, as the checker evaluates them;
+- (DM3, least) #fam($ty("D")$) is the least family satisfying DM1 among the families monotone in $ty("D")$'s nestable parameters (sets ordered by inclusion, truth values by $emptyset subset.eq {bullet}$); for a data-sorted declaration it is the union of its stages, $union.big_(n < omega) stageop(ty("D"))^n (emptyset)$ (@sec-n1-proof);
+- (DM4, monotone) #fam($ty("D")$) is monotone in each nestable parameter, and, for data, preserves unions of increasing chains in it;
+- (DM5, small) at every tuple of the loose domain and earlier fields in their field types, every field type means a small set or a truth value; so every value of a data-sorted family is small.
+
+*Theorem N1.* For every accepted, hole-free program there is a data model of its declarations. It is built declaration by declaration: the families of $Sigma_k$'s declarations are determined by $Sigma_k$, and they remain a data model of every later $Sigma_(k')$ (_stability_). Consequently:
++ every element of $fam(ty("D")) (overline(a))$ is exactly one constructor applied to members of its fields' types, constructors are injective, two constructors have disjoint images, and trees of two declarations differ: what [Eq-inj] and [Eq-disj] read, and what makes a match on data take exactly one arm;
++ every element of a data type is a finite tree, and a strict subterm through any field (through a nested declaration's tree, or a value stored under a type parameter) has smaller rank: the order [Rec] reads;
++ a `Prop`-sorted declaration means $emptyset$ or ${bullet}$, its least truth; a match on a proof of a subsingleton has at most one arm, whose fields are all $bullet$, so what it produces is determined by the proposition alone;
++ with the other type formers read as in the plan (a Π-type as the dependent product, cut to the functions with injective backward functions when it returns a borrow, the plan's relation $R$; a Π-type into proofs as a truth value; `Eq` and `Id` as truth values; $\&T$ as $T$), every type value an accepted program forms means a set in the universe of its declared sort, and `False` means $emptyset$.
+
+*What N1 identifies that the checker does not.* Trees record no parameter, so two applications $ty("D")(overline(a))$ and $ty("D")(overline(a'))$ whose field types mean the same are the same set: with `inductive Ph (A : Type) := MkPh`, $deno(ty("Ph")(ty("Nat"))) = deno(ty("Ph")(ty("Bool"))) = {ty("Ph").ty("MkPh")}$, and with `inductive Big (U : Type₁) := MkBig`, `Big(Type)` and `Big(Prop)` mean one set. Carneiro's model identifies them too (an element $iota_1(x)$ of $alpha + beta$ does not record $alpha$ or $beta$). The model is then wrong only if the checker refutes such an equation, and it does not: [Eq-disj] fires on two constructor values of different constructors, or on `⊥` against a value, and a type value is neither (a type is a copy, so a place that holds one is never moved). `R1` to `R4` of @sec-n1-attack try, and are rejected, each equation stuck. Conversely, [Conv-cong]'s rule that a constructor value's recorded parameters are ignored is an identity in this model. The Lean model keeps a record of the parameters (a type parameter's code, a value parameter read small, of a parameter above `Type₀` only what the field types compute from it), so it identifies fewer types, `Big(Type)` and `Big(Prop)` among them, and needs the same fact, which it calls "the standing assumption" (@sec-n1-facts).
+
+*What N1 does not say.* Nothing about runs: that a value the checker builds is a member of its type, or that a field type the checker computes at an instance is defined, is (I) and (II). N1 says only that the sets exist, are faithful to the runs of the declaration's own terms wherever those are defined, and have the properties above.
+
+== The checks the construction uses <sec-n1-checks>
+
+Each check is made by `checkInd` (`Check.lean`), on the declaration's syntax and the declarations before it, before the declaration is stored, unless the row says otherwise. The steps are those of @sec-n1-proof; the last column is what goes wrong without the check, with the program that showed it (the paper's appendix, `Inductives.lean`, or @sec-n1-attack).
+
+#figure(table(columns: (27%, 13%, 30%, 30%), align: left,
+  table.header([*Check (decision, function)*], [*Step*], [*What the step needs of it*], [*Without it*]),
+  [Fresh names; constructors distinct and not reused (\[Ind-decl\], `declared`)], [S0], [A tree's name and constructor identify its declaration and its arm.], [An arm resolved by name could name two constructors; disjointness would compare trees of two types.],
+  [Sort `Prop` or `Type₀` (`d.sort > 1`)], [S4, S6], [The family's values are small sets or truth values.], [No surface syntax reaches it.],
+  [Fields form a telescope (D64, `fieldRefs`)], [S2], [The fields are a dependent sum read left to right.], [A field whose type reads itself has no such sum (`LateEq`, rejected).],
+  [First-order fields (D36, K4, D71, `firstOrderTerm`): `Nat`, `Unit`, a parameter, an applied declaration with first-order type arguments, a call of an earlier global whose stored codomain is a written sort (arguments: parameters, fields, numerals, first-order types), an equation over first-order data; no `Π`, `&`, sort, match or `let`; and no call that computes to a `Π`, a sort or a borrow at the generic telescope], [S2, S3], [The grammar the stage operator recurses on; no field is a function out of the type.], [`Bad := MkBad(f : Π(x : Bad). False)`: a closed proof of `False` by typing alone (paper, note 4); `B1`, `B8`.],
+  [The declared type only on the spine: not in a call's argument, an equation, or an argument at a value parameter (`firstOrderArgs`, `firstOrderCallArgs`)], [S3], [Off the spine, nothing depends on the family being defined.], [`B1`, `B2`: the type behind a type function, at an instance only.],
+  [Nesting only at nestable parameters, the greatest set, own occurrences included (K4, D107, `nestableSet`, `nestViolation`)], [S3, S5], [An earlier family is monotone and union-preserving in the parameter the type is nested at (DM4).], [`PositivitySelf.Q`: `Q(Unit, 0)` is `Q(Unit, 0) → False`, Curry's paradox; `B3`, `B4`, `B14`.],
+  [A variable mentions what its declared type mentions (D120, `deepVars`, `readViolation`), so a parameter read off the spine is not nestable], [S3], [Off-spine nodes read no value of the type, and no nestable parameter: they are steady.], [`D2Node(x : D2, p : Pt(D2, x))`: the knot's record equals its own flip (`KnotCE`); `DA2`.],
+  [One sort per knot (D121, `sortNestViolation`, `passOther`)], [S3, S6], [The data construction and the truth construction never apply each other to a varying argument.], [`D := MkD(q : Q(PP(D)))`: a data type whose truth no depth bound fixes (`PropNestCE`); `B11`, `B12`.],
+  [The type's constructors unreadable while it is declared (D107, the `declaring` entry)], [S3], [An off-spine node cannot build or inspect a tree of the type.], [`PositivityDeclaring.E`: a field type ill-typed once the type has constructors; `DG`, `B5`.],
+  [Field types in `Prop` or `Type₀` at the generic telescope (`sortOf`), sorts syntactic (D55), a type parameter written as a sort (D128)], [S4], [Every field type means a small set or a truth value (DM5).], [`TL (A : Type) (B : (let z = A; Type)) := MkTL(x : B)`, accepted before D128: a field type reading a value parameter that varies; `U1` to `U10`, `T1` to `T5`.],
+  [Names declared and earlier (D118, `undeclaredCheck`); the declaration's own name only in its fields (D133)], [S1], [The recursion on the declaration list reads only earlier families and globals.], [`Q3 (A : Type) (n : Nat) (x : Q3(A, n, n))` ran the checker out of memory (D133).],
+  [No borrow in a parameter or field type (D71, D48, `typeHasRef`)], [S0], [A tree holds no borrow; a parameter is recorded in a type.], [`RefP(&x)`, `Bad9`: a borrow inside a type and inside data.],
+  [A constructor's parameter inferred only where the model can read it back (D105, `inferablePos`), and a bare constructor at a value argument given no hint (the reference's D172)], [S7], [The run's constructor clause agrees with the family.], [`MkW(t)` with `t : Tag(3)` typed `Wrap(3)`; `DL` (@sec-n1-attack, H).],
+  [_Elsewhere:_ subsingleton elimination, in every position, types and value arguments included (D45, `largeElim`, `fieldTermIsProp`, `Machine.evalMatchByType`)], [(3)], [A match on a proof produces data only where the proposition determines it.], [`IsL` (paper, note 10); `C1` of @sec-n1-attack.],
+  [_Elsewhere:_ recursion only on a `Type₀` inductive ([Rec])], [(2)], [Recursion descends along the rank of trees.], [`qe` (@sec-n1-attack, I): no recursion on a proof.],
+  [_Elsewhere:_ borrows only of `Type₀` (D66); a borrow result needs a borrow parameter (D44)], [(4)], [`Type₀` stays predicative; $R$ holds of every accepted function.], [`Impred` (Hurkens' paradox; paper, note 11); `QF` (paper, note 7).],
+), caption: [The checks of a declaration, and the step of the construction each one serves.]) <fig-n1-checks>
+
+== What Lean's metatheory gives, and where Ochr goes beyond it <sec-n1-carneiro>
+
+Carneiro's thesis (`docs/papers/theory-of-lean.pdf`) defines Lean's inductive specifications (§2.6.1): a family $mu t : forall x :: alpha. U_ell$ with uniform parameters and indices, whose constructors take non-recursive arguments of any type (the types of later arguments may use them) and recursive arguments $forall z :: gamma. t thin e$, functions into the family. It has no nesting and no mutual declarations (§2.8, item 5, says Coq has them and that they are encodable). §5 reduces every specification to eight type formers ($bot$, Σ, +, a universe lift, propositional truncation, W, =, acc), and §5.4 leaves the constructors, the recursors and their computation rules of that reduction as future work. §6.2 interprets the eight in ZFC with one inaccessible per level, $forall$ into `Prop` as a truth value, and W-types as the intersection of all sets closed under `sup` (§6.2.1), inside $V_lambda$ when the cofinality of λ exceeds the branching.
+
+*What the construction takes from it.* The universes and the two-element `Prop` (§6.2); the reading of a Π into `Prop` as a truth value, so `Prop` is impredicative (§6.2, the clause for ∀); that $V_lambda$ is closed under products for λ inaccessible (§6.2, Remark 1); the least-set construction of §6.2.1 in its finitary case only, where $omega$ stages suffice; and subsingleton elimination (§2.6.2), in a stricter form, since Ochr has no indices and so no data field "appears in the output type". It does _not_ use §5's reduction: each Ochr declaration is built directly as a least fixed point on families, as in Werner's set model of inductive types and Dybjer's indexed inductive definitions, so §5.4's gap is not inherited.
+
+*Where Ochr's declarations go beyond it.*
+- _Nesting_, at a nestable parameter of an earlier declaration and at the declaration's own parameter, with a type argument that changes along the recursion (`DD(A) := DLeaf | DNode(x : DD(DD(A)))`, accepted). The thesis has no nesting; Lean 4's kernel translates nesting into mutual declarations and requires uniform parameters, so `DD` has no Lean counterpart. The construction needs every earlier family monotone and union-preserving in its nestable parameters (DM4), which the nesting rule makes true.
+- _Recursive occurrences at other values of the value parameters_, with families indexed by values Forded through equation fields over the observational `Eq` (`Vec(A, m)` inside `Vec(A, n)`), where the thesis has indices. The construction is one fixed point over the whole loose domain at once.
+- _Field types computed by running code_: a call of an earlier type function, an equation whose sides run, an argument at a value parameter that runs, with local borrows and writes (`AV` in @sec-n1-attack). Their meaning is the reference run's, which the thesis's typed terms have no counterpart for; the construction needs each such run to be _steady_, independent of the family being defined, which D36, D71, D107 and D120 make true (S3).
+- _Dependent fields read by later fields_. The thesis's non-recursive arguments cover them. Ochr adds one restriction the construction uses: a field read off the spine of a later field's type has a type mentioning neither the declared type nor a nestable parameter (D120).
+- _Propositions with data fields_ (`Ex := Wit(n : Nat, e : Eq(Nat, n, n))`), which the thesis has (∃), and _propositions nested at their own `Prop` parameter_ (`N2 (P : Prop) (n : Nat) : Prop := MkN2(z : N2(N2(P, n), 1), …) | StopN2(a : P)`), which it does not; these are built truth first (S6).
+- _The erased and the proof classes_: a proof field means $bullet$, a value of a `Prop`-sorted declaration is ⋆; parameters may be in any universe, data only in `Type₀`, `Prop` beside `Type₀` in `Type₁` (D66), and universes are not cumulative.
+- _Borrows_: none in a declaration (D71); borrows only of `Type₀` (D66), which keeps `Type₀` predicative.
+
+*What the thesis has and Ochr does not.* W-types (a field that is a function into the type: `WT := WLeaf | WNode(f : Π(n : Nat). WT)`, rejected), so every Ochr fixed point is reached after $omega$ stages; `Prop`-sorted declarations with fields in a higher universe (`U8`, rejected); indices.
+
+== The construction <sec-n1-proof>
+
+The proof builds the families by recursion on the program's declarations (S1), and, for one declaration, by recursion on the grammar of its field types (S2) and a least fixed point (S5 for data, S6 for propositions). Each step is marked: #a-full; #a-lean (with the name); or #a-np. Steps that use one of the eight facts of the Lean theorem name it; @sec-n1-facts says of each whether it is true and why.
+
+*S0. Universes and trees.* Trees are well founded: the fields of a tree are sets of lower rank than the tree (they are its components). Each universe #univ($s$) is closed under finite tuples, subsets, dependent sums and, for $s$ not `Prop`, products indexed by its own sets (thesis §6.2, Remark 1). #a-full
+
+*S1. The order of the declarations.* By recursion on $k$, the data model $dmodel(k)$ of $Sigma_k$ and the meanings $G^k$ of its definitions (the plan's program meaning: a definition's meaning is its body's reference run, a recursive one by stages on the rank of its decreasing argument). $G^k$ is not part of N1, but later field types call it. When item $k$ is a declaration $ty("D")$:
+- the entry the checker stored is the declaration it checked, so every check of @fig-n1-checks passed on $ty("D")$'s syntax and on $Sigma_(k-1)$ (fact `ItemFacts`);
+- $ty("D")$'s parameter and field types name only declarations and definitions of $Sigma_(k-1)$, and $ty("D")$ itself in its fields (D118, D133; fact `NamesFact`);
+- they are source terms, with no embedded value (fact `NoValFact`), so what they name is what their syntax names.
+So the runs of $ty("D")$'s parameter types read only $dmodel(k-1)$ and $G^(k-1)$, and the runs of its field types read those and $ty("D")$'s family. That a term's run under two models and two tables of globals that agree at the names it mentions is the same is #a-lean (`Knot.runT_congrN`, `meanV_congrN`, no assumed fact). The parameters' typed domain #pardom($ty("D")$) is then defined by their runs (DM2). #a-full
+
+*S2. The grammar of field types, and the stage operator.* By the checks, every field type $B$ of $ty("D")$ is in the grammar
+$ B ::= ty("Nat") | ty("Unit") | x_j | ty("M")(overline(t)) | ty("D")(overline(t)) | F(overline(u)) | ty("Eq")(T, a, b) $
+where $x_j$ is a parameter written at `Prop` or `Type`, $ty("M")$ an earlier declaration, $F$ an earlier global whose stored codomain is a written sort, and $ty("Eq")$'s type $T$ first-order data; the _spine_ of $B$ is $B$ itself and, inside $ty("M")(overline(t))$ or $ty("D")(overline(t))$, the arguments at type parameters, recursively; every other node (a call, an equation, an argument at a value parameter, a call's arguments) is _off the spine_. The spine holds no variable but parameters. $ty("D")$ and $ty("D")$'s nestable parameters occur only on the spine, and there only as a whole field type or inside an argument at a nestable parameter of the declaration applied (the declared type's own occurrences included, at the greatest set). For a family $X$ on the loose domain, let #ftm($B$, $X$) be $deno(B)$ with $ty("D")$ read through $X$ (the model $dmodel(k-1)$ extended by $ty("D") |-> X$), and for a data-sorted $ty("D")$
+$ stageop(ty("D")) (X)(overline(a)) = {ty("D").ty("C")_(i) (v_1, dots, v_k) mid(|) v_j in ftm(B_(i j), X) (overline(a), v_1 dots v_(j-1)) "for each" j}. $
+That an accepted declaration is in the grammar is read here off `checkInd`, each condition a check of @fig-n1-checks made before the store, and is #a-lean from the stored entry's checks (`Knot.grammar_of_checks`, from `IndChecks`; the bridge from `checkInd`'s run to `IndChecks`, `CheckIndGivesChecks`, has its pieces proved and its assembly open).
+
+*S3. Off the spine nothing varies; on it everything is monotone.* _Lemma S3a (steady nodes)._ An off-spine node of a field type of $ty("D")$, and every argument at a non-nestable type parameter, has the same meaning under every family $X$ and at every value of $ty("D")$'s nestable parameters. _Proof._ Such a node names no $ty("D")$ (`firstOrderArgs`, `firstOrderCallArgs`, D71) and no constructor of $ty("D")$ (D107); it reads no variable whose declared type mentions $ty("D")$ (D120); and it reads no nestable parameter, directly or through a variable's declared type, since a parameter so read is removed from the nestable set (`Term.nestOk` with `deepVars`, D120), and a parameter passed to a declaration of the other sort likewise (D121). A value parameter whose own type reads a nestable parameter is read by no field type (fact `VaryValFact`: such a parameter on the spine would be a type, which D55 and D128 make a type parameter; off the spine its read puts the nestable parameter in the node's `deepVars`). By S1's congruence the node runs alike under every $X$; and the run of a term reads its frame only at the variables the term mentions, provided the places its decisions name are rooted there (fact `DecLocal`; frame locality is #a-lean, `FrameLocal.runT_qset`, assuming it), so it reads none of the fields and parameters that vary. #a-full
+
+_Lemma S3b (monotone, union-preserving)._ #stageop($ty("D")$) maps families that are monotone and preserve unions of increasing chains, in their nestable parameters and in themselves, to such families; it is monotone in $X$ on them, and preserves unions of increasing chains of them. _Proof._ By induction on the spine. A steady node is constant (S3a). A parameter on the spine is the identity in it. $ty("M")(overline(t))$, $ty("M")$ earlier: at $ty("M")$'s nestable parameters the arguments are spine nodes, monotone by induction, and $fam(ty("M"))$ is monotone and union-preserving there (DM4 for $ty("M")$, by S1's recursion); at its other parameters the arguments are steady. $ty("D")(overline(t))$: the same with $X$, whose own monotonicity at its nestable arguments covers an argument that is itself a spine node mentioning $ty("D")$ (`DD(DD(A))` reads $X(X(A))$: if $X subset.eq Y$ then $X(X(A)) subset.eq Y(X(A)) subset.eq Y(Y(A))$, the second by $Y$'s monotonicity). Equations and calls are steady. The fields form a dependent sum, but a field that a later field's type reads is read off the spine (the spine holds only parameters), so its type mentions neither $ty("D")$ nor a nestable parameter (D120): the sets it ranges over are steady, and a later field type depends on its value only through steady nodes. Tagged unions and such dependent sums are monotone and preserve unions of chains; a tree has finitely many fields, each one value, so a tree of $stageop(ty("D")) (union.big_n X_n)$ lies in some $stageop(ty("D")) (X_n)$. #a-full
+
+*S4. Small.* _Lemma._ At every tuple of the loose domain, with earlier fields in their field types and a family $X$ whose values are small, every field type of a data-sorted or `Prop`-sorted $ty("D")$ means a small set or a truth value. _Proof._ `Nat` and `Unit` mean $NN$ and ${()}$. A parameter heading a field type is written at `Prop` or `Type` (D55, D128 and the level check; fact `FieldHeads`), so it holds a truth value or a small set. $ty("M")(overline(t))$ means a value of $fam(ty("M"))$, small or a truth value by S1's recursion; $ty("D")(overline(t))$ a value of $X$. An equation means a truth value. A call $F(overline(u))$: $F$'s stored codomain is a written `Prop` or `Type` (`firstOrderTerm` and the level check, fact `FieldHeads`), and $F$'s meaning, as every function's in the model, is a typed function: at arguments in its domains it gives the body's reference result when that is a member of the codomain's meaning there, and the error value otherwise, as at arguments outside its domains (in Lean, the encoding at the codomain's code, `callOfL_enc`; fact `GlobalCallLevels`); a field type whose run gives the error value means $emptyset$; the codomain `Type` means $vk(0)$ and `Prop` means ${emptyset, {bullet}}$ whatever universe the domain is in, so the call gives a small set or a truth value (or the field means $emptyset$). Each stage $stageop(ty("D"))^n (emptyset)(overline(a))$ is then a set of finite tuples over small sets, small by S0, and their union over $omega$ is small, $kappa_0$ being regular and uncountable. #a-full
+
+*S5. A data-sorted declaration.* $fam(ty("D")) = union.big_(n < omega) stageop(ty("D"))^n (emptyset)$ on the loose domain. By S3b the stages increase, and the union is a fixed point: $stageop(ty("D")) (union.big_n stageop(ty("D"))^n (emptyset)) = union.big_n stageop(ty("D"))^(n+1) (emptyset)$. It is the least fixed point among monotone families (each stage lies below any such fixed point, by induction on $n$ with S3b's monotonicity), it is monotone and union-preserving in the nestable parameters (a union of an increasing chain of such families is one), and its values are small (S4). This is DM1 for data, DM3, DM4 and DM5. #a-full. In Lean the same family is built on records, as a knot guarded by path length (`Knot.knot_exists`, witness `knotK`, #a-lean assuming the grammar, the earlier records' parametricity, local parameter types, `DecLocal` and label-free globals, each discharged in the assembly but `DecLocal`).
+
+*S6. A `Prop`-sorted declaration, truth first.* On the predicates on the loose domain that are monotone in $ty("D")$'s nestable `Prop` parameters (a complete lattice: pointwise meets and joins of monotone predicates are monotone), let $Psi_(ty("D"))(T)(overline(a)) = {bullet}$ exactly when some constructor has field meanings $v_j in ftm(B_(i j), T) (overline(a), v_1 dots v_(j-1))$, $ty("D")$'s occurrences read as $T$ and a proof field contributing $bullet$ when its proposition holds. The data fields of a `Prop`-sorted declaration mention neither $ty("D")$ nor its nestable parameters (D121: a nested occurrence passes only through declarations of its own sort, and a parameter passed to the other sort is not nestable), so they are steady; its proof fields are on the spine ($ty("D")$, a `Prop`-sorted $ty("M")$ at nestable parameters, a parameter) or steady (an equation, a call into `Prop`). So $Psi_(ty("D"))$ is monotone, by S3's induction with the earlier `Prop`-sorted families monotone in their nestable `Prop` parameters (DM4, by S1's recursion), and by Knaster and Tarski it has a least fixed point, #fam($ty("D")$). The existential ranges over small sets and truth values and its result is a truth value, whatever their size: this is impredicativity, as in the thesis's ∀. A declaration nested at its own `Prop` parameter (`N2(N2(P, n), 1)`) reads $T(T(P), 1)$, monotone because $T$ is. #a-full. In Lean: `Knot.truth_exists`, #a-lean assuming the grammar, the earlier `Prop`-sorted records monotone, local parameter types, `DecLocal` and label-free globals. (`Q : Prop := MkQ(h : And(Q, True))` is accepted; its least truth is $emptyset$, and no proof of `Q` can be written, @sec-n1-attack, I.)
+
+*S7. Faithful.* At the fixed point, #ftm($B$, $fam(ty("D"))$) is by definition the reference run of $B$ under the data model that has $fam(ty("D"))$, so DM1 holds as stated: wherever the run of a field type is defined at a typed tuple, it means the model's field type. The run's clause for an applied type, $ty("M")(overline(t))$, returns $fam(ty("M"))$ at its arguments' meanings once each argument has passed its membership test, which is the interpreter's clause on the typed domain; its clause for a constructor solves an omitted parameter from the fields' types only where the model's family can be read back (D105), and gives a bare constructor at a value argument no hint (D172 of the reference, as the checker), so a value argument is a meaning fixed by its own term. #a-full; in Lean along the spine and at the steady nodes, #a-lean (`Knot.knotK_agree`, `Steady.steadyAt_knotK`, `TruthAgree.semP_run`), and for parameter types (`Params.pty_faithful`).
+
+*S8. Stable.* The families of $Sigma_k$ remain a data model of every later $Sigma_(k')$. The run of $ty("D")$'s field and parameter types at a later state reads the same families (S1's congruence: $dmodel(k')$ agrees with $dmodel(k)$ at the names they mention) and takes the same decisions: a decision on a field-type term reads its syntax and the stored entries of the names it mentions, which do not change once accepted (one namespace, Σ only grows; fact `DecStable`). #a-full, given the fact; in Lean `DeclStep.field_transfer`, `param_transfer`, #a-lean assuming `DecStable`.
+
+*S9. The consequences.* (1) From DM1, and from trees carrying their declaration and constructor: a tree of $fam(ty("D")) (overline(a))$ has one constructor; equal trees have equal fields; different constructors give different trees. (2) Every element lies in a finite stage, so it is a finite tree; a strict subterm through any field is a component of a component, of lower rank (S0), through a nested declaration's tree or a value under a type parameter alike. (3) A `Prop`-sorted family's values are truth values; a match on a proof producing data needs a subsingleton (D45), with no constructor (no arm) or one whose fields are all proofs, so its arm's field values are $bullet$ and its meaning is a function of the truth alone. (4) The other type formers: a Π-type means the dependent product of its codomain's meanings over its domains' (cut to $R$ for a borrow result, by recursion on the type with the injectivity relation of the plan), in the universe of its larger sort by Remark 1; into `Prop`, a truth value; `Eq`, `Id`: truth values; $\&T$: $T$'s meaning, with $T$ in `Type₀` (D66), so `Type₀` stays closed (a borrow of `Type₀` would put a product over all of #vk(0) back into #vk(0)). That this definition is well founded (types are evaluated by code) is the plan's ("Making the definition well founded", tested on a slice); it is not re-argued here. #a-full for (1) to (3); #a-claim for (4).
+
+== The eight facts of the Lean theorem, placed <sec-n1-facts>
+
+`Assembly.exists_dataModel` (on `spine`, `ochr/core/lean/Ochr/Meaning/DataModel/Exists/Assembly.lean`, the bundle `DataFacts`) proves, for every list of items and every fuel, that a data model covering every declaration and faithful at every stage exists, on the standard axioms with nothing unproved beneath it, from eight facts. Each is placed below at the step of @sec-n1-proof that uses it, with whether it is true and why. "Read" means read here against `main`'s checker at 8153a6665; "measured" points to @sec-n1-attack.
+
+#figure(table(columns: (16%, 7%, 50%, 27%), align: left,
+  table.header([*Fact*], [*Step*], [*True? Why*], [*Status*]),
+  [The checker stores what it checked (`ItemFacts`)], [S1, S2], [True. `checkInd` appends the entry `{ d with ctors := [], nestable := [], declaring := true }` before the fields are checked and, as its last act, replaces it by `{ d with nestable := ownSet }`; every check of @fig-n1-checks is an `err` before that line, so an accepted declaration's entry is the declaration as written, its nestable set the one computed. `checkDef` leaves the declarations and appends one global, and a rejected item leaves Σ as it was (the verdict boundary in `checkDefs`). In Lean the first part is `Steps.Machine.checkItem_tables`, the second `CheckIndGivesChecks`.], [Read true. Lean: all but `IndChecks` #a-lean; `IndChecks` has its pieces proved and its assembly open; 300 of 300 stored declarations pass by sweep.],
+  [Field and parameter types hold no embedded value (`NoValFact`)], [S1], [True of every program the surface produces: neither `Surface.lean` nor `Notation.lean` builds a `Term.val` (no occurrence of the constructor), so resolution's terms are source terms. It is a fact about resolution, not the checker, which accepts a core declaration holding one (`FactsCE.EV`).], [Read true; not derived in Lean.],
+  [No field type reads a varying value parameter (`VaryValFact`)], [S3], [True since D128. A value parameter _varies_ when its declared type reads a nestable parameter. On the spine a parameter is a field type only if its declared type is syntactically a sort (D55); since D128 such a parameter must be written at a sort, so it is a type parameter. Off the spine, a node that reads it reads, through `deepVars`, the nestable parameter its type mentions, which `nestableSet` then removes: contradiction. Measured: `T1`, `T4` rejected by D128, `T2`, `T3`, `T5` by D55, `T6`, `T7` accepted with the parameter unread.], [Read true (machine10 and here); not derived in Lean.],
+  [The names an accepted item mentions are earlier (`NamesFact`)], [S1], [True: `undeclaredCheck` runs on every parameter, field, result type and body before anything is evaluated, accepting a declaration's own name only in its fields (D118, D133).], [Read true; not derived in Lean.],
+  [Field-type heads are at a sort no higher than `Type` (`FieldHeads`)], [S4], [True since D128. A parameter heading a field type has a declared type syntactically a sort (D55), written so (D128), and the level check rejects one written at `Type₁` (`U3`). A call heads one only if its global's stored codomain is a written sort (`firstOrderTerm`), and the level check rejects `Type₁` and above, whether the call runs (`U4`, `U7`) or is stuck, when `sortOf` reads its head's codomain (`U6`); universes are not cumulative, so the value has the codomain's sort.], [Read true; not derived in Lean.],
+  [A global with codomain `Prop` or `Type` calls to small type values (`GlobalCallLevels`): the hard case, a domain in `Type₁`], [S4], [_True; proved here._ A function's meaning is a member of its type's meaning (or the error value): the dependent product of its codomain's meanings, so every call gives a member of the codomain's meaning at its arguments, and a written `Type` means #vk(0) at every argument, whatever universe the domain lies in. Nothing in the set model depends on the domain's universe. _In Lean_ universes are codes stratified by carrier level, and a Π-type with a domain in `Type₁` is a level-2 code whose codomain `Type` is the level-1 universe code lifted: `TyM.code2 (univ 1) = ⟨_, .lift _ .univ1⟩`, and by definition `Code2.enc (.lift _ c) a = c.enc a.down` and `Code1.enc .univ1 p = .ty (.t0 …)`, a level-0 type value (likewise `univ0` for `Prop`). So a proof needs three steps, none hard: (i) the stage invariant that a global's type in the stage is `err` or its stored type's meaning (`globalTyS`); (ii) `runT` at a written Π-type with a sort codomain gives a telescope whose codomain is the constant `univ l`; (iii) `callOfL_enc` at level 2, as `callsLevel0_of_not_t2` uses it at levels 0 and 1, then the two equations above. No extra check is needed; no counterexample exists. Measured: `WT`, `WM`, `WI`, `WB`, `WP`, `WF` (a constant, a match, the identity on the `Type₀` argument, a result through `Big(A)`, into `Prop`, a domain in `Type₂`), all accepted, each meaning a family into #vk(0) or into truth values.], [#a-full on paper; #a-np in Lean.],
+  [Decisions name places rooted at the term's free variables (`DecLocal`)], [S3], [True since D129: the places a run's decisions name (the join's moves, a block's captures, re-pointed borrows, invalidated fields) are read from the term's syntax and declared types, rooted at its free variables or at places already moved at a match's entry. Only matches, `J` and `Id` take such decisions, and in a field type they occur only off the spine.], [Read true (machine10: captures, re-pointing, invalidation; the join after D129); frame locality #a-lean assuming it.],
+  [A field type runs the same at later states (`DecStable`)], [S8], [True at the states the checker reaches: a decision on a field-type term reads its syntax and the stored entries of the names it mentions (a global's stored type, a declaration's sort, fields and nestable set), each fixed once accepted, in one namespace; Σ only grows. False at an arbitrary state (`FactsCE`, the pair `E` and `F`), which is why it is stated at reached states.], [Read true; not derived in Lean.],
+), caption: [The facts `exists_dataModel` assumes, each placed.]) <fig-n1-facts>
+
+*The standing assumption.* The Lean model's records keep a type parameter's code, a value parameter's small reading, and of a parameter above `Type₀` only what the field types compute from it, so it identifies two applications that differ only at such a parameter (`Big(Type)`, `Big(Prop)`); the paper model identifies more, since trees record nothing. Either is sound only if the checker never refutes an equation between two applications of one type former. It does not, as said under the statement, and `R1` to `R4` confirm it.
+
+*Status of N1.* _On paper, proved here_ for every accepted, hole-free program, with no bound on universe levels: S0 to S9, from the checks of @fig-n1-checks read off `checkInd` and the match and recursion rules, the reference run's congruence and frame locality (#a-lean, the latter assuming `DecLocal`), and the definition of a function's meaning as typed (`GlobalCallLevels` on paper). Its one claimed step is (4), the other type formers, which is the plan's. _In Lean_, `exists_dataModel` is proved from the eight facts; one (`GlobalCallLevels`) is now argued with the three Lean steps it needs; six are read true and not derived; one (`ItemFacts`) is proved but for the assembly of `CheckIndGivesChecks`. _Attacked_ (@sec-n1-attack): no accepted declaration without a model, no accepted large elimination, no accepted definition of an empty type or false equation.
+
+= Attacks on the checks of a declaration <sec-n1-attack>
+
+_Written by `theory7`._ Each program below was written to test one way a declaration could have no model (a negative occurrence, a field too large, a proposition eliminated into data), or the wrong one (a model that identifies what the checker tells apart, a field type read off a value parameter that varies), and run with `lake env lean` on the checker of `main` at 8153a6665, with the `Nat` prelude. In each program a declaration written `reject` was rejected and every other one accepted: all 193 verdicts are as written. The table gives, for each aim the brief named, the programs, the verdict and, for what was accepted, why a model exists. The programs follow, one block per group.
+
+#figure(table(columns: (25%, 15%, 22%, 38%), align: left,
+  table.header([*Aim*], [*Programs*], [*Verdict*], [*If accepted: the model*]),
+  [A negative occurrence behind a type function], [`B1`, `B2`], [Rejected (D36: the declared type in a call's argument).], [—],
+  [… behind a parameter, a nested declaration], [`B3`, `B4`, `B14`; `NB`, `DP`, `HB`, `HA`], [`B3`, `B4`, `B14` rejected (not nestable, D107); the inner declarations accepted.], [`NB(A) = A ⊎ NB(A → Void)`, a family over #vk(0) in which `A` is not nestable; `HA`'s `A` is nestable (a whole field type), so `B13 = {MkB13(h)} ⊎ {E13}` with `h` in `HA(NegV, B13)`, a least fixed point.],
+  [… behind a function type's domain, at a parameter's own type (D120's (B2))], [`NF`, `DF`, `DG`, `DH`; `NL`, `DL`, `DL2`; `NA`, `DA`, `DA2`; `VF`], [`NF`, `DF`, `NL`, `NA` accepted; the rest rejected.], [`DF = {LeafF} ⊎ {NodeF(p)}` with `p` in `NF(DF, 0, ()) = DF`'s trees: `NF` never reads its value parameter, and the value `()` is in `NegF(X, 0)` for every `X`. A value at a parameter whose type reads the nestable parameter would have to name the declared type (`DG`, `DL2`, `DA`), read a field of it (`DA2`), or take its parameter from a hint (`DL`): each rejected. A parameter typed by a Π over an earlier type parameter cannot be declared at all (`VF`), an incompleteness.],
+  [… behind an `Eq` or `Id` type], [`TE`, `B5`, `B6`, `B7`], [`TE` accepted; `B5` to `B7` rejected.], [`TE(T, a)` is `{MkTE}` (the equation is true); `T` is not nestable (passed to an equation).],
+  [… behind a dependent field's type, a match in a field type], [`B2`, `B4`, `B8`, `B9`; `SelfIx`], [Rejected.], [—],
+  [… a declaration at another sort], [`B11`, `B12`; `PP`, `Wrap`], [`B11`, `B12` rejected (D121).], [`PP(A)` is the truth of `A ≠ ∅`; `Wrap(P)` is `{MkWrap(•)}` or ∅.],
+  [A field one universe too high, hidden the same ways], [`U1` to `U10`, `T1` to `T5`, `FA`, `FAf`], [All rejected but `FA`.], [`FA (n : Nat) : TypeA(n) := Nat` is a data-class function returning the type `Nat`; `TypeA(n)` is a type of sort `Type₁` written as a codomain, legal (D55). It cannot head a field (`FAf`, D55) and its result cannot be bound (`FAuse`, D131). Its meaning is $n |-> NN$, a member of $NN -> vk(0)$.],
+  [An equation at a universe], [`TEq`, `te`, `TyEq`, `tyeq`], [Accepted.], [A proof field means $[a = b] subset.eq {bullet}$ at any type; a parameter in `Type₁` is recorded by no tree.],
+  [A two-constructor proposition into data: direct, through a nested proposition, through `J`, through a match in a type], [`IsL`, `IsLT`, `IsLP`, `InAnn`, `InArg`, `InEq`, `InId`, `TagO`, `TagF`, `TagFE`, `ViaSS`, `ViaWr`, `ViaJ`, `Proj`, `ProjM`, `ProjC`], [All rejected (D45), in types and value arguments alike.], [—],
+  [A `Prop`-sorted declaration whose data field a later field reads], [`ExB`, `ExP`, `Pin`, `IsTr`, `Imp`, `NestW`, `UseP`], [Accepted; `GetB`, `GetPin`, `Forge`, `exBbad` rejected.], [`ExB` is the truth of $exists b. thin deno(ty("BF"))(b) != emptyset$: true. No data leaves a proof (D45); a proof may split on the data field.],
+  [Fording with a computed index], [`EvV`, `HV`, `MV`, `AV`, `VD`, `Inj`, `EvNo`], [Accepted; `ev1`, `NoRefute` rejected.], [One family over the value parameter, the index fixed by an equation field: `EvV(n)` holds the trees whose last equation is true. An index computed by a call, a match or a local write is a steady value (S3a). Injectivity at an unconvertible index field stays stuck (`NoRefute`), never `False`.],
+  [The hard case `F (A : Type₁) : Type` heading a field: a constant, a match, the identity, through a declaration, into `Prop`, a domain in `Type₂`], [`WT`, `WM`, `WI`, `WB`, `WP`, `WF`, `W2`], [Accepted; `wtBad`, `wmBad`, `FId` rejected.], [`WT(A) = {MkWT(n) | n ∈ ℕ}` for every $A in vk(1)$: the family is a function from #vk(1) to #vk(0). `F`'s meaning sends every argument to a member of #vk(0), whatever its domain (`GlobalCallLevels`, @fig-n1-facts). `W2` writes `Type₂`, beyond the Lean model's bound but not the paper's.],
+  [The standing assumption: an equation between two applications of one type former refuted], [`R1` to `R4`, `Cast`], [`R1` to `R4` rejected (the equation is stuck, never `False`); `Cast` accepted, a stuck cast.], [The model identifies `Ph(Nat)` and `Ph(Bool)`; the checker neither proves nor refutes it.],
+  [A parameter read off the spine while it varies (D128's readers)], [`T1` to `T8`], [`T1`, `T4` rejected by D128; `T2`, `T3`, `T5` by D55; `T6` to `T8` accepted.], [`T6`, `T7`: the parameter that varies is read by no field. `T8`: a written sort.],
+  [Parameters inferred at a higher universe (D105)], [`ti`, `tl`, `tw`], [`ti`, `tw` accepted, `tl` rejected.], [The parameter comes from the annotation, never from the fields.],
+  [Propositions whose least model is empty; recursion through them], [`Q`, `Acc1`, `N2`, `E1`, `E0`; `q`, `qn`, `qe`, `acc`], [Declarations accepted; every attempt to build or refute rejected.], [`Q`, `Acc1`, `E1` mean $emptyset$ (no base case); `N2` is the least truth of its rules. `Q` cannot be refuted either: no recursion on a proof (`qe`).],
+), caption: [The attacks on N1, by aim.]) <fig-n1-attack>
+
+*A. A negative occurrence, hidden.* The type being declared (or a parameter it is nested at) reaches a negative position through each route the brief named.
+#measured[
+```
+inductive Bool := false | true
+inductive Void : Type
+def NegV (X : Type) : Type := (Π(x : X). Void)
+def NegB (X : Type) (b : Bool) : Type := (match b { false => Unit, true => (Π(x : X). Void) })
+reject inductive B1 := MkB1(f : NegV(B1))
+reject inductive B2 := MkB2(b : Bool, f : NegB(B2, b))
+inductive NB (A : Type) := NBase(a : A) | NStep(r : NB(NegV(A)))
+reject inductive B3 := MkB3(x : NB(B3))
+inductive B3Ok := MkB3Ok(x : NB(Unit))
+inductive DP (A : Type) := MkDP(b : Bool, f : NegB(A, b))
+reject inductive B4 := MkB4(d : DP(B4))
+def NegF (X : Type) (n : Nat) : Type := (match n { Z => Unit, S _ => (Π(x : X). Void) })
+inductive NF (A : Type) (n : Nat) (f : NegF(A, n)) := MkNF(y : A)
+inductive DF := LeafF | NodeF(p : NF(DF, 0, ()))
+reject inductive DG := LeafG | NodeG(p : NF(DG, 1, λ(x : DG) : Void => match x { LeafG => LeafG, NodeG(q) => LeafG }))
+reject inductive DH := LeafH | NodeH(m : Nat, p : NF(DH, m, ()))
+inductive TE (T : Type) (a : T) := MkTE(e : Eq(T, a, a))
+reject inductive B5 := MkB5(t : TE(NegV(B5), λ(x : B5) : Void => match x { MkB5(t) => match t { MkTE(e) => λ(y : B5) : Void => y } }))
+reject inductive B6 := MkB6(b : B6, e : Eq(B6, b, b))
+reject inductive B7 := MkB7(e : Id(Unit, (), ()))
+reject inductive B8 := MkB8(b : Bool, f : (match b { false => Unit, true => (Π(x : B8). Void) }))
+reject inductive B9 := MkB9(f : (let T = Nat; T))
+def NatA : Type := Nat
+reject inductive B10 := MkB10(x : NatA)
+inductive PP (A : Type) : Prop := MkPP(x : A)
+reject inductive B11 := MkB11(q : PP(B11))
+inductive Wrap (P : Prop) := MkWrap(h : P)
+reject inductive B12 : Prop := MkB12(w : Wrap(B12))
+def App (G : Π(X : Type). Type) (A : Type) : Type := G(A)
+inductive HA (G : Π(X : Type). Type) (A : Type) := MkHA(x : A, y : App(G, Nat))
+inductive B13 := MkB13(h : HA(NegV, B13)) | E13
+inductive HB (G : Π(X : Type). Type) (A : Type) := MkHB(y : App(G, A))
+reject inductive B14 := MkB14(h : HB(NegV, B14)) | E14
+```
+The reasons: `B1`, `B2`, `B6` to `B10` "fields are first-order data" (D36); `B3`, `B4`, `B14` "occurs at the parameter A of …, which is not nestable" (D107); `DG`, `B5` "reads the constructors of …, which are not known while … is declared" (D107); `DH` "the parameter f of NF has type Unit, expected ⌈NegF(DH, σ0)⌉"; `B11`, `B12` "a nested occurrence passes only through declarations of its own sort" (D121). `B10` is an incompleteness: a constant that is a type is not admitted as a field type, while a call is.]
+
+*H. The parameter-type site.* A value argument stands at a parameter whose own type reads a nestable parameter; this is the site D120 recorded as (B2) and left open. It is not enforced by a check, and it is unreachable: a value of a type built from the declared type must name it, read a field of it, or take its parameter from a hint, and each is rejected.
+#measured[
+```
+inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
+inductive NL (A : Type) (l : List(A)) := MkNL(y : A)
+reject inductive DL := LeafL | NodeL(p : NL(DL, Nil))
+reject inductive DL2 := LeafL2 | NodeL2(p : NL(DL2, Nil[DL2]))
+reject inductive VF (A : Type) (g : Π(x : A). Nat) := MkVF(y : A)
+inductive VF0 (g : Π(x : Nat). Nat) := MkVF0(y : Nat)
+inductive NA (A : Type) (a : A) := MkNA(y : A)
+reject inductive DA := LeafA | NodeA(p : NA(DA, LeafA))
+reject inductive DA2 := LeafA2 | NodeA2(t : DA2, p : NA(DA2, t))
+```
+`DL`: "cannot infer the parameter A of Nil" (a bare constructor at a value argument has no hint); `DL2`: "fields are first-order data" (the argument names `DL2`); `DA`: the constructor `LeafA` "reads the constructors of DA" (D107); `DA2`: "the argument at the value parameter a of NA reads t, whose declared type DA2 mentions DA2" (D120). `VF` is rejected with "κ is not a type: its declared type is not a sort", for any Π-typed parameter whose type mentions an earlier type parameter (`VF (A : Type) (g : Π(x : A). Nat)`, likewise `Π(x : Nat). A`, `Π(x : A). B`, `Π(x : A). Type`); `VF0`, with no earlier parameter in it, is accepted. An incompleteness, and the message names a variable internal to the checker.]
+
+*B. A field one universe too high, hidden.*
+#measured[
+```
+inductive Bool := false | true
+reject inductive U1 := MkU1(x : Type)
+reject inductive U2 := MkU2(x : Prop)
+reject inductive U3 (A : Type₁) := MkU3(x : A)
+def TyF (n : Nat) : Type₁ := Type
+reject inductive U4 := MkU4(x : TyF(0))
+def TyM (b : Bool) : Type₁ := (match b { false => Type, true => Prop })
+reject inductive U5 := MkU5(b : Bool, x : TyM(b))
+def TyS (n : Nat) : Type₁ := (match n { Z => Type, S _ => Prop })
+reject inductive U6 := MkU6(n : Nat, x : TyS(n))
+def PiU (b : Bool) : Type₁ := (match b { false => Type, true => (Π(A : Type). A) })
+reject inductive U7 := MkU7(b : Bool, x : PiU(b))
+reject inductive U8 : Prop := MkU8(A : Type)
+def UU (n : Nat) : Type₁ := (match n { Z => Prop, S _ => Prop })
+def VV (n : Nat) : UU(n) := (match n { Z => True, S _ => True })
+reject inductive U9 := MkU9(h : VV(0))
+inductive Bx (A : Type) := MkBx(x : A)
+reject inductive U10 := MkU10(x : Bx(Type))
+inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
+def te : TEq(Type, Nat, Nat) := MkTEq[Type, Nat, Nat](refl)
+reject def teBad : TEq(Type, Nat, Unit) := MkTEq[Type, Nat, Unit](refl)
+inductive H2 (U : Type₂) := MkH2
+def h2 : H2(Type₁) := MkH2[Type₁]
+```
+`U1` to `U8`: "its type must be in Prop or Type" (`U6` at a stuck call, by its head's codomain; `U8` a proposition with a field in `Type₁`, which Lean allows); `U9`: D55; `U10`: "the parameter A of Bx has type Type₁, expected Type".]
+
+*C. A proposition with two constructors eliminated into data.*
+#measured[
+```
+inductive Bool := false | true
+inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
+inductive Tag (n : Nat) := MkTag
+reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true, Inr(q) => false }
+reject def IsLT (h : Or(True, True)) : Type := match h { Inl(p) => Nat, Inr(q) => Unit }
+reject def IsLP (h : Or(True, True)) : Prop := match h { Inl(p) => True, Inr(q) => False }
+reject def InAnn (h : Or(True, True)) : Unit := (let x : (match h { Inl(p) => Unit, Inr(q) => Unit }) = (); ())
+reject def InArg (h : Or(True, True)) : Type := Tag(match h { Inl(p) => 0, Inr(q) => 1 })
+reject def InEq (h : Or(True, True)) : Prop := Eq(Nat, match h { Inl(p) => 0, Inr(q) => 1 }, 0)
+reject def InId (h : Or(True, True)) : Prop := Id(Nat, match h { Inl(p) => 0, Inr(q) => 1 }, 0)
+reject inductive TagO (h : Or(True, True)) := MkTO(t : Tag(match h { Inl(p) => 0, Inr(q) => 1 }))
+reject inductive TagF := MkTF(h : Or(True, True), t : Tag(match h { Inl(p) => 0, Inr(q) => 1 }))
+reject inductive TagFE := MkTFE(h : Or(True, True), e : Eq(Nat, match h { Inl(p) => 0, Inr(q) => 1 }, 0))
+inductive SS : Prop := MkSS(o : Or(True, True))
+reject def ViaSS (s : SS) : Bool := match s { MkSS(o) => match o { Inl(p) => true, Inr(q) => false } }
+def ViaSSOk (s : SS) : Bool := match s { MkSS(o) => true }
+inductive Wr (P : Prop) : Prop := MkWr(x : P)
+reject def ViaWr (s : Wr(Or(True, True))) : Bool := match s { MkWr(o) => match o { Inl(p) => true, Inr(q) => false } }
+def InProof (h : Or(True, True)) : Eq(Nat, 0, 0) := match h { Inl(p) => (let k = 1; refl), Inr(q) => (let k = 2; refl) }
+inductive Ex : Prop := Wit(n : Nat, e : Eq(Nat, n, n))
+reject def Proj (x : Ex) : Nat := x.0
+reject def ProjM (x : Ex) : Nat := match x { Wit(n, e) => n }
+reject def ProjC (x : Ex) : Nat := match x { Wit(n, e) => clone(n) }
+reject def ViaJ (h : Or(True, True)) (b : Bool) : Type := J(Bool, match h { Inl(p) => true, Inr(q) => false }, b, λ(c : Bool) : Type => Nat, refl, Nat)
+```
+Every rejection is D45's "a match on a proof of … returns a non-proof, but … is not a subsingleton", in a type, an annotation, an equation's side and an inductive declaration's field type as in code. `ViaSSOk` takes apart a subsingleton (one constructor, all fields proofs) and produces data that does not depend on its field.]
+
+*D. A `Prop`-sorted declaration whose data field a later field reads.*
+#measured[
+```
+inductive Bool := false | true
+inductive Void : Type
+def BF (b : Bool) : Type := (match b { false => Nat, true => Void })
+def IsT (b : Bool) : Prop := (match b { false => False, true => True })
+inductive ExB : Prop := WitB(b : Bool, x : BF(b))
+inductive ExP : Prop := WitP(b : Bool, h : IsT(b))
+def exB : ExB := WitB(false, 3)
+def exP : ExP := WitP(true, refl)
+reject def exBbad : ExB := WitB(true, 3)
+def UseP (e : ExP) : Eq(Nat, 0, 0) := match e { WitP(b, h) => match b { false => match h {}, true => refl } }
+reject def GetB (e : ExP) : Bool := match e { WitP(b, h) => b }
+inductive Pin : Prop := MkPin(b : Bool, e : Eq(Bool, b, true))
+reject def GetPin (e : Pin) : Bool := match e { MkPin(b, h) => b }
+inductive IsTr (b : Bool) : Prop := MkIsTr(e : Eq(Bool, b, true))
+def FromIsTr (b : Bool) (h : IsTr(b)) : Nat := match h { MkIsTr(e) => 0 }
+def NestW (e : ExP) : Eq(Nat, 0, 0) := match e { WitP(b, h) => (b := true; match e { WitP(b2, h2) => (let q : Eq(Bool, b2, true) = refl; refl) }) }
+reject def Forge (e : ExP) : IsT(true) := match e { WitP(b, h) => h }
+inductive Imp : Prop := MkImp(n : Nat, e : Eq(Nat, S(n), 0))
+def ImpE (i : Imp) : False := match i { MkImp(n, e) => match e {} }
+```
+`GetPin` is rejected though `Pin`'s equation determines its data field: Ochr's subsingleton rule asks every field to be a proof, stricter than Lean's (no indices). `Forge` is rejected because the arm's `h` has type ⌈`IsT(σ0)`⌉, not `⊤`.]
+
+*E. Fording, with a computed index.*
+#measured[
+```
+def Double (n : Nat) : Nat by n := (match n { Z => Z, S k => S(S(Double(k))) })
+def Half (n : Nat) : Nat by n := (match n { Z => Z, S k => match k { Z => Z, S j => S(Half(j)) } })
+inductive EvV (n : Nat) := EZ(h : Eq(Nat, n, Double(0))) | ES(m : Nat, r : EvV(m), h : Eq(Nat, n, Double(S(m))))
+def ev2 : EvV(2) := ES(0, EZ(refl), refl)
+reject def ev1 : EvV(1) := ES(0, EZ(refl), refl)
+inductive HV (n : Nat) := HZ(h : Eq(Nat, n, 0)) | HS(m : Nat, r : HV(Half(m)), h : Eq(Nat, n, S(m)))
+inductive MV (n : Nat) := MZ(h : Eq(Nat, n, 0)) | MS(m : Nat, r : MV(match m { Z => Z, S k => k }), h : Eq(Nat, n, S(m)))
+inductive AV (n : Nat) := AZ(h : Eq(Nat, n, 0)) | AS(m : Nat, r : AV((let c = clone(m); AddM(&c, 1); c)), h : Eq(Nat, n, S(m)))
+def EvNo (r : EvV(1)) : False := match r { EZ(h) => match h {}, ES(m, q, h) => match m { Z => match h {}, S k => match h {} } }
+inductive VD (n : Nat) := VDN(h : Eq(Nat, n, 0)) | VDC(m : Nat, h : Eq(Nat, n, S(m)))
+reject def NoRefute (a : Nat) (b : Nat) (h1 : Eq(Nat, 3, S(a))) (h2 : Eq(Nat, 3, S(b))) (e : Eq(VD(3), VDC[3](a, h1), VDC[3](b, h2))) : False := match e {}
+inductive Tg (n : Nat) := MkTg
+reject inductive SelfIx := SL | SN(t : SelfIx, r : Tg(match t { SL => 0, SN(u, v) => 1 }))
+```
+`NoRefute`: "[Match] on e, whose type Eq(VD(3), VDC(σ0, ⋆), VDC(σ1, ⋆)) is not an inductive type": `m` is an index field, so injectivity waits for it (D64), and the equation is never `False`. With the cases on `a` and `b` written out, `a = b` is proved (`Inj`, accepted). `SelfIx`: D107.]
+
+*F. The hard case: a global with a domain in `Type₁` heading a field's type.* Ochr has no match on a type, so "a match" is a match on a value beside the `Type₁` argument; "the identity" is on the `Type₀` argument, the identity at `Type₁` itself not being a `Type` (`FId`).
+#measured[
+```
+inductive Bool := false | true
+def FT (A : Type₁) : Type := Nat
+inductive WT (A : Type₁) := MkWT(x : FT(A))
+def wt : WT(Type) := MkWT[Type](3)
+def wt2 : WT(Π(X : Type). X) := MkWT[Π(X : Type). X](4)
+reject def wtBad : WT(Type) := MkWT[Type](())
+def FM (A : Type₁) (b : Bool) : Type := (match b { false => Nat, true => Unit })
+inductive WM (A : Type₁) := MkWM(b : Bool, x : FM(A, b))
+def wm : WM(Prop) := MkWM[Prop](true, ())
+reject def wmBad : WM(Prop) := MkWM[Prop](true, 3)
+def FI (A : Type₁) (B : Type) : Type := B
+inductive WI (A : Type₁) (B : Type) := MkWI(x : FI(A, B))
+def wi : WI(Type, Nat) := MkWI[Type, Nat](5)
+reject def FId (A : Type₁) : Type := A
+inductive Big (U : Type₁) := MkBig(n : Nat)
+def FB (A : Type₁) : Type := Big(A)
+inductive WB (A : Type₁) := MkWB(x : FB(A))
+def wb : WB(Type) := MkWB[Type](MkBig[Type](1))
+def FP (A : Type₁) : Prop := Eq(Type₁, A, A)
+inductive WP (A : Type₁) := MkWP(h : FP(A))
+def wp : WP(Prop) := MkWP[Prop](refl)
+def FF (G : Π(X : Type₁). Type) : Type := G(Prop)
+inductive WF (G : Π(X : Type₁). Type) := MkWF(x : FF(G))
+def wf : WF(λ(X : Type₁) : Type => Nat) := MkWF[λ(X : Type₁) : Type => Nat](7)
+def F2 (A : Type₂) : Type := Nat
+inductive W2 (A : Type₂) := MkW2(x : F2(A))
+def w2 : W2(Type₁) := MkW2[Type₁](8)
+```
+Each declaration's family is a function from its parameters' universe to #vk(0): for every $A in vk(1)$, `WT(A)` holds the trees `MkWT(n)` for $n in NN$, `WB(A)` the trees `MkWB(MkBig(n))`, `WM(A)` the dependent sum of `FM(A, b)` over `b`, and `WF(G)` the trees whose field lies in `G`'s value at `Prop`. In each, the field's type is a call whose result the model places in #vk(0) because the global's codomain is `Type` (or `Prop`), whatever its domain.]
+
+*G. The standing assumption, and the readers behind D128.*
+#measured[
+```
+inductive Bool := false | true
+inductive Big (U : Type₁) := MkBig
+inductive Ph (A : Type) := MkPh
+reject def R1 (h : Eq(Type, Big(Type), Big(Prop))) : False := match h {}
+reject def R2 (h : Eq(Type, Ph(Nat), Ph(Bool))) : False := match h {}
+reject def R3 (h : Id(Type, Ph(Nat), Ph(Bool))) : False := match h {}
+reject def R4 (h : Eq(Ph(Nat), MkPh[Nat], MkPh[Nat])) : False := match h {}
+def R4ok : Eq(Ph(Nat), MkPh[Nat], MkPh[Nat]) := refl
+def Cast (h : Eq(Type, Ph(Nat), Ph(Bool))) (x : Ph(Nat)) : Ph(Bool) := J(Type, Ph(Nat), Ph(Bool), λ(X : Type) : Type => X, h, x)
+def TyAlias : Type₁ := Type
+def SortF (X : Type) : Type₁ := Type
+reject inductive T1 (A : Type) (B : (let z = A; Type)) := MkT1(x : B)
+reject inductive T2 (A : Type) (B : TyAlias) := MkT2(x : B)
+reject inductive T3 (A : Type) (B : SortF(A)) := MkT3(x : B)
+reject inductive T4 (A : Type) (B : (match 0 { Z => Type, S _ => Type })) := MkT4(x : B)
+reject inductive T5 (A : Type) (B : (Type : Type₁)) := MkT5(x : B)
+inductive T6 (A : Type) (B : TyAlias) := MkT6(n : Nat)
+inductive T7 (A : Type) (B : SortF(A)) := MkT7(n : Nat)
+inductive T8 (A : Type) (B : (Type)) := MkT8(x : B)
+inductive TE (U : Type₁) (a : U) := MkTE(h : Eq(U, a, a))
+def ti : TE(Type, Nat) := MkTE(refl)
+reject def tl : Unit := (let x = MkTE(refl); ())
+def tw : TE(Type, Nat) := MkTE[Type, Nat](refl)
+```
+`R1` to `R3`: "[Match] on h, whose type Eq(Type, …, …) is not an inductive type": the equation is stuck; `R4`: its type is `True`, which has a constructor. `T1`, `T4`: D128; `T2`, `T3`, `T5`: "[D55] B is written where a type is expected, but its declared type is not a sort", the reader not seeing through a constant, a call or an ascription, where D128's reader agrees, so `B` is a value parameter for both. `tl`: "cannot infer the parameter U of MkTE" (D105).]
+
+*I. Propositions whose least model is empty, and recursion through them.*
+#measured[
+```
+inductive Bool := false | true
+inductive Q : Prop := MkQ(h : And(Q, True))
+reject def q : Q := MkQ(⟨q, refl⟩)
+reject def qn (n : Nat) : Q by n := (match n { Z => MkQ(⟨qn(n), refl⟩), S m => MkQ(⟨qn(m), refl⟩) })
+reject def qe (x : Q) : False by x := (match x { MkQ(h) => match h { Intro(a, b) => qe(a) } })
+inductive Acc1 : Prop := MkAcc1(h : Acc1)
+def fromAcc (a : Acc1) : Nat := (match a { MkAcc1(h) => 0 })
+reject def acc : Acc1 := MkAcc1(acc)
+inductive N2 (P : Prop) (n : Nat) : Prop := MkN2(z : N2(N2(P, n), 1), e : Eq(Nat, n, 0)) | StopN2(a : P)
+def n2 : N2(True, 0) := MkN2[True, 0](StopN2[N2(True, 0), 1](StopN2[True, 0](refl)), refl)
+reject def n2f : N2(False, 1) := StopN2[False, 1](refl)
+def TypeA (n : Nat) : Type₁ := Type
+def FA (n : Nat) : TypeA(n) := Nat
+reject def FAuse (n : Nat) : Nat := (let T = FA(n); 0)
+reject inductive FAf := MkFAf(x : FA(0))
+inductive E0 : Type
+inductive E1 := MkE1(e : E1)
+def e1f (x : E1) : False by x := (match x { MkE1(y) => e1f(y) })
+inductive TyEq (U : Type₁) (A : U) := MkTyEq(e : Eq(U, A, A))
+def tyeq : TyEq(Type, Nat) := MkTyEq[Type, Nat](refl)
+```
+`q`, `acc`: a definition does not name itself (D118); `qn`: [Rec], the recursive call is on `n`; `qe`: "the decreasing parameter must have an inductive type", a proof having no rank. `Q` and `Acc1` mean $emptyset$ in the least model, and the checker can neither build nor refute them; `E1` means $emptyset$ and `e1f`, accepted, is true there. `FAuse`: D131; `FAf`: D55.]
+
+*What the attacks found.* No accepted declaration without a model, no large elimination from a non-subsingleton anywhere, no accepted definition of an empty type or of a false equation. Two incompletenesses, neither a fault of consistency: a parameter whose type is a Π over an earlier type parameter is rejected with a message naming an internal variable (`VF`), and a constant that is a type is not admitted as a field type (`B10`). The (B2) site of D120, left open in principle 1's audit, is unenforced and unreachable (`H`).
+
 = Conversion on values that hold code <sec-n3>
 
 _Written by `theory5`._ N3 says that conversion identifies only values that mean the same. It is proved in Lean for values that hold no code (branch `rules-trial`). The values that hold code are sealed programs, closures and Π-types, compared by three rules: [Conv-cong] (component by component: a sealed program by its text, a closure by its code and captures; the checker's fast path is plain equality), [Conv-fun] (two function values by their Π-types, their captured values and the observations of their generic calls) and [Conv-pi] (two Π-types by their class and borrow flag and their domains and codomain at the generic arguments).
@@ -1705,6 +2118,13 @@ _Done (theory5)._ The paper, `RULES.md`, the notes on `Id` and closing off, `Obs
 
 _Done (theory6)._ The paper, `RULES.md`, the note on `Id`, `Obs.lean` and the checker's observation, call types and `checkFix` read; the decisions behind the observation's tests (D44, D53, D64, D72 to D76, D98, D106, D113, D114); `RunFrameI` and its files on `spine` at f9b411008 with docs/31 D218 to D220. *The observation's design* (@sec-obs): the five places where a callee's observation tests its caller, measured as accepted functions whose calls at `Z` are rejected (`S1` to `S5`); the user's finals design stated exactly against the code (a detached state of one cell per borrow lent from below, then the observing frame), for the own check, a call site, a body in place and top level, and the final defined case by case; attacked from every decision behind the tests and from resolved determination's attack list (no wrong acceptance; a borrow with no site must count as lent from below; a one-frame residue at the block lemma; an induction hypothesis loses a stuck call's fill, `Lift`, needing a `rewrite`, which no suite program relies on); three options on one page; the refinement (C+), every borrow by its final, which removes the residue and every use of backward-function injectivity; the detach lemma sketched (@sec-obs-dl). *The fourth referee answered* (@sec-answers, with a table for the third): a proof's data fields read by a witness (@sec-proof-fields, F2), resolved determination restated with its hypotheses (F4), caller owners opened by the side (F5), (X1)'s exception (F6), the smaller points (F7). *The frame property* stated as `RunFrameI` hypothesis for hypothesis, with each difference and which side is right (@sec-frame-lean, F3): the start after the push, (H7) in place, (H12), (H13) and `ResAtTemp` added, `Id` over a parameter excluded; a Π-type formed in the body and a closure's own types need (M2) widened (D220), and a `let`'s binding an invariant neither statement has. No fault of the checker's consistency found.
 
+_Done (theory7)._ The paper, `RULES.md`, the plan's section on the set model, the Lean statement of the data model's existence and its facts (`Assembly.lean`, docs/34, `FactsCE.lean` on `spine`), `notes/inductive-model.md`, `checkInd` and the checks it calls, and the sections of Carneiro's thesis on inductive specifications, the reduction to eight type formers and the ZFC model read. *N1* (@sec-n1): stated exactly (a data model: one family per declaration on its loose parameter domain, faithful to the reference runs of the declaration's own terms, least, monotone in its nestable parameters, small; trees that record no parameter), with what "every accepted program" quantifies over; the checks the construction uses, one by one with their steps (@fig-n1-checks); what it takes from Carneiro and where Ochr goes beyond (nesting at own parameters, values instead of indices, field types computed by running code, propositions nested at their own `Prop` parameter); proved on paper by the construction, S0 to S9, every step in full but the other type formers; the eight facts of `exists_dataModel` placed, each true, `GlobalCallLevels` argued on paper with the three Lean steps it needs (no extra check, no counterexample). *Attacks* (@sec-n1-attack): 193 programs, each aimed at one way a declaration could have no model or the wrong one (negativity hidden nine ways, a field too large hidden the same ways, a two-constructor proposition into data through types, value arguments, nested propositions and `J`, propositions with data fields read by later fields, Fording with computed indices, the hard case five ways, the identification of types, D128's readers, propositions whose least model is empty). Nothing wrong accepted. Principle 1's audit (@sec-a1) completed: every site a named check but (B2), which is unenforced and unreachable. Two incompletenesses: `VF` (a parameter typed by a Π over an earlier type parameter, rejected with a message naming κ) and `B10` (a constant type alias as a field type).
+
+_Next (after theory7)._
+- *N1 in Lean* (@fig-n1-facts): `GlobalCallLevels` by its three steps (the stage invariant on a global's type, `runT` at a written Π-type with a sort codomain, `callOfL_enc` at level 2 with `Code2.enc` of a lift); then derive the six read facts from the checker's code, and assemble `CheckIndGivesChecks`. The redesign of @sec-a1 would make the last structural.
+- *N1's step (4)*, the other type formers: that the model's meaning of every type value is in its universe, with $R$, is the plan's, tested on a slice; it is the one step of @sec-n1-proof not argued here.
+- *`VF`*: accept a parameter typed by a Π over an earlier type parameter (the parameter telescope's reading of the captured parameter), or reject it with a message that names the parameter.
+
 _Next (after theory6)._
 - *The observation, for the user's rethink* (@sec-obs-compare): choose among today's (A), the excepted patch (B) and the finals design (C) or its refinement (C+). For (C+): `idType` builds the detached state on its private copy (cells for every label the observing frame holds: a plain loan for one lent from below, an identity fill for an internal one) and computes the footprint and both observations from it, a borrow root at its cell; then dump every row's verdict against `main` (predicted: the five sites accepted, `Lift`'s shape rejected, `OwnR`/`OwnRx`-shaped `Id`s computed further in). In the model: `observation` detaches likewise; the lemma DL; FR's (H8) stated of the labels σ may reorder; delete OBS, `CellsDetermined`, `run_frame_obs` and `RunFrameI`'s `Id` exclusion; and, under (C+), drop the injectivity relation R from function types.
 - *If (A) or (B) is kept instead*: (B) as written in @sec-rd-ends, with F1's restriction (fill-site caller borrows keep their tests); resolved determination in its restated form (@sec-rd-stmt) to mechanise, with (X5); `run_frame_obs` restated with it; N3 for open and partly moved values at caller owners.
@@ -1717,7 +2137,7 @@ _Next (after theory6)._
 - _Older items, kept:_
 - *N6 for a block's captures:* closed by reading (case 4, @sec-tw-split); computing the modes from declared readings only would make it structural.
 - *`hintLater`* (@sec-a6): show it is never stored, or give hints a type distinct from `Value`, so principle 7's "one maker" is structural (CV3 of @sec-n3 rests on it).
-- The audits the first draft left: principle 1's open (B2) condition of D120; principle 2's question for each identification site, whether it is preserved by every refinement; principle 4's tests made only by untyped runs.
+- The audits the first draft left: principle 2's question for each identification site, whether it is preserved by every refinement; principle 4's tests made only by untyped runs.
 - docs/18's own section on principles (`<sec-principles>` of the plan) still lists the seven of 2 November; once this file is accepted it replaces that section, and the plan's "lemmas each step uses" should cite these twelve.
 
 = The referee's report <sec-referee>
