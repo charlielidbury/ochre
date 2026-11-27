@@ -3267,6 +3267,10 @@ Repairs: (alpha) THE CHECKER: a block's re-run binds no closure as its own bindi
 
 Read against today's resolver first: no clause of `resolveF`, `bindersF` or `resolveDecl` builds a `Term.val`; true. Proved with machine12's `RRet` tool for the resolver's monad (`Steps/Machine/NoVal.lean`: `noVal_resolveF` by induction on resolution's fuel, `noVal_resolveDecl`, `noVal_runResolve`; `Consistency.noValFact_of_resolvesTo`), standard axioms. It is a fact about the items as resolution produces them, so it left `DataFacts`: `exists_dataModel_facts` takes it as its own hypothesis and `Consistency.exists_dataModel` takes the program and its resolution (`ResolvesTo`) and derives it, which `consistencyBounded_assembled` already supplies. docs/34 §18.17.
 
+### D262. `ItemFacts` PROVED: `CheckIndGivesChecks` assembled; `exists_dataModel` assumes five facts (existence lane `exists12`, 2026-11-28; `spine-exists12`; the brief's task 2)
+
+Re-read against today's `checkInd` (D128's loop and D133's split `undeclaredCheck` added steps; no check `IndChecks` mirrors moved): TRUE. Proved: `Steps/Machine/CheckIndSpec.lean` (`runs_checkInd_peel`: freshness and `TeleOk`; `runs_checkInd_fields`: at every field `foB`, `rvB`, `sortNestViolation` at `declEnv`/`ownNest`; `runs_checkInd_checks`; `checkIndGivesChecks`), from machine10's pieces; `Assembly.itemFacts` with machine10's `checkItem_tables`. `DataFacts` lost `item`. Trap recorded in the file: the checker's do-blocks copy each `if`'s continuation into both arms, so hypothesis-side `split` hits simp's step limit; `runs_ite_inv` takes an `if` apart by unification. docs/34 §18.17.
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass

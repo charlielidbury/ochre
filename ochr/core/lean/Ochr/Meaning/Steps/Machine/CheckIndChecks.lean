@@ -14,7 +14,8 @@ the pieces (standard axioms):
   (and `firstOrderArgs` gives `foArgsB`; `firstOrderCallArgs` gives that no argument mentions the type);
 * `readViolation_rvB`: `readViolation` finding none gives `Knot.rvB … = false`.
 
-Left (machine10's handoff): the assembly, a second peel of `checkInd` as in `CheckItem.runs_checkInd_tables` that
+The assembly is done (exists12, `CheckIndSpec.lean`: `runs_checkInd_checks`, `checkIndGivesChecks`). Its plan
+was (machine10's handoff): the assembly, a second peel of `checkInd` as in `CheckItem.runs_checkInd_tables` that
 keeps `declared`'s answer (freshness), the [Ind] loop's `late.isEmpty` (`TeleOk`), and, through
 `runs_forIn_all` and `runs_fieldTele_vals`, the continuation's run at every field (its `firstOrderTerm`,
 `readViolation` and `sortNestViolation` answers), at a state whose declarations are `declEnv` (the stub's).

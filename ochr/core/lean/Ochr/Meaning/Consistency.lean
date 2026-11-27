@@ -30,8 +30,8 @@ the leaves below and the step lemmas (`Steps/*.lean`). Writing them found the kn
 A data model covering and faithful to every accepted program exists (`exists_dataModel`, docs/34),
 which turns the relative statement into `consistencyBounded`. It is proved (exists10 to exists12,
 `DataModel/Exists/Assembly.lean`) assuming the facts bundled in `DataFacts` (docs/34 §18.16, §18.17):
-six, about the checker and its decisions, each read true against today's checker (main's D128 and
-D129, which made three of them true, are on this line); the one fact about the model,
+five, about the checker and its decisions, each read true against today's checker (main's D128 and
+D129, which made three of them true, are on this line); `ItemFacts`, the one fact about the model,
 `GlobalCallLevels`, and the one about resolution, `NoValFact`, are proved (exists12).
 `consistencyBounded_assembled` takes `DataFacts` as a hypothesis.
 
@@ -414,13 +414,9 @@ checker, kept as an assumption of the construction, not a hypothesis here: the c
 decides that two applications of a type former to different arguments are different (a record
 keeps what field types read of the parameters, not the parameters; docs/34 §8, §13).
 
-**Assumes six facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17 state each exactly), and
+**Assumes five facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17 state each exactly), and
 that `items` is the resolution of a program (`hres`), from which `NoValFact` is PROVED
 (`noValFact_of_resolvesTo`):
-* `ItemFacts` (about the checker; read true, all but its `IndChecks` part proved by machine10's
-  `checkItem_tables`): an accepted inductive declaration appends one entry passing `Knot.IndChecks`
-  with the item's parameters and constructors and leaves the globals; an accepted definition leaves
-  the declarations and extends the globals;
 * `VaryValFact` (about the checker; read true since main's D128, not derived): no field type of an
   accepted declaration reads a varying value parameter;
 * `NamesFact` (about the checker and resolution; read true for resolved items): the names an accepted
@@ -431,7 +427,9 @@ that `items` is the resolution of a program (`hres`), from which `NoValFact` is 
 * `DecLocal` at every state (an obligation on the decisions; its `join` part proved for the checker's
   decisions, machine11's `decLocal_join_chain`; the others read true);
 * `DecStable` (an obligation on the decisions, at the states the checker reaches on the program).
-The model fact `GlobalCallLevels` is proved (`Assembly.globalCallLevels`, exists12), and with
+`ItemFacts` (what an accepted item does to the declarations and the globals, the stored entry passing
+`Knot.IndChecks`) is proved (`Assembly.itemFacts`, exists12). The model fact `GlobalCallLevels` is
+proved (`Assembly.globalCallLevels`, exists12), and with
 `FieldHeads` gives the field types' level (`FieldLevel.fieldLevel0_of`). The stage prefix fact is
 machine10's `Steps.Machine.indsOf_take_prefix`. -/
 theorem exists_dataModel (p : Program) (items : List Item) (fuel : Nat) (hres : ResolvesTo p fuel items)

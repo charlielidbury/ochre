@@ -6,6 +6,7 @@ import Ochr.Meaning.DataModel.Exists.Params
 import Ochr.Meaning.DataModel.Exists.Knot.CongrN
 import Ochr.Meaning.DataModel.Exists.DeclStep
 import Ochr.Meaning.Steps.Machine.CheckItem
+import Ochr.Meaning.Steps.Machine.CheckIndSpec
 import Ochr.Meaning.DataModel.Exists.FieldLevel
 import Ochr.Meaning.DataModel.Exists.GlobalCalls
 
@@ -27,9 +28,9 @@ an accepted definition, `inv_defn`; an accepted inductive declaration of either 
 with `inv_ind_faithful`), `exists_of_inv`, `globalCallLevels` (exists12, `GlobalCalls.lean`), and
 `exists_dataModel_facts`, which assumes the facts in `DataFacts` (docs/34 §18.16 and §18.17 give each
 one's exact statement and status):
-* about the checker: `ItemFacts` (read true; all but its `IndChecks` part proved by machine10),
-  `NamesFact` (read true for resolved items), `VaryValFact` and `FieldHeads` (read true since main's
-  D128, merged into this line by machine12; not derived);
+* about the checker: `NamesFact` (read true for resolved items), `VaryValFact` and `FieldHeads` (read
+  true since main's D128, merged into this line by machine12; not derived); `ItemFacts` is PROVED
+  (`itemFacts`, exists12: `CheckIndGivesChecks` assembled, `Steps/Machine/CheckIndSpec.lean`);
 * about resolution: `NoValFact` (no embedded value in an inductive item's types), PROVED for the items a
   program resolves to (exists12, `Steps.Machine.noVal_runResolve`); a separate hypothesis of
   `exists_dataModel_facts`, discharged by `Consistency.exists_dataModel` from the resolution;
@@ -307,8 +308,8 @@ is an obligation on the decisions (piece 8). -/
 /-- A declared parameter type holds no embedded value (resolution, as `Knot.FieldsNoVal`). -/
 def ParamsNoVal (d : IndDecl) : Prop := ∀ j, (Knot.paramTerm d j).anyAtom (fun _ => true) = false
 
-/-- **One accepted item, as the checker stores it** (about the checker; read TRUE against `Check.lean`
-by machine10, and all of it but `IndChecks` is machine10's PROVED `Steps.Machine.checkItem_tables`:
+/-- **One accepted item, as the checker stores it** (about the checker; PROVED, `itemFacts`, exists12:
+machine10's `Steps.Machine.checkItem_tables` and the bridge `Steps.Machine.runs_checkInd_checks`;
 the stored entry is `{ d with nestable := nestableSet … }`; `IndChecks` is `Knot.CheckIndGivesChecks`
 through `checkItem`, whose `seedHoles` comes first and writes neither table): an accepted inductive
 declaration `d` appends one entry `d'` passing `IndChecks`, with `d`'s parameters and constructors,
@@ -325,6 +326,26 @@ def ItemFacts : Prop :=
     (∀ d, it = .ind d → ∃ d', st'.inds = st.inds ++ [d'] ∧ Knot.IndChecks st.inds d' ∧
       d'.params = d.params ∧ d'.ctors = d.ctors ∧ st'.globals = st.globals) ∧
     (∀ d, it = .defn d → st'.inds = st.inds ∧ st.globals <+: st'.globals)
+
+/-- **`ItemFacts` holds** (PROVED, no hypothesis; exists12): machine10's `checkItem_tables` for the
+tables, and `Steps.Machine.runs_checkInd_checks` (the bridge `CheckIndGivesChecks`, assembled from
+machine10's pieces) for `IndChecks`; `seedHoles`, which `checkItem` runs first, writes neither table. -/
+theorem itemFacts : ItemFacts := by
+  intro it st st' fuel h
+  have hr := Steps.Machine.runs_of_runMachine_fst h
+  obtain ⟨hI, hD⟩ := Steps.Machine.checkItem_tables it st st' fuel h
+  refine ⟨fun d hd => ?_, fun d hd => ?_⟩
+  rotate_left
+  · obtain ⟨h1, g, h2⟩ := hD d hd
+    exact ⟨h1, by rw [h2]; exact List.prefix_append _ _⟩
+  obtain ⟨h1, h2⟩ := hI d hd
+  subst hd
+  unfold checkItem at hr
+  obtain ⟨_, s₁, b₁, hs, hc⟩ := Steps.Runs.bind_inv hr
+  obtain ⟨-, hi⟩ := Steps.Machine.runs_seedHoles_tables hs
+  have := Steps.Machine.runs_checkInd_checks hc
+  rw [hi] at this
+  exact ⟨_, h1, this, rfl, rfl, h2⟩
 
 /-- **Resolution builds no embedded value** (a fact about the program's items as resolution produces
 them, NOT about the checker, which accepts core declarations holding one: `FactsCE.EV`, `FactsCE.EP`):
@@ -457,13 +478,13 @@ theorem paramsNoVal_of_params {d d' : IndDecl} (h : d'.params = d.params) (hv : 
     ParamsNoVal d' := fun j => by have := hv j; unfold Knot.paramTerm at this ⊢; rw [h]; exact this
 
 /-- **The facts the existence of the data model rests on**, together (`exists_dataModel_facts`): about
-the checker, `ItemFacts`, `NamesFact`, `VaryValFact`, `FieldHeads`; obligations on the checker's
-decisions, `DecLocal` at every state and `DecStable`. No longer fields (exists12): the fact about the
-model, `GlobalCallLevels`, proved (`globalCallLevels`); the fact about resolution, `NoValFact`, proved
-for the items a program resolves to (`Steps.Machine.noVal_runResolve`), which `exists_dataModel_facts`
-takes as its own hypothesis and `Consistency.exists_dataModel` derives from the resolution. -/
+the checker, `NamesFact`, `VaryValFact`, `FieldHeads`; obligations on the checker's decisions,
+`DecLocal` at every state and `DecStable`. No longer fields (exists12): `ItemFacts`, proved
+(`itemFacts`); the fact about the model, `GlobalCallLevels`, proved (`globalCallLevels`); the fact about
+resolution, `NoValFact`, proved for the items a program resolves to (`Steps.Machine.noVal_runResolve`),
+which `exists_dataModel_facts` takes as its own hypothesis and `Consistency.exists_dataModel` derives
+from the resolution. -/
 structure DataFacts : Prop where
-  item : ItemFacts
   varyVal : VaryValFact fuel items
   names : NamesFact D fuel items
   heads : FieldHeads fuel items
@@ -1000,7 +1021,7 @@ theorem exists_dataModel_facts (hNV : NoValFact items) (hF : DataFacts D fuel it
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
-  exists_dataModel' D fuel items hF.item hNV hF.varyVal hF.names hF.heads (globalCallLevels D fuel items)
+  exists_dataModel' D fuel items itemFacts hNV hF.varyVal hF.names hF.heads (globalCallLevels D fuel items)
     hF.decLocal hF.decStable
     (fun k _ => Steps.Machine.indsOf_take_prefix {} fuel items k)
 

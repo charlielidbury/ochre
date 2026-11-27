@@ -97,7 +97,7 @@ syntax has none), which no check of the checker's establishes. -/
 def FieldsNoVal (d : IndDecl) : Prop :=
   ∀ c i FT, fieldTerm d c i = some FT → FT.anyAtom (fun _ => true) = false
 
-/-- **The bridge, a named fact for the machine lane**: when `checkInd` accepts `d` at a state, the
+/-- **The bridge** (PROVED: `Steps.Machine.checkIndGivesChecks`, exists12): when `checkInd` accepts `d` at a state, the
 declarations after it are the ones before it and one more, the entry it stores, and that entry
 passes `IndChecks` at the declarations before it. Read from `checkInd`'s code: the freshness test,
 the stored `nestable := ownSet`, the [Ind] loop, and at each field `firstOrderTerm` returning `true`,
