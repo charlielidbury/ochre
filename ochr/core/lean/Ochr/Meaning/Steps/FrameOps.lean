@@ -679,4 +679,78 @@ theorem frameInv_of (hr : FrameRel σ s₀ ks s s')
 
 end
 
+/-! ## The internal relation through a write -/
+
+section
+variable {K : RunCtx} {σ : Nat → Nat} {s₀ : SState} {ks : List Nat} {s s' : SState}
+
+theorem setAt_lent (t : SState) (p : Pos) (v : SVal) : (t.setAt p v).lent = t.lent := by cases p <;> rfl
+theorem setAt_heldTy (t : SState) (p : Pos) (v : SVal) : (t.setAt p v).heldTy = t.heldTy := by cases p <;> rfl
+theorem setAt_heldMem (t : SState) (p : Pos) (v : SVal) : (t.setAt p v).heldMem = t.heldMem := by cases p <;> rfl
+theorem setAt_nextLoan (t : SState) (p : Pos) (v : SVal) : (t.setAt p v).nextLoan = t.nextLoan := by cases p <;> rfl
+
+theorem liveLabels_setAt (t : SState) (p : Pos) (v : SVal) : (t.setAt p v).liveLabels = t.liveLabels := by
+  simp only [SState.liveLabels, SState.positions_setAt, SState.shape_setAt]
+
+/-- **(O5)'s write against the internal relation**: corresponding positions of the callee's frame set to values related
+through the renaming keep `AccInv`, when the closure's new value reads only live labels, no parameter label, and, at a
+holder of `x`, only live labels above `x` (the locality clauses at the written position). Shape, sites, records and
+counters are untouched. -/
+theorem accInv_setAt (h : AccInv K σ s₀ ks s s') {p : Pos} (hp : p.frameOf = s₀.topIdx) {v v' : SVal}
+    (hv : ∀ ψ, v ψ = v' (renF σ ψ)) (hl : Ochr.Meaning.FT (fun l => s'.Live l) v')
+    (hnp : Ochr.Meaning.FT (fun l => σ l ∉ ks) v')
+    (h2 : ∀ x, s'.shape (upPos ks.length p) = some x → Ochr.Meaning.FT (fun y => s'.Live y ∧ x < y) v') :
+    AccInv K σ s₀ ks (s.setAt p v) (s'.setAt (upPos ks.length p) v') := by
+  have hq := upPos_frameOf ks.length p
+  have hval : ∀ q, (s'.setAt (upPos ks.length p) v').valAt q = s'.valAt q ∨
+      (q = upPos ks.length p ∧ (s'.setAt (upPos ks.length p) v').valAt q = v') := fun q => by
+    by_cases e : q = upPos ks.length p
+    · subst e
+      by_cases hm : upPos ks.length p ∈ s'.positions
+      · exact .inr ⟨rfl, valAt_setAt_self _ _ _ hm⟩
+      · left
+        rw [SState.valAt_of_not_mem _ _ (by rw [SState.positions_setAt]; exact hm), SState.valAt_of_not_mem _ _ hm]
+    · exact .inl (SState.valAt_setAt_ne _ _ _ _ (Ne.symm e))
+  have hlive' : ∀ y, (s'.setAt (upPos ks.length p) v').Live y ↔ s'.Live y := fun y => SState.live_setAt _ _ _ y
+  refine
+  { rel := frameRel_setAt h.rel h.shape' hp hv
+    uniq := fun a b l ha hb => h.uniq a b l (by rwa [SState.shape_setAt] at ha) (by rwa [SState.shape_setAt] at hb)
+    shape := fun a l ha => by rw [SState.positions_setAt]; rw [SState.shape_setAt] at ha; exact h.shape a l ha
+    lend := by
+      obtain ⟨rk, hrk⟩ := h.lend
+      exact ⟨rk, fun a b y ha hy hb => hrk a b y ((SState.live_setAt _ _ _ a).1 ha) (by rwa [setAt_lent] at hy)
+        (by rwa [SState.shape_setAt] at hb)⟩
+    pfill := fun k hk y hy => h.pfill k hk y (by rwa [setAt_lent] at hy)
+    held := fun l hl => by rw [liveLabels_setAt] at hl; rw [setAt_heldTy, setAt_heldMem]; exact h.held l hl
+    cells := by
+      cases p with
+      | bind f i =>
+        unfold upPos; rw [setAt_bind_modTop s' (topIdx_cl h.rel).symm, modTop_headD _ _ (by rw [topIdx_cl h.rel]; omega)]
+        exact h.cells
+      | temp f i =>
+        unfold upPos; rw [setAt_temp_modTop s' (topIdx_cl h.rel).symm, modTop_headD _ _ (by rw [topIdx_cl h.rel]; omega)]
+        exact h.cells
+    uniq' := fun a b l ha hb => h.uniq' a b l (by rwa [SState.shape_setAt] at ha) (by rwa [SState.shape_setAt] at hb)
+    rinv' := ⟨fun q => by
+        rcases hval q with e | ⟨-, e⟩ <;> rw [e]
+        · exact (h.rinv'.1 q).mono fun y hy => hy.elim (fun h => h.elim) fun hy => .inr ((hlive' y).2 hy)
+        · exact hl.mono fun y hy => .inr ((hlive' y).2 hy),
+      fun r x hr hx => by
+        rw [SState.positions_setAt] at hr; rw [SState.shape_setAt] at hx
+        rcases hval r with e | ⟨rfl, e⟩ <;> rw [e]
+        · exact (h.rinv'.2.1 r x hr hx).mono fun y hy => hy.elim (fun h => h.1.elim) fun hy =>
+            .inr ⟨(hlive' y).2 hy.1, hy.2⟩
+        · exact (h2 x hx).mono fun y hy => .inr ⟨(hlive' y).2 hy.1, hy.2⟩,
+      fun a x ha => by
+        rw [SState.shape_setAt] at ha; rw [SState.positions_setAt, setAt_nextLoan]
+        exact h.rinv'.2.2 a x ha⟩
+    noParam := fun q hq1 => by
+      rcases hval q with e | ⟨-, e⟩ <;> rw [e]
+      · exact h.noParam q hq1
+      · exact hnp
+    order := fun a b ha hb => h.order a b ((hlive' a).1 ha) ((hlive' b).1 hb)
+    mono := fun a b ha hb => h.mono a b ((hlive' a).1 ha) ((hlive' b).1 hb) }
+
+end
+
 end Ochr.Meaning.Steps.Form.FrameEnd
