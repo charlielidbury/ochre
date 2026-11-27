@@ -1535,3 +1535,188 @@ The step from (II) to the theorem: incomplete (R1, R3). The claim for untyped ru
 == For a third referee
 
 Not done: the frame property's group 3 (R2) was not attacked with a program, since the clause is about the model and I found no accepted program whose verdict it predicts wrong; the other direction of R1 (a type the checker reads true and the model false, which would break (C1) at a call) was looked for in four shapes and not found; case 4's block captures were not attacked beyond the first referee's shape. The probes are in the scratchpad's `ref2/` (`A1` to `A4`), the runner `ref2/run.sh`.
+
+= The third referee's report <sec-referee3>
+
+_Written by `referee3`, 27 November 2026, as the third adversarial referee, after reading the two earlier referees' briefs and reports, the principles and named theorems (@sec-theorems), the argument in two halves (@sec-twohalves) and the rewritten frame property (@sec-frame) closely, and comparing the frame property clause by clause with the model on `origin/spine` at 0e76096ff (`Meaning/Run.lean` whole; `SState.lean`; `State.lean`'s `Mean.semEnd`; `CallRef.lean`; `FrameProp.lean`; `Steps/FrameRec.lean`; `Strict/Good.lean`; docs/31 D205 to D209), and the three model changes with the checker of `main` at 08ff29a95 (`Machine.lean`: `capture`, the `.pi` and `.fix` cases of `evalCore`, `checkFix`, `convPi`, `convFnRun`, `runBodyCore`, `paramTypes`, `bindTy?`, `endBorrow`, `endAll`, `observe`, `idType`; `Obs.lean`; `Basic.lean`'s `inlineReads`). Every program below was run with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` on that checker; each is self-contained, "with the `Nat` prelude" means `uses Nats`, and every run also held the control `def Ctl : Eq(Nat, Z, S(Z)) := refl`, rejected. Nothing in the other sections was changed._
+
+== Verdict
+
+The rewritten proof is much nearer a proof than the last one, and the design held again: I found no false lemma among the operation lemmas (O1) to (O9) or the lemmas per clause of the run, and the new invariant (I), which is about what positions _read_ rather than where labels are lent, survived every shape I tried, the second referee's `P2`, the author's `P4` and new ones (a parameter label lent at another parameter's lender, a closure formed in the body over a place lent to a parameter, a reborrow through a returned borrow). The checker gave the verdicts the proof predicts on all of them. But each of the three model changes is wrong as written, and with the third the theorem is false. (M3) asks every label an observation ends to end over a whole member; in place the observation also ends the _caller's_ labels, so a caller holding a borrow partly moved makes any callee that forms an `Id` fail in place but not in the closure, with no borrow parameter at all (T1); the checker itself rejects such calls, which is a type-safety fault of its own. (M2) defines a closure's meaning by itself, read literally, and every non-circular reading either leaves the model's structural recursion or turns "a closure's value is what the strict run formed" (C3) back into a lemma (T3); worse, its "`.pi` likewise", built as written, would end borrows and move places that the checker's Π-types leave alone, giving accepted programs no meaning (T2). (M1) is right: it is what [Def], [Conv-pi] and conversion's generic calls do, and it moves one obligation into case 1, whose push now needs C2 (T4). Of the corollaries, C3 needs a renaming of variables, C6 is an instance of FR rather than of the renaming lemma it cites (T5), and the rest hold as stated reductions. Of the author's two findings about Lean, the one about `run_frame_obs` is right; the one about docs/31 D208 is misattributed: the monotonicity D208 proposes is true and insufficient, and what `P4` refutes is D208’s premise (T6). Every repair is small and none touches the checker's consistency; the sharpest is to restrict (M3) to the labels of the observing frame.
+
+== Objections, most serious first
+
+=== T1. (M3) as stated makes the frame property false, at a call with no borrow parameter
+
+*Where.* @sec-frame-model, (M3): "Every end inside an observation is a strict point"; @sec-frame-id, "(M3), made order-free": "an observation is defined only where, after all its ends, each label's final content is a whole member of its type"; theorem FR and its (H6); the section's verdict, "The statement (theorem FR below) survived every clause of the reference run I read it against."
+
+*Objection.* The model's observation ends every live label of the state it is given (`observation`: `s.liveLabels.foldl SState.endLabel s`). In place that state holds the caller's frames, so the observation ends the caller's labels too; in the closure there are none to end. Either form of (M3) therefore tests, on the in-place side only, every borrow the caller holds. A caller holding a borrow whose content is partly moved makes every observation in the callee undefined in place, while the closure's observation, and so `callOf`, is defined. Nothing in (H1) to (H6) or (S1) to (S4) excludes that state: a holder need only hold an _open_ member (`SGood.holder`), and (H6) asks nothing when the callee has no borrow parameter. So FR, and with it C1 and C2, are false under (M3) as written, at the simplest call there is.
+
+*Evidence.*
+#measured[With the `Nat` prelude, on `main` at 08ff29a95:
+```
+def FI (n : Nat) : Unit := (let h : Id(Unit, (), ()) = refl; ())
+def CallI : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).0; FI(Z); (*r).0 := z; ())
+def H (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
+def CallH : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).0; let c = 3; H(&c, refl); (*r).0 := z; ())
+```
+`FI` and `H` accepted. `CallI` and `CallH` rejected, both with "[D53] a borrow ends while its content is partly moved out ((⊥, 2))": the observation inside `FI`'s body run in place, and the one inside `H`'s first parameter type read at the call site, end the caller's `r`. `CallI` with `def FN (n : Nat) : Unit := ()` in place of `FI`, and `CallH` without the move out of `(*r).0` and its write-back, accepted.]
+In the model's terms: at `FI(Z)` the in-place state is good (`r` holds `(moved, 2)`, an open member of `Pair(Nat, Nat)`; `p` reads the final of `r`'s label, a whole member at every typed future), the parameter labels are `[]`, and the run of `FI`'s body fails in place under (M3) and succeeds in `FI`'s own frame.
+
+The checker agrees with the run in place: its observation ends every borrow of the whole environment (`endAll` over `allPos`, called from `obsResult`), with D98’s test in `endBorrow`, so it rejects the caller. There is no consistency fault. There are two faults of another kind. The frame property as stated is false once (M3) is made, which the Lean lane would learn only by failing to prove it. And the checker has a type-safety fault: an accepted function cannot be called where the caller holds a borrow partly moved, if its body or a parameter type forms an `Id`, because a private run reaches below its own frame (principle 6, "every borrow it can end is its own frame's"; principle 4’s clause for type safety, "an untyped run can run every form the check accepts").
+
+*Kind.* A model change is misstated, and with it the theorem is false. Separately, principle 6 is not enforced at an observation's ends (type safety, not consistency).
+
+*What would settle it.* State (M3) for the labels the observing body holds, those held in its frame (the parameter labels and the body's own), which is all OBS uses (the cells' labels are held by the parameters): in place and in the closure these are the same labels through σ, their finals agree by (I1) and (I4), and the caller's labels are still ended, unchecked, on the in-place side. The checker's refusal of `CallI` is then a refusal the model does not make, which is harmless to consistency. To remove the type-safety fault, have `endAll` in an observation and in [Call-type] test only the observing frame's borrows, the checker's counterpart of the restricted (M3).
+
+=== T2. (M2)’s "`.pi` likewise" makes the model disagree with the checker
+
+*Where.* @sec-frame-model, (M2), _The definition_: "The `.fix` clause accesses each captured variable in order (`capStep`'s access), records its meaning ..., moves the non-copy ones as now, and means what `meanV` gives the closure value so formed ... `.pi` likewise, with `.tPi`."
+
+*Objection.* The checker captures a Π-type's free variables on a private copy (`Machine.lean` line 2575, `inStatement (capture fuel' t)`: "a type former is erased: even its captures (which access places) run on a copy"), so forming a Π-type accesses nothing and moves nothing. Only a closure's capture is real. A `.pi` clause built "likewise", accessing and moving on the state, ends the borrows lent at its captures and moves its non-copy captures where the checker does neither. The present `.pi` clause does neither, so this would be a regression.
+
+*Evidence.*
+#measured[With the `Nat` prelude, on `main` at 08ff29a95:
+```
+def PiMove : Nat := (let a = 5; let T = (Π(u : Unit). Eq(Nat, a, 5)); a)
+def PiLentEq : Eq(Nat, (let a = 5; let r = &a; let T = (Π(u : Unit). Eq(Nat, a, 5)); *r := 6; a), 6) := refl
+def FixMove : Nat := (let a = 5; let f = (λ(u : Unit) : Nat => clone(a)); a)
+def FixLent : Nat := (let a = 5; let r = &a; let f = (λ(u : Unit) : Nat => clone(a)); *r := 6; a)
+```
+`PiMove` and `PiLentEq` accepted; `FixMove` rejected ("[Read] a was moved out or its borrow ended (reading ⊥)"), `FixLent` rejected (`no such place *r: its path does not exist in ⊥`).]
+With `.pi` built like `.fix`, `PiLentEq`'s Π-type ends `r`'s borrow, after which `*r := 6` writes through a moved holder and fails, and `PiMove`'s moves `a`, after which the read of `a` fails: two accepted programs with no meaning.
+
+*Kind.* A model change is wrong as written: it would make the model disagree with the checker.
+
+*What would settle it.* Say that `.pi` reads its captures on a copy (the access and the record made on the copy, the state unchanged), as the checker does and as the present `.pi` clause in effect does.
+
+=== T3. (M2) is not a definition as written, and C3 is not "by definition"
+
+*Where.* @sec-frame-model, (M2), _The definition_ (quoted in T2); @sec-frame-stmt, (C3): "Under (M2), by definition: the strict run's `.fix` and `.pi` mean `meanV` of the value they form"; the verdict's "two become definitions once the model reads closures from their captures".
+
+*Objection.* `meanV`'s `.clo` clause is the strict run of the closure value's code, which is a `.fix` term, from `stateOf 0` of its captures. Read literally, (M2) defines the `.fix` clause as `meanV` of the value it forms, which is the `.fix` clause again, at the capture frame and on `capture`'s rebuilt code; within one more step its captures re-capture to themselves, so the clause is defined as itself. Read charitably (run the stages and `bodyAt` from the capture frame on the rebuilt code), the run recurses on the body that `capture` rebuilds, which is not a subterm of the term being run: `Run.lean`'s `runT` and `meanV` are structurally recursive on terms ("Structurally recursive, so the kernel evaluates it on concrete terms", which the kernel-checked runs and the fundamental lemma's induction use), and no size measure decreases either, since `capture` replaces each read of a captured proof by `(⋆ : T)` with `T` a value taken from the state (`Machine.lean` line 1992, `Basic.lean`'s `Term.inlineReads`). The reading that stays structural runs the original body in a frame laid out like the forming top frame, holding the captured meanings at their indices and fixed placeholders elsewhere. It keeps what (M2) is for: a closure's meaning depends on its captures alone, the closure has no caller frames, and R2 is removed (the clause in @sec-frame-proof holds with it). But then the strict run's closure and `meanV` of the checker's value are two runs of different terms from different frames, and C3 is a lemma: a renaming of variables and positions, undoing the inlined proofs, of the same kind as the place renaming PR (outlined, not proved). C4 is unaffected: the call in place and the closure both read the closure _value's_ code from its capture frame, so they agree by definition.
+
+*Evidence.* The definitions cited; no program can show it, since it is about the model's definition.
+
+*Kind.* A model change is not a definition; a corollary marked "by definition" is a lemma.
+
+*What would settle it.* Write (M2) as the structural reading above, and add C3’s renaming lemma to the list of what is not proved (beside PR, which it resembles), or choose a well-founded measure for the circular reading and say what it costs the kernel-checked runs.
+
+=== T4. Case 1’s push uses C2 under (M1), and is marked argued in full by reading
+
+*Where.* @sec-tw-callrun, step 2: "The checker's state after its push is related to S after this push (... in general by reading, since the frames are built alike). #a-full"; (M1)’s "Every reading of a parameter type ... uses it: ... and the in-place frame's stored types (`callFrame`'s binders)".
+
+*Objection.* Under (M1) the reference's frame binds each parameter at the type read in the generic state $"Gen"$, with cells. The checker's frame does not: `runBodyCore` evaluates each borrow parameter's type at the call point, in a private frame pushed on the caller's state that takes the caller's borrow (`paramTypes`, `Machine.lean` line 3275), and leaves the others deferred, to be evaluated by `bindTy?` whenever they are read, again on the current state. The relation's skeleton clause asks the two stored types to have the same code, which is the transfer of a statement to a call site, C2, with its hypotheses (resolved determination where a type has an `Id` over an earlier borrow parameter, and so N5). For a deferred type the relation reads the model's `paramTy` (`Env.hintAt`), equal by definition, but each later evaluation by the checker is a transfer at a state that is no longer a call point, which C2 does not state (the second referee's `LaterOk`, R8).
+
+*Kind.* A step marked argued in full rests on a corollary it does not cite.
+
+*What would settle it.* Mark step 2 as reduced to C2, and state the transfer for a deferred type at the state where the checker evaluates it, or prove that every such evaluation agrees with $"Gen"$. One way they differ, by reading and not run: an `Id` over a borrow parameter whose label has ended before the deferred type is read, where `takeArgBorrow` finds no holder, the footprint finds no owner, and the checker's type is the weaker.
+
+=== T5. C6 cites the renaming lemma, which does not cover it; it is an instance of FR
+
+*Where.* @sec-frame-stmt, (C6): "the generic state of [Def], read as a reference state, is `fixBodyAt`'s state ... but for the names of the labels. So the run (II) relates to the checker's is the meaning's run, by the renaming lemma. #a-red[RL]"; theorem RL, "It is FR's case with no caller frame and no parameter label".
+
+*Objection.* RL (Lean `run_counter_indep`) is about one frame of bindings that read no future and carry no label. [Def]'s generic state has a frame 0 of cells and borrow parameters holding labels, so RL does not apply. FR does: take the checker's generic state, read as a reference state, as the in-place side and its frame 0 of cells as the "caller's frames". Then (F2) holds (two frames on each side), (F4) is the identity (each in-place cell reads its own label, which the closure's cell reads through σ), (S1) to (S4) hold (frame 0 holds nothing and lends nothing), (H4) holds, σ is monotone, and resolved determination is trivial (each cell is the identity context around its loan). Conversely RL is not literally FR's case: `FrameRel.frames` asks the closure for exactly two frames and `stateOf` has one, so "its proof is FR's with the caller's-frames clauses deleted" is a second proof, not a specialisation.
+
+*Kind.* A corollary cites the wrong theorem (the right one covers it); a lemma claimed as a special case is a separate proof.
+
+*What would settle it.* Cite FR for C6, and keep RL for C5 (a sealed program runs from an empty frame), stated as its own lemma.
+
+=== T6. The finding against D208 is misattributed
+
+*Where.* @sec-frame-stmt: "Not a hypothesis: σ monotone on the callee's labels (D208’s proposal). It is false at a state an accepted program reaches"; the `P4` block; the verdict's "the clause 'the renaming is monotone on the callee's labels' that docs/31 D208 proposes to carry is false at a state an accepted program reaches (`P4`)".
+
+*Objection.* D208 (docs/31 on `origin/spine`) proposes monotonicity on the labels the _callee makes_: "the label-ordered folds of [Access] end callee labels only (a parameter label has no site in the top frame), in an order that agrees if σ is MONOTONE on the callee's labels ... at the call no callee label exists, and each fresh label keeps it." On those labels σ is the shift of counters, so the clause is true and trivially kept. What `P4` refutes is the premise in the parenthesis, that a parameter label has no site in the callee's frame (already refuted by `P2`), and with it the sufficiency of the clause: one access can end two parameter labels, which σ may order the other way. The author's conclusion, that the commutation (I4) is what the proof needs, is right; the statement that D208’s clause is false is not. `P4` needs no access to break monotonicity on parameter labels: any call whose argument labels are in the reverse of the parameters' order does (`UseP4a`).
+
+*Evidence.* `P4`, `UseP4a`, `UseP4b` re-run on `main` at 08ff29a95: accepted, as reported.
+
+*Kind.* Only unclear: the finding is right in substance and wrong in what it attributes, which matters because the Lean lane could drop a true clause believing it false.
+
+*What would settle it.* Restate the finding: D208’s clause holds but is insufficient, because its premise is false (`P2`, `P4`); the relation carries (I4) instead.
+
+=== T7. Smaller points
+
+- _(I3) is false in a detail._ A borrow-typed match whose block takes two borrow parameters by move lends its result, as fills, wherever both were lent (`entrySnapshot`), so a parameter label can be lent at _another_ parameter's lender in place and at another parameter's _cell_ in the closure, not only "at its cell". Harmless: `FrameRel.lentCl` allows any cell and nothing reads a fill.
+#measured[With the `Nat` prelude, all accepted on `main` at 08ff29a95:
+```
+def P5 (n : Nat) (x : &Nat) (y : &Nat) : Unit := (let r : &Nat = match n { Z => (let w = x; y), S(j) => x, }; *r := 1; ())
+def UseP5a : Eq(Nat, (let a = 3; let b = 4; P5(Z, &a, &b); b), 1) := refl
+def UseP5c : Eq(Nat, (let a = 3; let b = 4; P5(Z, &a, &b); a), 3) := refl
+```
+At `n = Z` the result is `y`'s label, lent after the join at `b` (its own) and at `a` (`x`'s, taken by move).]
+- _(M3) is stated twice._ @sec-frame-model states the order-dependent form ("every end ... is a strict point"), and @sec-frame-id replaces it with the order-free form, which is the one OBS uses; the list of model changes, which the Lean lane builds from, has the other. Both forms are too strong (T1).
+- _(M3) adds an obligation to case 2._ With (M3) the strict `Id` fails unless the finals are whole members, so (C1) of (II) at [Id] must now show that the checker's observation passes it, from D98 (no borrow ends over a content with a hole) and [Repack] (N7) for dependent contents. Case 2’s "Computing `Id` at a state" does not say so.
+- _N8 needs a hypothesis._ `callOf` decodes each argument at the block's domain, so it fails where a captured value is not a member, where the direct run may not. The use in case 4 supplies it (the checker closed the block off, which reads each capture whole), but N8 as stated has no such hypothesis.
+- _(O6) uses a goodness N2 does not state._ After the write and before the whole-state test, the in-place caller frames and the closure's frame 0 must be good while the callee's frame may not be. That is true (they change only by ends, which substitute whole members), but it is the per-operation reasoning inside N2’s proof, not N2’s statement, which is about whole states after a successful clause.
+- _Lean's `RunFrame` has no (H5)._ The paper's FR assumes `ShapeAt`; `Steps/FrameRec.RunFrame` does not (docs/31 D209 says the internal relation must carry it). The other differences R9 lists still stand.
+- _A finding by the way, about the checker._ The observation's `endAll` and [Call-type]'s private frame reach below the observing frame (T1’s programs); this is the one place I found where a private run's _failure_ depends on the caller's state.
+
+== The frame proof's parts, one verdict each
+
+#table(columns: (24%, 22%, 54%), align: left, table.header([*Part*], [*Verdict*], [*Why*]),
+  [(M1) types read with cells], [holds], [It is what `checkFix`, `convPi` and `convFnRun` do (a fresh loan in a frame-0 cell per borrow parameter, later types evaluated after it). Safe: each type runs on a state that is thrown away, as the checker's does (`W3` below rejected, `W1`, `W2`, `UseW4` accepted). It moves one obligation into case 1 (T4).],
+  [(M2) closures in their capture frame], [false as written], [Circular, or not structural, as written (T3); its "`.pi` likewise" disagrees with the checker (T2). Holds in the structural reading with `.pi` on a copy.],
+  [(M3) ends in an observation whole], [false as written], [FR fails at `CallI`'s state (T1). Holds restricted to the labels the observing frame holds.],
+  [(I1) reads], [holds], [Only `borrowPlace` and a call's fixes make a position read a label, and both a fresh one; an end substitutes its label away.],
+  [(I2) sites in the callee's frame], [holds], [Sites are added only for labels held in the callee's frame (`borrowPlace`, `entryLend`, `callOfL`'s `lentK`) or moved by `relend` to labels lent at a holder there.],
+  [(I3) parameter labels' sites], [false in a detail], [A parameter label can be lent at another parameter's lender or cell (`P5`); harmless (T7).],
+  [(I4) order of ends], [holds], [`SGood.acyc` orders holders after what they read; no callee holder reads a parameter label (I1), so two parameter labels' ends commute, strict tests included.],
+  [(O1) typed futures], [holds], [As restated after R5; the second clause is what tests use.],
+  [(O2) a read], [holds], [Reads are at `typedFuture`; callee positions read no parameter label and no caller label.],
+  [(O3) [End]], [holds], [Including a parameter label lent at a callee place by [Entry] (`P2`) and at another parameter's cell (`P5`).],
+  [(O4) [Access]], [holds], [Labels reached at a callee place are held there (I2); extra in-place rounds end nothing.],
+  [(O5) a write], [holds], [—],
+  [(O6) whole-state test], [holds with another argument], [Needs the caller frames' and frame 0’s goodness inside a clause (T7).],
+  [(O7) to (O9)], [holds], [—],
+  [Places, `Z`, `S`, `let`, `;` without labels], [holds], [Lean, `run_frameS_lf` (over `FrameRelS`).],
+  [Borrow, assignment through a borrow, field paths, `let` and `;` with labels], [holds], [By the operation lemmas.],
+  [A match], [holds], [`P2`, `P4`, `P5`, `P8` (below) by hand against `matchEntry`, `entrySnapshot`, `entryLend`, `joinDrop`.],
+  [`J`; erased terms; constructors and the rest], [holds], [By reading; parts on copies.],
+  [An embedded value; a global], [holds], [An embedded loan reads the run's future at the same number on both sides, unrenamed, which is the same value.],
+  [A call inside the body], [holds], [Including a returned borrow of a parameter reborrowed and written through (`P9`, `P10` below).],
+  [A body that reads its own binding], [holds], [Equal selves.],
+  [A closure or Π-type formed in the body], [holds under a corrected (M2)], [Could not decide under (M2) as written (T3); `P8` below is the shape.],
+  [`Id` over a parameter label (OBS)], [holds with a named extra hypothesis], [Resolved determination and the restricted (M3); false with (M3) as written (T1).],
+  [OI on meanings], [holds], [Two adjacent ends commute under acyclicity.],
+  [RD at a call], [reduced to N5 (X5), N1], [As stated.],
+  [The start], [holds], [Uses C2 for the arguments' decoding (cited) and C4.],
+  [The pop], [holds, given FixEq], [Same labels ended, orders differing among parameter labels only.],
+  [FixEq from RecDesc; RecDesc for a global], [holds; reduced to (II) for the global's check], [No circle under D135.],
+  [CloDesc], [not proved], [As the author says.],
+  [C1 a call in place], [holds with named extra hypotheses], [The restricted (M3); FixEq, for a closure CloDesc; N9 for the hint.],
+  [C2 a statement at a call site], [holds with named extra hypotheses], [(M1), the restricted (M3), RD; at a call point only (T4).],
+  [C3 a closure's value at its forming], [holds with a named extra lemma], [A renaming of variables and positions with the inlined proofs undone, not a definition (T3).],
+  [C4 the start's types], [holds], [By definition under (M1) and a corrected (M2).],
+  [C5 a sealed program's re-run], [reduced to RL], [RL is open; it is its own lemma, not FR's case (T5).],
+  [C6 (II) to the theorem], [holds, as an instance of FR], [Not of RL (T5).],
+  [N8 the block lemma], [holds with a named extra hypothesis], [The captured values decode at the block's domains (T7); PR not proved.],
+  [N9 hints are inert], [could not decide], [Open, as stated.],
+)
+
+#measured[*The shapes named in the table.* With the `Nat` prelude, all accepted on `main` at 08ff29a95:
+```
+def P8 (n : Nat) (x : &Nat) : Nat := (let q = 5; let r : &Nat = match n { Z => x, S(j) => &q, }; *r := 1; let f = (λ(u : Unit) : Nat => clone(q)); f(()))
+def UseP8 : Eq(Nat, (let c = 3; P8(Z, &c); c), 1) := refl
+def UseP8c : Eq(Nat, (let c = 3; P8(S(Z), &c)), 1) := refl
+def P9 (x : &Nat) : Unit := ((let r = TailM(&*x); let s = &*r; *s := 0; ()); let h : Id(Unit, *x := 4, *x := 4) = refl; ())
+def UseP9 : Eq(Nat, (let c = S(S(Z)); P9(&c); c), S(S(Z))) := refl
+def P10 (x : &Nat) : Unit := (let r = TailM(&*x); let s = &*r; *s := 0; ())
+def UseP10 : Eq(Nat, (let c = S(S(Z)); P10(&c); c), S(S(Z))) := refl
+def W1 (x : &Nat) : (AddM(x, 1); Unit) := (*x := 0; ())
+def W2 (x : &Nat) : (*x := 7; Eq(Nat, *x, 7)) := refl
+def W4 (x : &Nat) (y : (*x := 7; Nat)) : Unit := ()
+def UseW4 : Eq(Nat, (let c = 3; W4(&c, 0); c), 3) := refl
+```
+In `P8` at `n = Z` the closure's capture of `q` accesses `q`, which ends `x`'s label lent there by [Entry]. And `def W3 (x : &Nat) (y : (*x := 7; Nat)) : Eq(Nat, *x, 7) := refl` rejected ("the goal is Eq(Nat, σ0, 7)"): a parameter type's run leaves nothing behind, as (M1)’s $"Gen"$ does.]
+
+== The author's two claims about Lean, and what is not proved
+
+*`run_frame_obs` is false as stated: right.* I re-derived the counterexample against the definitions: `Mean.semEnd` makes a holder `.moved`, so after the observation's ends the caller's `r` is moved on both sides and `c` holds `b`'s constant, while the closure's cell holds `0` against `1`; `CellsDetermined` holds because the unresolved `r` reads the parameter label directly; `FrameStart` holds (`r`'s label is below the counter and lent only at `c`), and `SGood.acyc` holds since the parameter label, a reborrow of `r`'s content, is above `r`'s. By reading, as the author's; not kernel-checked.
+
+*D208’s monotonicity is false: misattributed* (T6).
+
+*What is marked proved or by definition and is not.* C3 is a lemma, not a definition (T3); case 1’s push rests on C2 (T4); C6 rests on FR, not RL, and RL is a proof of its own (T5); (O6) rests on a goodness N2 does not state (T7); and FR itself is false with (M3) as written (T1). The author's "not proved" list is otherwise accurate: CloDesc, PR, `Id` through RD and N5, and frames at a depth without (M2).
+
+== For a fourth referee
+
+Not done. The most damaging attack left is on resolved determination itself: an accepted way to give a borrow whose every owner's context is constant would let a function like `def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e`, which the checker accepts, be called with `refl`; I did not attack it beyond the shapes above (the second referee tried four). Neither the renaming of variables C3 needs, nor PR, nor RL was attempted. The checker's type-safety fault of T1 was measured at two sites (a body run in place, [Call-type]); I did not look for others where a private run ends borrows below its frame. The probes are in the scratchpad's `ref3/p/` (`B1` to `B7`; `B7` re-runs the second referee's `P2`, `UseP2`, `UseP2c`, accepted, with `UseP2c` at `3` rejected), the runner `ref3/run.sh`, and running notes in `reports/referee3.md`.
