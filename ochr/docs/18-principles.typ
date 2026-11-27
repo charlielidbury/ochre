@@ -1565,7 +1565,18 @@ In the model's terms: at `FI(Z)` the in-place state is good (`r` holds `(moved, 
 
 The checker agrees with the run in place: its observation ends every borrow of the whole environment (`endAll` over `allPos`, called from `obsResult`), with D98’s test in `endBorrow`, so it rejects the caller. There is no consistency fault. There are two faults of another kind. The frame property as stated is false once (M3) is made, which the Lean lane would learn only by failing to prove it. And the checker has a type-safety fault: an accepted function cannot be called where the caller holds a borrow partly moved, if its body or a parameter type forms an `Id`, because a private run reaches below its own frame (principle 6, "every borrow it can end is its own frame's"; principle 4’s clause for type safety, "an untyped run can run every form the check accepts").
 
-*Kind.* A model change is misstated, and with it the theorem is false. Separately, principle 6 is not enforced at an observation's ends (type safety, not consistency).
+It is worse than incompleteness: whether the caller is accepted depends on whether the callee ran in place or closed off, so a definition the checker accepts can be rejected at a call with a known argument.
+#measured[*An accepted function whose call at a known argument is rejected* (asked by the orchestrator). With the `Nat` prelude, on `main` at 08ff29a95:
+```
+def FJ (n : Nat) : Unit := match n { Z => (let h : Id(Unit, (), ()) = refl; ()), S(m) => (), }
+def CallK (n : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; (*r).0; FJ(n); (*r).0 := 0; ())
+def UseK : Unit := CallK(Z)
+def UseKS : Unit := CallK(S(Z))
+```
+`FJ`, `CallK` and `UseKS` accepted; `UseK` rejected, "[D53] a borrow ends while its content is partly moved out ((⊥, 2))". At `CallK`'s check `n` is unknown, `FJ`'s match is stuck and the call closes off, so no observation runs; at `CallK(Z)` the run of `CallK`'s body calls `FJ(Z)` in place, the arm `Z` forms the `Id`, and its observation ends the caller's `r`. The orchestrator's unshrunk form (`let z = (*r).0; ...; (*r).0 := z` for `CallJ`, and `UseJ`, `CallJ(S(Z))`) gives the same four verdicts.]
+This is the class principle 4 ("one code, two runs") forbids: the typed check of `CallK` and an untyped run of the same code decide differently. The enforcement site that is missing is principle 6’s: an observation's ends must not leave its frame, and `endAll` (`Machine.lean` around line 1146, called from `obsResult`) ends every borrow of the whole environment, D98’s test included; [Call-type]'s observation (`CallH`) has the same fault.
+
+*Kind.* A model change is misstated, and with it the theorem is false. Separately, principle 6 is not enforced at an observation's ends, which makes principle 4 fail (an accepted definition is rejected at a call with a known argument): a fault of the checker for type safety, not for consistency.
 
 *What would settle it.* State (M3) for the labels the observing body holds, those held in its frame (the parameter labels and the body's own), which is all OBS uses (the cells' labels are held by the parameters): in place and in the closure these are the same labels through σ, their finals agree by (I1) and (I4), and the caller's labels are still ended, unchecked, on the in-place side. The checker's refusal of `CallI` is then a refusal the model does not make, which is harmless to consistency. To remove the type-safety fault, have `endAll` in an observation and in [Call-type] test only the observing frame's borrows, the checker's counterpart of the restricted (M3).
 
@@ -1649,7 +1660,7 @@ At `n = Z` the result is `y`'s label, lent after the join at `b` (its own) and a
 - _N8 needs a hypothesis._ `callOf` decodes each argument at the block's domain, so it fails where a captured value is not a member, where the direct run may not. The use in case 4 supplies it (the checker closed the block off, which reads each capture whole), but N8 as stated has no such hypothesis.
 - _(O6) uses a goodness N2 does not state._ After the write and before the whole-state test, the in-place caller frames and the closure's frame 0 must be good while the callee's frame may not be. That is true (they change only by ends, which substitute whole members), but it is the per-operation reasoning inside N2’s proof, not N2’s statement, which is about whole states after a successful clause.
 - _Lean's `RunFrame` has no (H5)._ The paper's FR assumes `ShapeAt`; `Steps/FrameRec.RunFrame` does not (docs/31 D209 says the internal relation must carry it). The other differences R9 lists still stand.
-- _A finding by the way, about the checker._ The observation's `endAll` and [Call-type]'s private frame reach below the observing frame (T1’s programs); this is the one place I found where a private run's _failure_ depends on the caller's state.
+- _A finding by the way, about the checker._ The observation's `endAll` and [Call-type]'s private frame reach below the observing frame (T1’s programs); this is the one place I found where a private run's _failure_ depends on the caller's state, and with `FJ` and `CallK` (T1) it makes an accepted definition fail at a call with a known argument.
 
 == The frame proof's parts, one verdict each
 
