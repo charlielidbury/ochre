@@ -571,6 +571,11 @@ function good on smaller arguments" for top-level definitions only; a local recu
 no counterpart there, and it is what cost the closed proof of `False` of D78 and the recognition by
 code of D135.
 
+A local function has no entry on the [Rec] stack, whose entries are the functions being checked
+that declare `by`: the top-level definition. So a λ being checked is not taken for an accepted
+closure of the same code (`SameCode`, rejected before, when every function being checked had an
+entry and D135 compared code).
+
 The rows: the rule, where a local function is checked, in a constant, inside a local or a top-level
 function, passed to a higher-order function, and in a type (`LocConst` … `HoLoc`, `TopIn`, `Twice`,
 `TyCod` … `TyLoop`), each beside its lifted form, accepted where it is well founded. A helper that
@@ -641,6 +646,16 @@ ochr LocalRec uses Nats {
   -- a later local function calls an earlier one
   def Sib (x : Nat) : Nat := (let f = (λ(y : Nat) : Nat => y); let g = (λ(y : Nat) : Nat => f(y)); g(x))
   def SibRuns : Eq(Nat, Sib(3), 3) := refl
+  -- a λ being checked calls an accepted closure of the same code (`l` and `k` are both
+  -- `λ(y). let e : Eq(Nat, κ1(clone(y)), y) = refl; y`): rejected while local functions had a
+  -- [Rec] frame and D135 found the function being checked by its code, which took `k` for `l`
+  -- and closed its call off; a local function has no frame now, and `k` runs
+  def SameCode (n : Nat) : Nat := (
+    let k0 = (λ(y : Nat) : Nat => y);
+    let k = (λ(y : Nat) : Nat => (let e : Eq(Nat, k0(clone(y)), y) = refl; y));
+    let l = (λ(y : Nat) : Nat => (let e : Eq(Nat, k(clone(y)), y) = refl; y));
+    l(n))
+  def SameCodeRuns : Eq(Nat, SameCode(3), 3) := refl
 }
 
 private def notInScope (f : String) : String :=
