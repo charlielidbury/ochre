@@ -587,6 +587,29 @@ Then there are γ' extending γ (to the unknowns the run made, meeting their pat
 
 *Why the relation survives the end of a borrow* (the referee's O2). An end is an operation on the reference state, not a choice of future: ending $pi(ell)$ makes its holder _moved_ and makes every position that read $pi(ell)$ read the holder's current content, and the record and the lending sites of $pi(ell)$ go with it. The checker's [End] of ℓ does the same to Ω. Before the end, a checker position holding a loan of ℓ means $psi(pi(ell))$ at each typed future ψ, which is a whole member of ℓ's type, and the reference position at ℓ's lending site means the same; after it, both mean the holder's content. So the relation is kept with equality at every typed future, as (R3) demands; the information order the referee found abandoned plays no part in it. The strict test at the end (the holder's content a whole member) is passed because the checker ends a borrow only over a whole content (principle 12, D98), and a whole open member is a member (N7, needed only where the content is of a dependent type). This is proved in Lean for the fragment's leaves (a read ends exactly the borrows reaching the variable, a borrow of a lent variable ends its borrower first, the drop of a `let` ends the borrow it bound).
 
+== (II) as the mechanisation states it <sec-tw-evalat>
+
+_Added by `theory5`, answering the second referee's R8._ The mechanisation proves (II) as two statements, `EvalAt` (a run of `eval`) and `TailAt` (a run of `checkTail`), by one strong induction on the checker's fuel (`Steps/Master.lean`: `master`, proved, assuming the 32 step statements, one per term former of `eval` and one per shape `checkTail` matches, bundled as `AllSteps`). They have hypotheses and conclusions (II) above lacks; each was forced by a counterexample or by a step's need.
+
+_Hypotheses beyond (E1) to (E4)._
+- (E5) _The plain mode_ (`ModeR`): no head evaluation, not copying, not in place; the erased depth free. In copying mode (inside `clone`) or in place (a call's head) the checker's read of a place of a non-copy type leaves the place, where the reference's plain run moves it: `let x = S(Z); let y = clone(x); x`, at the read of `x` inside `clone`. Sub-runs in those modes are the business of the steps for `clone`, `peek` and a call's head, not of the induction hypothesis.
+- (E6) _The reading handed down_ (`tailDecl`) is none or the decision table's reading of the term: a reading that is not the table's would make the checker's pre-pass erase a term the reference runs.
+- (E7) _The hint_ names only the state's unknowns (`HintBelow`), and (E4) is taken at the checker's hint (`hintM` of it), which N9 relates to the codomain (@sec-n9).
+- (E8) A frame exists; a typed run starts outside tail position (`tailNext` false); the term's embedded values are good, its unknowns below the counter, and it holds no hole.
+- (E9) _The decision table aligned at the run's end_ (`DecTab K.D st'`), not at its start: every step gets it at its sub-runs' ends from its own (`DecTab.back`: the checker's runs only extend the tables).
+
+_Conclusions beyond (C1) to (C4)._
+- (C5) _What the run keeps_ (`Kept`): the mode it started in, its number of frames, and its top frame's readings; sequencing uses it.
+- (C6) _A deferred call type_ (`LaterOk`): an untyped `let` of a call records the call's Π-type and arguments, and that pair reads, at its codomain, as the reference's result type (the first referee's item 4, which the relation needed and no clause said).
+- (C7) _A promised type that is missing reads as `err`_ (`TyWanted`: a typed run, or an untyped one whose type is wanted and not deferred), which is what the relation compares a binding with no type to.
+- (C2) is proved at the one future the run is read at (φ composed with the renaming), not at every typed future; the relation's (R3) asks every typed future of the bindings, and that is what the next step uses.
+
+_The tail form_ (`TailAt`): for every continuation that only extends the tables (`GrowsM`), from the plain mode with no reading handed down, the reference's tail run reaches a leaf where the continuation ran, related as `Out` says, with `Kept` from the start to the leaf.
+
+_The induction hypothesis_ (`IH`): at every smaller fuel, every `Δ` and every assignment, `EvalAt` and `TailAt` for every term, typed and untyped alike (an untyped run with (E4) as its entry condition). Every `Δ` and assignment, because a later sub-run starts under the extension an earlier one handed on.
+
+_Two facts it names that are not yet proved:_ `DeferClearG` (a successful run ends with the deferral flag clear: read true of the checker, unproved), and (E1)'s "each global's meaning a member of its declared type", which for the definition under check holds of its stage at the weakened type only (`FixEqG` excludes it): the outer induction supplies the stage (@sec-tw-induction). #a-lean (`master`), the steps open but the fragment's
+
 == The induction <sec-tw-induction>
 
 *Outer.* On the position $k$ of $d_k$ in the program, and, for a recursive $d_k$, on a bound $b$ on the rank of its decreasing argument (principle 10). The context's meaning for an earlier global is its own, a member of its type (the outer hypothesis). The context's meaning for $d_k$ is its _stage_ $b$, the function that applies the body with the stage below in place of itself, which is a member of $d_k$'s type at every argument of rank below $b$. Under D135, now on `main`, nothing during $d_k$'s check runs $d_k$'s body: a call of $d_k$ closes off at once, whichever path reaches it (a recursive call, a sealed program's re-run, a closure's call, a comparison of functions). So the outer hypothesis is used only through the meaning of such a sealed call, which is the stage applied (case 3).
@@ -1469,7 +1492,7 @@ _Next (after theory5)._
 - *A deferred parameter type read after the call point* (C2's open case, the third referee's T4): only an `Id` over a borrow parameter whose label has ended loses its owners; evaluate at the call point every parameter type that holds such an `Id` (decided from syntax), defer the others.
 - *Principle 4's list of decisions*: add "an unknown of a type with one constructor refined in place or stuck", taken differently by the typed check and an untyped run's field access (`T0`, incomplete only); refining there as the join's drop already does would make the lemmas of @sec-n8's `Blk1Gen` kind provable by `refl`.
 - *N5 and N7 in Lean*: one lemma per operation for each clause of @sec-excl ((X5) in the injective-resolution form, (WF11), (WF12) included); N7 by induction over the value.
-- *N9* (hints are inert) is argued on paper (@sec-n9); its one check is that `readsHint` names every form `evalCore` hands its hint to. (II)'s statement against `EvalAt` (the second referee's R8) is not yet restated.
+- *N9* (hints are inert) is argued on paper (@sec-n9); its one check is that `readsHint` names every form `evalCore` hands its hint to. (II)'s statement against `EvalAt` (the second referee's R8) is restated in @sec-tw-evalat.
 - _Older items, kept:_
 - *N6 for a block's captures:* closed by reading (case 4, @sec-tw-split); computing the modes from declared readings only would make it structural.
 - *`hintLater`* (@sec-a6): show it is never stored, or give hints a type distinct from `Value`, so principle 7's "one maker" is structural (CV3 of @sec-n3 rests on it).
