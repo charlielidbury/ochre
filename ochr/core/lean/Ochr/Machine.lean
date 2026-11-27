@@ -1139,12 +1139,12 @@ termination_by structural fuel
 hands back must be whole: each place it holds by borrow, whose borrow ends here, and its result,
 each of its type by the telescopes of the dependent constructors inside it, a part still lent
 being unknown (`repackCheck`, D73). The generic path treats every sealed program as whole, and a
-sealed program is a call ([Close]) of a function value; every function value a checked program
-can call is either its caller's abstract value, or formed by a check that ends here: [Def] and
-[Fix] (`checkFix`) at their body's return, whose borrow parameters are real borrows that the
-frame's pop then ends ([End], which repacks them too), and a stuck block (`closeBlock`), an
-anonymous function of the places it captures, at the end of each arm, where its borrow
-parameters are the places it takes by `&`, given here as `lent`. -/
+sealed program is a call ([Close]) of a function value, or a stuck block's text; every function
+value a checked program can call is either its caller's abstract value, or formed by a check that
+ends here: [Def] and [Fix] (`checkFix`) at their body's return, whose borrow parameters are real
+borrows that the frame's pop then ends ([End], which repacks them too); and a stuck block's text
+(`closeBlock`, exp-block-text) is checked here at the end of each arm, where the cells it reaches
+through a borrow are the places it takes by `&`, given here as `lent`. -/
 def bodyReturns (fuel : Nat) (what : String) (v T : Value) (lent : List Place) (lentWhat : String) :
     M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
@@ -4321,7 +4321,9 @@ termination_by structural fuel
 
 /-- [Block], the one place a stuck block is formed (D76). A stuck match ([Split]), a `J` whose
 endpoints are not convertible ([T-J-stuck]) and a zero-arm match outside a proof position are
-closed off here, as a call to an anonymous function of their free places. Its captures are
+closed off here (exp-block-text): its sealed text binds what it captured, each in a cell, and
+is then the match itself over those cells, marked as the program's head (`.block`); it is not a
+function, so nothing calls it (`runBlock` re-runs its text). Its captures are
 computed first, from syntax and declared types, and its entry accesses them all (D91); then the
 block runs its arms itself (`BlockArm`): each from the unrefined state after the entry, the state
 a direct run's arm starts from, under its own setup, and each is checked to its return by
@@ -4419,11 +4421,10 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
       if k == 2 && (b.val.isBorrow || (b.ty matches some (.tRef _))) &&
           moved.any (fun m => m.root == o && m.steps.2.head? == some .deref) then
         err s!"[D53] a borrow ends while its content is partly moved out ({b.hint.name}: moved into a stuck match whose arm moves out through it)"
-  -- [Return] at each arm's end (D76): the block is an anonymous function, so each arm ends
-  -- where the function returns, and `bodyReturns` checks there what every function body's
-  -- return is checked for. A place the block takes by borrow is its borrow parameter, whose
-  -- borrow ends at the return; a borrow variable it moves in whole is ended by its frame
-  -- there too. So each such place must be of its type again in the state the arm ends in, and
+  -- [Return] at each arm's end (D76): each arm ends where the block's text ends (its cells are
+  -- dropped there), and `bodyReturns` checks there what every function body's return is checked
+  -- for. A place the block takes by borrow is reached through a borrow of its cell, which ends
+  -- there; a borrow variable it moves in whole is dropped with its cell there too. So each such place must be of its type again in the state the arm ends in, and
   -- so must the arm's result. Without this an arm's lie about a dependent field is never
   -- re-checked: the block closes off, the place receives a sealed program that the generic
   -- path treats as whole, and the direct path, which runs the arm and checks nothing

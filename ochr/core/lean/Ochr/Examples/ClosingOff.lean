@@ -12,8 +12,9 @@ compute them, such as `⌈let c = σ; AddM(&c, 0); c⌉` (RULES P4, [Close]). A 
 runs again when more is known about its inputs ([Seal]).
 
 A match that gets stuck outside tail position (followed by more code, or inside a type)
-is closed off the same way, as a call to an anonymous function of the places it uses. It
-captures them as a Rust closure would: a place some arm moves out of is moved in, a place
+is closed off the same way (exp-block-text): its sealed program binds the places it uses,
+each in a cell, and is then the match itself, `⌈let n = S(σ2); let m = σ1; match m { … }⌉`;
+it is not a function, and nothing calls it. It captures as a Rust closure would: a place some arm moves out of is moved in, a place
 some arm writes or borrows is borrowed, and any other place it reads is copied ("Stuck
 blocks"). This is how a borrow chosen by a branch is handled.
 
@@ -208,14 +209,12 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   def LamReadOtherArm (n0 : Nat) : Prop :=
     Id(Nat, (match n0 { Z => (n0 := S(n0); 0), S _ => (let f = (λ(y : Nat) : Nat => n0); 0) }), (let m = n0; 0))
 
-  -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
-  -- sub-place their arms read may not exist (`q0.0` of the abstract pair `q0`). That error
-  -- answered "not convertible" (fuzz-port R3) until the checker stopped turning errors into
-  -- decisions (`notes/catch-census.md`): it is a type error again, a fail-safe incompleteness.
-  -- [Conv-fun] compares observations, and an observation exists unless the run has an error;
-  -- the true statement is rejected until the generic run can read a field of an abstract
-  -- value of a one-constructor type.
-  reject def ConvBlocks (q0 : Nat × Nat) : Prop := (
+  -- Comparing two blocks' functions observed them at a generic argument, where a pattern's
+  -- sub-place their arms read may not exist (`q0.0` of the abstract pair `q0`), a type error
+  -- (fuzz-port R3; `notes/catch-census.md`), so the true statement was rejected. exp-block-text:
+  -- a block is not a function, and two sealed blocks are compared by their texts ([Conv-cong]),
+  -- never observed at other values than the ones they captured: accepted.
+  def ConvBlocks (q0 : Nat × Nat) : Prop := (
     match q0 {
       Mk(a, b) =>
         Id(Nat × Nat, (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => (q0 := Mk(clone(p1), p1); q0) } }), (match q0 { Mk(p15, p16) => match p16 { Z => (p16 := 0; (1, 0)), S _ => q0 } })),
@@ -807,3 +806,36 @@ ochr UnitFill uses Nats, Fixtures {
   ("QU6", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
   ("QUp", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
   ("QB", "the body of QB has type ⊤, but the goal is Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := ⌈let c1 = (); let r = σ0(&c1); *r⌉; c1⌉, ())")]
+
+
+/-! ## Blocks as text (exp-block-text)
+
+A sealed block binds what it captured, each in a cell (a place taken by `&` reached through a
+borrow of its cell), and is then the match itself. A function under check that the match calls
+is named by its global, never held as a cell; a block is checked at the values it captured only,
+and its text says nothing about other values. The four faults the consistency proof found (docs/31
+D232–D234) are pinned here: the text of `MB0e`'s block mentions `MB0e` only as the head of a call,
+and the text of `NTe`'s reads the predecessor of `n` only under the cell that holds `S(σ2)`. -/
+
+ochr BlockText uses Nats, Fixtures {
+  inductive BB := TT | FF
+  def MB0r (m : Nat) (n : Nat) : Nat by n := (let r = (match m { Z => Z, S(p) => match n { Z => Z, S(k) => MB0r(p, k), }, }); r)
+  def NTr (n : Nat) (m : Nat) : Nat := match n { Z => Z, S(p) => (let r = (match m { Z => clone(n), S(q) => clone(p), }); r), }
+  -- the texts, shown by an equation the checker cannot decide
+  reject def MB0e (m : Nat) (n : Nat) : Nat by n := (let r = (match m { Z => Z, S(p) => match n { Z => Z, S(k) => MB0e(p, k), }, }); let h : Eq(Nat, clone(r), Z) = refl; r)
+  reject def NTe (n : Nat) (m : Nat) : Nat := match n { Z => Z, S(p) => (let r = (match m { Z => clone(n), S(q) => clone(p), }); let h : Eq(Nat, clone(r), Z) = refl; r), }
+  -- a block returning a borrow, written through, then split
+  def BR (b : BB) (x : &Nat) (y : &Nat) : Nat := (let r = (match b { TT => &*x, FF => &*y, }); *r := Z; match b { TT => Z, FF => Z, })
+  -- a block re-run after a later split refines what it captured; one whose arm ends stuck again
+  def RR (n : Nat) : Eq(Nat, (let r = (match n { Z => Z, S(p) => clone(p), }); match n { Z => r, S(q) => Z, }), Z) := match n { Z => refl, S(q) => refl, }
+  def BS (n : Nat) (m : Nat) : Nat := (let r = (match n { Z => Z, S(p) => match m { Z => Z, S(q) => S(q), }, }); match n { Z => r, S(p) => r, })
+  -- two J blocks with convertible motives of different code are convertible (compared by text)
+  def EqJ (a : Nat) (b : Nat) (h : Eq(Nat, a, b)) : Eq(Nat, J(Nat, a, b, λ(z : Nat) : Type => Nat, h, Z), J(Nat, a, b, λ(z : Nat) : Type => (let w = Nat; w), h, Z)) := refl
+  -- two blocks with different texts are not
+  reject def EqDiff (n : Nat) : Eq(Nat, (let r = (match n { Z => Z, S(p) => S(Z), }); r), (let r = (match n { Z => Z, S(p) => clone(p), }); r)) := refl
+}
+
+#guard (run "BlockText" BlockText).rejectedWith [
+  ("MB0e", "the ascribed term has type ⊤, expected Eq(Nat, ⌈let m = σ0; let n = σ1; match m { Z => 0, S _ => match n { Z => 0, S _ => MB0e(m.0, n.0) } }⌉, 0)"),
+  ("NTe", "the ascribed term has type ⊤, expected Eq(Nat, ⌈let n = S(σ2); let m = σ1; match m { Z => clone(n), S _ => clone(n.0) }⌉, 0)"),
+  ("EqDiff", "the body of EqDiff has type ⊤, but the goal is Eq(Nat, ⌈let n = σ0; match n { Z => 0, S _ => (fix _ (n : Nat) : Nat := S(n))(0) }⌉, ⌈let n = σ0; match n { Z => 0, S _ => clone(n.0) }⌉)")]
