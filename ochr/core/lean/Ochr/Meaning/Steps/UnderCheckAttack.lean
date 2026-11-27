@@ -18,7 +18,9 @@ environment; the guards read the variable bound to the call's result:
   is called in place and calls `go`, which closes off: the sealed head is the closure VALUE with its capture refined to
   `0` (recognised by code), `go`'s own binding is moved into `h`, and `h` holds `go`'s refined closure. The model has no
   counterpart (docs/31 D205). ACCEPTED UNTIL main's D136 (ruled by the lead, 2026-11-27: a local function is not
-  recursive, as in Lean's kernel); then `GoH` becomes a `reject def` and its two guards go.
+  recursive, as in Lean's kernel). D136 LANDED (merged into the proof line by lead34, 2026-11-27): `GoH` is now a
+  `reject def` (rejected at `go`'s `by y`: a local function is not recursive), and its two guards are kept below as
+  history, commented out, with the answer the checker gave before D136.
 -/
 
 open Ochr.Test
@@ -35,7 +37,7 @@ ochr UnderCheckAtk {
   def CT (a : Nat) : Nat := (let c = a; let t = TailM(&c); *t := Z; let r = c; ?)
   def CS (a : Nat) : Nat := (let c = clone(a); AddM(&c, Z); match a { Z => (let r = c; ?), S q => (let r = c; ?) })
   def RB (n : Nat) (k : Nat) : Nat by n := match n { Z => Z, S m => (let r = (match k { Z => RB(m, Z), S j => Z }); match k { Z => (let u = r; ?), S j => (let u = r; ?) }) }
-  def GoH (n : Nat) (x : Nat) : Nat := (fix go (y : Nat) : Nat by y := match n { Z => match y { Z => Z, S p => (let h = (λ(u : Unit) : Nat => go(clone(p))); let r = h(()); ?) }, S q => Z })(x)
+  reject def GoH (n : Nat) (x : Nat) : Nat := (fix go (y : Nat) : Nat by y := match n { Z => match y { Z => Z, S p => (let h = (λ(u : Unit) : Nat => go(clone(p))); let r = h(()); ?) }, S q => Z })(x)
 }
 
 namespace Ochr.Meaning.Steps.Form.UnderCheckAtk
@@ -63,10 +65,12 @@ def valOf (Ω : List (String × Option Value × Value)) (x : String) : String :=
 #guard (holes "CT").map (valOf · "r") == ["⌈let c1 = σ0; let r = TailM(&c1); *r := 0; c1⌉"]
 #guard (holes "CS").map (valOf · "r") == ["0", "S(⌈let c1 = σ2; AddM(&c1, 0); c1⌉)"]
 #guard (holes "RB").map (valOf · "u") == ["⌈RB(σ2, 0)⌉", "0"]
--- `go`'s recursive call through `h`: the sealed head is `go`'s closure with its capture `n` refined to `0`
-#guard (holes "GoH").map (valOf · "r") ==
-  ["⌈(fix go (y : Nat) : Nat by y := match κ1 { Z => match y { Z => 0, S _ => let h = fix _ (u : Unit) : Nat := go(clone(y.0)); let r = h(()); hole }, S _ => 0 } where κ1 = 0)(σ3)⌉"]
-#guard (holes "GoH").map (valOf · "go") == ["⊥"]
+-- HISTORY (before main's D136, when `GoH` was accepted): `go`'s recursive call through `h`, the sealed head being `go`'s
+-- closure with its capture `n` refined to `0`. Since D136 `GoH` is rejected before its body runs, so it has no hole.
+-- #guard (holes "GoH").map (valOf · "r") ==
+--   ["⌈(fix go (y : Nat) : Nat by y := match κ1 { Z => match y { Z => 0, S _ => let h = fix _ (u : Unit) : Nat := go(clone(y.0)); let r = h(()); hole }, S _ => 0 } where κ1 = 0)(σ3)⌉"]
+-- #guard (holes "GoH").map (valOf · "go") == ["⊥"]
+#guard (holes "GoH") == []
 -- the decreasing parameter's predecessor was MOVED into each recursive call (`n ↦ S(⊥)`; in `RB` the block took `n`
 -- whole): the entry value survives only in the [Rec] stack's record, so the rank of a sealed call's argument is read
 -- against the record (`RecRankG`), never against the environment (docs/31 D207)

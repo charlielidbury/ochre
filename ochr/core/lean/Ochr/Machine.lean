@@ -607,7 +607,10 @@ re-normalisation substitutes inside a local function's captured values (its own 
 itself included) but not inside the frame, so after `match n {…}` on a captured `n` the
 refined closure no longer equals the one being checked and its recursive calls went
 unchecked (rec-model's `CapSplit`, a closed proof of `False`). Value equality is kept only
-as a fail-safe that can add a check, never remove one. -/
+as a fail-safe that can add a check, never remove one. Since D136 a local function is not
+recursive and every frame is a top-level definition's, whose value is its name, so the mark and
+the value agree at every call that is made (measured over the suite at D136's landing: no call
+had the mark without the value). -/
 def recFrameOf (ctx : RecCtx) (fv : Value) (uid? : Option Nat) : Bool :=
   uid? == some ctx.uid || ctx.fn == fv
 
@@ -615,14 +618,14 @@ def recFrameOf (ctx : RecCtx) (fv : Value) (uid? : Option Nat) : Bool :=
 code the check has not finished with, so it is never run: a call of it closes off at once, as a
 call of an unknown function does (`callFn`, the one place a body is run), and its body runs only
 once its definition is accepted, as in Lean, where the function being defined does not unfold
-inside its own body. Decided by the function's code (`Value.sameCode`: a global's name, a
-closure's `fix` term without its embedded values), read from syntax, never by its value: a
-refinement or an [End] substitutes inside a local function's captures and the captured proofs'
-types inlined in its code, but not inside the frame (D78), and the routes that reach a call of it
-other than by its name (a sealed program's head call, re-run after a split; a λ's capture of it,
-run untyped; a sealed program's typing, `sealedType?`) see its value only. -/
+inside its own body. Since D136 the stack holds top-level definitions only, so this compares
+names: a global function value is its name, which no refinement or [End] changes, whichever route
+reaches the call (by its name; a sealed program's head call, re-run after a split; a λ's capture
+of it, run untyped; a sealed program's typing, `sealedType?`). (D135 compared code, a closure's
+`fix` term without its embedded values, for local recursive functions, whose values a refinement
+changes; a local function being checked cannot be called during its check, D136.) -/
 def underCheck (fv : Value) : M Bool := do
-  pure ((← get).recStack.any (·.fn.sameCode fv))
+  pure ((← get).recStack.any (·.fn == fv))
 
 /-- [Rec]: at a recursive call, a parameter position survives if its argument (the
 content, through a borrow) is a strict subterm of that parameter's entry value as
@@ -644,8 +647,6 @@ def recCheck (fv : Value) (ws : Array Value) (uid? : Option Nat := none) : M Uni
         | _, _ => pure false
       -- a call that fails the test rejects the definition here, at the call; the call itself is
       -- never run, whatever the test says (D135: a function being checked closes off)
-      if cands.isEmpty then
-        err s!"[Rec] {fv} calls itself but declares no decreasing parameter (`by x`)"
       if cands'.isEmpty then
         err s!"[Rec] at {fv}({", ".intercalate (ws.toList.map toString)}): the argument in the decreasing position is not a strict subterm of that parameter's entry value as refined so far"
       frames := frames.push { ctx with cands := cands' }
@@ -4814,6 +4815,10 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
     (capRec : Array (Option Nat) := #[]) (rd : List (DeclInfo × Value) := []) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .fix self hs ds c dec body := t | err "internal: not a fix"
+  -- D136: a local function is not recursive; recursion (`by x`) is for top-level definitions
+  if let some j := dec then
+    unless fv matches .gfn _ do
+      err s!"[Rec] {self.name} declares `by {(hs.getD j ⟨"?"⟩).name}`, but a local function is not recursive (D136): recursion is for top-level definitions. Define {self.name} at the top level, with what it uses from the enclosing body as parameters"
   borrowParamCheck ds c
   let saved ← get
   -- the body is the checked program (D64: its [Repack] points are checked, and the borrow
@@ -4863,27 +4868,26 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
   let F1 ← popFrameRaw
   let piTy := Value.tPi cs (.pi hs ds c) rd
-  let uid := (← get).nextRecUid
-  modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
   pushFrame
   pushCaps fuel' cs rd
   -- D78: a capture of an enclosing function's binding of itself keeps its mark, so a
   -- recursive call of that function from this closure's body is still recognised by name
   markCapRec capRec
   pushBind self (some piTy) fv false (.pi cd)
-  -- D78: this function's binding of itself carries its frame's mark
-  markLastRec uid
+  -- [Rec]: the stack holds the functions being checked that declare `by xⱼ` (v1.2, D23), which
+  -- since D136 is the top-level definition being checked. A local function has no entry: it cannot
+  -- name itself (D31), and no other value is it while its check is under way
+  let uid := (← get).nextRecUid
+  if dec.isSome then
+    modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
+    -- D78: this function's binding of itself carries its frame's mark
+    markLastRec uid
   for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof b.decl
-  -- [Rec]: the decreasing parameter is the one named by `by xⱼ` (v1.2, D23); without
-  -- `by` the function is not recursive (no candidate survives a recursive call)
-  let cands ← match dec with
-    | some j =>
-      if (entries[j]?.join).isNone then
-        err s!"`by {(hs.getD j ⟨"?"⟩).name}`: the decreasing parameter must have an inductive type (or be a borrow of one)"
-      pure [j]
-    | none => pure []
-  let fr : RecCtx := { fn := fv, entries, cands, uid }
-  modify fun s => { s with goal := some goal, recStack := fr :: s.recStack }
+  if let some j := dec then
+    if (entries[j]?.join).isNone then
+      err s!"`by {(hs.getD j ⟨"?"⟩).name}`: the decreasing parameter must have an inductive type (or be a borrow of one)"
+    modify fun s => { s with recStack := { fn := fv, entries, cands := [j], uid } :: s.recStack }
+  modify fun s => { s with goal := some goal }
   -- D53 (b): the body of a function whose calls are erased is an erased term
   -- (tracked with or without D53: K2/K3 read it too)
   let bodyCopies ← pure ((← fnClass fuel' piTy) != 0)

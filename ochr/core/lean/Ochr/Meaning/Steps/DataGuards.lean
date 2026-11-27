@@ -86,24 +86,28 @@ def declare : M Unit := do Ochr.checkInd declB; Ochr.checkDef defNot
 
 /-! ## The body's start state -/
 
-/-- The full start state: the kernel `stNot` in the mode `checkFix` starts it in (typed, one [Rec] context). -/
+/-- The full start state: the kernel `stNot` in the mode `checkFix` starts it in (typed; since main's D136 no [Rec]
+context: `Not` declares no `by`). -/
 def stNotF : MState :=
-  let rc : RecCtx := { fn := .gfn "Not", entries := #[some 0], cands := [], uid := 0 }
-  { stNot with typing := true, recStack := [rc], nextRecUid := 1 }
+  { stNot with typing := true }
 
 /-- The mode `checkFix` starts the body in. -/
 def modeOk (st : MState) : Bool :=
   st.typing && !st.curTail && !st.tailNext && st.tailDecl.isNone && !st.copying && !st.inPlace && !st.headEval &&
-  st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.obsFrame.isNone && st.nextRecUid == 1 &&
-  (match st.recStack with
-    | [r] => r.fn == .gfn "Not" && r.entries == #[some 0] && r.cands.isEmpty && r.uid == 0
-    | _ => false)
+  st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.obsFrame.isNone && st.nextRecUid == 0 &&
+  st.recStack.isEmpty
+
+/-- A recorded state with the function's binding of itself marked as the hand-built kernel has it (main's D136 marks it
+only with `by`; the divergence is the one `ParGuards` notes, docs/31 D218). -/
+def markSelf (st : MState) : MState :=
+  let fr1 := st.env[1]!
+  { st with env := st.env.set! 1 { fr1 with binds := fr1.binds.set! 0 { fr1.binds[0]! with recUid := some 0 } } }
 
 /-- The checker's recorded state at the entry of `Not`'s body (the first with the body's frame). -/
 def recordedStart : Option MState :=
   ((entries DataProbeNot "Not").filter (fun st => st.env.size == 2 && st.env[1]!.binds.size == 2)).head?
 
-#guard recordedStart.any fun st => kernEqI st stNot && modeOk st
+#guard recordedStart.any fun st => st.env[1]!.binds[0]!.recUid.isNone && kernEqI (markSelf st) stNot && modeOk st
 #guard kernEqI stNotF stNot && modeOk stNotF
 
 /-! ## The split -/

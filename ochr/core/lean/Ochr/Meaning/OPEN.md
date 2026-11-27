@@ -14,6 +14,12 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## MAIN'S D136 MERGED; A NON-RECURSIVE GLOBAL'S BINDING OF ITSELF UNMARKED (lead34, 2026-11-27, `spine-lead34`; docs/31 D218)
+
+- Merged; guards restated to D136's start states (a mark and a [Rec] context exactly with `by`); `GoH` rejected (history kept).
+- `UnderCheck.RecCurG`: RESTATED one way (on the stack ⇒ `K.cur`'s); it was false at every non-recursive check, so `CallAcceptedG` was vacuous there. `CallUnderCheckG` takes "the head is on the stack".
+- FINDING, FALSE UNTIL A RULING: `Binding.refTy` reads a function's binding of itself by the recursion mark, which D136 sets only with `by`; so `Rel` cannot hold at the start of a non-recursive global's body as the checker now makes it, and the columns `I`, `P`, `Q`, `Not`, `Wrap`, `Unbox`, `W`, `K` are about the marked kernel (the guards pin the divergence, `markSelf`). Proposed: the checker marks every function's binding of itself again (inert in the checker by reading). The relation keyed on value and name was tried and reverted (breaks every skeleton lemma of a write).
+
 ## [ACCESS] AGAINST THE FRAME RELATION (lead33, 2026-11-27, `spine-lead33`; docs/31 D214, D215)
 
 - Ruling R1 (D214): the model keeps label order at [Access]; the frame proof reorders by commutation (a site-read order would tie at labels lent at the same path, and the pop and an observation end in label order anyway).

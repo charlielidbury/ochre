@@ -42,9 +42,8 @@ def bodyP : Term := .matchNat (.var 0) .zero (.place (.proj 0 (.var 0)))
 def stP : MState :=
   let selfP : Binding := { ColumnI.selfB with hint := ⟨"P"⟩, val := .gfn "P" }
   let gP : GDef := { name := "P", ty := ColumnI.piNat, fn? := some (.fix ⟨"P"⟩ [⟨"n"⟩] [.nat] .nat none bodyP), val := .gfn "P" }
-  let rc : RecCtx := { fn := .gfn "P", entries := #[some 0], cands := [], uid := 0 }
   let env : Env := #[{}, { binds := #[selfP, ColumnI.nB] }]
-  { ColumnI.stI with env := env, globals := [gP], typing := true, recStack := [rc], nextRecUid := 1 }
+  { ColumnI.stI with env := env, globals := [gP], typing := true }
 
 /-- A return continuation that records the leaf it is run at (the state, the value and its type). -/
 def kRec (v T : Value) : M Unit := do

@@ -145,6 +145,8 @@ def IndDecl.fieldDependent (d : IndDecl) (c i : Nat) : Bool :=
 recursive positions that have survived its recursive calls so far. The candidates are
 an accumulator: a state restore (a branch, a private copy) keeps them, matched to the
 frame by `uid`, so no nested computation can reset or shift them (the recCands fix).
+Only a function that declares `by` has a frame, which since D136 is a top-level definition (a
+global function value, `fn = .gfn f`): a local function is not recursive.
 D135: the stack is also the set of functions whose check is under way, whose bodies are never
 run (`Machine.underCheck`). -/
 structure RecCtx where

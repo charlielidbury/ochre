@@ -5,7 +5,10 @@ import Ochr.Examples.Fixtures
 
 A recursive definition names its decreasing parameter with `by x`, and each recursive call
 must pass, in that position, a strict part of the value `x` had on entry ([Rec], D17).
-Without `by`, a definition cannot call itself (D31). A definition is checked once, at its
+Without `by`, a definition cannot call itself (D31). Only a top-level definition is recursive: a
+local function (a `fix` inside a body) may not declare `by` (D136), and a recursive helper is a
+top-level function taking what it used from the enclosing body as parameters. A definition is
+checked once, at its
 *generic call*: each borrow parameter points to a fresh place holding an abstract value,
 and the other parameters are abstract values ([Def]). The type of a recursive call is
 computed in the caller's environment, after its arguments ([Call-type]), so a call about
@@ -70,8 +73,12 @@ ochr Recursion uses Nats, Fixtures {
     }
   )
 
-  -- A local recursive function is checked at its own generic call.
-  def Outer (x : &Nat) : Unit := (fix go (y : &Nat) : Unit by y := match *y { Z => (), S p => go(&p) })(x)
+  -- A local function is not recursive (D136): `Outer` was accepted before, with `go` checked
+  -- at its own generic call. Lifted, `go` is a top-level function (`OuterGo`), here with
+  -- nothing to take from `Outer`'s body.
+  reject def Outer (x : &Nat) : Unit := (fix go (y : &Nat) : Unit by y := match *y { Z => (), S p => go(&p) })(x)
+  def OuterGo (y : &Nat) : Unit by y := match *y { Z => (), S p => OuterGo(&p) }
+  def OuterLift (x : &Nat) : Unit := OuterGo(x)
 
   -- A definition may not mention itself in its own type.
   reject def SelfType (n : Nat) : Id(Nat, SelfType(n), n) := refl
@@ -160,11 +167,16 @@ ochr Recursion uses Nats, Fixtures {
     }
   )
 
-  -- A local recursive function that calls itself on its own argument.
+  -- A local function that calls itself on its own argument: a local recursive function (D136);
+  -- lifted, the call on its own argument is rejected by [Rec].
   reject def OuterBad (x : Nat) : Eq(Nat, 0, 1) := (fix go (y : Nat) : Eq(Nat, 0, 1) by y := go(y))(x)
+  reject def OuterBadGo (y : Nat) : Eq(Nat, 0, 1) by y := OuterBadGo(y)
 
-  -- twin of OuterBad: the local function calls itself on the predecessor, and states a true thing
-  def OuterBadOk (x : Nat) : Unit := (fix go (y : Nat) : Unit by y := match y { Z => (), S p => go(p) })(x)
+  -- twin of OuterBad: the local function calls itself on the predecessor, and states a true
+  -- thing; accepted before D136, and lifted now
+  reject def OuterBadOk (x : Nat) : Unit := (fix go (y : Nat) : Unit by y := match y { Z => (), S p => go(p) })(x)
+  def OuterBadOkGo (y : Nat) : Unit by y := match y { Z => (), S p => OuterBadOkGo(p) }
+  def OuterBadOkLift (x : Nat) : Unit := OuterBadOkGo(x)
 
   -- A recursive function may appear only as the head of a call. Passed as a value, it
   -- would escape the check on its arguments, and `Knot(0)` would be a closed proof of
@@ -197,18 +209,29 @@ ochr Recursion uses Nats, Fixtures {
   -- function values. `go` captures `n`; splitting on `n` inside `go`'s body refines the
   -- capture, so the refined closure no longer equals the one being checked, and its
   -- recursive calls went unchecked: `CapSplit` was accepted and `BoomCapSplit` was a closed
-  -- proof of `False` (rec-model)
+  -- proof of `False` (rec-model). Since D136 a local function is not recursive, so `CapSplit`
+  -- is rejected at `go`'s `by`; lifted (`CapSplitGo`, `n` a parameter), [Rec] rejects it.
   reject def CapSplit (n : Nat) (x : Nat) : False := (fix go (y : Nat) : False by y := match n { Z => go(y), S q => go(y) })(x)
   reject def BoomCapSplit : False := CapSplit(0, 0)
+  reject def CapSplitGo (n : Nat) (y : Nat) : False by y := match n { Z => CapSplitGo(Z, y), S q => CapSplitGo(S(q), y) }
   -- the same through a closure formed in each arm: capturing `go` moves it (a closure over
   -- non-copy data is not a copy), so the capture is recognised by the binding's mark, not its
-  -- value; `BoomCapLam` was a closed proof of `False` too
+  -- value; `BoomCapLam` was a closed proof of `False` too. Lifted, the closure captures the
+  -- top-level function, and [Rec] rejects its call.
   reject def CapSplitLam (n : Nat) (x : Nat) : False := (fix go (y : Nat) : False by y := match n { Z => (let h = (λ(u : Unit) : False => go(clone(y))); h(())), S q => (let h = (λ(u : Unit) : False => go(clone(y))); h(())) })(x)
   reject def BoomCapLam : False := CapSplitLam(0, 0)
-  -- twin of CapSplit: the same split on the capture, with recursive calls on a strict part of `y`
-  def CapSplitOk (n : Nat) (x : Nat) : Unit := (fix go (y : Nat) : Unit by y := match n { Z => match y { Z => (), S p => go(p) }, S q => match y { Z => (), S p => go(p) } })(x)
-  -- twin of CapSplitLam: the closure formed in the arm recurses on a strict part
-  def CapSplitLamOk (n : Nat) (x : Nat) : Unit := (fix go (y : Nat) : Unit by y := match n { Z => match y { Z => (), S p => (let h = (λ(u : Unit) : Unit => go(clone(p))); h(())) }, S q => () })(x)
+  reject def CapSplitLamGo (n : Nat) (y : Nat) : False by y := match n { Z => (let h = (λ(u : Unit) : False => CapSplitLamGo(Z, clone(y))); h(())), S q => (let h = (λ(u : Unit) : False => CapSplitLamGo(S(clone(q)), clone(y))); h(())) }
+  -- twin of CapSplit: the same split on the capture, with recursive calls on a strict part of
+  -- `y`; accepted before D136, and lifted now
+  reject def CapSplitOk (n : Nat) (x : Nat) : Unit := (fix go (y : Nat) : Unit by y := match n { Z => match y { Z => (), S p => go(p) }, S q => match y { Z => (), S p => go(p) } })(x)
+  def CapSplitOkGo (n : Nat) (y : Nat) : Unit by y := match n { Z => match y { Z => (), S p => CapSplitOkGo(Z, p) }, S q => match y { Z => (), S p => CapSplitOkGo(S(q), p) } }
+  def CapSplitOkLift (n : Nat) (x : Nat) : Unit := CapSplitOkGo(n, x)
+  -- twin of CapSplitLam: the closure formed in the arm recurses on a strict part; accepted
+  -- before D136, and lifted now (a closure inside a top-level function may call it)
+  reject def CapSplitLamOk (n : Nat) (x : Nat) : Unit := (fix go (y : Nat) : Unit by y := match n { Z => match y { Z => (), S p => (let h = (λ(u : Unit) : Unit => go(clone(p))); h(())) }, S q => () })(x)
+  def CapSplitLamOkGo (n : Nat) (y : Nat) : Unit by y := match n { Z => match y { Z => (), S p => (let h = (λ(u : Unit) : Unit => CapSplitLamOkGo(Z, clone(p))); h(())) }, S q => () }
+  def CapSplitLamOkLift (n : Nat) (x : Nat) : Unit := CapSplitLamOkGo(n, x)
+  def CapSplitLamOkRuns : Eq(Unit, CapSplitLamOkLift(0, 3), ()) := refl
 
   -- twin of KnotL: inside the closure the recursive call is on `q`, a copy of `p`, a strict part of the entry value
   def KnotLOk (x : Nat) : Eq(Nat, Z, Z) by x := (
@@ -306,6 +329,18 @@ ochr Recursion uses Nats, Fixtures {
   reject def BoomId : False := LieId(0)
 }
 
+/-- D136: the message for a local function `f` that declares `by x`. -/
+private def localRec (f x : String) : String :=
+  s!"[Rec] {f} declares `by {x}`, but a local function is not recursive (D136): recursion is for top-level definitions. Define {f} at the top level, with what it uses from the enclosing body as parameters"
+
+#guard (run "Recursion" Recursion).rejectedWith [
+  ("Outer", localRec "go" "y"), ("OuterBad", localRec "go" "y"), ("OuterBadOk", localRec "go" "y"),
+  ("OuterBadGo", "[Rec] at OuterBadGo(σ0): the argument in the decreasing position"),
+  ("CapSplit", localRec "go" "y"), ("CapSplitLam", localRec "go" "y"),
+  ("CapSplitOk", localRec "go" "y"), ("CapSplitLamOk", localRec "go" "y"),
+  ("CapSplitGo", "[Rec] at CapSplitGo(0, σ1): the argument in the decreasing position"),
+  ("CapSplitLamGo", "[Rec] at CapSplitLamGo(0, σ1): the argument in the decreasing position")]
+
 
 /-! ## A function being checked is not run (D135)
 
@@ -330,7 +365,13 @@ but the name reaches the value only.
 The loss, of one kind: a body that needs its own recursive call to compute (`Sel`: inside `Sel`,
 with `m` refined to `Z`, `Sel(m)` is `⌈Sel(0)⌉`, not `0`). The same equation stated after the
 definition holds (`Sel2After`), a well-founded definition computes once accepted (`OkRuns`), and
-an inner function, once its own check has ended, runs inside the outer one's (`InnerRuns`). -/
+an inner function, once its own check has ended, runs inside the outer one's (`InnerRuns`).
+
+Since D136 a local function is not recursive, so every row here whose recursive function is local
+(`CapSel0` to `CapPrf0`, `CapBlkSel`, `CapLam`, `CapLamSel`, `InLoop`, `OutIn` to `Nest`) is
+rejected at that function's `by`, before any of these routes is reached; lifted, a local function
+is a top-level one whose captures are parameters, and its routes are the global rows'. `InnerRuns`
+was accepted, and is lost; its lifted form `InnerRunsLift` is accepted. -/
 
 ochr UnderCheck uses Nats {
   inductive BB := TT | FF
@@ -434,9 +475,13 @@ ochr UnderCheck uses Nats {
   reject def OutInSel (n : Nat) : Nat by n := match n {
     Z => Z,
     S(m) => match m { Z => (let e : Eq(Nat, (fix go (y : Nat) : Nat by y := match y { Z => OutInSel(clone(m)), S(k) => go(k), })(S(Z)), Z) = refl; Z), S(k) => Z, }, }
-  def InnerRuns (n : Nat) : Nat by n := match n {
+  reject def InnerRuns (n : Nat) : Nat by n := match n {
     Z => Z,
     S(m) => (let e : Eq(Nat, (fix go (y : Nat) : Nat by y := match y { Z => Z, S(k) => go(k), })(S(S(Z))), Z) = refl; InnerRuns(m)), }
+  def InnerGo (y : Nat) : Nat by y := match y { Z => Z, S(k) => InnerGo(k), }
+  def InnerRunsLift (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => (let e : Eq(Nat, InnerGo(S(S(Z))), Z) = refl; InnerRunsLift(m)), }
   -- ... the outer one local, its capture refined, called by the inner one after the inner's check
   reject def Nest (n : Nat) (x : Nat) : Nat := (fix outer (p : BB) (y : Nat) : Nat by y := match n {
     Z => match p { TT => match y { Z => Z, S(m) => (fix go (k : Nat) : Nat by k := match k { Z => outer(FF, clone(m)), S(j) => go(j), })(Z), }, FF => outer(FF, y), },
@@ -492,27 +537,141 @@ private def sealedSelf (e : String) : String := s!"the ascribed term has type �
   ("HAt", recAt "HAt" "TT, 3"), ("H2", recAt "H2" "TT, σ1"), ("Loop", recAt "Loop" "FF, σ1"),
   ("Sel", sealedSelf "Sel(0)⌉, 0)"),
   ("ReRun", recAt "ReRun" "FF, 0"), ("ReSel", sealedSelf "ReSel(0)⌉, 0)"),
-  ("CapSel0", sealedSelf "(fix go (y : Nat) : Nat by y := match y { Z => 0, S _ => let r = go(clone(y.0)); match y.0 {"),
-  ("CapSel", sealedSelf "(fix go (y : Nat) : Nat by y := match y { Z => 0, S _ => let r = go(clone(y.0)); match κ1 {"),
-  ("CapRe", "[Rec] at fix go (p : BB) (y : Nat) : Nat by y := match p { TT =>"),
-  ("CapPrf", sealedSelf "(fix go (y : Nat) : Nat by y := match y { Z => 0, S _ => let k = ⋆; let r = go(clone(y.0)); match κ1 {"),
-  ("CapPrf0", sealedSelf "(fix go (y : Nat) : Nat by y := match y { Z => 0, S _ => let k = ⋆; let r = go(clone(y.0)); match y.0 {"),
+  ("CapSel0", localRec "go" "y"),
+  ("CapSel", localRec "go" "y"),
+  ("CapRe", localRec "go" "y"),
+  ("CapPrf", localRec "go" "y"),
+  ("CapPrf0", localRec "go" "y"),
   ("BlkRe", recAt "BlkRe" "FF, TT, 0"), ("BlkSel", sealedSelf "BlkSel(TT, 0)⌉, 0)"),
-  ("CapBlkSel", sealedSelf "(fix go (q : BB) (y : Nat) : Nat by y := match y {"),
+  ("CapBlkSel", localRec "go" "y"),
   ("LamCall", recAt "LamCall" "FF, σ1"), ("LamSel", sealedSelf "LamSel(0)⌉, 0)"),
   ("HoCall", recAt "HoCall" "FF, σ1"), ("HoSel", sealedSelf "HoSel(0)⌉, 0)"),
-  ("CapLam", "[Rec] at fix go (p : BB) (y : Nat) : Nat by y := match κ1 { Z =>"),
-  ("CapLamSel", sealedSelf "(fix go (y : Nat) : Nat by y := match κ1 {"),
-  ("InLoop", "[Rec] at fix go (p : BB) (n : Nat) : Nat by n := match p {"),
-  ("OutIn", recAt "OutIn" "FF, σ1"), ("OutIn2", recAt "OutIn2" "FF, σ1"),
-  ("OutInSel", sealedSelf "OutInSel(0)⌉, 0)"),
-  ("Nest", "[Rec] at fix outer (p : BB) (y : Nat) : Nat by y := match κ1 {"),
+  ("CapLam", localRec "go" "y"),
+  ("CapLamSel", localRec "go" "y"),
+  ("InLoop", localRec "go" "n"),
+  ("OutIn", localRec "go" "y"), ("OutIn2", localRec "go" "y"), ("OutInSel", localRec "go" "y"),
+  ("InnerRuns", localRec "go" "y"),
+  ("Nest", localRec "outer" "y"),
   ("ConvFn", "the ascribed term has type ⊤, expected Eq(Π(u : Unit). Nat, fix _ (u : Unit) : Nat := κ1(clone(κ2.0)) where κ1 = ConvFn, κ2 = 1,"),
   ("ConvLoop", recAt "ConvLoop" "FF, σ1"),
   ("BLoop", recAt "BLoop" "FF, borrow_0 σ1"), ("BSel", sealedSelf "let c1 = 0; BSel(&c1)⌉, 0)"),
   ("PLoop", recAt "PLoop" "FF, σ1"), ("TLoop", recAt "TLoop" "FF, σ1"),
   ("TSel", "the ascribed term has type Nat, expected ⌈TSel(0)⌉"),
   ("STy", recAt "STy" "FF, σ1"), ("FR", recAt "FR" "FF, σ1")]
+
+
+/-! ## A local function is not recursive (D136)
+
+Recursion is for top-level definitions. A local function (a `fix` formed inside a body or a type)
+may not declare `by`, and without `by` it cannot name itself (D31), so no local function calls
+itself. Lean's kernel has no local recursion either: `let rec` and `where` are lifted to top-level
+definitions, with what they capture as parameters, and that is how a recursive helper is written
+here (the `…Lift` rows). The consistency proof's model treats the function being checked as "some
+function good on smaller arguments" for top-level definitions only; a local recursive function had
+no counterpart there, and it is what cost the closed proof of `False` of D78 and the recognition by
+code of D135.
+
+A local function has no entry on the [Rec] stack, whose entries are the functions being checked
+that declare `by`: the top-level definition. So a λ being checked is not taken for an accepted
+closure of the same code (`SameCode`, rejected before, when every function being checked had an
+entry and D135 compared code).
+
+The rows: the rule, where a local function is checked, in a constant, inside a local or a top-level
+function, passed to a higher-order function, and in a type (`LocConst` … `HoLoc`, `TopIn`, `Twice`,
+`TyCod` … `TyLoop`), each beside its lifted form, accepted where it is well founded. A helper that
+calls the enclosing top-level function back cannot become a second top-level function calling the
+first (top-level functions are not mutually recursive): it takes that call as a function
+(`TopInLift`), or its value when the helper makes it more than once on a path (`TwiceLift`). Then
+the routes by which a local function without `by` could reach itself, each already closed: by D31
+(`Self1` … `Self5`, `InOut`), and by capture (`Knot1`: a closure captures no borrow; `Knot2`: a
+captured function is a snapshot, so reassigning the place it came from ties no knot). -/
+
+ochr LocalRec uses Nats {
+  def App (f : Π(u : Unit). Nat) : Nat := f(())
+  def Ap1 (f : Π(y : Nat). Nat) (x : Nat) : Nat := f(x)
+  def Go (y : Nat) : Nat by y := match y { Z => Z, S(p) => Go(p), }
+  -- the rule: a local function declaring `by`, in a constant, at a call on its own argument,
+  -- inside a local function or around one, passed to a higher-order function
+  reject def LocConst : Nat := (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => go(p), })(3)
+  reject def LocLoop (x : Nat) : Nat := (fix go (y : Nat) : Nat by y := go(y))(x)
+  reject def InBy (x : Nat) : Nat := (fix outer (y : Nat) : Nat := (fix inner (z : Nat) : Nat by z := match z { Z => Z, S(p) => inner(p), })(y))(x)
+  reject def InOutBy (x : Nat) : Nat := (fix outer (y : Nat) : Nat by y := (fix inner (z : Nat) : Nat := match z { Z => Z, S(p) => outer(p), })(y))(x)
+  reject def HoLoc (n : Nat) (x : Nat) : Nat := Ap1((fix go (y : Nat) : Nat by y := match y { Z => clone(n), S(k) => go(k), }), x)
+  -- ... lifted: what the local function captured becomes a parameter; a lifted call on its own
+  -- argument, or on a part of an inner function's argument, is rejected by [Rec] as before
+  def LocConstLift : Nat := Go(3)
+  def LocConstRuns : Eq(Nat, LocConstLift, 0) := refl
+  reject def LocLoopGo (y : Nat) : Nat by y := LocLoopGo(y)
+  def InByLift (x : Nat) : Nat := (fix outer (y : Nat) : Nat := Go(y))(x)
+  reject def InOutGo (y : Nat) : Nat by y := (fix inner (z : Nat) : Nat := match z { Z => Z, S(p) => InOutGo(p), })(y)
+  def HoGo (n : Nat) (y : Nat) : Nat by y := match y { Z => n, S(k) => HoGo(n, k), }
+  def HoLift (n : Nat) (x : Nat) : Nat := Ap1(λ(y : Nat) : Nat => HoGo(clone(n), y), x)
+  def HoLiftRuns : Eq(Nat, HoLift(4, 2), 4) := refl
+  -- a local function that calls the enclosing top-level one back: lifted, it takes that call as
+  -- a function, or its value when it makes the call more than once on a path
+  reject def TopIn (n : Nat) : Nat by n := match n { Z => Z, S(m) => (fix go (y : Nat) : Nat by y := match y { Z => TopIn(clone(m)), S(k) => go(k), })(S(Z)), }
+  def TopInGo (f : Π(u : Unit). Nat) (y : Nat) : Nat by y := match y { Z => f(()), S(k) => TopInGo(f, k), }
+  def TopInLift (n : Nat) : Nat by n := match n { Z => Z, S(m) => TopInGo(λ(u : Unit) : Nat => TopInLift(clone(m)), S(Z)), }
+  def TopInRuns : Eq(Nat, TopInLift(3), 0) := refl
+  reject def Twice (n : Nat) : Nat by n := match n { Z => S(Z), S(m) => (fix go (y : Nat) : Nat by y := match y { Z => Twice(clone(m)), S(k) => Add(Twice(clone(m)), go(k)) })(S(Z)), }
+  def TwiceGo (r : Nat) (y : Nat) : Nat by y := match y { Z => r, S(k) => Add(clone(r), TwiceGo(r, k)), }
+  def TwiceLift (n : Nat) : Nat by n := match n { Z => S(Z), S(m) => TwiceGo(TwiceLift(clone(m)), S(Z)), }
+  def TwiceRuns : Eq(Nat, TwiceLift(2), 4) := refl
+  -- in a type: a codomain, a parameter's type, a `let`'s annotation, the sides of `Eq` and `Id`,
+  -- a Π-type; and lifted
+  reject def TyCod (n : Nat) : (let k = (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => go(p), })(clone(n)); Nat) := Z
+  reject def TyPar (n : Nat) (m : (let k = (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => go(p), })(clone(n)); Nat)) : Nat := Z
+  reject def TyLet (n : Nat) : Nat := (let a : (let k = (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => go(p), })(clone(n)); Nat) = Z; a)
+  reject def TyEq (n : Nat) : Nat := (let e : Eq(Nat, (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => go(p), })(clone(n)), (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => go(p), })(clone(n))) = refl; Z)
+  reject def TyId (n : Nat) : Nat := (let e : Id(Nat, (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => go(p), })(Z), Z) = refl; Z)
+  reject def TyPi (n : Nat) : Type := Π(u : Unit). (let k = (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => go(p), })(clone(n)); Nat)
+  reject def TyLoop (n : Nat) : (let k = (fix go (y : Nat) : Nat by y := go(y))(clone(n)); Nat) := Z
+  def TyCodLift (n : Nat) : (let k = Go(clone(n)); Nat) := Z
+  def TyEqLift (n : Nat) : Nat := (let e : Eq(Nat, Go(clone(n)), Go(clone(n))) = refl; Z)
+  def TyIdLift (n : Nat) : Nat := (let e : Id(Nat, Go(Z), Z) = refl; Z)
+  -- the routes by which a local function without `by` could reach itself, closed by D31: a call,
+  -- a nested λ, a stuck block's arm, a λ passed to a higher-order function, an assignment, and an
+  -- inner function calling the outer one
+  reject def Self1 (x : Nat) : Nat := (fix go (y : Nat) : Nat := go(y))(x)
+  reject def Self2 (x : Nat) : Nat := (fix go (y : Nat) : Nat := (λ(u : Unit) : Nat => go(clone(y)))(()))(x)
+  reject def Self3 (x : Nat) : Nat := (fix go (y : Nat) : Nat := (let r = match y { Z => Z, S(p) => go(p), }; r))(x)
+  reject def Self4 (x : Nat) : Nat := (fix go (y : Nat) : Nat := App(λ(u : Unit) : Nat => go(clone(y))))(x)
+  reject def Self5 (x : Nat) : Nat := (fix go (y : Nat) : Nat := (go := (λ(z : Nat) : Nat => z); y))(x)
+  reject def InOut (x : Nat) : Nat := (fix outer (y : Nat) : Nat := (fix inner (z : Nat) : Nat := match z { Z => Z, S(p) => outer(p), })(y))(x)
+  -- ... and by capture: a closure captures no borrow, and a captured function is a snapshot, so
+  -- reassigning the place it came from ties no knot
+  reject def Knot1 (x : Nat) : Nat := (let c = Z; let r = &c; let g = (λ(u : Unit) : Nat => clone(*r)); g(()))
+  def Knot2 (x : Nat) : Nat := (let f = (λ(y : Nat) : Nat => Z); let g = (λ(y : Nat) : Nat => f(y)); f := g; f(x))
+  def Knot2Runs : Eq(Nat, Knot2(5), Z) := refl
+  -- a later local function calls an earlier one
+  def Sib (x : Nat) : Nat := (let f = (λ(y : Nat) : Nat => y); let g = (λ(y : Nat) : Nat => f(y)); g(x))
+  def SibRuns : Eq(Nat, Sib(3), 3) := refl
+  -- a λ being checked calls an accepted closure of the same code (`l` and `k` are both
+  -- `λ(y). let e : Eq(Nat, κ1(clone(y)), y) = refl; y`): rejected while local functions had a
+  -- [Rec] frame and D135 found the function being checked by its code, which took `k` for `l`
+  -- and closed its call off; a local function has no frame now, and `k` runs
+  def SameCode (n : Nat) : Nat := (
+    let k0 = (λ(y : Nat) : Nat => y);
+    let k = (λ(y : Nat) : Nat => (let e : Eq(Nat, k0(clone(y)), y) = refl; y));
+    let l = (λ(y : Nat) : Nat => (let e : Eq(Nat, k(clone(y)), y) = refl; y));
+    l(n))
+  def SameCodeRuns : Eq(Nat, SameCode(3), 3) := refl
+}
+
+private def notInScope (f : String) : String :=
+  s!"{f} is not in scope in its own body: it declares no decreasing parameter (`by x`), so it is not recursive (D31)"
+
+#guard (run "LocalRec" LocalRec).rejectedWith [
+  ("LocConst", localRec "go" "y"), ("LocLoop", localRec "go" "y"), ("InBy", localRec "inner" "z"),
+  ("InOutBy", localRec "outer" "y"), ("HoLoc", localRec "go" "y"), ("TopIn", localRec "go" "y"),
+  ("Twice", localRec "go" "y"),
+  ("TyCod", localRec "go" "y"), ("TyPar", localRec "go" "y"), ("TyLet", localRec "go" "y"),
+  ("TyEq", localRec "go" "y"), ("TyId", localRec "go" "y"), ("TyPi", localRec "go" "y"),
+  ("TyLoop", localRec "go" "y"),
+  ("LocLoopGo", recAt "LocLoopGo" "σ0"), ("InOutGo", recAt "InOutGo" "σ2"),
+  ("Self1", notInScope "go"), ("Self2", notInScope "go"), ("Self3", notInScope "go"),
+  ("Self4", notInScope "go"), ("Self5", notInScope "go"), ("InOut", notInScope "outer"),
+  ("Knot1", "a closure or Π-type captures the borrow r (closures capture no borrows")]
 
 
 /-! ## Proof functions are copies, and a proof function's own binding is a proof (D100)

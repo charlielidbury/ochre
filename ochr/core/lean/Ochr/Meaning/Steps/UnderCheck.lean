@@ -4,7 +4,7 @@ import Ochr.Meaning.Steps.FrameEnd
 # The call of the function under check, the closed-off call and the re-run of a sealed program (lead31; docs/31 D205, D206)
 
 The lead's Task 1 (a) and (b), statements only. Main's D135: while a function is checked, a call of it never runs its
-body; it closes off at once (`Machine.underCheck`: the head's code, `Value.sameCode`, is on the [Rec] stack), as a call of
+body; it closes off at once (`Machine.underCheck`: the head is on the [Rec] stack; until main's D136 compared by code, `Value.sameCode`, now by value: the stack holds top-level definitions only, whose value is their name), as a call of
 an unknown function does. So the step for such a call is the closed-off step whose head means what the context gives the
 function under check: for a global, `K.C.global g`, the stage closure at the bound (`GlobalsOk.memBelow`); a sealed
 program means the reference's run of its text (`meanV`'s `.sealed` clause), whose head call applies that same meaning to
@@ -23,7 +23,8 @@ RULED by the lead (2026-11-27, lead32's brief R-A; to be main's D136, ruled pend
 recursive function is a top-level definition; a local function (a `fix` formed inside a body) is not recursive, as in
 Lean's kernel, which has no local recursion (the elaborator lifts `let rec`). So `K.cur` stays a global's name, `meanV` of
 a closure stays the real closure, and nothing about local recursive functions is owed. `GoH` and its guard are accepted
-until D136 lands; then `GoH` is a `reject def` (docs/31 D205).
+until D136 lands; then `GoH` is a `reject def` (docs/31 D205). D136 LANDED (merged by lead34, 2026-11-27): `GoH` is
+rejected at `go`'s `by y`, and `RecCurG` compares the stack's values (`==`; `sameCode` is deleted).
 -/
 
 namespace Ochr.Meaning.Steps.Form.Master
@@ -36,12 +37,20 @@ function, `K.cur`, by name. This clause ties the two for globals: a global is un
 exactly when it is `K.cur`'s, so a call of any other global runs its body (the in-place branch) and a call of `K.cur`'s
 closes off. Closures on the stack have no counterpart in the context (the finding of D205). Principle 10 (recursion
 descends: every call the check makes is of an earlier definition, a value, or the definition itself) and principle 4
-(one code, two runs: what is under check is decided alike by the checker and the model). -/
+(one code, two runs: what is under check is decided alike by the checker and the model).
+
+Since main's D136 (merged by lead34; docs/31 D218) the clause is ONE direction: a global on the [Rec] stack is
+`K.cur`'s. The stack holds the definition being checked only when it declares `by` (a function without `by` cannot name
+itself, D31, so nothing of it is ever closed off as under check); so at the check of a non-recursive global the stack is
+empty while `K.cur` names it, and the two-way clause was false there, which made every step that assumes it
+(`CallAcceptedG`, every call inside a non-recursive global's body) vacuous. The other direction, which the closed-off
+call of the function under check needs, is now that step's own hypothesis (`CallUnderCheckG`: the head is on the
+stack). -/
 def RecCurG (K : RunCtx) (st : MState) : Prop :=
-  ∀ h : String, st.recStack.any (·.fn.sameCode (.gfn h)) = true ↔ K.cur.map (·.1) = some h
+  ∀ h : String, st.recStack.any (·.fn == .gfn h) = true → K.cur.map (·.1) = some h
 
 /-- **The step for a call of the global under check** (MIXED; main's D135, ruling (C) of D200; Task 1 (a)). `CallFnG`'s
-statement at a head `g` with `K.cur = some (g, b)`, under `RecCurG` (so `callFn` closes the call off at once) and, at a
+statement at a head `g` with `K.cur = some (g, b)`, with `g` on the [Rec] stack (so `callFn` closes the call off at once; since D136 that is every call of `K.cur` the check makes, a non-recursive one making none, D31) and, at a
 typed site, `RecRankG` (so the decreasing argument, a strict part of the entry by [Rec], has rank below `b`, where the
 stage closure is the true function at its true codomain). Its parts (named, not separately stated):
 - CHECKER, by construction: at a head on the [Rec] stack `callFn` reaches `closeCall` (`closesOff ← underCheck fv`; as
@@ -58,7 +67,7 @@ def CallUnderCheckG (K : RunCtx) (φ : Future) : Prop :=
   ∀ n, IH K φ (n + 1) → ∀ (Δ : Nat → TyS) (ρ : Assignment) (π : Nat → Nat) (g : String) (b : Nat) (hd typed : Bool)
     (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (cf : CallFlags) (stc st₁ : MState)
     (sc : SState) (asR : List Res) (v : Value) (T? : Option Value) (bh : Nat),
-    K.cur = some (g, b) → RecCurG K stc → (typed = true → RecRankG K ρ stc) →
+    K.cur = some (g, b) → stc.recStack.any (·.fn == .gfn g) = true → (typed = true → RecRankG K ρ stc) →
     ModeR stc → stc.tailNext = false → 0 < stc.env.size →
     CallPt { K with Δ := Δ } ρ φ π stc sc g ws tys (K.C.global g) asR →
     fT = (stc.globals.find? (·.name == g)).map (·.ty) →

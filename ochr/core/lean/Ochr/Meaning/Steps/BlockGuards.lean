@@ -60,13 +60,14 @@ def linesOfQ (cfg : Config) : List String :=
 
 /-- The body's full start state, in `checkFix`'s mode (one [Rec] context, not recursive). -/
 def stQm : MState :=
-  { stQ with typing := true, recStack := [{ fn := .gfn "Q", entries := #[some 0], cands := [], uid := 0 }], nextRecUid := 1 }
+  { stQ with typing := true }
 
 -- the hand-built kernel and mode are those `checkFix` starts a body with one `Nat` parameter in (`ParGuards`)
 #guard ParGuards.kernelOk "Q" bodyQ stQ && ParGuards.kernelOk "Q" bodyQ stQm && ParGuards.modeOk "Q" stQm
 -- the surface program's recorded start state: the same kernel (but for its body, a call of `succFn`) and mode
 #guard (ParGuards.entries BlockProbe "Qs").head?.any fun st =>
-  ParGuards.kernelOk "Qs" (.call Ochr.Surface.succFn [matchQ] false) st && ParGuards.modeOk "Qs" st
+  -- since main's D136 the recorded binding of itself is unmarked (`ParGuards`, the divergence noted there)
+  ParGuards.kernelOk "Qs" (.call Ochr.Surface.succFn [matchQ] false) st none && ParGuards.modeOk "Qs" st
 
 /-! ## The block: captures, value, type, state after -/
 
@@ -96,7 +97,7 @@ def blockOk (h : Option Value) (st : MState) : Bool :=
 
 #guard blockOk none stQm && blockOk (some .tNat) stQm
 -- the [Rec] context and the mode are as they were
-#guard (outSt (Ochr.eval 1000 true matchQ none) stQm 100000).recStack.map (·.cands) == [[]]
+#guard (outSt (Ochr.eval 1000 true matchQ none) stQm 100000).recStack.isEmpty
 -- the table of unknowns after: world `S`'s `σ1 : Nat` is kept, read `.other`, and named by nothing
 #guard (outSt (Ochr.eval 1000 true matchQ none) stQm 100000).absTy == #[.tNat, .tNat]
 #guard ((outSt (Ochr.eval 1000 true matchQ none) stQm 100000).absDecl.map (declIs · .other)) == #[true, true]
