@@ -705,12 +705,12 @@ _Verdict:_ argued in full.
 == What is argued, and what rests on the named theorems <sec-tw-summary>
 
 #table(columns: (34%, 22%, 44%), align: left, table.header([*Case*], [*Status*], [*Rests on*]),
-  [1 A call that runs in place], [#a-red[N4, N9]], [The frame property (C1) with its start, pop and fixpoint equation; the hint (N9); the call point (Lean: stated).],
-  [2 The call's types; `Id`], [#a-red[N3, N4, N5]], [Statement transfer is N4's corollary C2, under the model change (M1); joint injectivity is N5's; the model's [Obs-ref] repair (queued).],
+  [1 A call that runs in place], [#a-red[N4, N9]], [The frame property (C1) with its start, pop and fixpoint equation (@sec-frame, now with the eleven hypotheses the mechanisation carries); the hint, N9, argued on paper (@sec-n9); the push rests on C2 (T4); the call point (Lean: stated).],
+  [2 The call's types; `Id`], [#a-red[N3, N4, N5]], [Statement transfer is N4's corollary C2, under (M1); the hypothesis direction is resolved determination, proved on paper from N5's (X5) (@sec-rd); the model's [Obs-ref] repair (queued).],
   [3 Closing off; re-runs; local functions], [#a-red[N7]], [Only [Repack]'s soundness at the cells; the rest argued in full.],
-  [4 Split, block, entry, join], [#a-red[N8, N6]], [The block's run is the arm's run (N8); the captures (N6).],
-  [5 Dependent fields], [#a-red[N5, N7]], [No live loan on a written path (N5); [Repack] at a read (N7).],
-  [6 Conversion], [#a-red[N3]], [Conversion for code.],
+  [4 Split, block, entry, join], [#a-red[N8, N6]], [The block's run is the arm's run (N8, its place renaming written out in @sec-n8); the captures (N6, closed by reading).],
+  [5 Dependent fields], [#a-red[N5, N7]], [No live loan on a written path (N5, @sec-excl); [Repack] at a read (N7, argued in @sec-n7).],
+  [6 Conversion], [#a-red[N3]], [Conversion for code, argued in @sec-n3.],
   [7 Erased terms], [#a-full], [—],
   [8 Leaf rules], [#a-lean (fragment)], [Beyond the fragment, N3 and N7.],
   [9 Recursion], [#a-full], [—],
