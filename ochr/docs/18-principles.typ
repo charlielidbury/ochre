@@ -2112,3 +2112,202 @@ In `P8` at `n = Z` the closure's capture of `q` accesses `q`, which ends `x`'s l
 == For a fourth referee
 
 Not done. The most damaging attack left is on resolved determination itself: an accepted way to give a borrow whose every owner's context is constant would let a function like `def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e`, which the checker accepts, be called with `refl`; I did not attack it beyond the shapes above (the second referee tried four). Neither the renaming of variables C3 needs, nor PR, nor RL was attempted. The checker's type-safety fault of T1 was measured at two sites (a body run in place, [Call-type]); I did not look for others where a private run ends borrows below its frame. The probes are in the scratchpad's `ref3/p/` (`B1` to `B7`; `B7` re-runs the second referee's `P2`, `UseP2`, `UseP2c`, accepted, with `UseP2c` at `3` rejected), the runner `ref3/run.sh`, and running notes in `reports/referee3.md`.
+
+= The fourth referee's report <sec-referee4>
+
+_Written by `referee4`, 27 November 2026, as the fourth adversarial referee. Scope, in the order the orchestrator set: the proposed change to the checker in @sec-rd-ends (that an observation's tests run only at the observing frame), attacked from the history of the faults those tests were added for; resolved determination (@sec-rd); the frame property of @sec-frame against the Lean statements on `origin/spine` at a2025765e (`Steps/FrameOps.lean`: `FrameInv`, `RunFrameI`, `frameInv_of`; `Steps/FrameAccess.lean`: `AccInv`; `Steps/FrameRec.lean`: `RunFrame`; `FrameProp.lean`: `FrameRel`, `FrameStart`; `Run.lean`: `observation`, the `.id` and `.matchInd` clauses); and the new arguments of @sec-clo-fix to @sec-excl, riskiest first. I read the paper whole, `RULES.md` whole, `DECISIONS.md` for D44, D53, D64 (and its amendment), D72 to D76, D98, D99, D106, D113 and D114, and the checker's `endBorrow`, `endAll`, `obsResult`, `observe`, `idType`, `mkEqM`, `repackCheck`, `lentUnknown`, `endTopLoan`, `takeArgBorrow`, `runBodyCore` and `bindTy?`. Every program below was run with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` on the checker of `main` at 0228b0283; each is self-contained, "with the `Nat` prelude" means `uses Nats`, and every run held the control `def Ctl : Eq(Nat, Z, S(Z)) := refl`, rejected. The proposed change is not built, so its verdicts are predicted by reading the code it would change, beside the nearest programs run on today's checker. Nothing in the other sections was changed._
+
+== Verdict
+
+I found no closed proof of `False` and no fault of the checker's consistency, and the revision's new arguments mostly survived attack. Three findings bear on what the document claims, though, and the most urgent bears on a change about to be landed. The proposed change to the observation's tests is sound only with a restriction. As written it would let an observation end a caller's borrow, one returned by a closed-off call, over a content the caller holds partly moved or open. That puts a value with `⊥` inside a sealed program inside a formed type (F1, the program `Bad`). Such a value is not a member of any type, so neither the strict run nor resolved determination can give it a meaning. This is D98's own reason, one frame down. The restriction keeps the two tests at the end of any such borrow (one whose places include a sealed fill), and the three measured sites are still repaired under it.
+
+Resolved determination held against every new shape I gave the checker. As a statement about the model, though, it is false at a proof owner (F2). The checker compares a proof's data fields while the model reads every proof as `•`, and accepted programs rely on the checker's finer reading, which is the necessary one. It is also stated at every state the checker reaches but proved only where the borrows between a parameter and its owners hold whole members (F4). The frame property as written is not Lean's `RunFrameI` (F3). Lean has since added two hypotheses and a conclusion (D219), lacks (H10), and leaves out `Id` over a parameter altogether.
+
+The arguments for conversion on code, [Repack] at a read, the place renaming, hints, a closure's fixpoint equation and (WF12) survived my attacks, with smaller inaccuracies. Two are worth acting on. A side of `Id` can open a caller's owner itself, so the claim that caller owners are "as the caller left them" is false; this is a fifth type-safety site of the measured kind (F5). And (X1) is false at a deferred parameter type, which keeps a copy of every borrow argument (F6).
+
+== Objections, most serious first
+
+=== F1. The proposed change lets a backward function run on a non-member
+
+*Where.* @sec-rd-ends, _What the observation must test_: "Not at the end of a label of $E_2$ or $E_3$ … Ending $E_2$ unchecked puts `⊥` or an open value into an owner, which `eq` compares as it is"; _In the code_: "`endBorrow`'s D98 test and its typing-mode [Repack] apply only to a borrow held at a position of that frame or above"; (M3) in @sec-frame-model, "Every other end the observation makes, of the caller's labels in place, is unchecked: it substitutes and tests nothing."
+
+*Objection.* A label of $E_2$ need not be lent at a plain loan. If the caller's borrow between the parameter and its owner was returned by a call that closed off, its places hold [Close]'s fills. Ending it unchecked over a partly moved content then substitutes that content into the fills' texts. Once no hole is left the fills re-run, their head call is stuck, so they stay sealed with `⊥` inside them, and the comparison keeps them. The checker then holds a sealed program whose text is not a call on members (principle 7). It holds it in the observation's copy, and in the stored type of a binding when the `Id` is a hypothesis. That program's meaning is the strict run of its text, and that run fails under every assignment that unsticks it. It fails at the final copy-read of the cell (D127, a partly moved place is not read by copy) and at its own `let r` drop (D98). The model's `callOf` instead substitutes into the callee's backward function, which N1's relation makes injective on members only. So (II) has nothing to relate the checker's value to, and RD1's use of (X5), stated on whole members, does not apply to the ancestor's final. D98 was decided for exactly this reason ("a backward function is defined only on whole contents", @sec-rd-ends cites it as a site RD rests on). The proposal moves the fault from the observing frame's borrows, which it still tests, to the caller's, which it does not. The same holds for [Repack] with an open content, since a fill's re-run then runs the callee's body on a value its check never covered (principle 9's (P)).
+
+*Evidence.*
+#measured[With the `Nat` prelude, on `main` at 0228b0283:
+```
+def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+def G5T (x : &Nat) : Prop := Id(Unit, *x := 0, *x := 1)
+def H (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
+def PP (n : Nat) (x : &Pair(Nat, Nat)) : &Pair(Nat, Nat) := match n { Z => x, S(m) => x, }
+def CallF (n : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); let z = (*r).1; H(&(*r).0, refl); (*r).1 := z; ())
+def Bad (n : Nat) (e : (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); let z = (*r).1; let T = G5T(&(*r).0); (*r).1 := z; T)) : False :=
+  (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); let z = (*r).1; let res = G5(&(*r).0, e); (*r).1 := z; res)
+def BadW (n : Nat) (e : (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); G5T(&(*r).0))) : False :=
+  (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); G5(&(*r).0, e))
+```
+`CallF` and `Bad` rejected, "[D53] a borrow ends while its content is partly moved out ((loan_3, ⊥))": the observation in `H`'s parameter type, and the one in `G5T`'s body, end the caller's `r`, held below the observing frame. `BadW`, the same with the content whole, accepted; its hypothesis is `Eq(Nat × Nat, ⌈let c1 = (1, 2); let r = PP(σ0, &c1); *r := (0, σ3); c1⌉, ⌈let c1 = (1, 2); let r = PP(σ0, &c1); *r := (1, σ3); c1⌉)` (shown by passing it where `True` is expected), and the call-site type of `G5`'s `e` converts to it. The same at a known argument, `PP(Z, &p)`, where `p` holds a mark and not a fill (`CallFZ`): rejected the same way.]
+Under the change, by reading: `CallF`, `CallFZ` and `Bad` are accepted, `CallFZ` correctly. In `Bad` the hypothesis becomes `Eq(Nat × Nat, ⌈… *r := (0, ⊥); c1⌉, ⌈… *r := (1, ⊥); c1⌉)`. The observation ends `r` first, in the order of Ω, over `(loan, ⊥)`, so the fill keeps a hole and is not run. Then it ends the parameter, and the fill, with no hole left, re-runs and is stuck at `PP(σ0, …)`. Since `BadW` converts, `Bad` converts the same way. Its meaning would need $[| e |]$ empty at every `n`. But both sides of the equation are runs that fail at every assignment, so the model reads them alike, the equation is true, and `Bad` has no meaning. The checker never proves that equation: a refinement of `n` re-runs the fills into a [Seal-err], and at a known `n` the type is `False`. So no closed proof follows. What fails is the argument's step (II), at an accepted definition.
+
+*Kind.* A proposed change is sound only with a restriction. Unrestricted, it breaks principle 7 for sealed programs held in types, and with it (II) and RD.
+
+*What would settle it.* Land the change with the restriction: `endBorrow`'s D98 test and typing-mode [Repack] are skipped below the observing frame only for a label none of whose sites is a sealed fill (a fill site is any sealed program whose text holds the label's loan). A chain through a plain borrow is covered, since its unchecked end puts the content into the next label's content, whose end is then tested. The three measured sites (`UseK2`, `AAncOk`; `UseK3`, `OpenCall`; `OpenAnc`) have plain borrows between the parameter and its owner and are still repaired. A fourth site of the same class is left: an accepted function whose in-place call has a fill site there. Measured: with `PickP (n) (x y : &Pair(Nat, Nat)) : &Pair(Nat, Nat)` picking by `n`, and `FJ2` of @sec-rd-ends, `def CallKF (n m : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let q : Pair(Nat, Nat) = Mk(3, 4); let r = PickP(m, &p, &q); *r := Mk(7, 8); let z = (*r).1; FJ2(n, &(*r).0); (*r).1 := z; ())` is accepted, and `def UseKF (m : Nat) : Unit := CallKF(Z, m)` is rejected by D98. Without the write `*r := Mk(7, 8)`, `UseKF` is accepted, because the untyped run is stuck at the projection of the sealed result and the call closes off. The alternative to the restriction is a model in which a backward function is defined, and injective, on open and partly moved contents, and a checker whose re-run of such a fill agrees with it. Today's re-run fails.
+
+What I checked and did not find broken:
+- _Each test, with its offending borrow or owner moved to the caller._ D98's witness (`ObsBorrowThrough`) moved down one frame is `CallF`, which is F1. D53's whole-again rule is the same test. For D64's [Repack] points and D72 to D76 I put the owner in the caller (`UseK3`, `OpenCall`, `OpenAnc`, and `AH8` of F5). `eq` decides on values alone (`mkEqM`: `⊥` apart from every value, then conversion, then injectivity, blocked to a stuck equation where a dependent constructor's index fields differ, then disjointness), so two different writes never compare `⊤` there. The route those faults took, a neutral standing for an open value split by its telescope, needs a fill, which is F1.
+- _D113, D114._ They are keyed on the observing frame (`obsFrame`), and a side can re-point or consume only that frame's bindings, so they are unchanged.
+- _D44._ `QU`, and `QUp` with the `Unit` place a field of a pair, stay rejected; a fill at a `&Unit` place keeps its hole.
+- _D106._ It does not apply in a private copy, and a caller's borrow in flight is never under $E_1$.
+- _The claim that ending only $E_1$ is unsound._ It holds, and AAnc's partial move is not needed: in `AAncWhole` (`let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; G5(&(*r).0, refl)`) the owner `p` would hold `loan_r` on both sides, and `eq` takes two equal loans as reflexive.
+- _The three measured sites._ Re-run as reported: `CallK2`, `UseK2S`, `CallK3`, `CallK3(S(Z))` and the twins with a local borrow in place of the call accepted; the others rejected with the messages quoted.
+- _"The function's own check: the tests are exactly today's."_ This is not true of the code as proposed. `idType`'s [Repack] "only to owners in that frame" skips the cells, which are in frame 0, below the frame that reads the codomain. It is redundant, though: a cell receives the content the parameter label's end tested, with its lent parts as unknowns (D73).
+
+=== F2. At a proof owner the checker's `Id` is finer than the model's, and accepted programs rely on it
+
+*Where.* @sec-rd-attack, the row "A borrow whose lender is a proof, or erased": "In the model every proof is •, so there the `Id` is `True`; the checker's reading is the finer one, which can only reject more, never prove a false `Id` … Does not arise." @sec-rd-stmt, assumption 4: "the comparison is injective at each owner's type". @sec-tw-types, _Computing `Id` at a state_: "So the checker's conjunction means the model's `Id`."
+
+*Objection.* In an erased arm of a match on a proof whose constructor has a data field, the checker binds the field to a fresh unknown, and a borrow of it has the proof binding as owner. The checker's `Id` then compares the proof's constructor fields, while the model compares the proof binding, `•` on both sides. So RD's assumption 4 is false there, and RD is false at that state in the model, since two different writes leave the owner meaning `•` alike. Nor is the checker's reading harmless because it "can only reject more". A stronger proposition used as a hypothesis makes the checker accept more: `PExF` below is accepted, and its local function proves `Eq(Nat, Z, S(Z))` from a hypothesis that the checker computes as `False` and the model as `True`. By my reading of the present `Run.lean` the difference comes even earlier. The `.matchInd` clause runs a match on a proof's one arm with the scrutinee left `•`, so the place `w` reads `•`, and the borrow `&w`, a strict point at `Nat`, fails. Either way the reference has no counterpart of the checker's run, so (II) fails at accepted definitions (`PExT`, `PExF`). The checker's reading is the necessary one, by reading: had it compared the proof as `•`, `PEx` would be accepted, its call-site type being `⊤`, and `PEx(Wit(0, refl))` would be a closed proof of `False`.
+
+*Evidence.*
+#measured[With the `Nat` prelude, on `main` at 0228b0283 (`G5`, `G5T` as in F1):
+```
+inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))
+def PEx (e : Ex) : False := match e { Wit(w, h) => G5(&w, refl), }
+def PExT (e : Ex) : True := match e { Wit(w, h) => (let t : Prop = G5T(&w); let q : Eq(Prop, t, False) = refl; refl), }
+def PExF (e : Ex) : True := match e { Wit(w, h) => (let t : Prop = G5T(&w); let f = (λ(k : t) : Eq(Nat, Z, S(Z)) => match k {}); refl), }
+```
+`PEx` rejected, "argument 2 (e) has type ⊤, expected False"; `PExT` and `PExF` accepted. `PExT` with `True` in place of `False` rejected, "the ascribed term has type ⊤, expected Eq(Prop, False, ⊤)". So inside the arm the checker computes `G5T(&w)` as `False`.]
+
+*Kind.* The argument is wrong at one case: RD's assumption 4, the attack row's conclusion, and case 2's claim that the checker's conjunction means the model's `Id` all fail at a proof owner. The checker is right.
+
+*What would settle it.* Decide what the reference holds at a data field of a proof. The statement of `Steps/Match.evalMatchByType_step` already points one way ("an assignment extended at those unknowns by the fields of the proof's witness"), and RD's assumption 4 must then hold at that reading. The other way is to have the checker reject a borrow of a proof's data field. That keeps the model's `•` and costs no program I know of. Until one is done, add proof owners to RD's exclusions and drop "does not arise" from the row.
+
+=== F3. Theorem FR is not `RunFrameI`, hypothesis by hypothesis
+
+*Where.* @sec-frame, the verdict ("Theorem FR below is the Lean lane's internal form `RunFrameI` …, with eleven hypotheses") and @sec-frame-stmt ("In Lean, (H1) to (H9) are `FrameInv` (D216)").
+
+*Objection.* On `origin/spine` at a2025765e the Lean statement and the paper's differ both ways.
+- _Lean has more._ `FrameInv` gained two clauses in D219 (lead34, the commit `5d75b73e4`, after the paper's e0a030162). They are `srange`, σ sending every closure label to a parameter label or past the call's counter, dead labels included, where the paper's (F9) `topLabels` covers live labels only; and `bsites`, every site in the callee's frame at a binding, never a temporary. `FrameAgreeI` also concludes `ResAtTemp`: a live result label is held by a temporary of the callee's frame. D219 found all three forced by [Entry]'s lending, which lends a match's result label even when it is dead. The paper's row "A match" (#a-full) argues that lending with neither, and says "the result's label is held in the callee's frame", which is false for a dead label. Lean has since proved that clause (`runFrameI_matchNat`, `runFrameI_matchInd`, `Steps/FrameMatch.lean`), with the two.
+- _The paper has more._ (H10), site faithfulness, is not in Lean, as the paper says. (H11) is not either, and the gap is larger than "awaits the restatement of `run_frame_obs`": `RunFrameI` assumes `t.idFree = true ∨ ks = []`, so it says nothing at all about a body that forms an `Id` when there are parameter labels. FR's `Id` clause is a separate open statement. The conclusion "again satisfying (H1) to (H10)" has no (H10) in Lean.
+- _Differently stated._ (H7) is "on both sides" in the paper and in place only in Lean (`AccInv.pfill` is on `s`), which is where Lean uses it. (H4) is "a cell for each parameter label" in the paper and `ks.length ≤` frame 0's bindings in Lean, the cells being identified by position (`cellsOf`). (F2) and the start lemma call $s_0$ "the call point" and put the callee's frame on top of it ("the caller's frames of $s_0$ and one more"). In Lean, `FrameRel.frames` has `s.env.length = s₀.env.length`, and `s₀.topIdx` is the callee's frame (`Regress/FrameCheck` starts with `s₀ = s`). So $s_0$ is the state after the push, and (S3), "the caller holds none of them", is true only of that state, since at the call point the caller's temporaries hold the arguments.
+- _Matching._ (H1), (H2) (`SGood` at φ); (H3) (`AccInv.rinv'`, `noParam`); (H5) (`AccInv.shape`); (H6) (`LendWF`); (H8) (`order` on the closure's labels; in place from `ks_lt` and `topLabels`); (H9) (`counter`); (S1) to (S4) with `ks_nodup`; `FundCtx`; `valsOk`.
+- _Not hypotheses but definitions:_ (M2) and (M3) are not built, so `RunFrameI` is about today's `.fix` clause and today's `observation`. The latter compares every position of the state, ends every label without a test, and writes [Obs-ref]'s values through the binding (D84's form, not D113's). FR assumes the changed model. So they are statements about different models.
+
+*Evidence.* The definitions cited; `git show 5d75b73e4` for D219.
+
+*Kind.* The paper's statement and Lean's differ in both directions, and a clause marked argued in full (the match) missed two facts that Lean needed.
+
+*What would settle it.* Restate FR as `RunFrameI` plus (H10), minus `idFree`, plus the `Id` clause with RD, and add `srange`, `bsites` and `ResAtTemp`. Say that $s_0$ is the state after the push. Mark the match clause as proved in Lean with D219's clauses.
+
+=== F4. Resolved determination is stated at every reached state, and proved where the ancestors hold whole members
+
+*Where.* @sec-rd-stmt ("Let Ω be a state the checker reaches …"); RD1 ("$Phi(psi_v) = Phi(psi_(v'))$, so $psi_v = psi_(v')$ by (X5)"); (X5) ("Φ is injective on families of whole members"); RD2 ("between a label's making and its end, no step changes the value around any of its sites"); assumption 2.
+
+*Objection.*
+- _Ancestors' finals._ RD1 applies (X5) to the family $psi_v$, whose value at an ancestor $m$ of $K$ is $c_m(v)$, $m$'s content in Ω with $K$'s finals put in. At the call points of `CallF`, `AAncOk` and `OpenAnc` (F1 and @sec-rd-ends), states the checker reaches, that content is partly moved or open, so $c_m(v)$ is not a whole member and (X5) as stated says nothing. Through a plain loan or a mark the context is a substitution and injective anyway. Through a fill the context is a backward function applied to a non-member, and the strict run of such a fill fails (F1). Today this is harmless: those observations fail at the ancestor's end (D98, [Repack]), so RD is never used there. But the statement claims it there, and the proposed change of @sec-rd-ends removes exactly the tests that keep it unused.
+- _RD2's sentence is false; its conclusion stands._ A write to a sibling field (`let r = &p.0; p.1 := 7`) or [Open]'s invalidation of a leaf beside a lent field changes the value around a live site. Injectivity is kept, because a write at a disjoint path keeps a constructor context, and the operation list should say that instead.
+- _Assumption 2 by producer of a fill_ (the brief's question, where injectivity of a backward function is established when a body ends stuck). An earlier global: the outer hypothesis. An unknown function: the assignment, in N1's relation. The definition under check, whose recursive calls close off at once (D135): its stage, a member only below the rank bound, so assumption 2 as written ("every function value … means a member") is false for it at higher ranks. What holds is the Lean lane's item 11, that every sealed call of it carries a decreasing argument below the entry's, which RD must cite. A block's function: N8, reduced to PR, not mechanised. A closure formed in a body: CloFix (b) for membership, but C3, which relates the checker's closure value to the strict run's, is not proved.
+
+*Evidence.* The new shapes the orchestrator listed, all run on `main` at 0228b0283 beside a twin with the true statement, which was accepted each time. None gave an accepted call of `G5`. With the `Nat` prelude and `uses Fixtures` for `Pick`:
+#measured[
+```
+def RB (x : &Pair(Nat, Nat)) : &Nat := (let r = &(*x).0; (*x).1 := 7; r)
+def ARBn (n : Nat) : False := (let p : Pair(Nat, Nat) = Mk(n, 2); G5(RB(&p), refl))
+def G6 (x : &Nat) (y : &Nat) (e : Id(Unit, (*x := 0; *y := 1), (*x := 1; *y := 0))) : False := match e { Intro(l, r) => l, }
+def AG6 : False := (let p : Pair(Nat, Nat) = Mk(5, 5); G6(&p.0, &p.1, refl))
+inductive Void : Type
+inductive One := O
+def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+inductive VW := MkVW(n : Nat, x : Fin1(n), w : Nat)
+def G7b (a : &Nat) (b : &Nat) (e : Id(Unit, (*a := 1; *b := 0), (*a := 2; *b := 0))) : False := e
+def AG7b : False := (let t = MkVW(S(Z), O, 5); match t { MkVW(n, x, w) => G7b(&n, &w, refl), })
+def GUn (n : Nat) (u : &Unit) (x : &Nat) : &Nat := match n { Z => x, S(m) => x, }
+def AGUn (n : Nat) : False := (let p : Pair(Nat, Unit) = Mk(1, ()); let a = 0; G5(GUn(n, &p.1, &a), refl))
+def APT (n : Nat) (m : Nat) : False := (let a = clone(m); let b = m; let r1 = Pick(n, &a, &b); let r2 = TailM(r1); G5(r2, refl))
+```
+All rejected. For (a), a function that reborrows its argument and overwrites the rest: `ARBn` "expected False", and so is a variant that re-points the argument after reborrowing through it. For (b), two parameters lent one owner's disjoint fields: `AG6` "expected False ∧ False", and through a stuck call it is one stuck equation over the joint fill. For (c), a dependent value's index borrowed with another field: `AG7b` gives a stuck `Eq(VW, MkVW(1, O, 0), MkVW(2, O, 0))`, injectivity being blocked on the index. A leaf cannot be borrowed after its index, the leaf having been invalidated: "[Borrow] t.x was moved out". For (d), a `Unit` place inside a non-`Unit` owner: `AGUn`'s stuck conjunction keeps the hole at `p.1`. And `g : Π(u : &Unit). &Nat` or `Π(u : &Pair(Unit, Unit)). &Nat` applied to such a place stays stuck, where N1's relation is empty, so RD holds vacuously. For (e), a sealed fill inside a sealed fill: `APT` has fills over `Pick`'s inside fills over `TailM`'s at both owners, and its conjunction is stuck. The author's `APick`, `ATwo`, `AFill`, `AFill2`, `AKF` and `AKFn` were re-run as reported.]
+
+*Kind.* A theorem is stated more widely than it is proved. One sentence of the proof is false, and its conclusion is not.
+
+*What would settle it.* State RD with the hypothesis that every label of $E(K)$ above $K$ holds a whole member and that no owner is a proof (F2). It holds at every observation that passes today's tests, and under F1's restriction it holds where it is used. Replace RD2's sentence by "every step that changes the value around a live site writes at a disjoint path". Cite item 11 for fills of the definition under check, and C3 and N8 for the other two producers.
+
+=== F5. A side of `Id` can open a caller's owner itself
+
+*Where.* @sec-rd-ends: "Not at the end of a label of $E_2$ or $E_3$, and not at a caller owner: those hold the caller's state as the caller left it"; @sec-n7: "at `Id`'s owners [Repack] must run only on owners in the observing frame (the caller's owners are held as the caller left them)".
+
+*Objection.* A parameter can be a borrow of an index field of a dependent value the caller owns, since passing it is the caller's business. Writing through it then opens the caller's value, as the side's own act. Today the `Id` over that parameter is rejected by [Repack] at the caller's owner, while the same write with no `Id` is accepted, which makes a fifth type-safety site of the measured kind. Under the proposal it is accepted, which is right (the real call leaves the same open value, and the caller repairs it). The stated reason is wrong, though, and the owner compared is one the side opened, so N3's extension to open members (@sec-theorems) is needed for values the observed run made, not only for values the caller made.
+
+*Evidence.*
+#measured[With the `Nat` prelude, on `main` at 0228b0283 (`Void`, `One`, `Fin1` as in F4):
+```
+inductive V := MkV(n : Nat, x : Fin1(n))
+def H8 (a : &Nat) (e : Id(Unit, *a := 0, *a := 0)) : Unit := ()
+def W8 (a : &Nat) : Unit := (*a := 0)
+def AH8 : Unit := (let t = MkV(S(Z), O); match t { MkV(n, x) => (H8(&n, refl); n := S(Z)), })
+def AW8 : Unit := (let t = MkV(S(Z), O); match t { MkV(n, x) => (W8(&n); n := S(Z)), })
+```
+`AH8` rejected, "[Repack] Id observes it, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"; `AW8` accepted.]
+
+*Kind.* The justification is false, and the conclusion holds. There is a type-safety fault of the measured class.
+
+*What would settle it.* Say that a caller's owner holds the caller's state with the side's writes through its labels, and that `eq` compares such a value field by field. N3's row already names open members.
+
+=== F6. (X1) is false at a deferred parameter type
+
+*Where.* @sec-excl, (X1): "each label has at most one borrow, held as the whole value of a binding or temporary, never inside data, a sealed program, a closure, a type or a record"; the row "A call's push and pop": "a deferred parameter type records the arguments as passed (`lazyTy`), borrow arguments included … so the record holds no loan (WF11)".
+
+*Objection.* `runBodyCore` stores `lazyTy := some (piTy, ws.toList, i)` on every parameter whose type it defers, and `ws` are the argument values, `borrow_ℓ c` for each borrow argument. So, while the callee runs, each borrow argument's borrow is a parameter's value and also sits, with its content as at the call, in every deferred parameter's record. That is a second copy of the borrow in a record, which (X1) says never exists. The row argues (WF11) for the record and not (X1). It is harmless as used: the record is read only by `paramTypes` on a private copy, which first takes the live borrow from its holder (`takeArgBorrow`) and then binds the stale copy. D111's assertions and the sweep scan values, not these records.
+
+*Evidence.* `Machine.lean`, `runBodyCore` (the `lazyTy` assignment after `pushBind`) and `bindTy?`; `Obs.lean`, `takeArgBorrow`. By reading; no program can show it, since the records are not values.
+
+*Kind.* A clause of N5 is misstated; the checker holds a borrow inside a record.
+
+*What would settle it.* Except deferred types' records from (X1), saying why (read only on a copy, after the live borrow is taken from its holder). Or store the arguments with each borrow replaced by its label and content. Then add the clause to the sweep.
+
+=== F7. Smaller points
+
+- _N8's place renaming._ (P4)'s shift is the number of `&` captures for a block whose type is not a borrow, and one more for a borrow-typed block, whose call reserves its result's label before the arm runs (D99). The hint row is right in substance: the block's body runs in tail position at the match's type and the direct arm at none.
+- _CloFix._ Proof (a) uses $G$ being a member of its true type for OwnIrr's whole-state test, and that is (b). (b) uses nothing of (a), so the order should be (b) then (a). There is no circle.
+- _Case 2 and @sec-rd-ends disagree._ Case 2's hypothesis direction cites "and checks [Repack] at `Id`'s observed owners", which @sec-rd-ends proposes to remove at the caller's owners. One of them must change with the checker.
+- _N6 for a block's captures, closed by reading._ I tried to give a binding with a deferred type a borrow through a type parameter instantiated at a borrow type (`F (A : Type) (x : A)` called at `&Nat`). It cannot be written: `&Nat` in a term position parses as a borrow of a place ("(surface) Nat is not a place"). The core may admit it; I did not test the core.
+- _Conversion on code (N3c)._ Re-run as reported (`FH`, `TwiceF`, `HintIn` accepted; `TwiceH`, `G12` rejected). With stuck bodies, `Fs (n : Nat) : Unit` and `Hs (n : Nat) : TF(Z)`, both matching on `n` and returning `()`, are convertible (`FsHs` accepted). Yet `Eq(Unit, Fs(n), Hs(n))` is the stuck `Eq(Unit, (), ⌈Hs(σ0)⌉)`, since η reads the head's declared codomain: an incompleteness, safe, and the CV3 reading point that the author names.
+
+== Verdicts, one per item
+
+#table(columns: (30%, 22%, 48%), align: left, table.header([*Item*], [*Verdict*], [*Why*]),
+  [The proposed change to the observation's tests (@sec-rd-ends)], [sound only with a named restriction], [Keep D98 and typing-mode [Repack] at the end of a label held below the observing frame that has a sealed fill among its sites (F1, `Bad`); the measured sites are still repaired; `UseKF` stays a type-safety site.],
+  [Ending only $E_1$ is unsound], [holds], [Even without the partial move (`AAncWhole`).],
+  [The three measured sites], [confirmed], [Re-run on 0228b0283.],
+  [RD, the statement], [false as stated], [At a proof owner (F2); at ancestors with non-whole contents (F4). Holds with both exclusions.],
+  [RD's attack table], [holds but one row], [Re-run; new shapes (a) to (e) rejected (F4); the proof-owner row's "does not arise" is wrong for the model (F2).],
+  [RD1 (readback)], [holds with a named extra hypothesis], [The ancestors of $K$ hold whole members, for (X5).],
+  [RD2 ((X5) kept)], [holds], [One sentence false (sibling writes change a site's context); the conclusion stands.],
+  [Theorem RD], [holds with named extra hypotheses], [No proof owner; ancestors whole; for the definition under check, fills below the rank bound (item 11).],
+  [@sec-rd-ends, the tests the observation must make], [false in a detail], [A caller's owner can be opened by the side (F5).],
+  [FR (H1), (H2)], [matches Lean], [`FrameInv.good`, `good'`.],
+  [FR (H3)], [matches Lean], [`AccInv.rinv'`, `noParam`.],
+  [FR (H4)], [matches in effect], [Lean counts frame 0's bindings; cells by position.],
+  [FR (H5), (H6), (H9)], [match Lean], [`shape`, `lend`, `counter`.],
+  [FR (H7)], [differs], [Paper on both sides, Lean in place only.],
+  [FR (H8)], [matches Lean], [`order` on the closure's labels; in place from (S2) and (F9).],
+  [FR (H10)], [not in Lean], [As the paper says.],
+  [FR (H11), `Id` over a parameter], [not in Lean], [`RunFrameI` excludes every term with an `Id` when $"ks" != []$; `run_frame_obs` is false as stated.],
+  [Lean's `srange`, `bsites`, `ResAtTemp`], [not in the paper], [D219, forced by [Entry]'s lending of a possibly dead result label; the paper's match row lacks them.],
+  [FR's $s_0$ and (F2)], [differs], [Lean's $s_0$ is the state after the push.],
+  [FR's model], [differs], [FR assumes (M2), (M3); `RunFrameI` is over today's `.fix` and `observation`.],
+  [N3c, conversion on code: CV1, CV2, CV4, CV7], [holds], [As stated.],
+  [CV3, sealed programs], [holds with a named extra hypothesis], [Every sealed program's embedded values are members; true today, false under the unrestricted change (F1).],
+  [CV5 [Conv-fun], CV6 [Conv-pi]], [reduced, as stated], [To (II) for untyped runs, FR's C1 and C6, (M1).],
+  [N7, [Repack] at a read], [holds], [No value passing [Repack] found that is not a member at some future; its list of sites is wrong at caller owners (F5).],
+  [N8 and PR, the block lemma], [holds by reading], [Two small inaccuracies (F7).],
+  [N9, hints], [holds by reading], [Re-run as reported (`UseMv`, `UseWr`).],
+  [N6, a block's captures], [holds by reading], [The type-parameter route is not writable in the surface (F7).],
+  [CloFix, a closure's fixpoint equation], [holds], [(b) before (a) (F7).],
+  [(WF11)], [holds], [As argued; but see (X1).],
+  [(X1) at deferred types], [false as stated], [A borrow argument copied into every deferred parameter's record (F6); harmless as used.],
+  [(WF12)], [holds by reading], [`TwoParts`, `TwoPartsBad` as reported; a borrow made in an arm and kept outside it is dropped at the join, so [Entry]'s lending finds none.],
+)
+
+== For a fifth referee
+
+Not done. Three things are open. The first is what the reference holds at a data field of a proof (F2), which decides whether `Steps/Match.evalMatchByType_step` can be true as stated. The second is whether `RunFrameI` over today's `.fix` clause, without (M2), is true at a body that forms a closure (the second referee's R2), which the paper assumes away. The third is the core-level question of a borrow type passed as a type argument (F7). C3, RL and PR were not attempted beyond reading. My probes are in the scratchpad's `r4/` (`M1`, `M2` the measured sites; `V1` to `V3` the caller variants; `RD1` to `RD4` resolved determination; `FIN` the programs above), and the running notes are in `reports/referee4.md`.
