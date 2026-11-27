@@ -12,9 +12,10 @@ label order with no site to read, so the commutation of ends is owed whatever [A
 reordered into the closure's order by commuting ends, and the strict tests are carried across the orders.
 
 Three layers. (1) Ends commute at the state level (`endLabel_comm_state`), from the semantic commutation
-(`Mean.semEnd_comm`), the sites' (`relend_comm`), and an invariant of lending that no clause of `SGood` states:
-`LendWF`, lending acyclic and every site at a holder under its `*` (the paper's (I4) says "lending is acyclic" and
-never states it). (2) A permutation of labels whose holders read none of them gives the same state and the same strict
+(`Mean.semEnd_comm`), the sites' (`relend_comm'`), and an invariant of lending that no clause of `SGood` states:
+`LendWF`, lending acyclic (the paper's (I4) says "lending is acyclic" and never states it); a site of one label at the
+other's holder must be a fill or lie under its `*` (`relend`'s path arithmetic), and a parameter label is lent in the
+callee's frame only as a fill (`AccInv.pfill`, the paper's (I3)). (2) A permutation of labels whose holders read none of them gives the same state and the same strict
 tests (`perm_fold`). (3) The frame relation: a round in place is the parameter labels it reaches, in some order, then the
 others in the closure's order (`round_corr`), and the rounds iterate to the same fixpoint (`frameRel_access`).
 -/
@@ -74,13 +75,11 @@ theorem liveLabels_lt {s : SState} (hu : s.Uniq) : s.liveLabels.Pairwise (· < �
 
 /-! ## Lending is well founded -/
 
-/-- **Lending is acyclic, and every site at a holder lies under its `*`** (a run invariant no clause of `SGood` states;
-the paper's (I4) assumes the first half as "lending is acyclic"). A live label `a` with a site at the holder of `b` (`a`
-is lent inside `b`'s content) is ranked below `b`; at the checker's states it is (WF3) on loans, and every site at a borrow
-holder is under its `*` (docs/31 D67). Ending a label contracts it: an edge through it becomes an edge past it. -/
+/-- **Lending is acyclic** (a run invariant no clause of `SGood` states; the paper's (I4) assumes it as "lending is
+acyclic"). A live label `a` with a site at the holder of `b` (`a` is lent inside `b`'s content) is ranked below `b`; at the
+checker's states it is (WF3) on loans. Ending a label contracts it: an edge through it becomes an edge past it. -/
 def LendWF (s : SState) : Prop :=
-  ∃ rk : Nat → Nat, ∀ a b (y : Site), s.Live a → y ∈ s.lent a → s.shape y.pos = some b →
-    rk a < rk b ∧ ∃ π, y.path = .deref :: π
+  ∃ rk : Nat → Nat, ∀ a b (y : Site), s.Live a → y ∈ s.lent a → s.shape y.pos = some b → rk a < rk b
 
 theorem live_of_endAt {s : SState} {l a : Nat} {r : Pos} (h : (s.endAt l r).Live a) : s.Live a ∧ ∀ p, p ∈ s.positions →
     (s.endAt l r).shape p = some a → p ≠ r := by
@@ -111,13 +110,77 @@ theorem LendWF.endLabel {s : SState} (h : LendWF s) (l : Nat) : LendWF (s.endLab
     rcases hy with ⟨hy, -⟩ | ⟨x₀, hx₀, hx₀r, z, hz, rfl⟩
     · exact hrk a b y ha' hy hb
     · have hlive : s.Live l := (SState.live_iff s l).2 ⟨r, hrpos, hrl⟩
-      have h1 := (hrk a l x₀ ha' hx₀ (by rw [hx₀r]; exact hrl)).1
+      have h1 := hrk a l x₀ ha' hx₀ (by rw [hx₀r]; exact hrl)
       rw [relendSite_pos] at hb
-      obtain ⟨h2, π, hπ⟩ := hrk l b z hlive hz hb
-      refine ⟨Nat.lt_trans h1 h2, ?_⟩
-      unfold relendSite; split
-      · exact ⟨π, hπ⟩
-      · exact ⟨π ++ inContent x₀.path, by simp [hπ]⟩
+      exact Nat.lt_trans h1 (hrk l b z hlive hz hb)
+
+
+/-! ## Ends commute on sites, a fill at the other's holder asking nothing of its path -/
+
+/-- `RelendComm.relendOne_comm_at` with its path hypothesis asked of LOANS only: a fill at the other holder is kept whole
+by both orders. -/
+theorem relendOne_comm_at' (L : Nat → List Site) (k l : Nat) (rk rl : Pos) (hkl : k ≠ l) (hr : rk ≠ rl)
+    (hin_k : ∀ y ∈ L k, y.pos = rl → y.fill = false → ∃ π, y.path = .deref :: π)
+    (hacyc : (∀ y ∈ L l, y.pos ≠ rk) ∨ (∀ y ∈ L k, y.pos ≠ rl)) (x : Site) (hx : x.pos = rk) :
+    (relendOne L k rk x).flatMap (relendOne (relendL L k rk) l rl) =
+      (relendOne L l rl x).flatMap (relendOne (relendL L l rl) k rk) := by
+  have hxl : x.pos ≠ rl := hx ▸ hr
+  rw [relendOne_off (L := L) (l := l) hxl, List.flatMap_singleton]
+  rw [relendOne_at hx, relendOne_at hx, List.flatMap_map]
+  simp only [relendL, if_neg hkl, List.map_flatMap]
+  refine flatMap_congr' fun y0 hy0 => ?_
+  by_cases hy0r : y0.pos = rl
+  · have h1 : ∀ y ∈ L l, y.pos ≠ rk := by
+      rcases hacyc with h1 | h2
+      · exact h1
+      · exact absurd hy0r (h2 y0 hy0)
+    have hRk : relendL L k rk l = L l := by simp only [relendL, if_neg hkl.symm]; exact flatMap_off h1
+    by_cases hf : y0.fill
+    · have e : adjust x (inContent x.path) y0 = y0 := by simp [adjust, hf]
+      rw [e, relendOne_at hy0r, relendOne_at hy0r, hRk, List.map_map]
+      refine List.map_congr_left fun z _ => ?_
+      by_cases hz : z.fill <;> simp [adjust, hz, hf]
+    · obtain ⟨π0, hπ0⟩ := hin_k y0 hy0 hy0r (by simpa using hf)
+      rw [relendOne_at hy0r, List.map_map, hπ0, inContent_deref]
+      have hp' : (adjust x (inContent x.path) y0).path = .deref :: (π0 ++ inContent x.path) := by
+        simp [adjust, hf, hπ0]
+      rw [relendOne_at (by rw [adjust_pos]; exact hy0r), hRk, hp', inContent_deref]
+      refine List.map_congr_left fun z _ => ?_
+      by_cases hz : z.fill <;> simp [adjust, hz, hf, List.append_assoc]
+  · rw [relendOne_off hy0r, relendOne_off (by rw [adjust_pos]; exact hy0r)]
+    rfl
+
+theorem relendL_comm' (L : Nat → List Site) (k l : Nat) (rk rl : Pos) (hkl : k ≠ l) (hr : rk ≠ rl)
+    (hin_k : ∀ y ∈ L k, y.pos = rl → y.fill = false → ∃ π, y.path = .deref :: π)
+    (hin_l : ∀ y ∈ L l, y.pos = rk → y.fill = false → ∃ π, y.path = .deref :: π)
+    (hacyc : (∀ y ∈ L l, y.pos ≠ rk) ∨ (∀ y ∈ L k, y.pos ≠ rl)) :
+    relendL (relendL L k rk) l rl = relendL (relendL L l rl) k rk := by
+  funext m
+  by_cases hml : m = l
+  · subst hml; simp [relendL, hkl.symm]
+  by_cases hmk : m = k
+  · subst hmk; simp [relendL, hkl]
+  simp only [relendL, if_neg hml, if_neg hmk, List.flatMap_assoc]
+  refine flatMap_congr' fun x _ => ?_
+  by_cases hxk : x.pos = rk
+  · exact relendOne_comm_at' L k l rk rl hkl hr hin_k hacyc x hxk
+  by_cases hxl : x.pos = rl
+  · exact (relendOne_comm_at' L l k rl rk (Ne.symm hkl) (Ne.symm hr) hin_l hacyc.symm x hxl).symm
+  rw [relendOne_off hxk, relendOne_off hxl, List.flatMap_singleton, List.flatMap_singleton,
+    relendOne_off hxl, relendOne_off hxk]
+
+theorem relend_comm' (s : SState) (k l : Nat) (rk rl : Pos) (hkl : k ≠ l) (hr : rk ≠ rl)
+    (hin_k : ∀ y ∈ s.lent k, y.pos = rl → y.fill = false → ∃ π, y.path = .deref :: π)
+    (hin_l : ∀ y ∈ s.lent l, y.pos = rk → y.fill = false → ∃ π, y.path = .deref :: π)
+    (hacyc : (∀ y ∈ s.lent l, y.pos ≠ rk) ∨ (∀ y ∈ s.lent k, y.pos ≠ rl)) :
+    ({ s with lent := s.relend k rk } : SState).relend l rl =
+      ({ s with lent := s.relend l rl } : SState).relend k rk := by
+  have e : ∀ (t : SState) (a : Nat) (r : Pos), t.relend a r = relendL t.lent a r := fun t a r => by
+    funext m; rw [Ochr.Meaning.relend_eq]; rfl
+  rw [e, e]
+  show relendL (s.relend k rk) l rl = relendL (s.relend l rl) k rk
+  rw [e, e]
+  exact relendL_comm' s.lent k l rk rl hkl hr hin_k hin_l hacyc
 
 /-! ## Ends commute, as states -/
 
@@ -125,10 +188,12 @@ theorem holderOf_endLabel_ne (s : SState) {l l' : Nat} (hl : l ≠ l') : (s.endL
   SState.find_endLabel s hl
 
 /-- **Two ends commute, as states** (the paper's (I4), at the state level): the meanings by `Mean.semEnd_comm` (one
-holder does not read the other's label), the sites by `relend_comm` (lending acyclic, sites at holders under `*`:
-`LendWF`); stored types, readings, records and the counter are untouched by either end. -/
+holder does not read the other's label), the sites by `relend_comm'` (lending acyclic, `LendWF`; a site of either at the
+other's holder a fill, kept whole by both orders); stored types, readings, records and the counter are untouched. -/
 theorem endLabel_comm_state {s : SState} (hw : LendWF s) {a b : Nat}
-    (hind : ∀ ra rb, s.holderOf a = some ra → s.holderOf b = some rb → ¬ s.dependsOn ra b ∨ ¬ s.dependsOn rb a) :
+    (hind : ∀ ra rb, s.holderOf a = some ra → s.holderOf b = some rb → ¬ s.dependsOn ra b ∨ ¬ s.dependsOn rb a)
+    (hfa : ∀ y ∈ s.lent a, s.shape y.pos = some b → y.fill = true)
+    (hfb : ∀ y ∈ s.lent b, s.shape y.pos = some a → y.fill = true) :
     (s.endLabel a).endLabel b = (s.endLabel b).endLabel a := by
   by_cases hab : a = b
   · subst hab; rfl
@@ -150,16 +215,17 @@ theorem endLabel_comm_state {s : SState} (hw : LendWF s) {a b : Nat}
     have hlb : s.Live b := (SState.live_iff s b).2 ⟨rb, hrb, hsb⟩
     have hlent : ({ s with lent := s.relend a ra } : SState).relend b rb =
         ({ s with lent := s.relend b rb } : SState).relend a ra := by
-      refine relend_comm s a b ra rb hab hr (fun y hy hyp => (hrk a b y hla hy (by rw [hyp]; exact hsb)).2)
-        (fun y hy hyp => (hrk b a y hlb hy (by rw [hyp]; exact hsa)).2) ?_
+      refine relend_comm' s a b ra rb hab hr
+        (fun y hy hyp hf => absurd (hfa y hy (by rw [hyp]; exact hsb)) (by simp [hf]))
+        (fun y hy hyp hf => absurd (hfb y hy (by rw [hyp]; exact hsa)) (by simp [hf])) ?_
       refine Classical.byContradiction fun hc => ?_
       rw [not_or] at hc
       obtain ⟨h1, h2⟩ := hc
       simp only [Classical.not_forall, Classical.not_not] at h1 h2
       obtain ⟨y, hy, hyp⟩ := h1
       obtain ⟨y', hy', hyp'⟩ := h2
-      have e1 := (hrk b a y hlb hy (by rw [hyp]; exact hsa)).1
-      have e2 := (hrk a b y' hla hy' (by rw [hyp']; exact hsb)).1
+      have e1 := hrk b a y hlb hy (by rw [hyp]; exact hsa)
+      have e2 := hrk a b y' hla hy' (by rw [hyp']; exact hsb)
       omega
     have h1 : s.positions.find? (fun p => decide (s.shape p = some a)) = some ra := ha
     have h2 : s.positions.find? (fun p => decide (s.shape p = some b)) = some rb := hb
@@ -266,6 +332,8 @@ structure PInv (P : Nat → Prop) (t : SState) : Prop where
   lend : LendWF t
   held : HeldOk K t
   reads : ∀ r l, t.shape r = some l → P l → Ochr.Meaning.FT (fun y => ¬ P y) (t.valAt r)
+  /-- a site of a `P` label at the holder of a `P` label is a fill (no path arithmetic to commute) -/
+  fill : ∀ a b (y : Site), P a → P b → y ∈ t.lent a → t.shape y.pos = some b → y.fill = true
 
 theorem PInv.endLabel {P : Nat → Prop} {t : SState} (h : PInv K P t) {c : Nat} (hc : P c) : PInv K P (t.endLabel c) where
   uniq := h.uniq.endLabel c
@@ -288,11 +356,29 @@ theorem PInv.endLabel {P : Nat → Prop} {t : SState} (h : PInv K P t) {c : Nat}
         rw [Ochr.Meaning.FT.indep hf (fun h => h hc) ψ _, Ochr.Meaning.FT.indep hf (fun h => h hc) ψ' _]
         exact hf ψ ψ' e
       · rw [SState.endAt_valAt_not_mem _ _ _ _ hp]; exact hf
+  fill := fun a b y ha hb hy hyb => by
+    cases hh : t.holderOf c with
+    | none => rw [SState.endLabel_of_none hh] at hy hyb; exact h.fill a b y ha hb hy hyb
+    | some rc =>
+      rw [SState.endLabel_eq hh] at hy hyb
+      obtain ⟨-, hrc⟩ := SState.holderOf_spec hh
+      rw [SState.endAt_shape] at hyb; dsimp only at hyb
+      split at hyb
+      · cases hyb
+      by_cases hac : a = c
+      · subst hac; rw [endAt_lent, relend_eq, if_pos rfl] at hy; cases hy
+      rw [endAt_lent, mem_relend hac] at hy
+      rcases hy with ⟨hy, -⟩ | ⟨x₀, hx₀, hx₀r, z, hz, rfl⟩
+      · exact h.fill a b y ha hb hy hyb
+      · rw [relendSite_pos] at hyb
+        have hz' := h.fill c b z hc hb hz hyb
+        unfold relendSite; rw [if_pos hz']; exact hz'
 
 theorem PInv.comm {P : Nat → Prop} {t : SState} (h : PInv K P t) {a b : Nat} (ha : P a) (hb : P b) :
     (t.endLabel a).endLabel b = (t.endLabel b).endLabel a :=
-  endLabel_comm_state h.lend fun ra _ hra _ => .inl fun hd =>
-    (SState.dependsOn_iff t ra b).1 hd (Ochr.Meaning.FT.indep (h.reads ra a (SState.holderOf_spec hra).2 ha) (fun h => h hb))
+  endLabel_comm_state h.lend (fun ra _ hra _ => .inl fun hd =>
+    (SState.dependsOn_iff t ra b).1 hd (Ochr.Meaning.FT.indep (h.reads ra a (SState.holderOf_spec hra).2 ha) (fun h => h hb)))
+    (fun y hy hyb => h.fill a b y ha hb hy hyb) (fun y hy hya => h.fill b a y hb ha hy hya)
 
 theorem PInv.indep {P : Nat → Prop} {t : SState} (h : PInv K P t) {a b : Nat} (ha : P a) (hb : P b) :
     ∀ rb, t.holderOf b = some rb → Indep a (t.valAt rb) :=
@@ -401,7 +487,8 @@ end
 /-! ## The internal relation for [Access] -/
 
 /-- What [Access] needs beside `FrameRel` (a part of the frame property's internal relation): in place one holder per
-label, shape entries at positions, lending well founded (`LendWF`), the records members; in the closure one holder per
+label, shape entries at positions, lending well founded (`LendWF`), parameter labels lent in the callee's frame only as
+fills (`pfill`), the records members; in the closure one holder per
 label, its locality (every position reads only live labels; a holder only labels above its own: `RInv`), its top frame
 reading no parameter label (the paper's (I1)), a cell for every parameter label; and the renaming keeping the order of
 the closure's labels but among parameter labels: parameter labels below the others (`order`), and monotone on the
@@ -411,6 +498,9 @@ structure AccInv (K : RunCtx) (σ : Nat → Nat) (s₀ : SState) (ks : List Nat)
   uniq : s.Uniq
   shape : ShapeAt s
   lend : LendWF s
+  /-- a parameter label is lent in the callee's frame only as a fill (an entry's lending, `entryLend`, or an end's
+  re-rooting of such a fill; the paper's (I3), docs/31 D211's (P′)) -/
+  pfill : ∀ k ∈ ks, ∀ y ∈ s.lent k, y.pos.frameOf = s₀.topIdx → y.fill = true
   held : HeldOk K s
   cells : ks.length ≤ (s'.env.headD {}).binds.length
   uniq' : s'.Uniq
@@ -439,12 +529,35 @@ theorem holder_frame1 (hr : FrameRel σ s₀ ks s s') {l : Nat} {q : Pos} (hq : 
   obtain ⟨p, -, rfl⟩ := hr.clShape q l hq
   cases p <;> rfl
 
+/-- The end of a label held in the callee's frame keeps the parameter labels' sites there fills: a re-rooted site is the
+ended label's fill, or carries the fill flag of the parameter's site at the holder. -/
+theorem pfill_endLabel {t : SState} {ks : List Nat} {top : Nat}
+    (h : ∀ k ∈ ks, ∀ y ∈ t.lent k, y.pos.frameOf = top → y.fill = true) {m : Nat}
+    (hm : ∀ r, t.holderOf m = some r → r.frameOf = top) :
+    ∀ k ∈ ks, ∀ y ∈ (t.endLabel m).lent k, y.pos.frameOf = top → y.fill = true := fun k hk y hy hyf => by
+  cases hh : t.holderOf m with
+  | none => rw [SState.endLabel_of_none hh] at hy; exact h k hk y hy hyf
+  | some r =>
+    rw [SState.endLabel_eq hh] at hy
+    by_cases hkm : k = m
+    · subst hkm; rw [endAt_lent, relend_eq, if_pos rfl] at hy; cases hy
+    rw [endAt_lent, mem_relend hkm] at hy
+    rcases hy with ⟨hy, -⟩ | ⟨x₀, hx₀, hx₀r, z, hz, rfl⟩
+    · exact h k hk y hy hyf
+    · unfold relendSite; split
+      · assumption
+      · exact h k hk x₀ hx₀ (by rw [hx₀r]; exact hm r hh)
+
 theorem AccInv.endLabel (hs₀ : FrameStart s₀ ks) (h : AccInv K σ s₀ ks s s') {l : Nat} (hl : s'.Live l) :
     AccInv K σ s₀ ks (s.endLabel (σ l)) (s'.endLabel l) where
   rel := frameRel_endLabel h.rel hs₀ h.uniq h.shape h.cells hl
   uniq := h.uniq.endLabel _
   shape := shapeAt_endLabel h.shape _
   lend := h.lend.endLabel _
+  pfill := pfill_endLabel h.pfill fun r hr => by
+    obtain ⟨q, hq⟩ := SState.holderOf_of_live hl
+    obtain ⟨p, hpf, -, hp⟩ := holder_frame h.rel h.uniq h.shape hq
+    rw [hp] at hr; cases hr; exact hpf
   held := h.held.endLabel K _
   cells := by rw [headD_len_endLabel]; exact h.cells
   uniq' := h.uniq'.endLabel _
@@ -543,6 +656,7 @@ theorem AccInv.pinv (h : AccInv K σ s₀ ks s s') (hs₀ : FrameStart s₀ ks) 
   lend := h.lend
   held := h.held
   reads := fun _ _ hr hk => top_noParam h (param_holder_top h hs₀ hr hk)
+  fill := fun a _ y ha hb hy hyb => h.pfill a ha y hy (param_holder_top h hs₀ hyb hb)
 
 /-- **One round of [Access], in place, is the closure's round renamed**: the labels the in-place round ends, in label
 order, are the parameter labels it reaches in some order, then the others in the closure's order (the renaming keeps
@@ -718,7 +832,8 @@ theorem iter_corr (φ : Future) (hs₀ : FrameStart s₀ ks) (h : AccInv K σ s�
 place and the corresponding place in the function's own frame keeps the internal relation (`FrameRel` with what [Access]
 needs, `AccInv`), and the strict tests of the two accesses (`AccessOk`) pass together. In place there are more rounds (the
 caller's labels are live too), all past the fixpoint. Hypotheses: `FrameStart` at the call and `AccInv`, whose new clauses
-are `LendWF` in place (lending well founded, sites at holders under `*`) and the renaming's order on the closure's labels. -/
+are `LendWF` in place (lending well founded), `pfill` (a parameter label lent in the callee's frame only as a fill) and
+the renaming's order on the closure's labels. -/
 theorem frameRel_access (φ : Future) (hs₀ : FrameStart s₀ ks) (h : AccInv K σ s₀ ks s s') {q : Pos}
     (hq : q.frameOf = s₀.topIdx) (hit : List Step → Bool) :
     AccInv K σ s₀ ks (s.access q hit) (s'.access (upPos ks.length q) hit) ∧

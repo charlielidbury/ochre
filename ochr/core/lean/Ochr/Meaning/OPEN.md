@@ -18,7 +18,7 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 
 - Ruling R1 (D214): the model keeps label order at [Access]; the frame proof reorders by commutation (a site-read order would tie at labels lent at the same path, and the pop and an observation end in label order anyway).
 - [Access] against the frame relation: PROVED (`Steps/FrameAccess.frameRel_access`) from `FrameStart` and the internal relation `AccInv`; also `endLabel_comm_state`, `perm_fold`, `endOk_corr`, `round_corr`, `iter_fix`.
-- `AccInv`'s clauses at the call's start and through the other operations: OPEN (task 2). Two are NEW: `LendWF` (lending well founded, sites at holders under `*`; kept by every end, `LendWF.endLabel`; uncertain through entry lending and moves: by reading true) and `order`/`mono` (the renaming's order on the closure's labels; likely true).
+- `AccInv`'s clauses at the call's start and through the other operations: OPEN (task 2). NEW: `LendWF` (lending well founded; kept by every end; through entry lending and moves: by reading true, uncertain), `pfill` (a parameter label lent in the callee's frame only as a fill; kept by every end; likely true) and `order`/`mono` (the renaming's order on the closure's labels; likely true).
 
 ## THE MODEL'S PARAMETER TYPES; (P) REFUTED; THE END ASSEMBLED (lead32, 2026-11-27, `spine-lead32`; docs/31 D210 to D213)
 
