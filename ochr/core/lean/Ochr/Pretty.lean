@@ -67,8 +67,13 @@ def Term.pp (ns : List String) : Term → String
   | .assign p t => s!"{p.pp ns} := {t.pp ns}"
   -- a sealed program's cell, `let cᵢ : Tᵢ = uᵢ` ([Close], D82), is printed without its type
   | .letIn h (.ascribe (.val v) (.val _)) u => s!"let {h.name} = {(Term.val v).pp ns}; {u.pp (h.name :: ns)}"
-  | .letIn h t u => s!"let {h.name} = {t.pp ns}; {u.pp (h.name :: ns)}"
-  | .seq t u => s!"{t.pp ns}; {u.pp ns}"
+  -- a sealed block's text (exp-block-text) inside a longer program is bracketed
+  | .letIn h t u =>
+    let ts := t.pp ns
+    s!"let {h.name} = {if t matches .block .. then s!"({ts})" else ts}; {u.pp (h.name :: ns)}"
+  | .seq t u =>
+    let ts := t.pp ns
+    s!"{if t matches .block .. then s!"({ts})" else ts}; {u.pp ns}"
   | .matchNat p z s => s!"match {p.pp ns} \{ Z => {z.pp ns}, S _ => {s.pp ns} }"
   | .const n => n
   | .val v => v.pp
@@ -109,7 +114,17 @@ def Term.pp (ns : List String) : Term → String
     if as.isEmpty then h.name ++ pre else s!"{h.name}{pre}({", ".intercalate (Term.ppList ns as)})"
   | .matchInd p _ as =>
     s!"match {p.pp ns} \{ {", ".intercalate (Term.ppArms ns as)} }"
+  -- a sealed block's text (exp-block-text): its cells as `let`s, then its match
+  | .block cs _ _ _ m =>
+    let ns' := (cs.map (·.1.name)).reverse ++ ns
+    "".intercalate (Term.ppCells ns cs) ++ m.pp ns'
 termination_by structural t => t
+
+/-- A sealed block's cells, `let z = a; ` each, every argument in the enclosing scope `ns`. -/
+def Term.ppCells (ns : List String) : List (Hint × Term) → List String
+  | [] => []
+  | (h, a) :: cs => s!"let {h.name} = {a.pp ns}; " :: Term.ppCells ns cs
+termination_by structural cs => cs
 
 /-- `ts.map (·.pp ns)`. -/
 def Term.ppList (ns : List String) : List Term → List String

@@ -619,10 +619,24 @@ def callTemps (f n : Nat) : M (Value × Array Value) := do
 
 /-- D115: the position of argument `i` of the call whose `n` arguments are the last temporaries of
 frame `f` (`callTemps`). -/
-def callArgPos (f n i : Nat) : M Pos := do
+def callArgPos (f n i : Nat) (hd : Nat := 1) : M Pos := do
   let sz := (← get).env[f]!.temps.size
-  if sz < n + 1 || i ≥ n then err s!"internal: no argument {i} among a call's {n} temporaries"
+  if sz < n + hd || i ≥ n then err s!"internal: no argument {i} among a call's {n} temporaries"
   pure (.temp f (sz - n + i))
+
+/-- The last `n` temporaries of frame `f`, read in place: a call's arguments (above its head), or a
+stuck block's (exp-block-text: a block holds no head). -/
+def argTemps (f n : Nat) : M (Array Value) := do
+  let ts := (← get).env[f]!.temps
+  if ts.size < n then err s!"internal: {n} arguments expected, {ts.size} temporaries held"
+  pure (ts.extract (ts.size - n) ts.size)
+
+/-- Take the last `k` temporaries off frame `f` (a call's head and arguments, or a block's arguments,
+where a sealed program's text has taken them). -/
+def dropTemps (f k : Nat) : M Unit := do
+  let sz := (← get).env[f]!.temps.size
+  if sz < k then err s!"internal: {k} temporaries expected, {sz} held"
+  modifyFrame f fun fr => { fr with temps := fr.temps.extract 0 (sz - k), tempTys := fr.tempTys.extract 0 (sz - k) }
 
 /-- D115: take a call's head and arguments off frame `f` (`callTemps`), where the callee's frame
 binds them or a sealed program's text has taken them. -/

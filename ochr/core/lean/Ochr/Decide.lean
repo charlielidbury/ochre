@@ -152,12 +152,9 @@ def preFlags (t : Term) (d : DeclInfo) : M (Option (Bool × Bool)) := do
   if d == .conflict then err (conflictMsg t [])
   if d == .any then return none
   let p := d.isProof
-  -- a stuck block's function (codomain the match's type, `.val B`) is a match: erased iff
-  -- it is a proof, like any sequencing form (D35)
-  let block := match t with
-    | .call (.fix _ _ _ (.val _) _ _) _ _ | .call (.val (.clo _ (.fix _ _ _ (.val _) _ _) _)) _ _ => true
-    | _ => false
-  let e := p || (t matches .call ..) && !block && (d matches .sort _)
+  -- a sealed block's text (`.block`, exp-block-text) is not a call: like any sequencing form, it
+  -- is erased iff it is a proof (D35)
+  let e := p || (t matches .call ..) && (d matches .sort _)
   pure (some (e, p))
 
 /-- D96: the declared reading of the abstract value `σ`, frozen when it was made (`absDecl`). Every
@@ -191,8 +188,9 @@ def sealedSort? (t : Term) : M (Option Nat) := do
       | _ => pure none
     match piTy with
     | some (.tPi _ (.pi _ _ (.sort l)) _) => pure (some l)
-    | some (.tPi _ (.pi _ _ (.val (.sort l))) _) => pure (some l)
     | _ => pure none
+  -- a sealed block (exp-block-text) whose match's type is a sort
+  | .block _ _ _ (.sort l) _ => pure (some l)
   | _ => pure none
 
 /-- D80 (R2), η at `Unit`: a value at a position whose declared type reads as `Unit` is `()`. A
@@ -458,6 +456,9 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
     -- D80: a constant's declared type is closed, so its data is read too
     closedTypeDecl fuel' g.ty
   | .val v => valueDecl fuel' v
+  -- a sealed block's text (exp-block-text): its match's type `B`, as recorded when it was closed
+  -- off (the reading its call's codomain `.val B` gave before)
+  | .block _ _ _ B _ => valTypeDecl fuel' B
   | .sort l => pure (.sort (sortSucc l))
   | .nat | .unit => pure (.sort 1)
   | .ref A => discard (typePos fuel' chk sc ns A); pure (.sort 1)
@@ -786,17 +787,16 @@ termination_by structural fuel
 /-- The erasure class of a function type (D28, D35): 1 = it returns types, 2 = it
 returns proofs, 0 = it returns data. v1.7: read off the codomain *term*, for top-level
 and local functions alike: types if it is syntactically a sort, proofs if its declared
-sort is `Prop` (`typeDecl`, D63), never by evaluating it (formal-appendix BoomL). The
-function of a stuck block (codomain `.val B`, the match's type) returns proofs if `B`
-has sort `Prop` and data otherwise, so the block is erased exactly when its match is
-(BoomB). It reads the state and never writes it. -/
+sort is `Prop` (`typeDecl`, D63), never by evaluating it (formal-appendix BoomL). A
+stuck block is not a function (exp-block-text): its class is decided where it is closed off
+(`closeBlock`: a proof exactly when every arm is, BoomB). It reads the state and never writes
+it. -/
 def fnClass (fuel : Nat) (piTy : Value) : M Nat := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match piTy with
     | .tPi cs (.pi hs ds c) rd =>
       match c with
       | .sort _ => pure 1
-      | .val _ => pure 0     -- a stuck block's function (`closeBlock`): its class is given at its call
       | _ =>
         -- read from the codomain term, never evaluated (D35), by the one reader of declared
         -- types (`typeDecl`, D63): proofs if the codomain's declared sort is `Prop`
@@ -877,14 +877,14 @@ def kindOf (fuel : Nat) (B : Value) : M Kind := do
   | _ => pure .data
 
 /-- [Close]'s row read from the declared codomain `B` (v1.7, D35): syntactically `Unit`,
-`&T`, or anything else. A stuck block's codomain is the match's type. -/
+`&T`, or anything else. A stuck block is not a function (exp-block-text): its row is its
+match's type's (`kindOf`, at `closeBlock` and at its text's re-run). -/
 def declKind (fuel : Nat) (piTy : Value) : M Kind := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match piTy with
   | .tPi _ (.pi _ _ c) _ => match c with
     | .unit => pure .unit
     | .ref _ => pure .ref
-    | .val B => do let k ← kindOf fuel' B; pure (if k == .prop then .data else k)
     | _ => pure .data
   | _ => err s!"not a function type: {piTy}"
 

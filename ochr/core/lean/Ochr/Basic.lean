@@ -298,6 +298,12 @@ def Term.inlineReadsDoms (o : Nat) (u : Term) (c : Nat) : List Term → List Ter
 termination_by structural ds => ds
 end
 
+/-- exp-block-text: the text of a sealed block, whose head (through `let`s and `;`) is `.block`. -/
+def Term.isBlockText : Term → Bool
+  | .block .. => true
+  | .letIn _ u w | .seq u w => u.isBlockText || w.isBlockText
+  | _ => false
+
 /-- Clear the head marks of a sealed program's calls (to type it as an ordinary term). -/
 def Term.unHead : Term → Term
   | .call f as _ => .call f as false
@@ -499,6 +505,7 @@ def Term.anyAtom (P : Value → Bool) : Term → Bool
   | .ctor _ _ _ ps as => Term.anyAtomList P ps || Term.anyAtomList P as
   | .prim _ as | .tind _ as => Term.anyAtomList P as
   | .matchInd _ _ as => Term.anyAtomArms P as
+  | .block cs rd _ B m => Term.anyAtomArms P cs || Value.anyAtomRd P rd || B.anyAtom P || m.anyAtom P
   | _ => false
 termination_by structural t => t
 
@@ -567,6 +574,7 @@ def Term.loans : Term → List Nat
   | .ctor _ _ _ ps as => Term.loansList ps ++ Term.loansList as
   | .prim _ as | .tind _ as => Term.loansList as
   | .matchInd _ _ as => Term.loansArms as
+  | .block cs _ _ B m => Term.loansArms cs ++ B.loans ++ m.loans
   | _ => []
 termination_by structural t => t
 
