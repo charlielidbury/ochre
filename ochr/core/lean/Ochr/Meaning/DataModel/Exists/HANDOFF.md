@@ -1,6 +1,24 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists11` (from `origin/spine-machine11` 84ba58a9), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.16: the eight facts, their statements and statuses, what the theorem says). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists11`.
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists12` (from `origin/spine` a4a83d0c9), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.17: what exists12 proved, the remaining facts re-read, the status; §18.18: the referee's Y1). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-28 by `exists12`.
+
+## Where exists12 stopped (read this first)
+
+`exists_dataModel` now assumes FIVE facts (`DataFacts`): `NamesFact`, `VaryValFact`, `FieldHeads` (about the checker), `DecCaps`, `DecStable` (on its decisions), plus the program's resolution (`hres`). All five read TRUE (docs/34 §18.17 gives each reading, probe and what a derivation needs).
+
+Done (default build, standard axioms):
+- `GlobalCalls.lean`: `GlobalCallLevels` PROVED (`Assembly.globalCallLevels`): stage invariant `TyInv`; `globalTyS_tPi_sort`; the leaf-code lemma `DatLeaf`/`telL_datLeaf`/`callOfL_datLeaf` (the referee's Y3). `GlobalCallsHard.lean`: the attack at the hard case (`FT`, `FI`, `FM`, each `(A : Type₁) … : Type` heading an accepted field; `FT` in the kernel, the rest natively).
+- `Steps/Machine/NoVal.lean`: `NoValFact` for resolved programs (machine12's `RRet` WIP finished; `noVal_runResolve`; `Consistency.noValFact_of_resolvesTo`).
+- `Steps/Machine/CheckIndSpec.lean`: `CheckIndGivesChecks` assembled (`runs_checkInd_peel`, `runs_checkInd_fields`, `runs_checkInd_checks`); `Assembly.itemFacts`. The peel keeps every sub-run of `checkInd` (`telescope`, D128's loop, `typePos`, both `undeclaredCheck`s, the field continuations): the starting point for `NamesFact`'s declaration part, `VaryValFact`, `FieldHeads`.
+- `Steps/Machine/RepLocal.lean`: `DecLocal`'s `inv` (trivial) and `rep` (`jdAssigns_ok`, `typeState_rep`); with machine11's `join`, `Assembly.DecLocal3`, supplied by `Consistency.exists_dataModel`.
+
+Next, most valuable first:
+1. `NamesFact` minus a constant's stored type: from `runs_undeclaredCheck_inv` (in `CheckIndSpec.lean`; a `checkDef` peel to its `undeclaredCheck`, as `runs_checkDef_tables` peels), no `Term.val` in resolved terms (`noVal_resolveF` covers definitions too: extend `noVal_resolveDecl` to the `.defn` branch), `foB` excluding the declared type's own constructors (so `fieldNames.rc`), and a stage invariant "every global has a meaning entry" (strengthen `checkItem_tables` to say the appended global is named `d.name`; `checkDef` appends `{ name := d.name, … }` in both branches). Restate `NamesFact` as that plus `NamesConstTy` (a constant's stored goal VALUE names only the stage's names: a whole-machine invariant). A lemma `Term.undeclared … = none → no val → Term.nok N` (mutual induction) is the core.
+2. The proposal in docs/34 §18.17 (two syntactic checks in `checkInd`) is for the lead; if adopted on main, `FieldHeads` is their postcondition through `runs_checkInd_peel`'s kept runs.
+3. `DecCaps`: blocked on `Array.qsort` (private recursion in Lean's core, no lemmas); see docs/34 §18.17.
+4. `DecStable`: the machine lane's (8a).
+
+Traps met by exists12: hypothesis-side `split` on the checker's do-blocks exceeds simp's step limit (each `if`'s continuation is copied into both arms): use `runs_ite_inv` (in `CheckIndSpec.lean`), which finds the condition by unification; a written `match` in a `by_cases` condition elaborates to a different matcher and `rw [if_pos]` then fails. After `subst`, a reintroduced older hypothesis takes back a shadowed name (`hC`): clear the old one. `rename_i` names the LAST inaccessible hypotheses: after `cases t` inside an `if` branch the last one is the branch's condition (`rename_i u _`). The kernel's reduction of `checkDef` on a body that reads a parameter, and of `checkInd` on a declaration with a field call, gets stuck: check acceptance natively (`#guard`) and take it as a hypothesis.
 
 ## Rulings (made by the lead 2026-11-22)
 
