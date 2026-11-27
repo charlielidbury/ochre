@@ -4814,6 +4814,10 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
     (capRec : Array (Option Nat) := #[]) (rd : List (DeclInfo × Value) := []) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .fix self hs ds c dec body := t | err "internal: not a fix"
+  -- D136: a local function is not recursive; recursion (`by x`) is for top-level definitions
+  if let some j := dec then
+    unless fv matches .gfn _ do
+      err s!"[Rec] {self.name} declares `by {(hs.getD j ⟨"?"⟩).name}`, but a local function is not recursive (D136): recursion is for top-level definitions. Define {self.name} at the top level, with what it uses from the enclosing body as parameters"
   borrowParamCheck ds c
   let saved ← get
   -- the body is the checked program (D64: its [Repack] points are checked, and the borrow
