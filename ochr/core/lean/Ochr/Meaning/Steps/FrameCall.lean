@@ -291,7 +291,7 @@ theorem frameRel_callData (hr : FrameRel σ s₀ ks s s') (hs₀ : FrameStart s�
 
 /-- `callOfL`'s fixes for a returned borrow, as written (a `match` on the decoded final content of the fresh label `k`),
 are `fixVals` of the fixes read off the future at `k`. -/
-theorem fixVals_dec {X : Type} (dec : Sem → Option X) (k : Nat) (A : X → List (Nat × Sem)) (B : List (Nat × Sem)) :
+theorem fixVals_dec {X : Type _} (dec : Sem → Option X) (k : Nat) (A : X → List (Nat × Sem)) (B : List (Nat × Sem)) :
     (fun (_ : Pos) (v : SVal) (φ' : Future) => match dec (φ' k) with
       | some x => v (φ'.updList (A x))
       | none => v (φ'.updList B)) =
@@ -306,7 +306,7 @@ content, decoded; in place at the image of the closure's fresh label, so the in-
 the renamed future (`frameRel_mapFix`). -/
 theorem frameRel_callRefFix (hr : FrameRel σ s₀ ks s s') (hs₀ : FrameStart s₀ ks)
     (hcells : ks.length ≤ (s'.env.headD {}).binds.length) (hsr : ∀ l, σ l ∈ ks ∨ s₀.nextLoan ≤ σ l)
-    {X : Type} (dec : Sem → Option X) (k : Nat) (A : X → List (Nat × Sem)) (B : List (Nat × Sem)) :
+    {X : Type _} (dec : Sem → Option X) (k : Nat) (A : X → List (Nat × Sem)) (B : List (Nat × Sem)) :
     FrameRel σ s₀ ks
       (s.mapVals fun _ v φ' => match dec (φ' (σ k)) with
         | some x => v (φ'.updList (renFix σ (A x)))
