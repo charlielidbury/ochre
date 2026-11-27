@@ -324,6 +324,7 @@ import Ochr.Meaning.Steps.FrameLet
 import Ochr.Meaning.Steps.FrameWhole
 import Ochr.Meaning.Steps.FrameBorrow
 import Ochr.Meaning.HintM
+import Ochr.Meaning.Steps.FrameAssign
 import Ochr.Meaning.Steps.UnderCheck
 import Ochr.Meaning.Steps.UnderCheckAttack
 import Ochr.Meaning.Steps.ParamCellAttack
