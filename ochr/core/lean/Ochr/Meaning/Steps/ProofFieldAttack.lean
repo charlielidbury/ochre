@@ -44,6 +44,13 @@ ochr ProofFieldAtk {
   def PExT (e : Ex) : True := match e { Wit(w, h) => (let t : Prop = G5T(&w); let q : Eq(Prop, t, False) = refl; refl), }
   def PExF (e : Ex) : True := match e { Wit(w, h) => (let t : Prop = G5T(&w); let f = (λ(k : t) : Eq(Nat, Z, S(Z)) => match k {}); refl), }
   reject def PEx (e : Ex) : False := match e { Wit(w, h) => G5(&w, refl), }
+  def Nest (e : Ex) : True := match e { Wit(w, h) => (w := 5; match e { Wit(w2, h2) => (let q : Eq(Nat, w2, 5) = refl; refl), }), }
+  def TwoW (e : Ex) : True := match e { Wit(w, h) => match e { Wit(w2, h2) => (let q : Eq(Nat, w, w2) = refl; refl), }, }
+  inductive Succ : Prop := MkSucc(n : Nat, m : Nat, h : Eq(Nat, n, S(m)))
+  reject def Boom (e : Succ) : Eq(Nat, Z, S(Z)) := match e { MkSucc(n, m, h) => (n := Z; match e { MkSucc(n2, m2, h2) => match h2 {}, }), }
+  inductive Ex2 : Prop := Wit2(a : Nat, b : Nat, h : Eq(Nat, a, b))
+  def LocalForm (e : Ex2) : True := match e { Wit2(a, b, h) => (let t : Prop = Id(Unit, a := 0, a := 1); let q : Eq(Prop, t, False) = refl; refl), }
+  def EWhole (e : Ex2) : True := match e { Wit2(a, b, h) => (a := 7; let q : Eq(Ex2, e, e) = refl; refl), }
 }
 
 namespace Ochr.Meaning.Steps.Form.ProofFieldAtk
@@ -96,6 +103,32 @@ def boundArmPB (st : MState) : Option Term :=
   | some (.letIn w (.val (.abs k)) (.letIn h (.ascribe (.val .proof) _) (.letIn _ (.borrow (.var 1)) _))) =>
       w.name == "w" && h.name == "h" && k == st.absTy.size
   | _ => false
+/-! The fifth referee's V2 (docs/18 on `main`, `<sec-referee5>`; docs/31 D231): `Nest`, `TwoW`, `LocalForm`, `EWhole`
+accepted and `Boom` rejected (the verdict guard above). In `Nest` the outer rewrite has already renamed the inner match's
+pattern variable `w2` (the place `e.w`) to the outer LOCAL `w`, which holds `5` when the inner arm runs: the inner
+`Eq(Nat, w2, 5)` is `Eq(Nat, w, 5)`. -/
+
+/-- The checker's state at the entry of a definition's body with one parameter. -/
+def entryOf (nm : String) : Option MState :=
+  let r := Ochr.Test.runWith (some Prelude) "ProofFieldAtk" ProofFieldAtk { recordStates := true } (located := true)
+  match r.rows.find? (·.name == nm) with
+  | some row => (row.trace.toList.filterMap fun e => match e with
+      | .state _ _ _ st => if st.env.size == 2 && st.env[1]!.binds.size == 2 then some st else none
+      | _ => none).head?
+  | none => none
+
+/-- The one arm of a body that is a match. -/
+def armOf (nm : String) : Term := match bodyOf ProofFieldAtk nm with
+  | .matchInd _ _ [(_, a)] => a
+  | _ => .zero
+
+#guard (armOf "Nest").pp [] == "#0.w := 5; match #0 { Wit => let q = (refl : Eq(Nat, #0.w, 5)); refl }"
+#guard (entryOf "Nest").any fun st => match st.inds.find? (·.name == "Ex") with
+  | some d => match runMachine (Ochr.bindDataFields 1000 (.var 0) d [] 0 (armOf "Nest")) st 100000 with
+    | (.ok t _, _, _) => t.pp [] == "let w = σ0; let h = ⋆; w := 5; match #2 { Wit => let q = (refl : Eq(Nat, w, 5)); refl }"
+    | _ => false
+  | none => false
+
 -- the unknown is fresh: the check makes it (Δ grows by one)
 #guard entryPB.any fun st => match runMachine (do
     let some d := (← get).inds.find? (·.name == "Ex") | pure 0
