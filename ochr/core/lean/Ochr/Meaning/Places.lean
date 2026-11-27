@@ -67,6 +67,13 @@ structure Decisions : Type where
   not a data inductive at every instance). From declarations alone; its alignment with
   `Machine.openWrite` is a statement for the simulation. -/
   invalidated : List DeclInfo → Place → List Place := fun _ _ => []
+  /-- docs/31 D229: is the declaration named a subsingleton (no constructor, or one whose fields are all propositions;
+  `Decide.largeElim`)? A match on a proof of a declaration that is not one is a declared proof (its arms must be
+  proofs, D45), which the checker's typed run checks with the data fields let-bound to fresh unknowns
+  (`Machine.bindDataFields`, D49) and its untyped run does not run (`Machine.evalMatchByType`): the reference does not
+  run it either (`Run.lean`'s `.matchInd`). The default answers as the model did before D229 (run the arm); the
+  checker's tables answer `largeElim`'s (`DecisionsInst`, `DecisionsFF`). -/
+  subsingleton : String → Bool := fun _ => true
 
 /-- The scope after a telescope of parameter types: each parameter's reading, read in the scope
 of the earlier ones, innermost first (`Decide.telescope`). -/

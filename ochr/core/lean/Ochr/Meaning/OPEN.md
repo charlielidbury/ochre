@@ -14,6 +14,12 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## A PROOF'S DATA FIELD; THE CALL IN PLACE FROM THE FRAME PROPERTY (lead36, 2026-11-27, `spine-lead36`; docs/31 D228 onward)
+
+- Main's amendment to D136 merged (D228): the guards flipped; no statement changed.
+- MODEL FAULT (the fourth referee's F2), CONFIRMED and REPAIRED (D229): the model ran the arm of a match on a proof of a non-subsingleton with the proof `•`, whose data field reads `•` at `err`, so its strict borrow failed where the checker accepts (`Steps/ProofFieldAttack`: kernel-checked at the borrow; the checker's side pinned by guards, its typed run let-binding the fields to fresh unknowns). MODEL CHANGE: such a match is not run by the reference (`•`), as the checker's untyped run does not run it; new aligned decision `Decisions.subsingleton` (`Decide.largeElim`). `runT_matchInd_proof_noSub` PROVED (the repaired clause runs no arm).
+- OWED by the repair: the alignment of `Decisions.subsingleton` with `Decide.largeElim` in `DecTab` (with `DecTab.back`, `of_core`); the [T-Match-prop] step of (II), instantiating the typed check's generic fields by a witness from the proposition's carrier (`DataLib.mem_iff`): stated in prose (D229), not in Lean. Residual (D229): a match on a proof of a DEPENDENT subsingleton (none known) runs with fields `•` at `err` where the typed check let-binds them.
+
 ## THE FRAME PROPERTY ON THE FRAGMENT WITHOUT FUNCTIONS FORMED IN THE BODY AND WITHOUT `Id` (lead35, 2026-11-27, `spine-lead35`; docs/31 D221 to D227)
 
 - `Steps/FrameInduction.runFrameI_frameFree`: PROVED, standard axioms, no `sorry`: `RunFrameI`'s conclusion for every term with `Term.frameFree` (no `.fix`, `.pi`, `.id`), from `Strict.FundCtx`, `FrameStart`, `valsOk` and the internal relation at the start. Every clause is a `TermFrame` lemma (`FrameCallInv`, `FrameLet`, `FrameMatch`, `FrameBorrow`, `FrameAssign`, `FramePlace`, `FrameSimple`).

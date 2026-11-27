@@ -1321,9 +1321,9 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let (s, lend) := matchEntry K φ (!tl && !tg.isProof && !one) (.matchInd p n arms) s
     let entry := movedPlaces φ s
     -- a proof scrutinee is matched by its type (D45): the one arm of a one-constructor
-    -- proposition; a data scrutinee by the tag of its meaning
+    -- proposition that is a subsingleton; a data scrutinee by the tag of its meaning
     let c? : Option Nat := match tg with
-      | .proof => if arms.length = 1 then some 0 else none
+      | .proof => if K.D.subsingleton n = true ∧ arms.length = 1 then some 0 else none
       | _ => tg.asNat
     match c? with
     | some c => do
@@ -1338,7 +1338,17 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         | _ => if one then s else lend R.label (joinDrop K φ entry (.matchInd p n arms) s))
     -- an erased match on a proof with other than one arm: the arms on copies (`SM.anyArm`)
     | none => match tg with
-      | .proof => SM.anyArm arms.length (fun c => runArm tl (tailHint tl hint) c arms) s
+      | .proof =>
+        if K.D.subsingleton n = true then SM.anyArm arms.length (fun c => runArm tl (tailHint tl hint) c arms) s
+        -- docs/31 D229 (the fourth referee's F2): a match on a proof of a declaration that is NOT a subsingleton is
+        -- not run, as the checker's untyped run does not run it (`Machine.evalMatchByType`: `!typed && !large`). It is
+        -- a declared proof (D45: its arms are proofs), so its value is `⋆`. The checker's TYPED run checks its arms
+        -- with each data field let-bound to a fresh unknown (`bindDataFields`, D49), never written into the proof:
+        -- the model's proof stays `•` and has no fields to read, and the simulation instantiates those unknowns by
+        -- the fields of a member of the proposition (its carrier is inhabited, `DataModel.tyR`, `DataLib.mem_iff`).
+        -- Before D229 the arm ran with the scrutinee `•`, whose data field reads `•` at `err`: the strict borrow
+        -- `&w` failed where the checker accepts (`Steps/ProofFieldAttack`)
+        else some ((.proof, .plain (TyM.prop True)), s)
       | _ => none) s
   | .tind n args => do
     match K.Γ.find? (·.name == n) with

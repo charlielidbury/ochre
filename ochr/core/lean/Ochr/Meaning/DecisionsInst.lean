@@ -114,6 +114,8 @@ def checkerDecisions₀ (st : MState) (fuel : Nat) : Decisions where
   -- `Decide.typeDecl`, the reading of a type term, with the scope as the live frame (as
   -- `Decide.telescope` reads a parameter's type in the scope of the earlier ones)
   typeDecl sc T := readDecision (scopeState st sc) fuel .other (withLive true (Ochr.typeDecl fuel false [] [] T))
+  -- `Machine.evalMatchByType`'s `largeElim` of the scrutinee's declaration (docs/31 D229)
+  subsingleton n := readDecision st fuel true (do Ochr.largeElim (← lookupInd n))
 
 /-- The checker's decisions, with D90's [Entry] captures read statically from the others
 (`BlockCaps.staticBlockCaps`: `Machine.blockCaptures` reads values, so it cannot be run in a scope

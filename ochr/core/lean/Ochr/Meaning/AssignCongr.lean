@@ -204,12 +204,15 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     generalize matchEntry K φ (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀ = me
     obtain ⟨s₁, lend⟩ := me
     dsimp only
+    rw [show (KA K Δ').D.subsingleton n = K.D.subsingleton n from rfl]
     split
     · rename_i c _
       apply Option.bind_congr' (runArm_congrA tl arms (tailHint tl hint) c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
       intro _ _; rfl
     · split
-      · exact SM.anyArm_congr fun c => runArm_congrA tl arms (tailHint tl hint) c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h])
+      · split
+        · exact SM.anyArm_congr fun c => runArm_congrA tl arms (tailHint tl hint) c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h])
+        · rfl
       · rfl
   | tl, .letIn x u w, hint, s, ha => by
     rw [runT, runT]

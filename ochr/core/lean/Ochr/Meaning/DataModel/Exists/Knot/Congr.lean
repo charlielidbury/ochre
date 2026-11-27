@@ -422,12 +422,15 @@ theorem runT_congrR : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Avoi
     dsimp only
     have harms := avoids_of_arms (n := d.name) (as := arms) (by simp_all [Avoids, Term.mentionsType])
       (by simp_all [Avoids, Term.anyAtom])
+    rw [show (KR K d R).D.subsingleton n = K.D.subsingleton n from rfl]
     split
     · rename_i c _
       apply Option.bind_congr' (runArm_congrR tl arms (tailHint tl hint) c s₁ harms)
       intro _ _; rfl
     · split
-      · exact SM.anyArm_congr fun c => runArm_congrR tl arms (tailHint tl hint) c s₁ harms
+      · split
+        · exact SM.anyArm_congr fun c => runArm_congrR tl arms (tailHint tl hint) c s₁ harms
+        · rfl
       · rfl
   | tl, .letIn x u w, hint, s, ha => by
     rw [runT, runT]

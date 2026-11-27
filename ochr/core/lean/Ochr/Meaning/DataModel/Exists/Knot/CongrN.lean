@@ -417,12 +417,15 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
     obtain ⟨s₁, lend⟩ := me
     dsimp only
     have harms := nok_of_arms (N := N) (as := arms) (by simpa [Term.nok] using ha)
+    rw [show (KN K dm' C').D.subsingleton n = K.D.subsingleton n from rfl]
     split
     · rename_i c _
       apply Option.bind_congr' (runArm_congrN tl arms (tailHint tl hint) c s₁ harms)
       intro _ _; rfl
     · split
-      · exact SM.anyArm_congr fun c => runArm_congrN tl arms (tailHint tl hint) c s₁ harms
+      · split
+        · exact SM.anyArm_congr fun c => runArm_congrN tl arms (tailHint tl hint) c s₁ harms
+        · rfl
       · rfl
   | tl, .letIn x u w, hint, s, ha => by
     rw [runT, runT]

@@ -1298,10 +1298,13 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
       apply Option.bind_congr' rfl
       intro _ _
       rw [joinDrop_congr K hφ _ _ hi₂]
-    · -- an erased match on a proof with other than one arm: each arm's run on the copy agrees
+    · -- an erased match on a proof with other than one arm: each arm's run on the copy agrees; on a proof of a
+      -- non-subsingleton no arm runs (docs/31 D229)
       split
-      · exact SM.anyArm_congr fun c =>
-          runArm_congrE hK tl arms (tailHint tl hint) c s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁
+      · split
+        · exact SM.anyArm_congr fun c =>
+            runArm_congrE hK tl arms (tailHint tl hint) c s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁
+        · rfl
       · rfl
   | tl, .letIn x u w, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]

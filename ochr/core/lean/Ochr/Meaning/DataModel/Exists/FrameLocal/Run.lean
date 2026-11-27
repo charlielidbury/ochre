@@ -581,8 +581,11 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
       · cases tg
         case proof =>
           dsimp only
-          exact comm_anyArm fun c => runArm_qset hK hD tl (tailHint tl hint) c arms S₁ Q β β' hA₁
-            (fun a ha => (hVa a ha).of_envLe e₁) hR₁
+          -- docs/31 D229: on a proof of a non-subsingleton no arm runs
+          split
+          · exact comm_anyArm fun c => runArm_qset hK hD tl (tailHint tl hint) c arms S₁ Q β β' hA₁
+              (fun a ha => (hVa a ha).of_envLe e₁) hR₁
+          · rfl
         all_goals rfl
   | tl, .borrow p, hint, s, Q, β, β', hA, hV, hR => by
     unfold Comm; rw [runT]; dsimp only; rw [hA.scope]

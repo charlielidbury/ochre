@@ -88,6 +88,8 @@ noncomputable def checkerDecisionsFF (st : MState)
   rePointed sc t := (readDecisionFF (scopeState st sc) ({} : Ochr.TypeState) (typeStateD t)).repointed
   typeDecl sc T := readDecisionFF (scopeState st sc) .other (typeDeclD T)
   blockCaps := bc
+  -- `Machine.evalMatchByType`'s `largeElim` of the scrutinee's declaration (docs/31 D229; no fuel)
+  subsingleton n := readDecisionFF st true (fun _ => do Ochr.largeElim (← lookupInd n))
 
 /-- **The fuel-free table meets `DecTab`** (proved), given that the machine's decisions agree across
 fuels at the scope states (`decide_fuel_agree`). -/

@@ -214,7 +214,7 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
         | rfl
         | exact bind_resVS_congr (runArm_hintIndep tl arms ht _ (tailHint tl h) (tailHint tl h') _) _
             (tailCont_ok' _ (fun _ _ _ _ hl => optCheck_bind_resVS fun _ => by simp only [Option.map_some, resVS, hl]))
-        | (split <;> first | rfl | exact anyArm_resVS fun c => runArm_hintIndep tl arms ht c (tailHint tl h) (tailHint tl h') _)
+        | (split <;> (try split) <;> first | rfl | exact anyArm_resVS fun c => runArm_hintIndep tl arms ht c (tailHint tl h) (tailHint tl h') _)
   | tl, .ctor ty c hd ps args, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [runT, runT]

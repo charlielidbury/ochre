@@ -1364,7 +1364,15 @@ theorem runFrameI_matchInd (hK : ∀ n, (K.C.global n).2.label = none) (hs₀ : 
       dsimp only [Sem.isProof]
       split
       · exact proofArm_agree hE iharms _ tl _ _ _
-      · exact anyArm_agree hE fun c => runArm_agree arms iharms c tl _ _ _ hE
+      · -- docs/31 D229: on a proof of a non-subsingleton no arm runs, on either side: `•`, the states as they are
+        by_cases hsub : K.D.subsingleton n = true
+        · simp only [hsub, if_true]
+          exact anyArm_agree hE fun c => runArm_agree arms iharms c tl _ _ _ hE
+        · simp only [hsub, if_false, Bool.false_eq_true]
+          first
+            | exact ⟨rfl, rfl, hE, ⟨fun k hk => by simp [TyS.plain] at hk, fun k hk => by simp [TyS.plain] at hk⟩⟩
+            | exact ⟨hE, fun k hk => by simp [TyS.plain] at hk, fun k hk => by simp [TyS.plain] at hk⟩
+            | exact ⟨rfl, hE, fun k hk => by simp [TyS.plain] at hk, fun k hk => by simp [TyS.plain] at hk⟩
     | _ =>
       dsimp only [Sem.isProof]
       rcases Sem.asNat _ with _ | c
