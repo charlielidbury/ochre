@@ -1209,3 +1209,185 @@ _Written by `theory3`._ Each objection and item of @sec-referee, with where it i
 )
 
 *The fourteen items.* 1 (a value in flight with no type; a return check that does nothing): not needed, membership being (I)'s (O3). 2 (the frame property, false four times): @sec-frame, each refutation a hypothesis. 3 (the body run under check): D135, case 1. 4 (a borrow at an unwritten borrow type; a deferred type): the first as the referee found; the second, the relation reads a deferred type as the reference's (case 4's one shape remains under N6). 5 (untyped bindings; an erased call's records): (E4), and principle 6. 6 (the model exists): N1, conditional on its facts, with `WT` accepted and the model's fact (6) open. 7 (futures; an end as a failure point; open members): (II)'s typed futures, strict ends, the plan's open members. 8 (one holder; a place lent twice): N5's (X1), @sec-excl. 9 (a generalisation met again): case 3. 10 (the join; an arm never run): case 4; an arm skipped on a known constructor is skipped at every assignment of that state, since the scrutinee is that constructor there. 11 (conversion of functions): case 6, its runs cases of (II). 12 (impredicativity, universes): N1 and principle 1, not re-argued. 13 (hints): principle 4 and O5 (a). 14 (fuel): principle 5, as the referee found.
+
+= The second referee's report <sec-referee2>
+
+_Written by `referee2`, 27 November 2026, as the second adversarial referee, after reading the first referee's brief and report, the principles and the named theorems (@sec-theorems), the argument in two halves (@sec-twohalves), the frame property (@sec-frame), exclusive access (@sec-excl) and the answers (@sec-answers) closely, and comparing them with the Lean of the branch `origin/spine-lead30` at de20a5369 (`Meaning/Run.lean`, `SState.lean`, `FrameProp.lean`, `CallRef.lean`, `Steps/FrameFrag.lean`, `Steps/FrameRec.lean`, `Steps/FrameEnd.lean`, `Steps/Master.lean`). Every program below was run with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` on the checker of `main` at d877e1082 (D135 included); each is self-contained, "with the `Nat` prelude" meaning `uses Nats`. Nothing in the other sections was changed._
+
+== Verdict
+
+The frame property's proof does not yet exist, and the reduction of consistency to N1 to N7 is not complete; but the design again held, and the faults found are in the proof and in the model, not in the checker. Three things are wrong. First, the model reads a later parameter's type and a function's codomain with every borrow parameter as a plain value, with no label and no cell (`extendBinds`), while the checker's [Def] reads them with a cell for each borrow parameter; the two readings differ on an accepted program, `G1` below, whose type the model reads as empty, so "every accepted definition means a member of its type" is false of the current model, and case 2's "statement transfer is N4 applied to a statement" is false of it (R1). Second, the frame property's induction does not cover a function formed inside the body: the reference builds that function's meaning by running its body in the whole forming state under a fresh bottom frame, so frames nest, and the relation the induction carries cannot relate the two states that arise; the paper's argument for that clause describes a different definition (R2). Third, the frame property is used in four shapes it does not state, each of which is a frame or renaming property of its own, and the renaming of labels (open in Lean, false as first stated) is used without being named, so the list N1 to N7 is incomplete (R3). Beside these: the new invariant (P), "parameter labels stay at the cells", is false, though the lemmas it carries survive with another argument (R4); two of the proof's lemmas are false as written and true when restated (R5); lifting the exclusion of `Id` needs a hypothesis on the caller's state that the statement lacks, and until the model changes the paper's own programs `GT` and `GT2` lie outside the theorem as Lean states it (R6); the fixpoint equation is proved only at the state of the generic check, and for local functions nothing carries it to a call (R7), though I found no circle; and the simulation (II) as stated lacks hypotheses and conclusions that its Lean statement needs, two of them documented there as making the statement false without them (R8). Every attack on the checker itself was rejected or held: [Rec] compares values and refuses a recursive call on a scrutinee overwritten after its match; the call sites of `G1` observe the caller's owners and refuse `refl`; the first referee's programs re-run with the same verdicts.
+
+== Objections, most serious first
+
+=== R1. The model reads a borrow parameter in a type with no cell, and an accepted definition has an empty type there
+
+*Where.* Case 2 (@sec-tw-types): "a type evaluated at the call site ... means the same as the same type evaluated in the function's own frame at the arguments' meanings, with a cell for each borrow parameter ... The two evaluations are strict runs of one term from two states related as the frame property relates them, so this is N4 applied to a statement"; and @sec-tw-concl, "So $d_k$'s result and final contents are members of what its type says, under every γ."
+
+*Objection.* The model's function type does not read its parameter types in the function's own frame with cells. The `.pi` and `.fix` clauses of the strict run read each later domain and the codomain by `runBinds`, in `extendBy s bs acc`: the forming state with the earlier arguments pushed by `extendBinds`, each "bound with `label := none` by a plain `pushBind`" (docs/31, the note at (WF1)), a borrow parameter holding its content and no borrow, with no cell. The checker's [Def] reads the same types in its generic frame, where a borrow parameter holds a borrow whose loan is in a cell, and an observation sees the cell. The two readings differ whenever a side of an `Id` in a parameter type moves or re-points a borrow parameter: after the side, the plain reading has lost what the borrow's lender ends up holding, and the cell has kept it. So the identification case 2 and the step from (II) to the theorem both rest on, "the generic reading" (the checker's) is the model's domain, is false; and N4, which relates the run in place to a closure state with cells (`fixBodyAt`), says nothing about `extendBy`’s states.
+
+*Evidence.*
+#measured[With the `Nat` prelude, on `main`:
+```
+def G1 (x : &Nat) (e : Id(Unit, (*x := 0; let z = x; ()), (*x := 1; let z = x; ()))) : False := e
+def G2 (x : &Nat) (y : &Nat) (e : Id(Unit, (*x := 0; x := y; ()), (*x := 1; x := y; ()))) : False := e
+def CallG1 : False := (let a = 7; G1(&a, refl))
+```
+`G1` and `G2` accepted: at the generic check `e` has type `False`, since the cell of `x` ends holding `0` on one side and `1` on the other. `CallG1` rejected ("argument 2 (e) has type ⊤, expected False"): at a call site the observation sees the caller's `a`. In the model, traced clause by clause through `Run.lean`: in `extendBy`, `*x := 0` writes `0` at `x`’s position, `let z = x` moves it out (a borrow is not a copy), the `let` ends nothing (no label is live), so both sides leave `x` moved and the observation is equal: `e`’s domain is `True`. `G1`’s type in the model is `Π(x : &Nat) (e : True). False`, which has no member. `G2` is the same through [Obs-ref]: the plain reading writes the fresh value over `x` itself and forgets `x`’s old content.]
+No closed proof of `False` follows: every call site reads the type with the caller's owners, as the cell reading does, so the checker is consistent with itself; it is the model that disagrees with it. The disagreement goes one way in every case I tried: the plain reading keeps less, so its parameter types are weaker, and an accepted function must then work on more arguments than the checker gave it.
+
+*Kind.* The argument is wrong (an identification false of the model), and the model has a fault the argument did not see.
+
+*What would settle it.* Read later domains and the codomain as [Def] does: a borrow parameter at a fresh label with a cell (as `fixStep` binds it in the body's frame), so that the model's domain is the checker's generic reading; then state the transfer of case 2 as an instance of a frame property between that state and the call site. Or keep `extendBy` and change the checker's [Def] and [Call-type] to read types so, which would change the verdicts of `G1`, `G2` and every hypothesis written about a moved borrow parameter.
+
+=== R2. The induction does not cover a function formed inside the body
+
+*Where.* @sec-frame: "Because the strict run applies the meaning at every call and never runs a body, the induction below is over a single frame: no nesting of frames arises inside it." @sec-frame-proof: "_A closure formed inside the body._ Its meaning is a function of its captured values' meanings and the context. Each capture is read after an access, so holds no live loan (principle 12), so by locality reads no label, so means the same on both sides." #a-full.
+
+*Objection.* The strict run does run a body: the `.fix` clause reads a closure's meaning off runs of its body (`bodyAt`), from `s.under` with `self` and the parameters pushed on the top frame, where `s` is the whole state at the formation, before the captures are accessed (`bodyAt` closes over `s`, not over the state `capStep` leaves). In place that state has a fresh frame 0, the caller's frames, then the callee's frame; in the closure it has a fresh frame 0, the frame of cells, then the frame. The inner body's strict tests read all of it (the test after a write at a field reads every binding), it can name every variable of the forming frame, and it can end a parameter label (by moving the parameter into a `let`). So the meaning is not "a function of its captured values' meanings", and the captures are not read after an access in this run. The relation the induction carries cannot relate the two inner states: `FrameRel.frames` asks the closure for exactly two frames, and (F2), (F4) and (S1) to (S4) are written for one caller block and one cell frame. The Lean records the same: `RunFrameS`’s docstring lists "`.fix` inside the body: the inner closure's runs from states with one more frame (`FrameRel.frames` asks two)", and the thirtieth lead's handoff puts it in group 3, not yet attacked. I believe the clause true (the inner body reaches the caller's frames and the cells only through the parameter labels and the whole-state test, and its finals read only its own returned label), but the induction as stated does not give it.
+
+*Evidence.* `Run.lean`, the `.fix` clause (`bodyAt`, `s.under.pushBind`; `capStep` applied after); `Steps/FrameFrag.lean`, `RunFrameS`’s docstring; `Steps/LEAD-HANDOFF.md`, item 2 of the next steps.
+
+*Kind.* The argument is incomplete (a clause claimed in full whose induction hypothesis does not apply), and its one sentence describes a different definition.
+
+*What would settle it.* State the frame property for a callee frame with any number of frames below it on both sides (in place the caller's, in the closure the cells and the forming closures' cell frames), with (F4) and (S1) for each block, so that the `.fix` clause is again a case of the induction; or prove separately that a closure's meaning depends only on its captures (the locality lemma R3 (c) needs anyway) and use it here.
+
+=== R3. The frame property is used in four shapes N4 does not state, and the renaming of labels is used unnamed
+
+*Where.* @sec-theorems, the list N1 to N7 and "The argument of @sec-twohalves uses them and nothing else beyond the principles"; case 2, case 3 ([T-Fix]), case 4's third bullet, @sec-frame-fix's start and fixpoint equation.
+
+*Objection.* N4 relates a body run in a frame pushed on the caller's to the same body run in `fixBodyAt`’s state with cells, with the same bindings in the same order. The argument also uses, each time citing N4 or nothing:
+- (a) _Statement transfer_ (case 2): the call site against `extendBy`’s state, where borrow parameters hold no label. Not N4's shape (R1).
+- (b) _The block's run is the arm's run in place_ (case 4): the strict run runs the selected arm directly in the caller's own frame, naming the caller's variables; the block's function runs it in its own frame, where those variables are its parameters, the by-move captures values moved in, the by-`&` captures borrow parameters with cells. No frame is pushed on the in-place side, and the top frames do not have "the same bindings in the same order": a renaming of variables is needed that N4 does not have.
+- (c) _A closure value means what the strict run formed_ (case 3, [T-Fix], (C2) at the formation): the checker's value `⌈clo⌉`’s meaning is the run of the `fix` term from `stateOf 0` of its captures, one frame and the label counter at 0 (`meanV`’s `.clo` clause), while the strict run's `.fix` builds it from the whole forming state with its counter (`start := s.nextLoan`). Equating them is a frame property with the caller's frames removed and a renaming of every label. Case 3 argues only membership there and marks the case #a-full.
+- (d) _The start_ (@sec-frame-fix): "(F3) the same stored type" for the parameters. In place `callFrame` reads the parameter types by `bindsOf` over the caller's state with a frame pushed (`CallRef.lean`); in the closure they are read over the closure's one frame. Equal only by a frame property for type terms ("by reading, since the frames are built alike").
+And the fixpoint equation as Lean states it (`FixEqG`) holds at every forming state, future and counter, while its proof uses [Rec] carried by (II) from one state, the generic check's (R7). Each of these is a frame property with a different relation, or the renaming lemma `run_counter_indep` ("the frame property's case with no caller frame and no parameter"), which is open in Lean and was false as first stated (finding 7). None is N1 to N7, and none is a principle.
+
+*Kind.* A named theorem is missing: the list is incomplete, and the summary's "neither found a place where …” does not see it.
+
+*What would settle it.* One general statement, a frame-and-renaming theorem for a relation between two states that differ in the frames below a block of shared bindings, in a renaming of variables and in a renaming of labels, from which N4, (a) to (d) and the transport of R7 are instances; or each named, with its status, as N8 and on.
+
+=== R4. The invariant (P) is false
+
+*Where.* @sec-frame-proof, (P): "A parameter label is lent only at its cell in the closure and in the caller's frames in place, never in the top frame ... the only operations that move a label's sites are the end of a borrow ... and a call's [Lend]". Used by [Access] ("Parameter labels are never ended by an access (P)") and by the pop ("(P) keeps them so").
+
+*Objection.* A third operation adds sites: [Entry]’s lending (`matchEntry`, `entryLend`). After a borrow-typed match not in tail position, the result's label is lent, as fills, every place the block takes by `&`. That label is whatever the arm returned, and an arm can return a borrow parameter itself. Then a parameter label is lent at a place of the top frame, and an access of that place ends it.
+#measured[With the `Nat` prelude, all accepted on `main`:
+```
+def P2 (n : Nat) (x : &Nat) : Nat := (let q = 5; let r : &Nat = match n { Z => x, S(j) => &q, }; *r := 1; clone(q))
+def UseP2 : Eq(Nat, (let c = 3; P2(Z, &c)), 5) := refl
+def UseP2c : Eq(Nat, (let c = 3; P2(Z, &c); c), 1) := refl
+def P3 (n : Nat) (x : &Nat) (y : &Nat) : Unit := (let q = 5; let r1 : &Nat = match n { Z => x, S(j) => &q, }; let r2 : &Nat = match n { Z => y, S(j) => &q, }; *r2 := 1; ())
+```
+At `n = Z` the strict run of `P2`’s body lends `x`’s parameter label at `q` (taken by `&` by the block), and `clone(q)`’s [Access] ends it: the caller's `c` (in place) and the cell (in the closure) then read `1`. In `P3` the second match's entry, accessing `q`, ends `x`’s parameter label.]
+The lemmas (P) carried still look true to me, for a different reason: the sites [Entry] adds create no dependence of any value on the label (only `borrowPlace` and an end's substitution do), so the second clause of (H3) survives; ends of labels none of whose holders reads another's commute on values; and FrameRel compares only top-frame sites, so where an order changes only sites outside the top frame, nothing compared changes. That is an argument the paper does not give, and the Lean lane would fail to prove (P) as an invariant.
+
+*Kind.* A lemma of the frame proof is false (sent to the orchestrator when found); the lemmas it supports hold with another argument.
+
+*What would settle it.* Replace (P) by what is true: "no top-frame value reads a parameter label; a parameter label's sites in the top frame were added by [Entry]’s lending and are fills”; and prove [Access] and the pop from commutation of ends on values and from FrameRel's comparing top-frame sites only.
+
+=== R5. Two lemmas are false as written and true when restated
+
+*Where.* (T): "every typed future of $s$ restricts to one of $s'$". [End]: "for any other label, the caller's frames do not read it (S1)".
+
+*Objection.* (T) is the fault of D129 again. A typed future agrees with the run's future φ off the live labels. The restriction of an in-place typed future ψ is ψ∘σ, which at a closure label $l$ that is not live gives φ(σ($l$)), not φ($l$): not a typed future of $s'$. What is true is weaker: ψ∘σ agrees on the live labels with a typed future of $s'$, and a test reads no other label by (H3). So (T) must be restated and (H3) cited at every test that uses it, as (R) already does. For [End]: after a call in the body that consumes a parameter label and returns a borrow ([Lend], `callOfL`’s `mapVals` and `lentK`), the caller's frames in place read the fresh label, which is not a parameter label and is at or above the counter; the paper's reason is false there. The lemma holds: (F4) reads the caller's frames at the cells, and the cell reads the fresh label in the closure, which is what Lean's `lowerVal_end` proves (its hypothesis is "a parameter label or one at or above the counter"). Its sentence "the sites of the borrows inside the ended content move ... in place into the caller's frames, in the closure to the cell; neither is in the top frame" is true only for a parameter label; for a label made by the body they move into the top frame, through σ, which (F7) must then be shown to keep.
+
+*Kind.* Two lemmas misstated; both hold restated.
+
+*What would settle it.* Restate (T) on live labels; give [End]’s case of a label made by the body through (F4), as `lowerVal_end` does.
+
+=== R6. Lifting the exclusion of `Id` needs a hypothesis the statement lacks
+
+*Where.* @sec-frame-id: "with it the theorem holds for `Id` over parameter labels with no hypothesis beyond the joint injectivity of the caller's contexts at the call ... (H6) can then be dropped."
+
+*Objection.* The proposal is right in its direction: an end inside an observation made strict is a point the checker's rule passes (D98: no borrow ends over a moved-out content, in an observation as anywhere; its evidence rejects every side that leaves a content moved), and with it each cell's final content is a whole member, which is what makes the caller's contexts comparable. But joint injectivity is a property of the caller's state at the call (Lean's `CellsDetermined`), which none of (S1) to (S4) and (H1) to (H5) says; so (H6) is not dropped, it is replaced by a hypothesis on the call, and the statement in @sec-frame-stmt still has (H6). "N5 gives [it] at the checker's state and (R4) of the simulation transfers [it]": (R4) relates lending sites; what must transfer is the injectivity of the caller's meanings as functions of the parameter labels, which is (R3)'s business, at typed futures, while `CellsDetermined` quantifies over every future. Until the model's change is made, the frame property as Lean states it (`RunFrame`, with `t.idFree = true ∨ ks = []`) excludes every body with an `Id` over a borrow parameter, and the programs this document measured for this shape are such bodies: `F` of `GT` and `GT2` (case 2) runs in place with `Id(Unit, *x := 0, *x := 0)` over its borrow parameter. Case 1's (E4) for them is not covered by N4 as stated.
+
+*Kind.* A hypothesis is missing from the statement; the proposal is right but not enough.
+
+*What would settle it.* State the frame property with a hypothesis that the caller's positions at the call tell apart whole members of the parameters' types, discharge it at each call from N5's injectivity clause through (R3), and make the model's change; or keep (H6) and give case 1's (E4) for bodies with `Id` over a borrow parameter another way.
+
+=== R7. The fixpoint equation is proved at one state, and nothing carries it to a local function's call
+
+*Where.* @sec-frame-fix, the fixpoint equation: "By [Rec] at the generic check's typed sites, carried to the strict run of the body under each assignment by (II) for that check ... #a-full here. For a local closure ... #a-claim".
+
+*Objection.* (a) Lean's `FixEqG` quantifies over every assignment, future and forming state `s`, and builds `G` with the counter `s.nextLoan`; (II) for $g$'s check speaks of one state, the generic check's, with its counter and its frames. Carrying [Rec]’s facts ("every application of $g$ at $a$ is at a smaller rank") to the run from another state is a frame or renaming property (R3), unnamed. (b) For a local function the paper gives membership at its formation by the nested induction; at a later in-place call, case 1 needs its fixpoint equation, and nothing in (II)'s statement carries it from the formation to the call: goodness of a binding gives membership only, and Pre says nothing of closures. In an untyped run a closure is formed again from the body's text and is not checked again; its fixpoint equation must come from the check of the enclosing function, under an assignment that covers the captures' values, and through the transport of (a). _Circle:_ none found. Under D135 the check of $g$ never runs $g$'s body, so (II) for that check needs no fixpoint equation of $g$, and the equation is used only after. The same holds for a local function, whose calls close off while it is checked.
+
+*Kind.* Incomplete (the equation as stated in Lean is wider than the proof; the local case has no carrier).
+
+*What would settle it.* State `FixEqG` at the states the argument needs (the generic check's, and those R3's transport reaches), or prove the transport; add to (II)'s state invariant that every closure value held in the state satisfies its fixpoint equation, and prove it kept at [T-Fix] and by every step.
+
+=== R8. (II) lacks hypotheses and conclusions its Lean statement needs
+
+*Where.* @sec-tw-halves, (E1) to (E4) and (C1) to (C4); @sec-tw-induction, "so every sub-run is covered, typed or untyped".
+
+*Objection.* `EvalAt` (`Steps/Master.lean`), the statement the mechanisation proves (II) from, has more than the paper, and its docstring says of two of them that "without [them] the statement is false":
+- the plain mode (`ModeR`: no head evaluation, not copying, not in place): in copying mode the checker's read of a place leaves it where the strict run moves it (`let x = S(Z); let y = clone(x); x`, at the read inside `clone`). The paper's inner induction says every sub-run is covered; `EvalAt` does not cover a sub-run in copying mode or a call's head read in place, which need statements of their own.
+- the reading handed down (`tailDecl`) is none or the table's: otherwise the checker's pre-pass erases a term the strict run runs.
+- the hint. (C1) and (E4) are at the checker's hint (`hintM … hint`); the paper names no hint. For a body run in place the checker hands `hintLater` of the codomain where `readsHint` says the body reads one, and none otherwise (`runBodyCore`, `Machine.lean` around line 3299); the closure's run in the frame property is at the codomain. So (E4) at the checker's hint needs hint independence (`HintIndep`, only for bodies whose tails read no hint), `readsHint`’s agreement with that, and the deferred hint meaning the codomain: the first referee's O5 (a) is not only "never stored", it enters (E4).
+- the decision table aligned at the END of the run (`DecTab K.D st'`), not at Ω.
+- conclusions: what the run keeps (`Kept`: the mode, the number of frames, the top frame's readings), which sequencing uses; a deferred call type reads as the reference's result type (`LaterOk`), which is the first referee's item 4, here answered in @sec-answers by "the relation reads a deferred type as the reference's" without a clause that says so; and a promised type that is missing reads as `err`.
+Two smaller points. (E1)'s "each global's meaning a member of its declared type" cannot hold of a recursive $d_k$ during its own check, whose meaning there is the stage, a member of the weakened type (`FixEqG` excludes the global being checked). (C2) asks "at every typed future of $S'$", where `EvalAt` asks the one future φ∘π'; the paper's is stronger than what is proved.
+
+*Kind.* (II) is misstated (hypotheses and conclusions missing); the step from (II) to the theorem also needs R1's identification of the generic state with the model's closure state.
+
+*What would settle it.* Restate (II) as `EvalAt` and `TailAt` with each clause explained, and name hint independence and the deferred types among the things the argument rests on.
+
+=== R9. Smaller differences between the paper and the Lean
+
+- The theorem's conclusion: the paper's ends "related states, which again satisfy (H1) to (H4)"; `RunFrame`’s `FrameAgree` concludes FrameRel only. The paper's is what an induction needs; the Lean statement will need strengthening inside its proof.
+- (H5) is implied by `FrameRel.top` (`BindRen` at `self`); Lean has no separate hypothesis, and does not ask `self` to be $G$ at its true type at all.
+- `FrameRel.lentImg` (a held in-place label with a top-frame site is in σ's image) has no counterpart among (F1) to (F8).
+- (H4) in Lean is `ks.length ≤ (s'.env.headD {}).binds.length`: a number of bindings, not that they read the labels; (F4) then constrains them.
+- The list of clauses omits `.pi`, constructors, `J`, `Eq`, ascriptions, `clone`/`peek`/`inplace`, embedded values: each routine (copies, or the induction at an extended state), but `.pi` runs its domains from extended states at every argument tuple, which the induction must allow.
+- For a callee returning a borrow, the in-place call reserves its result's label before the frame is pushed (`runCallRef`), so σ's fresh clause starts above it; the start lemma should say so.
+
+== The frame proof's lemmas
+
+#table(columns: (26%, 18%, 56%), align: left, table.header([*Lemma*], [*Verdict*], [*Why*]),
+  [The statement, (H1) to (H6)], [could not decide], [True for every clause I checked but the inner `fix` (R2); to drop (H6) it needs a hypothesis on the call (R6).],
+  [(P) parameter labels stay at the cells], [false], [`P2`, `P3`: [Entry]’s lending puts a parameter label at a top-frame place, and an access ends it (R4).],
+  [(L) locality is kept], [holds], [Lean's `RInv` (`Inv1`, `Inv2`, `ShapeAt`) through each operation (`LocalityRun.lean`).],
+  [(T) typed futures correspond], [false as stated; holds restated], [Off the live labels ψ∘σ is not typed; agreement on live labels with (H3) is what tests use (R5).],
+  [(R) top-frame reads agree], [holds], [(H3)'s second clause survives (P)'s failure: the added sites carry no value dependence.],
+  [[End] of a label], [holds; argument wrong for made labels], [After [Lend] the caller's frames read a made label; (F4) and `lowerVal_end` cover it (R5).],
+  [[Access] of a top-frame place], [holds with another argument], [Parameter labels can be ended by an access (R4); independent ends commute on values, and only top-frame sites are compared.],
+  [A write at a path], [holds], [Definedness at every typed future of a top-frame value, by (T) restated and (R).],
+  [The whole-state test], [holds], [Top frames related; the rest good by (H1) in place, (H2) in the closure, both carried by N2.],
+  [A fresh label], [holds], [(F1); note the label reserved by `runCallRef` before the push.],
+  [Temporaries, bindings, `let`’s end, discard, invalidation], [holds], [Label-free: Lean (`run_frameS_lf`). With labels: top-frame operations and the end lemma.],
+  [Places, `Z`, `S`, `let`, `;`, assignment without labels], [holds], [Proved in Lean (`run_frameS_lf`).],
+  [Borrow, assignment through a borrow, field paths], [holds], [By the operation lemmas.],
+  [A match], [holds with another argument], [Its entry and lending are where (P) fails; the commuting argument of R4 covers them.],
+  [An erased term], [holds], [Both sides on copies (`SM.erasedIf`, `SM.onCopy`).],
+  [A call inside the body], [holds], [Checked against `callOfL`: holders taken alike, fixes renamed by `renF_upd`, the caller's frames through the cells, [Lend]’s sites at the caller's frames or the cell.],
+  [A closure formed inside the body], [could not decide], [The run nests frames that FrameRel cannot relate; the argument given describes another definition (R2).],
+  [A body that reads its own binding], [holds], [With equal selves the recursive call is an ordinary call (FrameRel's `BindRen` at `self`).],
+  [`Id` over a parameter label], [holds with a named extra hypothesis], [Joint injectivity at the call (`CellsDetermined`) and the model's strict ends in observations (R6).],
+  [The start], [holds with an extra lemma], [(F3)'s types need a frame property for type terms (R3 (d)); (H2)'s "arguments decode" rests on case 2 (R1).],
+  [The pop], [holds with another argument], [Its order argument cites (P); the commuting argument of R4 replaces it.],
+  [The fixpoint equation, a global], [holds at the generic check's state], [At every forming state, as Lean states it, it needs the renaming transport (R7 (a)).],
+  [The fixpoint equation, a local function], [could not decide], [Not stated in Lean; nothing carries it to the call (R7 (b)).],
+  [`callOf` against the call in place], [holds given the pieces], [The pieces above, with R6 for bodies with `Id`.],
+)
+
+== The other targets
+
+*Half (II) as stated* (target 2): see R8. (E1) to (E4) hold at the start of a real check but for (E1)'s clause about the definition under check; they are kept by the cases with N5 and N6 as the paper says. (C1) to (C4) are not enough for the step to the theorem: it also needs the generic state's parameter types to be the model's domains, which R1 shows false, and the generic state's run to be the model's closure run, which is a frame and renaming property (R3).
+
+*The three cases argued in full* (target 3). Erasure (case 7): holds; the reference returns every proof at the true proposition, and (C3) then needs the checker's proposition true, which (I) gives. Recursion (case 9): holds, and the checker held against the attack on it:
+#measured[With the `Nat` prelude, all rejected on `main` with "[Rec] ... is not a strict subterm of that parameter's entry value as refined so far":
+```
+def Bad2 (n : Nat) : Unit by n := match n { Z => (), S p => (n := S(S(Z)); Bad2(p)) }
+def L (n : Nat) (h : Eq(Nat, n, S(Z))) : Eq(Nat, Z, S(Z)) by n := match n { Z => h, S p => (n := S(S(Z)); L(p, refl)) }
+def LB (x : &Nat) (h : Eq(Nat, *x, S(Z))) : Eq(Nat, Z, S(Z)) by x := match *x { Z => h, S p => (*x := S(S(Z)); LB(&p, refl)) }
+```
+A pattern variable read after its scrutinee was overwritten is a part of the new value, not of the entry value; had [Rec] gone by syntax, `L` would be accepted, and a proof call of it, which never runs, would prove `Eq(Nat, Z, S(Z))`.]
+The step from (II) to the theorem: incomplete (R1, R3). The claim for untyped runs, that the strict run succeeds from the function's membership and the frame property: incomplete at three points, the hint (R8), bodies with `Id` over a borrow parameter (R6), and the arguments' decoding at the model's domains (R1).
+
+*The named theorems* (target 4): incomplete (R3: a general frame and renaming property; R8: hint independence and the deferred types, and the checker's facts `EvalAt` and `Kept` take). Of the reductions, "reduced to N4" in case 1 hides the hint and the fixpoint equation's transport; "reduced to N4, N6" in case 4 hides a frame property of another shape (R3 (b)); case 3's [T-Fix] marked in full hides R3 (c).
+
+*The answers to the first referee* (target 5). O1: answered in form; the list it produced is incomplete (R3, R8). O2: answered (the end is an equality of reference states), up to R5's (T). O3: answered in form; its reduction to N4 is not yet one (R6, R8, R1). O4: answered; `Sel` and `Q3` re-run on `main` are rejected, `AddZ` accepted. O5 (a): stands, and matters more than "never stored": the deferred hint's meaning enters (E4). O5 (b): answered. O6: answered by a statement; its proof is incomplete (R2, R4, R5, R7). O7: answered; `QB` re-run, rejected. O8: answered for membership; the local fixpoint equation has no carrier (R7). O9: stands, as N6. O10: answered.
+
+== For a third referee
+
+Not done: the frame property's group 3 (R2) was not attacked with a program, since the clause is about the model and I found no accepted program whose verdict it predicts wrong; the other direction of R1 (a type the checker reads true and the model false, which would break (C1) at a call) was looked for in four shapes and not found; case 4's block captures were not attacked beyond the first referee's shape. The probes are in the scratchpad's `ref2/` (`A1` to `A4`), the runner `ref2/run.sh`.
