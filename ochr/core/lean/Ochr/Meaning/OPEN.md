@@ -25,7 +25,7 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 
 - `StepCallGFrom`: its unerased half PROVED (`stepCallG_unerased`, `Out`+`Kept`) from `EvalInvDCall` (C), `CallHeadArgsG` (X), `CallFnG` (X); erased half `ErasedCallG` (D158); `OutL` not yet carried.
 - `CallFnG`'s branches (to state): in place (consumes `GlobalsOk`, `RunFrameS`, `RetKindG`, `RecRankG`), closed off, proof-class.
-- `RecCheckedG` (C): MOOT under ruling (C) (main's D135 to come: a call of the function being checked closes off at once; (A) was ruled and withdrawn), to be deleted; `RetKindG` (M): to be established at each definition's acceptance and instance-checked.
+- `RecCheckedG`: DELETED at the merge of main's D135 (lead31, docs/31 D204); `RetKindG` (M): to be established at each definition's acceptance and instance-checked.
 
 ## THE MASTER INDUCTION OF (II), CONTINUED (lead28, 2026-11-22, `spine-lead28`; docs/31 D188 to D190)
 - BUILT: the invariant's clause (K), `Form.KindTyped` (where its type is stored, a binding holding a borrow stores `&A`, one holding a function value a Π written as one; globals likewise; deferred and missing types asked nothing), checked on the checker's own states (guards; `lake exe sweep` clause (K), depth 0 and `--deep-private`, 151/152 blocks) and the ripple repaired (`Machine.KindFrom`, every proved invariant lemma, every hand-built start state). Ruling (ii): `OutL`'s clause "a promised type that is missing means `err`", concluded by `EvalAt`; `LetPushG` asks it and every `let` supplies it. `EvalInvD` keeps the deferral flag (proved); `LetInvDUn`, `LetCallInvU` strengthened (proved).

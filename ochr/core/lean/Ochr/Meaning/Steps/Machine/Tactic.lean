@@ -35,7 +35,7 @@ attribute [grows] growsIn_tryCatch growsIn_tryCatchThe growsIn_onFail growsIn_ca
 attribute [grows] growsIn_tick growsIn_modifyThe_log growsIn_getThe_fuel
 attribute [grows] growsIn_withLive growsIn_withErased growsIn_withErasedIf growsIn_withRuntime growsIn_withCopying
 attribute [grows] growsIn_restoreKeep growsIn_restoreNames growsIn_exitWorld growsIn_inWorld growsIn_privately growsIn_inStatement
-attribute [grows] growsIn_freshAbs growsIn_freshLoan
+attribute [grows] growsIn_freshAbs growsIn_freshLoan growsIn_underCheck
 attribute [grows] growsIn_modify
 
 /-- The rfl-proof of a write that keeps the tables. -/

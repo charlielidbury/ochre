@@ -117,14 +117,15 @@ def keptOk (st st' : MState) : Bool :=
 #guard match (outSt (run true (callG "Kr" [.borrow (.var 0)])) stH 1000000).env[1]!.binds[3]!.val with
   | .gloan g (.loan g') => g == g' && g == stH.nextLoan + 1 | _ => false
 
-/-! ## A recursive call that runs in place, whose body makes a recursive call no [Rec] check sees
+/-! ## A recursive call that ran in place before main's D135, whose body made a recursive call no [Rec] check saw
 
 `HAt`'s own check, in the arm `p = TT`, `n = S(Z)`, makes the TYPED call `HAt(FF, Z)` ([Rec] passes: `Z` is a strict
-subterm of the entry value `S(Z)`). Its arguments are known, so the checker runs `HAt`'s body IN PLACE, untyped, at
-`(FF, Z)`; there the body calls `HAt(TT, S(S(S(Z))))`, untyped, and `callFn` checks [Rec] only in a typed run, so that
-call runs too (to `Z`, discarded). The hole after `HAt(FF, Z)` is reached: the in-place run, the unchecked inner call
-included, SUCCEEDED. The definition is rejected later, at the typed check of the same inner call site in the arm
-`p = FF`, `n = Z` (`H`, the same definition without the hole). -/
+subterm of the entry value `S(Z)`). Before main's D135 its arguments being known, the checker ran `HAt`'s body IN PLACE,
+untyped, at `(FF, Z)`, where the body called `HAt(TT, S(S(S(Z))))` untyped with no [Rec] check (lead29's finding, docs/31
+D200). Since main's D135 (merged by lead31, docs/31 D204) a call of a function whose check is under way closes off at
+once (`Machine.underCheck`), so `HAt(FF, Z)` is closed off and no body of `HAt` runs during its check; the hole after it
+is still reached once, with the same environment. The definition is rejected at the typed check of the inner call site
+in the arm `p = FF`, `n = Z` (`H`, the same definition without the hole), as before. -/
 
 /-- The environment `HAt`'s hole reports (its note, recorded only when the hole is reached). -/
 def holeΩ : List (List (String × Option Value × Value)) :=
@@ -134,7 +135,7 @@ def holeΩ : List (List (String × Option Value × Value)) :=
       | .note _ _ (.hole _ Ω) => some Ω | _ => none
   | none => []
 
--- the hole was reached once, after the in-place call and its unchecked inner call: `p ↦ TT`, `n ↦ S(Z)`
+-- the hole is reached once (since D135 after the call closed off; before it, after the in-place run): `p ↦ TT`, `n ↦ S(Z)`
 #guard holeΩ.length == 1
 #guard holeΩ.all fun Ω =>
   Ω.any (fun (x, _, v) => x == "p" && (match v with | .ind "BB" 0 _ _ [] => true | _ => false)) &&

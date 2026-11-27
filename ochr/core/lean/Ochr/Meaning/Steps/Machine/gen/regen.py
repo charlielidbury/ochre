@@ -57,7 +57,10 @@ theorem observe_succ (n : Nat) (typed : Bool) (t : Term) (A : Value) (W : List P
     Ochr.observe (n + 1) typed t A W refs consumed = inStatement (do
 '''+body('observe')+') := rfl\n')
             st=st.replace('unfold Ochr.observe; grows_go ih','rw [observe_succ]; grows_go ih')
-        if nm in ('callFn','evalCore'):
+        if nm == 'callFn':
+            # main's D135 (`underCheck`) doubled the match on the head: 4,000,000 times out (lead31)
+            st='set_option maxHeartbeats 16000000 in\n'+st
+        elif nm == 'evalCore':
             st='set_option maxHeartbeats 4000000 in\n'+st
         out.append(st)
     out.append('end Ochr.Meaning.Steps.Machine\n')

@@ -277,6 +277,14 @@ theorem growsIn_freshLoan : GrowsIn G freshLoan := by
   cases h
   exact ⟨rfl, rfl, Nat.le_refl _, fun _ _ => rfl, Nat.le_refl _, Nat.le_succ _⟩
 
+/-- Main's D135: `underCheck` reads the [Rec] stack and changes nothing (lead31, at the merge of main's D135). -/
+theorem growsIn_underCheck (fv : Value) : GrowsIn G (Ochr.underCheck fv) := by
+  intro s f l a s' f' l' _ h
+  have e : runAll (Ochr.underCheck fv) s f l = ((.ok (.ok (s.recStack.any (·.fn.sameCode fv), s)), f), l) := rfl
+  rw [e] at h
+  cases h
+  exact TablesGrow.refl _
+
 /-! ## A run from one known state (a read of the state, then a write of a state made from it) -/
 
 /-- Every successful run of `y` from `s` only extends the tables. -/

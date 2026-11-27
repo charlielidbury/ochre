@@ -191,7 +191,10 @@ borrow arguments ended, `⋆`). The first branch is where the context is consume
   which a recursive callee's body does (`R(m)` is `.call (.place self) …`): the recursive callee needs it at a body that
   reads `self`, with `SelfRel` relating the two `self`s (in place `K.C.global g`, in the closure the stage below);
 - the label kind of the callee's result: `RetKindG` (below; ruling R3);
-- the recursion's rank: `RecRankG` (an entry condition) with `RecCheckedG` (a checker fact, FALSE today).
+- the recursion's rank: `RecRankG` (an entry condition), needed at typed call sites only. Under main's D135 (ruling
+  (C)) a call of the function being checked never runs its body: it closes off at once, so no in-place run of a body
+  under its own check exists, and the former checker fact `RecCheckedG` ([Rec] at every call, typed or not) is moot
+  and deleted (lead31; docs/31 D204).
 -/
 
 /-- **(R3) A callee's result is labelled exactly where its codomain is written `&`** (MODEL; a clause of the context,
@@ -226,22 +229,6 @@ function only if its decreasing argument has rank below `b`, which a [Rec] check
 def RecRankG (K : RunCtx) (ρ : Assignment) (st : MState) : Prop :=
   ∀ (n : String) (b : Nat), K.cur = some (n, b) → ∀ ctx ∈ st.recStack, ctx.fn = .gfn n →
     ∀ (j σ : Nat), j ∈ ctx.cands → ctx.entries[j]? = some (some σ) → semRank (ρ σ) ≤ b
-
-/-- **[Rec] at every call of a function being checked, typed or not** (CHECKER; FALSE today, pinned by
-`CallGAttack.holeΩ`: `callFn` runs `recCheck` in a typed run only, so an in-place run of a recursive callee's body makes
-recursive calls no check sees, and one of them, `HAt(TT, S(S(S(Z))))` inside `HAt(FF, Z)` during `HAt`'s own check,
-runs to a value at a rank above every bound the context can have; the reference's stage-`b` closure there is the
-WEAKENED function, so the general call step is false at that run). What `RecRankG` needs at a call: every successful
-`callFn` of a head `fv` with arguments `ws` (the call point's temporaries) passes `recCheck` at the call point. True of a
-typed run (`callFn` runs it before the body); for an untyped run, the change to rule: `callFn` runs `recCheck` whatever
-its typing flag. -/
-def RecCheckedG : Prop :=
-  ∀ (n : Nat) (typed : Bool) (fT : Option Value) (tys : Array (Option Value)) (hd : Bool) (cf : CallFlags)
-    (stc st₁ : MState) (bh : Nat) (r : Value × Option Value) (fv : Value) (ws : Array Value) (base : Array Value)
-    (fr : Frame),
-    stc.env.back? = some fr → fr.temps = base ++ #[fv] ++ ws →
-    Runs (Ochr.callFn n typed fT ws.size tys hd none none cf.res cf.fills cf.want cf.defer none) stc bh r st₁ →
-    ∃ bh' stR, Runs (Ochr.recCheck fv ws none) stc bh' () stR
 
 /-! ## The composition, at the class of states the other steps use -/
 

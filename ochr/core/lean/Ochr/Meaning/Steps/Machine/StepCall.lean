@@ -87,7 +87,7 @@ theorem step_runBodyCore (ih : MachineGrows tb nf) :
   intro fv cs t rd ws B self hs ds c body
   unfold Ochr.runBodyCore; grows_go ih
 
-set_option maxHeartbeats 4000000 in
+set_option maxHeartbeats 16000000 in
 theorem step_callFn (ih : MachineGrows tb nf) :
     ∀ (typed : Bool) (fT : Option Value) (n : Nat) (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool) (resTy : Option Value), GrowsIn tb (Ochr.callFn ((nf + 1)) typed fT n tys head cls? recUid? res fills want defer resTy) := by
   intro typed fT n tys head cls? recUid? res fills want defer resTy
