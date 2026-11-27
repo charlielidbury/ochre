@@ -14,6 +14,12 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## [ACCESS] AGAINST THE FRAME RELATION (lead33, 2026-11-27, `spine-lead33`; docs/31 D214, D215)
+
+- Ruling R1 (D214): the model keeps label order at [Access]; the frame proof reorders by commutation (a site-read order would tie at labels lent at the same path, and the pop and an observation end in label order anyway).
+- [Access] against the frame relation: PROVED (`Steps/FrameAccess.frameRel_access`) from `FrameStart` and the internal relation `AccInv`; also `endLabel_comm_state`, `perm_fold`, `endOk_corr`, `round_corr`, `iter_fix`.
+- `AccInv`'s clauses at the call's start and through the other operations: OPEN (task 2). Two are NEW: `LendWF` (lending well founded, sites at holders under `*`; kept by every end, `LendWF.endLabel`; uncertain through entry lending and moves: by reading true) and `order`/`mono` (the renaming's order on the closure's labels; likely true).
+
 ## THE MODEL'S PARAMETER TYPES; (P) REFUTED; THE END ASSEMBLED (lead32, 2026-11-27, `spine-lead32`; docs/31 D210 to D213)
 
 - MODEL FAULT D210 (the second referee's R1), FIXED: later domains and the codomain are read as [Def] reads them (`Run.extendBy` = forming state under a fresh bottom frame + `paramPush`, a borrow parameter at a fresh label with a cell). `G1` (accepted, `e : False` at [Def]) had an empty type in the model before. No headline statement changed. Owed by the simulation at [Call-type]: statement transfer between the call site and `extendBy`'s state (`18-principles` case 2), not stated in Lean.
