@@ -219,4 +219,38 @@ def footprint (env : Env) (ts : List Term) : List Pos := Id.run do
               unless out.contains q do out := out ++ [q]
   pure out
 
+/-- THE EXPERIMENT (C+) (docs/18 <sec-obs-dl>, step 2): `footprint`, in the detached state, with
+what a root holding `borrow_m` contributes given by `ownersOf m` (its cell's position) instead of
+`owners`: an owned root contributes itself, a root holding `⊥` nothing, as in `footprint`, and no
+loan is followed outward. A separate copy of `footprint`'s loop so that the proofs about
+`footprint` (`StabilityFootprint`) are untouched. -/
+def footprintWith (env : Env) (ownersOf : Nat → List Pos) (ts : List Term) : List Pos := Id.run do
+  let f := env.size - 1
+  let n := env[f]!.binds.size
+  let mut out : List Pos := []
+  for writes in [true, false] do
+    for t in ts do
+      for (o, q, k) in t.freeOccs do
+        if o < n then
+          let pos := Pos.bind f (n - 1 - o)
+          let b := env[f]!.binds[n - 1 - o]!
+          let isRefTy := match b.ty with | some (.tRef _) => true | _ => false
+          let ownersOfRoot : List Pos := match b.val with
+            | .borrow m _ => ownersOf m
+            | .bot => if !isRefTy then [pos] else []
+            | _ => [pos]
+          let counts := if writes then k == .borrow || k == .assign
+            else (isRefTy || b.val.isBorrow) && (k == .read && q matches .var _)
+          if counts then
+            for q in ownersOfRoot do
+              unless out.contains q do out := out ++ [q]
+  pure out
+
+/-- The labels of the borrows a value of Ω holds (`Value.holdsBorrow`'s): its own, and through
+`.succ` and a borrow's content as `holdsBorrow` looks (D48: in fact at most one). -/
+def Value.heldLabels : Value → List Nat
+  | .borrow m w => m :: w.heldLabels
+  | .succ w => w.heldLabels
+  | _ => []
+
 end Ochr

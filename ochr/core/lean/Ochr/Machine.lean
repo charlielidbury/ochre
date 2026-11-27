@@ -4495,6 +4495,60 @@ termination_by structural fuel
 
 -- ### Observation and `Id` (RULES §4)
 
+/-- THE EXPERIMENT (docs/18 <sec-obs-dl>, step 1, "Detach"; the fifth referee's implementer
+notes). Called on the private copy `idType` opens for the observation, before the footprint:
+replace Ω by two frames, a new frame 0 of cells and then the top frame `f`, unchanged (now frame 1);
+every frame below `f` is dropped, and with it every site below `f` of a label `f` holds. Returns
+each cell's label and position.
+- Which labels get a cell: with `all` ((C+)), every label held by a binding or a temporary of `f`;
+  without ((C)), those with a site below `f` or with no site at all (a label whose every site is in
+  `f` is internal: its owners are found in `f` by `owners`, as today).
+- A cell holds `loan_ℓ` when no value of `f` holds a site of ℓ (a loan, a mark `lent_ℓ`, or a hole of
+  a sealed program), and otherwise the identity fill `⌈loan_ℓ⌉`, a sealed program whose text is the
+  hole, so that ℓ keeps one loan outside sealed programs (X2): never a second loan. Nothing accesses
+  frame 0 (a side's places are the top frame's); at ℓ's end the fill re-runs to ℓ's final (D97).
+- A cell's type is `T` for its holder's `&T`: a binding's declared type, a temporary's stored type
+  (D104); for a temporary with none (an untyped run), the type of the borrow's content; `none` only
+  if that has none either (a cell is compared only when a root binding holds its label, and then its
+  holder is that binding, so such a cell is never compared under (C+)).
+- It asserts F4 first (V4): no value of `f` holds a site of a label whose borrow is held below `f`,
+  which the detached state would hold as a loan with no borrow; a violation rejects, as an internal
+  error naming the position. -/
+def detachObs (fuel : Nat) (all : Bool) : M (List (Nat × Pos)) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let env := (← get).env
+  let f := env.size - 1
+  let fr := env[f]!
+  let inTop : Pos → Bool := fun | .bind g _ | .temp g _ => g == f
+  let topPos := (allPos env).filter inTop
+  for p in topPos do
+    for l in (valAt env p).loans.eraseDups do
+      if let some q := findBorrow env l then
+        unless inTop q do
+          err s!"internal: [Obs-detach] the observing frame holds at {repr p} a site of the label {l}, whose borrow is held at {repr q}, below it (F4): the detached state would hold a loan with no borrow"
+  let mut cells : Array Binding := #[]
+  let mut out : List (Nat × Pos) := []
+  for p in topPos do
+    let v := valAt env p
+    for l in v.heldLabels do
+      let siteIn := topPos.any fun q => (valAt env q).hasLoan l
+      let siteBelow := (allPos env).any fun q => !inTop q && (valAt env q).hasLoan l
+      unless all || siteBelow || !siteIn do continue
+      let (name, stored) : String × Option Value := match p with
+        | .bind _ i => (fr.binds[i]!.hint.name, fr.binds[i]!.ty)
+        | .temp _ i => ("⋄temp", fr.tempTys[i]?.join)
+      let T ← match stored with
+        | some (.tRef T) => pure (some T)
+        | _ => match v.takeBorrow l with
+          | some (c, _) => valType? fuel' c
+          | none => pure none
+      out := out ++ [(l, Pos.bind 0 cells.size)]
+      cells := cells.push { hint := ⟨s!"{name}°"⟩, ty := T,
+                            val := if siteIn then .sealed (.val (.loan l)) else .loan l }
+  modify fun s => { s with env := #[{ binds := cells }, fr] }
+  pure out
+termination_by structural fuel
+
 /-- `⟦t⟧^W`: on a private copy of Ω, run `t`, end every borrow, and return the result, the
 final contents of the owners in `W`, and what each re-pointed binding of `refs` points to
 ([Obs-ref], D113) (a tuple of the machine, not a `Pair` value, D52). -/
@@ -4574,15 +4628,28 @@ def idType (fuel : Nat) (typed : Bool) (A t u : Term) : M Value := do
     let .tRef T' := T | err s!"INTERNAL [Obs-ref] {← ppPlace y} : {T} is not a borrow type (please report)"
     let d ← withLive true (placeDecl fuel' [] y)
     refs := refs ++ [(y, ← absAt fuel' d.deref T', T')]
-  let st ← get
-  let W := footprint st.env [t, u]
-  let (a, as, ca) ← observe fuel' true t A' W refs tsT.consumed
-  let (b, bs, cb) ← observe fuel' true u A' W refs tsU.consumed
-  -- an owner's type is its binding's, its declared type (D82)
-  let Ts ← W.mapM fun p => do
-    let some T ← bindTy? fuel' p
-      | err s!"INTERNAL [Obs] the owner {← getAt p} has no stored type (D82: every binding has its declared type; please report)"
-    pure T
+  -- the footprint, both observations, and the owners' types (an owner's type is its binding's,
+  -- its declared type, D82)
+  let sides : M (List Value × (Value × List Value × List Value) × (Value × List Value × List Value)) := do
+    let W ← match (← get).cfg.obsDetach with
+      | .today => pure (footprint (← get).env [t, u])
+      -- THE EXPERIMENT: the footprint in the detached state (`detachObs`), at the labels the roots
+      -- hold when the `Id` is formed; (C+) compares a borrow root at its cell (every label the
+      -- frame holds has one, so `lookup` finds it), (C) follows a loan to its owners in the frame
+      | .c => do discard (detachObs fuel' false); pure (footprint (← get).env [t, u])
+      | .cplus => do
+        let cells ← detachObs fuel' true
+        pure (footprintWith (← get).env (fun m => (cells.lookup m).toList) [t, u])
+    let ra ← observe fuel' true t A' W refs tsT.consumed
+    let rb ← observe fuel' true u A' W refs tsU.consumed
+    let Ts ← W.mapM fun p => do
+      let some T ← bindTy? fuel' p
+        | err s!"INTERNAL [Obs] the owner {← getAt p} has no stored type (D82: every binding has its declared type; please report)"
+      pure T
+    pure (Ts, ra, rb)
+  -- THE EXPERIMENT: under (C) and (C+) all of it on one private copy, which `detachObs` detaches
+  let (Ts, (a, as, ca), (b, bs, cb)) ←
+    if (← get).cfg.obsDetach == .today then sides else privately sides
   -- D113 [Obs-ref]: what each re-pointed binding points to, at the content of its declared type
   let Tc := refs.map (·.2.2)
   let comps := (A', (a, b)) :: Ts.zip (as.zip bs) ++ Tc.zip (ca.zip cb)

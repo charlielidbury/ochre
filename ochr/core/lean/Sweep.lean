@@ -699,13 +699,22 @@ def blockSource (block : String) : IO (Option String) := do
 def slice (s : String) (l : Loc) : String :=
   String.fromUTF8! (s.toUTF8.extract l.start l.stop)
 
+/-- THE EXPERIMENT `exp-obs-detach`: the observation to sweep under, from `OBS_MODE` (`today`, `c`,
+anything else (C+), the branch's default). -/
+def obsMode : IO ObsDetach := do
+  pure <| match (← IO.getEnv "OBS_MODE") with
+    | some "today" => .today
+    | some "c" => .c
+    | _ => .cplus
+
 /-- Sweep the blocks; print the report; 0 iff every real clause holds on every state checked,
 both planted clauses are reported, and every verdict is as expected. -/
 def sweep (blocks : List (String × Block)) (deep : Bool := false) (deepPrivate : Bool := false) :
     IO UInt32 := do
   -- `--deep`: the states at call depth above 0 (`Config.recordDeep`) are the ones checked; the
   -- located states at depth 0 are recorded too, only to find each declaration's source
-  let cfg : Config := { recordStates := true, recordDeep := deep, recordDeepPrivate := deepPrivate }
+  let cfg : Config := { recordStates := true, recordDeep := deep, recordDeepPrivate := deepPrivate,
+                        obsDetach := ← obsMode }
   let mut stats : Array Stat := (clauses.map fun c => ({ premises := c.premises.toArray.map fun _ => 0 } : Stat)).toArray
   let mut total := 0
   let mut entries := 0
@@ -824,7 +833,7 @@ happens, and counts them by push site. A push with no stored type in a typed run
 violation (D82's laziness computes no type there). -/
 
 def pushes (blocks : List (String × Block)) : IO UInt32 := do
-  let cfg : Config := { recordPushes := true }
+  let cfg : Config := { recordPushes := true, obsDetach := ← obsMode }
   let mut counts : Array (String × Nat × String) := #[]
   let mut bad := 0
   let mut rowsAll := 0

@@ -162,10 +162,26 @@ structure RecCtx where
   tests : Bool := true
 deriving Inhabited
 
+/-- THE EXPERIMENT `exp-obs-detach` (docs/18 <sec-obs>, <sec-obs-dl> and the fifth referee's
+report; a branch, never `main`): which observation `Id` makes. `today` is main's: the footprint
+follows each root's loan outward to its owners in any frame, and the observation ends and tests
+every borrow of the whole state. `c` is (C), the finals design: the observing frame is detached
+from everything below it (`detachObs`), each label it holds with a site below it or with no site
+gets a cell in a new frame 0, and the footprint, computed in the detached state, follows the other
+labels' loans to their owners in the frame (`owners`, as today). `cplus` is (C+): every label the
+frame holds gets a cell, and a root holding a borrow is compared at its cell (`footprintWith`),
+never through a loan. -/
+inductive ObsDetach where
+  | today | c | cplus
+deriving Inhabited, Repr, BEq
+
 /-- What a run records: `trace` and `derivation`, which never change a verdict. The checker
 has no rule switches (D70): which rules it applies is internal, and a test says only whether a
-program is accepted, rejected or runs to a given result. -/
+program is accepted, rejected or runs to a given result. (The experiment's `obsDetach` is the
+one exception, on its branch only.) -/
 structure Config where
+  /-- THE EXPERIMENT: the observation `Id` makes (`ObsDetach`); (C+) by default on this branch. -/
+  obsDetach : ObsDetach := .cplus
   trace : Bool := false          -- record goals, splits and call types (for inspection)
   derivation : Bool := false     -- record every rule application, in the paper's names (`fire`, Rules.lean)
   /-- Dev tooling (`lake exe sweep`, `Sweep.lean`): in `located` mode, record the whole machine
