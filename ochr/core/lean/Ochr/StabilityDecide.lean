@@ -397,8 +397,9 @@ theorem closeRow_fn (Ω : MState) (α : Refinement) (cs : List Value) (hs : List
   rw [run?_declKind fuel cs' hs ds' c' rd' (hc' ▸ hc), run?_declKind fuel cs hs ds c rd hc, hc']
 
 /-- The erasure class a function type's codomain term fixes by its shape alone: a sort returns
-types (1); an embedded value (a stuck block's function) is given its class at its call (0). -/
-def shapeClass (n : Nat) : Option Nat := if n == 4 then some 1 else if n == 3 then some 0 else none
+types (1). (exp-block-text: a stuck block is not a function, so no codomain is an embedded value
+whose class is given at its call; that case, `0`, is gone with it.) -/
+def shapeClass (n : Nat) : Option Nat := if n == 4 then some 1 else none
 
 /-- A function type's class, when its codomain's shape fixes it, is that class, at any state
 (`fnClass` reads the state and never writes it). -/
@@ -418,8 +419,7 @@ theorem run?_fnClass_shape (fuel : Nat) (cs : List Value) (hs : List Hint) (ds :
     rw [run?_eq, step_fnClass_shape n cs hs ds c rd K hK Ω ⟨n+1⟩ #[]]; rfl
 
 /-- **Site 3, by shape: a function type's class commutes with refinement** when its codomain
-term's shape fixes it (a sort: returns types; a stuck block's function: class given at its
-call), at any states. The general case reads the captured values'
+term's shape fixes it (a sort: returns types), at any states. The general case reads the captured values'
 declared readings (`valueDecl`), which needs evaluation to preserve declared types (D55, not
 proved here, `notes/stability.md` §9). -/
 theorem fnClass_shape (Ω : MState) (α : Refinement) (cs : List Value) (hs : List Hint) (ds : List Term)

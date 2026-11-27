@@ -752,11 +752,14 @@ theorem decisionsCommute_fnClass_shape (Ω : MState) (α : Refinement) (cs : Lis
   rw [fnClass_shape Ω α cs hs ds c rd K hK Pα fuel hP Ωα]
   exact hk
 
-/-! ### Why a stuck block's row is excluded
+/-! ### Why a stuck block's row was excluded (exp-block-text: no longer a Π-type's)
 
-A stuck block's function has the match's type as its codomain, an embedded value, and
-refining an unknown match type to `Unit` changes the row `declKind` reads from data to `Unit`
-(η at `Unit`, D59). Checked here against the real `declKind`, with a function as control. -/
+Before exp-block-text a stuck block's function had the match's type as its codomain, an embedded
+value, and refining an unknown match type to `Unit` changed the row `declKind` read from data to
+`Unit` (η at `Unit`, D59). A stuck block is no longer a function: its row is read by `kindOf` from
+the type its text records, and `declKind` reads no Π-type's codomain value, so a `.val` codomain
+(which the checker no longer builds) reads data at the generic state and at the refined one alike.
+The exclusion `hblock` in `closeRow` is now vacuous for the checker's own Π-types. -/
 
 /-- A state with one unknown, `σ0 : Type`. -/
 def probeΩ : MState := { (default : MState) with absTy := #[.sort 1], absDecl := #[.sort 1] }
@@ -767,7 +770,7 @@ theorem probe_blockRow_refined :
 theorem probe_blockRow_generic :
     (run? (declKind 5 (.tPi [] (.pi [] [] (.val (.abs 0))) [])) probeΩ 5).map (·.1) = some .data := by rfl
 theorem probe_blockRow_instance :
-    (run? (declKind 5 (.tPi [] (.pi [] [] (.val .tUnit)) [])) probeΩ 5).map (·.1) = some .unit := by rfl
+    (run? (declKind 5 (.tPi [] (.pi [] [] (.val .tUnit)) [])) probeΩ 5).map (·.1) = some .data := by rfl
 /-- Control: a function, whose codomain is a term, keeps its row. -/
 theorem probe_fnRow : (run? (declKind 5 (.tPi [] (.pi [] [] (.place (.var 0))) [])) probeΩ 5).map (·.1) =
     some .data := by rfl

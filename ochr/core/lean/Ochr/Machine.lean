@@ -449,6 +449,7 @@ def lendT (fuel : Nat) (op : LendOp) (t : Term) : M Term := do
   | .prim n as => return .prim n (← as.mapM go)
   | .ctor ty c h ps as => return .ctor ty c h ps (← as.mapM go)
   | .matchInd p ty as => return .matchInd p ty (← as.mapM fun (h, a) => do pure (h, ← go a))
+  | .block cs rd pf B m => return .block (← cs.mapM fun (h, a) => do pure (h, ← go a)) rd pf B (← go m)
   | _ => return t
 termination_by structural fuel
 end
@@ -748,11 +749,17 @@ where
     | .letIn _ a b | .seq a b => termVals a ++ termVals b
     | .assign _ a => termVals a
     | .prim _ as => termsIn as
+    -- exp-block-text: a sealed block's values are its cells'
+    | .block cs _ _ _ _ => armsIn cs
     | _ => []
   termination_by structural t => t
   termsIn : List Term → List Term
     | [] => []
     | t :: ts => termVals t ++ termsIn ts
+  termination_by structural ts => ts
+  armsIn : List (Hint × Term) → List Term
+    | [] => []
+    | (_, t) :: ts => termVals t ++ armsIn ts
   termination_by structural ts => ts
 
 /-- One arm of a stuck block (`closeBlock`): `setup` puts the state in the arm's world and
@@ -964,6 +971,10 @@ def substT (fuel : Nat) (x r : Value) (t : Term) : M Term := do
   | .ctor ty c h ps as => return .ctor ty c h (← ps.mapM go) (← as.mapM go)
   | .tind n as => return .tind n (← as.mapM go)
   | .matchInd p ty as => return .matchInd p ty (← as.mapM fun (h, a) => do pure (h, ← go a))
+  -- exp-block-text: a sealed block's cells, their declared types, its type and its match
+  | .block cs rd pf B m =>
+    let rd' ← rd.mapM fun (d, T) => do pure (d, ← substV fuel' x r T)
+    return .block (← cs.mapM fun (h, a) => do pure (h, ← go a)) rd' pf (← substV fuel' x r B) (← go m)
   | _ => return t
 termination_by structural fuel
 
@@ -1731,7 +1742,9 @@ def sealedType? (fuel : Nat) (t : Term) : M (Option Value) := privately do
   -- reads a cell (`peek(c)`), of the type the cell was declared at (`(u : T)`) or of its initial
   -- value; a borrow result reads through the call's result, of its declared codomain's content;
   -- a result form is its head's declared codomain (`sealedResultType?`). Anything else: unknown.
-  if t.hasLoanAtom then
+  -- exp-block-text: a sealed block's text is never typed by running it either (its match would be
+  -- split and closed off again): its type is read off its text, `B`, as recorded where it closed off
+  if t.hasLoanAtom || t.isBlockText then
     let (bound, body) := t.letChain
     match body with
     | .prim "peek" [.place (.var i)] => match bound[i]? with
@@ -1740,8 +1753,10 @@ def sealedType? (fuel : Nat) (t : Term) : M (Option Value) := privately do
       | _ => return none
     | .prim "peek" [.place (.deref (.var i))] => match bound[i]? with
       | some c@(.call _ _ true) => return (match ← sealedResultType? fuel' c with | some (.tRef T) => some T | _ => none)
+      | some (.block _ _ _ (.tRef T) _) => return some T
       | _ => return none
     | .call _ _ true => return ← sealedResultType? fuel' t
+    | .block _ _ _ B _ => return some B
     | _ => return none
   -- outside the enclosing functions' checks for [Rec]'s test, but they are still being checked:
   -- D135 still keeps their bodies from running (`underCheck`)
@@ -2134,6 +2149,11 @@ def convT (fuel : Nat) (t u : Term) : M Bool := do
   | .tind n as, .tind m bs => pure (n == m && (← convTList fuel' as bs))
   | .matchInd p t as, .matchInd q u bs =>
     pure (p == q && t == u && (← convTList fuel' (as.map (·.2)) (bs.map (·.2))))
+  -- exp-block-text: two sealed blocks, by their texts (cells, declared types read alike, type,
+  -- match), embedded values by `conv`; a block is not a function, so never by observation
+  | .block cs rd pf B m, .block ds rd' pf' B' m' =>
+    pure (pf == pf' && rd.map (·.1) == rd'.map (·.1) && (← convTList fuel' (cs.map (·.2)) (ds.map (·.2)))
+      && (← convList fuel' (rd.map (·.2)) (rd'.map (·.2))) && (← conv fuel' B B') && (← convT fuel' m m'))
   | _, _ => pure false
 termination_by structural fuel
 
@@ -2371,6 +2391,7 @@ def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) 
   -- tail returning types is erased itself but does not make its context a proof).
   let (erased, proof) ← match t with
     | .call _ _ _ => getFlags      -- set by `callFn` from the callee's class
+    | .block .. => getFlags        -- exp-block-text: set by `runBlock`, data (a proof block has no text)
     | .seq _ _ | .letIn _ _ _ | .matchNat _ _ _ | .matchInd _ _ _ =>
       let (_, p) ← getFlags
       pure (p, p)
@@ -2600,6 +2621,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     let v ← if ← isPropV fuel' T then pure .proof else pure v
     pure (v, some T)
   | .call f as hd => evalCall fuel' typed f as hd
+  | .block cs rd pf B m => runBlock fuel' typed cs rd pf B m
   | .nat => pure (.tNat, some (.sort 1))
   | .unit => pure (.tUnit, some (.sort 1))
   | .zero => pure (.zero, ty .tNat)
@@ -3014,9 +3036,8 @@ termination_by structural fuel
 
 /-- One mental model: does `fv` return a type or a proof (its class, D28/D35)? Its arguments are
 then statement positions. -/
-def stmtCallee (fuel : Nat) (fv : Value) (fT : Option Value) (cls? : Option Nat) : M Bool := do
+def stmtCallee (fuel : Nat) (fv : Value) (fT : Option Value) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  if let some k := cls? then return k != 0
   match ← funType? fuel' fv fT with
   -- `T` need not be a Π-type here (`f : A` with `A : Type`), and `fnClass` of anything else is
   -- `0`. That is never a decision of an accepted run: `evalCall` passes the same callee to
@@ -3029,17 +3050,14 @@ def stmtCallee (fuel : Nat) (fv : Value) (fT : Option Value) (cls? : Option Nat)
   | none => pure (fv == .proof)
 termination_by structural fuel
 
-def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Bool)
-    (cls? : Option Nat := none) (res? : Option DeclInfo := none)
-    (given : Option (Value × List Value) := none) : M (Value × Option Value) := do
+def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Bool) :
+    M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D80: what the call's declared result type says (η at `Unit`, R2), and which borrow
   -- arguments lend a place whose declared type reads as `Unit` ([Close]'s fill, R3), read off
   -- the call as written, before it runs. A sealed program's head call keeps the decision its
   -- call made when it closed off (no η: it returned this program, so it did not read `Unit`)
-  let res ← match res? with
-    | some r => pure r
-    | none => if head then pure DeclInfo.other else withLive true (declOf fuel' false [] [] (.call f as head))
+  let res ← if head then pure DeclInfo.other else withLive true (declOf fuel' false [] [] (.call f as head))
   let argDecls ← as.toArray.mapM fun a => withLive true (declOf fuel' false [] [] a)
   let fills := argDecls.map (· == .ref .unit)
   modify fun s => { s with headEval := true }
@@ -3055,12 +3073,11 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
   demand true
   let (fv, fT) ← eval fuel' typed f
   modify fun s => { s with inPlace := false }
-  -- D104: the head and each argument are held at the type their evaluation returned, else at the
-  -- one the caller has for them (`given`: a stuck block's function type and its domains)
-  pushTemp fv (fT <|> given.map (·.1)) "evalCall"
+  -- D104: the head and each argument are held at the type their evaluation returned
+  pushTemp fv fT "evalCall"
   -- one mental model: a call that returns a type or a proof is a statement, and each of its
   -- arguments a statement position, run on its own private copy of the state
-  let stmt ← stmtCallee fuel' fv fT cls?
+  let stmt ← stmtCallee fuel' fv fT
   let mut tys := #[]
   let mut ws0 := #[]
   let mut ender := #[]     -- the editor: which argument ended each argument's borrow
@@ -3075,17 +3092,14 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
     -- borrow exactly when its declared type is (D48)
     demand (ad matches .ref _)
     let (w, T) ← stmtArgIf fuel' stmt a (eval fuel' typed a hint)
-    pushTemp w (T <|> given.bind (·.2[i]?)) "evalCall"
+    pushTemp w T "evalCall"
     ws0 := ws0.push w
     ender ← noteEnders ender ws0
     tys := tys.push T
   -- D115: the head and the arguments stay in Ω, the last temporaries of this frame, until the
   -- callee's frame binds them (`callFn` reads them there)
   let (_, ws) ← callTemps (← topIdx) as.length
-  -- D104, D115: a stuck block's call holds its result, while [Lend] renames its label, at the block's
-  -- type, the codomain of the function type `closeBlock` assembled (`given`)
-  let resTy := given.bind fun (T, _) => match T with | .tPi _ (.pi _ _ (.val B)) _ => some B | _ => none
-  atLoc (← enderLoc ender ws) <| callFn fuel' typed fT as.length tys head cls? recUid? res fills want defer resTy
+  atLoc (← enderLoc ender ws) <| callFn fuel' typed fT as.length tys head recUid? res fills want defer
 termination_by structural fuel
 
 /-- The type of the next parameter of `fv`, with the earlier ones bound to the arguments
@@ -3203,7 +3217,6 @@ def paramTypes (fuel : Nat) (piTy : Value) (ws : List Value) (need : List Nat) :
   if !want.any id then return Array.replicate n none
   let pf ← paramFlags fuel' cs rd ds
   let (pds, _) ← paramDecls fuel' cs rd hs ds c
-  let pds := if rd.length > cs.length then (rd.drop cs.length).map (·.1) else pds
   privately do
     pushFrame
     pushCaps fuel' cs rd
@@ -3232,12 +3245,12 @@ termination_by structural fuel
 its `n` arguments are the last temporaries of the top frame (`callTemps`), held with their types
 (D104); each borrow argument ends where it is held, the others still in Ω, and then the call's
 temporaries are taken off. -/
-def endBorrowArgs (fuel : Nat) (n : Nat) : M Unit := do
+def endBorrowArgs (fuel : Nat) (n : Nat) (hd : Nat := 1) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let f ← topIdx
   for i in [0:n] do
-    if let .borrow l _ ← getAt (← callArgPos f n i) then endBorrow fuel' l
-  discard (takeCallTemps f n)
+    if let .borrow l _ ← getAt (← callArgPos f n i hd) then endBorrow fuel' l
+  dropTemps f (n + hd)
 termination_by structural fuel
 
 /-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. `B` is the call's
@@ -3267,8 +3280,6 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   modify fun s => { s with depth := d + 1 }
   let pf ← paramFlags fuel' cs rd ds
   let (pds, cd) ← paramDecls fuel' cs rd hs ds c
-  -- D80: a stuck block records its parameters' readings, the places it takes (`closeBlock`)
-  let pds := if rd.length > cs.length then (rd.drop cs.length).map (·.1) else pds
   -- D82: every binding has its declared type, each parameter's evaluated in the frame of the
   -- captures and the earlier parameters, where it was written (no `self`), as at the generic call
   -- ([Def], [Call-type]). It is evaluated when it is read (`bindTy?`), except a borrow parameter's,
@@ -3314,14 +3325,50 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   popTemp
 termination_by structural fuel
 
+/-- Static ends, rule 1: a call whose declared result is a borrow (its row `kind`, [Close]'s) lends
+that borrow every place its borrow arguments `ws` lend, whether it runs or closes off. They are
+marked for a label `g` reserved now (no borrow holds it yet, so the marks are inert while the call
+runs: the callee cannot reach its caller's places, [Frame] F4), and `g` becomes the result's label
+(D99, `lendResult`). A sealed block's text does the same at its cells (exp-block-text). -/
+def lendArgs (fuel : Nat) (kind : Kind) (ws : Array Value) : M (Option Nat) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let lent := if kind == .ref then ws.toList.filterMap (fun | .borrow l _ => some l | _ => none) else []
+  let g? ← if lent.isEmpty then pure none else some <$> freshLoan
+  if let some g := g? then
+    fire .Lend fun _ => s!"the result is lent every place its {lent.length} borrow argument(s) lend"
+    for l in lent do lendEnv fuel' (.mark l g)
+  pure g?
+termination_by structural fuel
+
+/-- D99: the result is the fresh borrow `g` (`lendArgs`), whether the body ran or the call closed
+off. The borrow the body returned (a borrow argument, made before the call, or one made inside
+it) or [Close]'s `k` is ended into `g`: its loans and marks become `g`'s, so after the call no label
+made before it is the result's, on every path, as in the meaning of the call. D115: the result is
+held as a temporary, at the call's type `T`, meanwhile, so the renaming reaches it as it reaches the
+rest of Ω (`lendV`'s `into` renames the borrow `k` itself to `g`). -/
+def lendResult (fuel : Nat) (g? : Option Nat) (r : Value) (T : Option Value) (site : String) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match g?, r with
+  | some g, .borrow k _ => do
+    if k == g then pure r else
+    pushTemp r T site
+    lendEnv fuel' (.into k g)
+    popTemp
+  | some g, _ => do
+    pushTemp r T site
+    lendEnv fuel' (.ended g [])
+    popTemp
+  | none, _ => pure r
+termination_by structural fuel
+
 /-- [Call] of the head and the `n` arguments held as the last temporaries of the top frame
 (D115: `callTemps`; every caller pushes them, with the types `fT` and `tys` it has for them, and
 they stay in Ω until the callee's frame binds them, a sealed program's text takes them ([Close]),
 or they end unrun (P5)). -/
 def callFn (fuel : Nat) (typed : Bool) (fT : Option Value) (n : Nat)
-    (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat := none)
+    (tys : Array (Option Value)) (head : Bool)
     (recUid? : Option Nat := none) (res : DeclInfo := .other) (fills : Array Bool := #[])
-    (want : Bool := true) (defer : Bool := false) (resTy : Option Value := none) :
+    (want : Bool := true) (defer : Bool := false) :
     M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let f0 ← topIdx
@@ -3361,11 +3408,8 @@ def callFn (fuel : Nat) (typed : Bool) (fT : Option Value) (n : Nat)
   -- unknown `A : Type` refined to a Π-type would otherwise read a row and class the generic run
   -- never decided; test: `CallSort`, `Examples/Functions.lean`)
   let kind ← declKind fuel' clsTy
-  -- D28, D35: the callee's class, read off its declared codomain (a stuck block's is
-  -- given by `closeBlock`)
-  let cls ← match cls? with
-    | some k => pure k
-    | none => fnClass fuel' clsTy
+  -- D28, D35: the callee's class, read off its declared codomain
+  let cls ← fnClass fuel' clsTy
   let kind := if kind == .prop then Kind.data else kind
   -- D53: an erased call cannot make whole a borrow it is passed (its effects vanish at runtime)
   if cls != 0 then wholeBorrowArgs ws "an erased call"
@@ -3373,15 +3417,8 @@ def callFn (fuel : Nat) (typed : Bool) (fT : Option Value) (n : Nat)
     endBorrowArgs fuel' n
     setFlags (true, true)
     return (.proof, B)
-  -- static ends, rule 1: a call whose declared result is a borrow lends that borrow every place
-  -- its borrow arguments lend, whether it runs or closes off. They are marked for a label `g`
-  -- reserved now (no borrow holds it yet, so the marks are inert while the call runs: the callee
-  -- cannot reach its caller's places, [Frame] F4), and `g` becomes the result's label (D99)
-  let lent := if kind == .ref then ws.toList.filterMap (fun | .borrow l _ => some l | _ => none) else []
-  let g? ← if lent.isEmpty then pure none else some <$> freshLoan
-  if let some g := g? then
-    fire .Lend fun _ => s!"the result is lent every place its {lent.length} borrow argument(s) lend"
-    for l in lent do lendEnv fuel' (.mark l g)
+  -- static ends, rule 1 (`lendArgs`)
+  let g? ← lendArgs fuel' kind ws
   -- D115: the marks map over Ω, the call's temporaries included: read them again
   let (fv, ws) ← callTemps f0 n
   -- a neutral head (v1.3), and a function whose check is under way (D135: its body is code the
@@ -3397,23 +3434,8 @@ def callFn (fuel : Nat) (typed : Bool) (fT : Option Value) (n : Nat)
       catchStuck (runBody fuel' fv cs t rd ws B) fun on =>
         if head then throw (.stuck on) else closeCall fuel' n kind res fills tys
     | _ => err s!"call of {fv}, which is not a function"
-  -- D99: the result is the fresh borrow `g`, whether the body ran or the call closed off. The
-  -- borrow the body returned (a borrow argument, made before the call, or one made inside it) or
-  -- [Close]'s `k` is ended into `g`: its loans and marks become `g`'s, so after the call no
-  -- label made before it is the result's, on every path, as in the meaning of the call. D115: the
-  -- result is held as a temporary meanwhile, so the renaming reaches it as it reaches the rest of Ω
-  -- (`lendV`'s `into` renames the borrow `k` itself to `g`)
-  let r ← match g?, r with
-    | some g, .borrow k _ => do
-      if k == g then pure r else
-      pushTemp r (B <|> resTy) "callFn"
-      lendEnv fuel' (.into k g)
-      popTemp
-    | some g, _ => do
-      pushTemp r (B <|> resTy) "callFn"
-      lendEnv fuel' (.ended g [])
-      popTemp
-    | none, _ => pure r
+  -- D99 (`lendResult`)
+  let r ← lendResult fuel' g? r B "callFn"
   let r := if cls == 2 then Value.proof else r
   -- D80 (R2): the result of a call whose declared codomain reads as `Unit` is `()`, whether it
   -- ran or closed off, so the generic call and an instance normalise it alike
@@ -3428,8 +3450,8 @@ the borrow arguments `wᵢ = borrow_ℓᵢ uᵢ` of type `&Tᵢ`; the result and
 table. D82: each cell has its declared type, the lent place's (`tys`, the arguments' types),
 so a re-run of the program is typed by declaration like any other run.
 
-This is the only place a sealed program is made (a stuck block or `J` is closed off through
-it too, `closeBlock`), and it keeps closing off's obligations (`notes/closeoff-model.md`):
+This and a stuck block (`closeBlock`) are the places a sealed program is made, both through
+`closeWith`, which keeps closing off's obligations (`notes/closeoff-model.md`):
 (C1) the text reconstructs the call exactly, the same function value, the other arguments as
 values, each borrowed content in a fresh cell, the head call marked so a re-run cannot close
 it again (C5); (C2) each output is its own projection, read by `peek`, which copies the
@@ -3442,11 +3464,23 @@ place declared `Unit`) are read off the call as written (`evalCall`), never off 
 def closeCall (fuel : Nat) (n : Nat) (kind : Kind) (res : DeclInfo := .other)
     (fills : Array Bool := #[]) (tys : Array (Option Value) := #[]) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  let (fv, _) ← callTemps (← topIdx) n
+  closeWith fuel' n 1 s!"{fv}" (fun as => .call (.val fv) as true) kind res fills tys
+termination_by structural fuel
+
+/-- [Close] for a head `C` (exp-block-text): a call's, `f(ā)ʰ` (`closeCall`), or a stuck block's
+text, the match over its cells (`closeBlock`). Its `n` arguments are the last temporaries of the
+top frame, above `hd` head temporaries (a call holds its head, a block none). `L := let cᵢ = uᵢ` for
+the borrow arguments, and `C` is given the arguments with `&cᵢ` for those, the values for the
+rest; the result and the loans follow the table. -/
+def closeWith (fuel : Nat) (n hd : Nat) (what : String) (mkC : List Term → Term) (kind : Kind)
+    (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D115: the head and the arguments are the last temporaries of the top frame until the program's
   -- text takes them: each borrow argument as its loan is filled, the rest at the end
   let f0 ← topIdx
-  let (fv, ws) ← callTemps f0 n
-  fire .Close fun _ => s!"{fv}: {if kind == .ref then "a borrow result" else if res == .unit then "a declared `Unit` result, ()" else "a sealed result"}"
+  let ws ← argTemps f0 n
+  fire .Close fun _ => s!"{what}: {if kind == .ref then "a borrow result" else if res == .unit then "a declared `Unit` result, ()" else "a sealed result"}"
   wholeBorrowArgs ws "a call that closes off"
   -- Precondition (v1.1): every argument's content is loan-free (guaranteed by [Access]).
   -- An assertion: a violation is a bug of the rules or of this checker, never a user error.
@@ -3463,7 +3497,7 @@ def closeCall (fuel : Nat) (n : Nat) (kind : Kind) (res : DeclInfo := .other)
     match bs.findIdx? (·.1 == i) with
     | some j => .borrow (.var (d + m - 1 - j))
     | none => .val ws[i]!
-  let C (d : Nat) : Term := .call (.val fv) ((List.range ws.size).map (argT d)) true
+  let C (d : Nat) : Term := mkC ((List.range ws.size).map (argT d))
   let cellTerm (i : Nat) (u : Value) : Term := match tys[i]? with
     | some (some (.tRef T)) => .ascribe (.val u) (.val T)
     | _ => .val u
@@ -3483,11 +3517,11 @@ def closeCall (fuel : Nat) (n : Nat) (kind : Kind) (res : DeclInfo := .other)
       let fill := wrapL (.letIn ⟨"r"⟩ (C 0) (.seq (.assign (.deref (.var 0)) (.val (.loan k))) (peek (cell 1 j))))
       -- D115: the argument's borrow is consumed (its content is the program's cell `cⱼ`), as [End]
       -- takes a borrow before it fills its loan
-      setAt (← callArgPos f0 n i) .bot
+      setAt (← callArgPos f0 n i hd) .bot
       substEnv fuel' (.loan l) (← canonNeutral (.sealed fill)) false
       -- static ends: `l` is consumed; the places it lent are `k`'s (marked by `callFn`, rule 1)
       lendEnv fuel' (.ended l [])
-    discard (takeCallTemps f0 n)
+    dropTemps f0 (n + hd)
     pure (.borrow k (← canonNeutral (.sealed (wrapL (.letIn ⟨"r"⟩ (C 0) (peek (.place (.deref (.var 0)))))))))
   | _ =>
     for ((i, l, _), j) in bs.zipIdx do
@@ -3497,11 +3531,11 @@ def closeCall (fuel : Nat) (n : Nat) (kind : Kind) (res : DeclInfo := .other)
       let fill ← if fills.getD i false then pure .unit
         else canonNeutral (.sealed (wrapL (.seq (C 0) (peek (cell 0 j)))))
       -- D115: the argument's borrow is consumed (its content is the program's cell `cⱼ`)
-      setAt (← callArgPos f0 n i) .bot
+      setAt (← callArgPos f0 n i hd) .bot
       substEnv fuel' (.loan l) fill false
       -- static ends: `l` is consumed, so the places it lent are free
       lendEnv fuel' (.ended l [])
-    discard (takeCallTemps f0 n)
+    dropTemps f0 (n + hd)
     -- D80 (R2): the readback at a declared `Unit` is `()` (η-normal form); the call's effects
     -- are in the fills above
     if res == .unit then return .unit
@@ -3585,6 +3619,8 @@ def sealedResultType? (fuel : Nat) (t : Term) : M (Option Value) := do
     | .letIn _ _ u => body u
     | u => u
   match body t with
+  -- exp-block-text: a sealed block's type is recorded in its text
+  | .block _ _ _ B _ => pure (some B)
   | .call (.val f) as true =>
     match f with
     | .gfn n => match (← lookupGlobal n).ty with
@@ -3666,6 +3702,9 @@ def renormT (fuel : Nat) (t : Term) : M Term := do
   | .ctor ty c h ps as => return .ctor ty c h (← ps.mapM go) (← as.mapM go)
   | .tind n as => return .tind n (← as.mapM go)
   | .matchInd p ty as => return .matchInd p ty (← as.mapM fun (h, a) => do pure (h, ← go a))
+  | .block cs rd pf B m =>
+    let rd' ← rd.mapM fun (d, T) => do pure (d, ← renormV fuel' T)
+    return .block (← cs.mapM fun (h, a) => do pure (h, ← go a)) rd' pf (← renormV fuel' B) (← go m)
   | _ => return t
 termination_by structural fuel
 
@@ -4422,58 +4461,80 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
       bodyReturns fuel' "a stuck match's arm returns it" av T lent "lent to a stuck match, whose arm returns with it")
       (set cur)
     set cur
-  let n := capsS.size
+  -- exp-block-text: a function whose check is under way (on the [Rec] stack) that the match
+  -- names (only as the head of a call, fix L1) is named by its global in the text, never held as a
+  -- cell (the checker's rule; D139's first part): K1 still takes its binding, so the state after
+  -- the block is the direct run's, but the text does not keep it
+  let recs := (← get).recStack
+  let env0 := (← get).env
+  let selfFn (q : Place) : Option Value := match q with
+    | .var o =>
+      let b := env0[f]!.binds[nb - 1 - o]!
+      (recs.find? fun ctx => recFrameOf ctx b.val b.recUid).map (·.fn)
+    | _ => none
   let mut hints := #[]
-  let mut doms := #[]
-  let mut args := #[]
   let mut pflags := #[]
   let mut rd := #[]
+  let mut fills := #[]
+  let mut kept : Array (Place × Nat) := #[]
+  let mut selfs : List (Nat × Value) := []
+  -- every capture's argument, its domain, whether it takes it by `&`, and whether the text keeps it
+  let mut takes : Array (Term × Value × Bool × Bool) := #[]
   for (q, mode) in capsS do
     let T ← placeType fuel' q
-    -- D80: each parameter is declared as the place it takes (its type `T` is for typing the
-    -- block's arguments): the block's run reads its parameters as the direct path reads the
-    -- places, copy or not, whatever a refinement makes of `T`
+    -- D80: each cell is declared as the place it takes (its type `T` is for typing its value):
+    -- the block's run reads its cells as the direct path reads the places, copy or not, whatever
+    -- a refinement makes of `T`
     let dq ← withLive true (placeDecl fuel' [] q)
-    rd := rd.push (if mode == 1 then (DeclInfo.ref dq, Value.tRef T) else (dq, T))
     repackAt fuel' q T "captured whole by a stuck match"
-    -- a captured proof variable stays a proof in the block: its parameter is declared
-    -- `: T` with `T : Prop` (v1.7: the same flag on the direct and the block path)
+    -- a captured proof variable stays a proof in the block: its cell is a proof (v1.7: the same
+    -- flag on the direct and the block path)
     let env := (← get).env
-    pflags := pflags.push (← match q with
+    let pflag ← match q with
       | .var o => pure (mode != 1 && env[f]!.binds[nb - 1 - o]!.proof)
       | .field g _ => do pure (mode != 1 && (← fieldIsProof g))   -- v2.0: a proof field (declared)
-      | _ => pure false)
-    hints := hints.push (Hint.mk ((← ppPlace q).replace "*" "" |>.replace "(" "" |>.replace ")" "" |>.replace "." "_"))
-    match mode with
-    | 2 =>
-      doms := doms.push T; args := args.push (Term.place q)
-    | 1 =>
-      -- D66: the block borrows the place, so its type must be known to be in Type₀ (a stuck
-      -- type `⌈T(σ)⌉` by its head's declared codomain: reviewer-6's A12)
-      if !(← isBorrowable fuel' T) then
-        err s!"[D66] a stuck match would borrow {← ppPlace q}, whose type {T} is not known to be in Type₀"
-      doms := doms.push (.tRef T); args := args.push (Term.borrow q)
-    | _ =>
+      | _ => pure false
+    let (dom, arg) ← match mode with
+      | 2 => pure (T, Term.place q)
+      | 1 => do
+        -- D66: the block borrows the place, so its type must be known to be in Type₀ (a stuck
+        -- type `⌈T(σ)⌉` by its head's declared codomain: reviewer-6's A12)
+        if !(← isBorrowable fuel' T) then
+          err s!"[D66] a stuck match would borrow {← ppPlace q}, whose type {T} is not known to be in Type₀"
+        pure (Value.tRef T, Term.borrow q)
       -- D53: a place the block only reads is read in place, not consumed
-      doms := doms.push T
-      args := args.push (.prim "inplace" [Term.place q])
-  let capsL := capsS.toList
+      | _ => pure (T, Term.prim "inplace" [Term.place q])
+    match selfFn q, q with
+    | some fn, .var o =>
+      selfs := (o, fn) :: selfs
+      takes := takes.push (arg, dom, mode == 1, false)
+    | _, _ =>
+      rd := rd.push (if mode == 1 then (DeclInfo.ref dq, Value.tRef T) else (dq, T))
+      pflags := pflags.push pflag
+      hints := hints.push (Hint.mk ((← ppPlace q).replace "*" "" |>.replace "(" "" |>.replace ")" "" |>.replace "." "_"))
+      -- D80 (R3): a fill of a place declared `Unit` taken by `&` is `()`, read off the place
+      fills := fills.push (mode == 1 && dq == .unit)
+      kept := kept.push (q, mode)
+      takes := takes.push (arg, dom, mode == 1, true)
+  let capsL := kept.toList
+  let n := capsL.length
   let mt := if split.isEmpty then mt else mt.selectArms (fun p => (split.find? (placeEq ·.1 p)).map (·.2)) 0
-  let body := mt.mapFreePlace (fun c p =>
+  -- the match over the cells: a kept capture's place is its cell (through `*` if taken by `&`), a
+  -- function under check its global
+  let mtG := selfs.foldl (fun t (o, fn) => t.inlineReads o (.val fn) 0) mt
+  let body := mtG.mapFreePlace (fun c p =>
     match capsL.zipIdx.find? fun ((q, _), _) => placePrefix q p with
     | some ((q, mode), k) =>
-      let param := Place.var (c + n - 1 - k)
-      let base := if mode == 1 then Place.deref param else param
+      let cell := Place.var (c + n - 1 - k)
+      let base := if mode == 1 then Place.deref cell else cell
       let (_, qs) := q.steps
       let (_, ps) := p.steps
       (ps.drop qs.length).foldl (fun acc st => match st with
         | .deref => .deref acc | .proj i => .proj i acc
         | .field g => .field g acc) base
     | none => p) 0
-  let domTs := (doms.zip pflags).toList.map fun (T, p) =>
-    if p then Term.ascribe (.val T) (.sort 0) else .val T
-  let anon := Value.clo [] (.fix ⟨"_"⟩ hints.toList domTs (.val B) none body) rd.toList
-  trace fun _ => s!"[Stuck block] {anon}({", ".intercalate (args.toList.map (·.pp []))})"
+  let text (as : List Term) : Term := .block (hints.toList.zip as) rd.toList pflags.toList B body
+  trace fun _ => s!"[Stuck block] {Value.sealed (text (takes.toList.filterMap fun (a, _, _, k) => if k then some a else none))}"
   -- v1.7 (D35): the block is erased exactly when its match would be, i.e. at every
   -- instance: when every arm is a proof (finding P2: not read off the computed type B).
   -- D80: its result is `()` exactly when the match's declared type reads as `Unit` (every arm's
@@ -4481,15 +4542,85 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   let res ← withLive true (declOf fuel' false [] [] mt)
   -- static ends, rule 2: a direct run lends its result as this block does exactly when the
   -- match's declared type reads as a borrow (`joinEnds`); the block's [Close] row is read from
-  -- `B` (`declKind`). `&` is never produced by computation (D48), so the two agree
-  unless (res matches .ref _) == ((← kindOf fuel' B) == .ref) do
+  -- `B` (`kindOf`). `&` is never produced by computation (D48), so the two agree
+  let kind ← kindOf fuel' B
+  unless (res matches .ref _) == (kind == .ref) do
     err s!"INTERNAL [static ends] the match's declared type and its type {B} disagree on whether it is a borrow (please report)"
-  -- the block's type is `B`; its call's is not read (D82), nor deferred (D130: the copy is the
-  -- evaluation's that `evalAt` started, not this call's)
+  let kind := if kind == .prop then Kind.data else kind
+  -- the block's type is `B`; no type is computed for what it takes (D82), nor deferred (D130)
   modify fun s => { s with wantHere := false, deferHere := false }
-  -- D104: the block's call holds its head and arguments at the block's function type and domains
-  let (v, _) ← evalCall fuel' false (.val anon) args.toList false (some (if allProof then 2 else 0)) (some res)
-    (given := some (.tPi [] (.pi hints.toList domTs (.val B)) rd.toList, doms.toList))
+  -- [Block] takes its captures as a call takes its arguments: each evaluated in order into a
+  -- temporary of this frame, held at its domain (D104, D115), a proof block's as statements (an
+  -- erased call's are, `stmtArgIf`). A function under check's binding is taken as K1 says and not
+  -- kept (its value is the global the text names)
+  let f1 ← topIdx
+  let mut argTys : Array (Option Value) := #[]
+  for (a, dom, byRef, keep) in takes do
+    demand byRef
+    let (w, T) ← stmtArgIf fuel' allProof a (eval fuel' false a)
+    if keep then
+      pushTemp w (T <|> some dom) "closeBlock"
+      argTys := argTys.push T
+  let ws ← argTemps f1 n
+  if let some i := ws.findIdx? (· == .bot) then
+    err s!"[Call] argument {i + 1} is ⊥ at the call point (a later argument ended its borrow): an argument not of the parameter's type"
+  if allProof then
+    -- a proof is not run (P5): what it takes by `&` ends unchanged
+    wholeBorrowArgs ws "an erased call"
+    endBorrowArgs fuel' n 0
+    setFlags (true, true)
+    return (.proof, some B)
+  -- [Close] with the block's text as its head: static ends' rule 1 (`lendArgs`), the row `kind`,
+  -- the outputs and the fills (`closeWith`), D99 (`lendResult`)
+  let g? ← lendArgs fuel' kind ws
+  let r ← closeWith fuel' n 0 "a stuck block" text kind res fills argTys
+  let r ← lendResult fuel' g? r (some B) "closeBlock"
+  setFlags (false, false)
+  modify fun s => { s with callTyLater := none }
+  pure (etaUnit res r, some B)
+termination_by structural fuel
+
+/-- exp-block-text: the run of a sealed block's text (its re-run: [Seal], `nfSealed`; `split`'s
+search). A block is not a function, so nothing is called: its cells are taken as a call takes its
+arguments (each evaluated in order into a temporary, D115; static ends' rule 1 when its type is a
+borrow, `lendArgs`), then bound in this frame, each at the declared type and reading of the place it
+took (D80, D82); then the match runs in tail position, as a body does (static ends: its join, no
+entry), with `B` as its hint where it reads one (D124); then the cells are dropped, most recent
+first, as a frame's bindings are at its pop, the result held at `B` meanwhile (D104, D106), and a
+returned borrow is ended into the reserved label (D99, `lendResult`). A stuck match is stuck:
+nothing here catches it, so the program stays sealed (C5, by construction: no call is made that
+could close it off). Only an untyped run meets a sealed block's text (`sealedType?` reads its type
+off the text). -/
+def runBlock (fuel : Nat) (typed : Bool) (cs : List (Hint × Term)) (rd : List (DeclInfo × Value))
+    (pf : List Bool) (B : Value) (m : Term) : M (Value × Option Value) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if typed then err "INTERNAL [Block] a sealed block's text is run only untyped, by its re-run (please report)"
+  let n := cs.length
+  let f0 ← topIdx
+  for ((_, a), (_, T)) in cs.zip rd do
+    demand (a matches .borrow _)
+    let (w, _) ← eval fuel' false a
+    pushTemp w (some T) "runBlock"
+  let ws ← argTemps f0 n
+  if let some i := ws.findIdx? (· == .bot) then
+    err s!"[Call] argument {i + 1} is ⊥ at the call point (a later argument ended its borrow): an argument not of the parameter's type"
+  let kind ← kindOf fuel' B
+  let g? ← lendArgs fuel' (if kind == .prop then .data else kind) ws
+  -- the cells leave the temporaries as they are bound (D115)
+  let ws ← argTemps f0 n
+  dropTemps f0 n
+  for ((((h, _), (d, T)), p), w) in ((cs.zip rd).zip pf).zip ws.toList do
+    pushBind h (some T) (etaUnit d w) p (← refineDecl d)
+  let hint ← if ← readsHint fuel' true false m then pure (some B) else pure none
+  modify fun s => { s with tailNext := true }
+  let (v, _) ← eval fuel' false m hint
+  wholeReturned v
+  pushTemp v (some B) "runBlock"
+  for _ in [0:n] do dropTopBind fuel'
+  let v ← popTemp
+  let v ← lendResult fuel' g? v (some B) "runBlock"
+  setFlags (false, false)
+  modify fun s => { s with callTyLater := none }
   pure (v, some B)
 termination_by structural fuel
 

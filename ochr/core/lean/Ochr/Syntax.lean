@@ -148,6 +148,14 @@ inductive Term where
                                               -- `C(ā; t̄)`: parameters, then fields (D49); `ps = []`
                                               -- for a parameterised type: inferred when typed
   | matchInd (p : Place) (ty : String) (arms : List (Hint × Term))  -- one arm per constructor, in order
+  | block (cells : List (Hint × Term)) (rd : List (DeclInfo × Value)) (pf : List Bool) (B : Value) (m : Term)
+                                              -- a sealed block's text ([Block], exp-block-text): it
+                                              -- binds what the block captured, cell `i` holding the
+                                              -- value of `cells[i]` at the declared type and reading
+                                              -- `rd[i]` (the place it took; `pf[i]`: a proof), and is
+                                              -- then the match (or `J`) `m` over those cells, of
+                                              -- type `B`; it is the program's head, so a re-run runs
+                                              -- it and never closes it off. Never a source term
 
 /-- Runtime values (RULES §2). Types are values too. -/
 inductive Value where
@@ -224,6 +232,8 @@ def Term.beq : Term → Term → Bool
   | .tind n as, .tind m bs => n == m && Term.beqList as bs
   | .ctor t c _ ps as, .ctor u d _ qs bs => t == u && c == d && Term.beqList ps qs && Term.beqList as bs
   | .matchInd p t as, .matchInd q u bs => p.beq q && t == u && Term.beqArms as bs
+  | .block cs rd pf B m, .block ds rd' pf' B' m' =>
+    Term.beqArms cs ds && Value.beqRd rd rd' && pf == pf' && B.beq B' && m.beq m'
   | _, _ => false
 termination_by structural t => t
 
@@ -317,6 +327,8 @@ def Term.exact : Term → Term → Bool
   | .ctor t c h ps as, .ctor u d k qs bs =>
     t == u && c == d && h.exact k && Term.exactList ps qs && Term.exactList as bs
   | .matchInd p t as, .matchInd q u bs => p.exact q && t == u && Term.exactArms as bs
+  | .block cs rd pf B m, .block ds rd' pf' B' m' =>
+    Term.exactArms cs ds && Value.exactRd rd rd' && pf == pf' && B.exact B' && m.exact m'
   | _, _ => false
 termination_by structural t => t
 
