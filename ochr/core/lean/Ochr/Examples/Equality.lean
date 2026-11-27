@@ -839,6 +839,8 @@ def useMessage : String :=
   | _ => ""
 
 -- all owners: the expected parameter type is a conjunction over a and b
-#guard (useMessage.splitOn "∧").length == 2
+-- THE EXPERIMENT `exp-obs-detach`: at `Probe`'s call `r` is compared at its cell, so the parameter
+-- type is `Eq(Nat, 0, 1)`, `False`, not a conjunction over `Pick`'s two fills
+#guard useMessage == "argument 2 (e) has type ⊤, expected False"
 
 #eval IO.println useMessage

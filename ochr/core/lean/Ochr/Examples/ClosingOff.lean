@@ -798,12 +798,13 @@ ochr UnitFill uses Nats, Fixtures {
   reject def QB (g : Π(u : &Unit). &Nat) : Id(Unit, (let u = (); let r = g(&u); u), ()) := refl
 }
 
+-- THE EXPERIMENT `exp-obs-detach`: at `G5`'s call the borrow is compared at its cell, `Eq(Nat, 0, 1)`
 #guard (run "UnitFill" UnitFill).rejectedWith [
-  ("QU", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
-  ("QU2", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let c2 = (); let r = σ0(&c1, &c2); *r := 0; c1⌉, ⌈let c1 = (); let c2 = (); let r = σ0(&c1, &c2); *r := 1; c1⌉) ∧ Eq(Unit, ⌈let c1 = (); let c2 = (); let r = σ0(&c1, &c2); *r := 0; c2⌉, ⌈let c1 = (); let c2 = (); let r = σ0(&c1, &c2); *r := 1; c2⌉)"),
-  ("QU3", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
-  ("QU4", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
-  ("QU5", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
-  ("QU6", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
-  ("QUp", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
+  ("QU", "argument 2 (e) has type ⊤, expected False"),
+  ("QU2", "argument 2 (e) has type ⊤, expected False"),
+  ("QU3", "argument 2 (e) has type ⊤, expected False"),
+  ("QU4", "argument 2 (e) has type ⊤, expected False"),
+  ("QU5", "argument 2 (e) has type ⊤, expected False"),
+  ("QU6", "argument 2 (e) has type ⊤, expected False"),
+  ("QUp", "argument 2 (e) has type ⊤, expected False"),
   ("QB", "the body of QB has type ⊤, but the goal is Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := ⌈let c1 = (); let r = σ0(&c1); *r⌉; c1⌉, ())")]

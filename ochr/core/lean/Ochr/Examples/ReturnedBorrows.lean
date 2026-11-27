@@ -70,7 +70,13 @@ ochr ReturnedBorrows uses Nats, Fixtures {
   -- different numbers through its result leaves different numbers in `*x`.
   def L (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
 
-  def Inj (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = g(x); *r := 0, let r = g(x); *r := 1)) :
+  -- THE EXPERIMENT `exp-obs-detach` (C+), and (C) alike: rejected. `e`, formed at `Inj`'s own check,
+  -- compares `x`'s cell, which holds `g`'s fill around what is written through `r`: `Eq(Nat, F(0),
+  -- F(1))`; `L`'s parameter type at `r` compares `r`'s own cell: `Eq(Nat, 0, 1)`, which is `False`.
+  -- Passing `e` there needs `g`'s backward function `F` to be injective, which nothing proves; today's
+  -- observation followed `r`'s loan to `x`'s cell and got `e`'s type back. The same for `QOk`, `QFOk`
+  -- (and `BoomOk`, which calls `QOk`).
+  reject def Inj (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = g(x); *r := 0, let r = g(x); *r := 1)) :
       False := (
     let r = g(x);
     L(r, e)
@@ -92,19 +98,19 @@ ochr ReturnedBorrows uses Nats, Fixtures {
   def P (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : Empty := J(Nat, 0, 1, M, e, ())
   reject def Q (g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)
   -- twin of Q: `g` takes a borrow, and the hypothesis is the `Id` about writes through its result, not `refl`
-  def QOk (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = g(x); *r := 0, let r = g(x); *r := 1)) : Empty := (
+  reject def QOk (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = g(x); *r := 0, let r = g(x); *r := 1)) : Empty := (
     let r = g(x);
     P(r, e)
   )
   reject def Boom (leak : Π(n : Nat). &Nat) : Empty := Q(leak)
   -- twin of Boom: `leak` takes a borrow, so it is a borrow into `*x` and the contradiction needs the `Id` hypothesis
-  def BoomOk (leak : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = leak(x); *r := 0, let r = leak(x); *r := 1)) : Empty :=
+  reject def BoomOk (leak : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = leak(x); *r := 0, let r = leak(x); *r := 1)) : Empty :=
     QOk(leak, x, e)
   -- the same with the library's `False`
   def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
   reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)
   -- twin of QF: `g` takes a borrow, and the hypothesis is the `Id` about writes through its result, not `refl`
-  def QFOk (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = g(x); *r := 0, let r = g(x); *r := 1)) : False := (
+  reject def QFOk (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = g(x); *r := 0, let r = g(x); *r := 1)) : False := (
     let r = g(x);
     PF(r, e)
   )
