@@ -87,3 +87,63 @@ def SealRerunG (K : RunCtx) (φ : Future) : Prop :=
     ∃ ρ' : Assignment, (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ meanV K ρ' φ h v = meanV K ρ φ h (.sealed t)
 
 end Ochr.Meaning.Steps.Form.Master
+
+/-! ## The in-place branch for an accepted global, and where its fixpoint clause comes from (Task 1 (c); D207) -/
+
+namespace Ochr.Meaning.Steps.Form.Master
+
+open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
+
+/-- **The call of an accepted global** (MIXED; Task 1 (c)): `CallFnG` at a head that is not under check, from the
+context's clauses it consumes: the callee's meaning (`GlobalsOk.fn`, its closure), the frame property at equal selves
+(`RunFrame`, D202), the fixpoint clause (`FixEqG`), the label kind of the result (`RetKindG`, R3), and `RecCurG` (so
+`callFn` runs the body, or closes it off when the body is stuck, never because the head is under check). The in-place
+run is `RunFrame`-related to `fixBodyAt` with `self` the global itself at its true type, which `FixEqG` equates with the
+global's function, which `callOf` applies. Principle 6 (effects stay local: the run in place is the run in isolation,
+plugged in) and principle 4 (it decides as its meaning does). -/
+def CallAcceptedG (K : RunCtx) (φ : Future) : Prop :=
+  ∀ n, IH K φ (n + 1) → ∀ (Δ : Nat → TyS) (ρ : Assignment) (π : Nat → Nat) (g : String) (hd typed : Bool)
+    (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (cf : CallFlags) (stc st₁ : MState)
+    (sc : SState) (asR : List Res) (v : Value) (T? : Option Value) (bh : Nat),
+    K.cur.map (·.1) ≠ some g → RecCurG K stc → GlobalsOk K stc → RunFrame → FixEqG K stc → RetKindG K stc →
+    ModeR stc → stc.tailNext = false → 0 < stc.env.size →
+    CallPt { K with Δ := Δ } ρ φ π stc sc g ws tys (K.C.global g) asR →
+    fT = (stc.globals.find? (·.name == g)).map (·.ty) →
+    (typed = false → (refCall { K with Δ := Δ } (K.C.global g) asR sc).isSome) →
+    DecTab K.D st₁ →
+    Runs (Ochr.callFn n typed fT ws.size tys hd none none cf.res cf.fills cf.want cf.defer none) stc bh (v, T?) st₁ →
+    (∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
+      Ext { K with Δ := Δ } ρ π stc st₁ ρ' Δ' π' ∧ refCall { K with Δ := Δ } (K.C.global g) asR sc = some (r, s') ∧
+      meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+      (∀ T, T? = some T → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+      r.2.label = (Value.heldLabel v).map π' ∧
+      Pre { K with Δ := Δ' } ρ' (st₁.withTempT v T?) ∧ Rel { K with Δ := Δ' } ρ' φ π' (st₁.withTempT v T?) s') ∧
+    Kept stc st₁
+
+/-- **The body descends** (MODEL; a clause of the context for each accepted recursive global, like `FixEqG`; docs/31
+D207, the answer to the lead's second question: no conclusion of the general statement carries "every recursive call
+is at a lower rank", so it is this clause, established at the global's acceptance). The reference's run of the body at
+arguments `a` depends on `self` only through `self`'s applications at argument lists of rank below `a`'s: two selves
+whose applications agree there (and whose function types have the same parameter codes, so the arguments are run and
+tested alike) give the same body output. `FixEqG` follows by induction on the rank (stage `rank a + 1` at `a` binds
+`self` to stage `rank a` at the weakened type, which agrees with the global's function below `rank a` by the same
+induction: the stabilisation). Established at acceptance from the simulation of the global's own check at every bound
+(the knot): its conclusion makes the reference's output the meaning of the checker's leaf, which depends on `K.C.global
+g` only through the sealed programs of calls of `g` (D135 closes every such call off), each made where [Rec] tested its
+decreasing argument against the entry (typed sites; at untyped sites, the per-run form of principle 10, D205), so at a
+rank below the entry's. Principle 10 (recursion descends) and principle 1 (a recursive function means its limit by
+stages). -/
+def RecDescG (K : RunCtx) (st : MState) : Prop :=
+  ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (j : Nat) (body : Term),
+    st.globals.find? (·.name == n) = some gd → K.cur.map (·.1) ≠ some n →
+    gd.fn? = some (.fix self hs ds c (some j) body) →
+    ∀ (ρ : Assignment) (φ : Future) (s : SState) (args : List Sem) (X Y : Sem) (TX TY : TyM),
+      DomMembers K.dm.read (runDoms K ρ φ s ds) args →
+      (∀ as : List Sem, TX.paramAt? K.dm.read as = TY.paramAt? K.dm.read as) →
+      (∀ (bs : List Res) (s' : SState), fixRank (some j) (bs.map (·.1)) < fixRank (some j) args →
+        callOf K.dm.read (X, .plain TX) bs s' = callOf K.dm.read (Y, .plain TY) bs s') →
+      let fb := (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
+      fixBodyAt K ρ φ fb s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c) TX s.nextLoan body X args =
+        fixBodyAt K ρ φ fb s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c) TY s.nextLoan body Y args
+
+end Ochr.Meaning.Steps.Form.Master

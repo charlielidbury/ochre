@@ -66,6 +66,10 @@ def valOf (Ω : List (String × Option Value × Value)) (x : String) : String :=
 #guard (holes "GoH").map (valOf · "r") ==
   ["⌈(fix go (y : Nat) : Nat by y := match κ1 { Z => match y { Z => 0, S _ => let h = fix _ (u : Unit) : Nat := go(clone(y.0)); let r = h(()); hole }, S _ => 0 } where κ1 = 0)(σ3)⌉"]
 #guard (holes "GoH").map (valOf · "go") == ["⊥"]
+-- the decreasing parameter's predecessor was MOVED into each recursive call (`n ↦ S(⊥)`; in `RB` the block took `n`
+-- whole): the entry value survives only in the [Rec] stack's record, so the rank of a sealed call's argument is read
+-- against the record (`RecRankG`), never against the environment (docs/31 D207)
+#guard ["RH","AH","TH","RB"].map (fun n => (holes n).map (valOf · "n")) == [["S(⊥)"], ["S(⊥)"], ["S(⊥)"], ["⊥", "⊥"]]
 -- `go` is not a global: the context constrains nothing at its name (`GlobalsOk` reads the globals only), while the
 -- relation reads `go`'s marked binding at `C.global "go"` (`Binding.refTy`)
 #guard ((Ochr.Test.runWith (some Prelude) "UnderCheckAtk" UnderCheckAtk {} (located := false)).allAsExpected)
