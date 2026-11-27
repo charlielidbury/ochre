@@ -616,19 +616,37 @@ structure FrameInv (K : RunCtx) (φ : Future) (σ : Nat → Nat) (s₀ : SState)
   good : Strict.SGood K.dm K.Γ φ s
   good' : Strict.SGood K.dm K.Γ φ s'
   counter : s₀.nextLoan ≤ s.nextLoan
+  /-- (lead34, docs/31 D219) the renaming sends every closure label to a parameter label or to a label the body makes: a
+  label the closure's run returns, live or not, is never a caller's (an [Entry]'s lending at a match's result label then
+  never reaches a caller's borrow, `FrameRel.lentCaller`). At a call it holds when the closure runs from counter `0`
+  (a global, `stateOf 0`; under ruling R2 every closure): the cells are `0, …, n - 1` and `σ` sends the rest to the fresh
+  labels in place. -/
+  srange : ∀ l, σ l ∈ ks ∨ s₀.nextLoan ≤ σ l
+  /-- (lead34, D219) every site in the callee's frame is at a binding: a place resolves to a binding (`resolve`), and an
+  end, a call's lending and an entry's lending copy sites; so nothing is lent at a temporary, where a result is parked
+  (what [Entry]'s lending of the result's label needs to keep lending well founded, `LendWF`). -/
+  bsites : ∀ m (y : Site), y ∈ s.lent m → y.pos.frameOf = s₀.topIdx → ∃ i, y.pos = .bind s₀.topIdx i
+
+/-- **A result's label, if live, is held by a temporary of the callee's frame** (lead34, D219): a result is parked
+(`pushTempShaped`: a borrow, a move of a borrow, a call returning one) and every later step of the clause that returns it
+only clears holders (an end, an access, a drop of a binding). [Entry]'s lending at a match's result label needs it: with
+`FrameInv.bsites` nothing is lent at the label's holder, so lending it further keeps lending well founded. -/
+def ResAtTemp (s₀ t : SState) (lab : Option Nat) : Prop :=
+  ∀ k, lab = some k → t.Live k → ∃ j, t.shape (.temp s₀.topIdx j) = some k
 
 /-- `FrameAgree` with the internal relation concluded (what the induction over `runT` carries; the third referee's R9:
-`FrameAgree` concludes `FrameRel` only). -/
+`FrameAgree` concludes `FrameRel` only), and the in-place result's label parked (`ResAtTemp`). -/
 def FrameAgreeI (K : RunCtx) (φ : Future) (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) :
     Option (Res × SState) → Option (Res × SState) → Prop
-  | some (r, t), some (r', t') => r.1 = r'.1 ∧ r.2 = { r'.2 with label := r'.2.label.map σ } ∧ FrameInv K φ σ s₀ ks t t'
+  | some (r, t), some (r', t') => r.1 = r'.1 ∧ r.2 = { r'.2 with label := r'.2.label.map σ } ∧ FrameInv K φ σ s₀ ks t t' ∧
+      ResAtTemp s₀ t r.2.label
   | none, none => True
   | _, _ => False
 
 theorem FrameAgreeI.frameAgree {K : RunCtx} {φ : Future} {σ : Nat → Nat} {s₀ : SState} {ks : List Nat}
     {o o' : Option (Res × SState)} (h : FrameAgreeI K φ σ s₀ ks o o') : FrameAgree σ s₀ ks o o' := by
   match o, o', h with
-  | some (_, _), some (_, _), ⟨h1, h2, h3⟩ => exact ⟨h1, h2, h3.acc.rel⟩
+  | some (_, _), some (_, _), ⟨h1, h2, h3, _⟩ => exact ⟨h1, h2, h3.acc.rel⟩
   | none, none, _ => trivial
 
 /-- **The frame property over the internal relation** (OPEN; the form the induction over `runT` proves, one lemma per
@@ -643,9 +661,9 @@ def RunFrameI : Prop :=
 section
 variable {K : RunCtx} {φ : Future} {σ : Nat → Nat} {s₀ : SState} {ks : List Nat} {s s' : SState}
 
-/-- **`RunFrame`'s hypotheses give the internal relation, with five more**: lending well founded in place, parameter
-labels lent in the callee's frame only as fills, the renaming's order on the closure's labels (two clauses), and the
-counter. `RunFrame` as stated (FrameRec) lacks them; by reading it is false at a state no call makes (two parameter
+/-- **`RunFrame`'s hypotheses give the internal relation, with seven more**: lending well founded in place, parameter
+labels lent in the callee's frame only as fills, the renaming's order on the closure's labels (two clauses), the
+counter, the renaming's range (lead34) and the callee's frame's sites at bindings (lead34). `RunFrame` as stated (FrameRec) lacks them; by reading it is false at a state no call makes (two parameter
 labels lent at each other's holders, reached by one access in orders the renaming reverses: the sites left differ),
 as each earlier restatement was (D129, D201, D203). -/
 theorem frameInv_of (hr : FrameRel σ s₀ ks s s')
@@ -656,7 +674,9 @@ theorem frameInv_of (hr : FrameRel σ s₀ ks s s')
     (hlend : LendWF s) (hpfill : ∀ k ∈ ks, ∀ y ∈ s.lent k, y.pos.frameOf = s₀.topIdx → y.fill = true)
     (horder : ∀ l l', s'.Live l → s'.Live l' → σ l ∈ ks → σ l' ∉ ks → l < l')
     (hmono : ∀ l l', s'.Live l → s'.Live l' → σ l ∉ ks → σ l' ∉ ks → l < l' → σ l < σ l')
-    (hcounter : s₀.nextLoan ≤ s.nextLoan) : FrameInv K φ σ s₀ ks s s' where
+    (hcounter : s₀.nextLoan ≤ s.nextLoan) (hsrange : ∀ l, σ l ∈ ks ∨ s₀.nextLoan ≤ σ l)
+    (hbsites : ∀ m (y : Site), y ∈ s.lent m → y.pos.frameOf = s₀.topIdx → ∃ i, y.pos = .bind s₀.topIdx i) :
+    FrameInv K φ σ s₀ ks s s' where
   acc :=
   { rel := hr
     uniq := hg.uniq
@@ -676,6 +696,8 @@ theorem frameInv_of (hr : FrameRel σ s₀ ks s s')
   good := hg
   good' := hg'
   counter := hcounter
+  srange := hsrange
+  bsites := hbsites
 
 end
 

@@ -317,6 +317,7 @@ import Ochr.Meaning.Steps.FrameEndShape
 import Ochr.Meaning.Steps.FrameEndRel
 import Ochr.Meaning.Steps.FrameAccess
 import Ochr.Meaning.Steps.FrameOps
+import Ochr.Meaning.Steps.FrameMatch
 import Ochr.Meaning.Steps.UnderCheck
 import Ochr.Meaning.Steps.UnderCheckAttack
 import Ochr.Meaning.Steps.ParamCellAttack
