@@ -34,9 +34,10 @@ one's exact statement and status):
 * about resolution: `NoValFact` (no embedded value in an inductive item's types), PROVED for the items a
   program resolves to (exists12, `Steps.Machine.noVal_runResolve`); a separate hypothesis of
   `exists_dataModel_facts`, discharged by `Consistency.exists_dataModel` from the resolution;
-* obligations on the checker's decisions: `DecLocal` at every state (its `join` part proved for the
-  checker's decisions, machine11's `Steps.Machine.decLocal_join_chain`; the other parts read true) and
-  `DecStable` (at the states the checker reaches).
+* obligations on the checker's decisions: `DecCaps`, `DecLocal`'s `caps` part, at every state (read
+  true, not derived; the other three parts are PROVED at the chain's decisions, `DecLocal3`: `inv` and
+  `rep` by exists12, `Steps/Machine/RepLocal.lean`, `join` by machine11, `JoinLocal.lean`, and taken by
+  `exists_dataModel_facts` as its own hypothesis) and `DecStable` (at the states the checker reaches).
 The one fact about the model, `GlobalCallLevels` (a global whose stored codomain is `Prop` or `Type`
 calls to level-0 type values, which with `FieldHeads` gives the field types' level,
 `FieldLevel.fieldLevel0_of`), is PROVED and no longer assumed. The stage prefix fact is proved
@@ -477,9 +478,26 @@ theorem fieldsNoVal_of_ctors {d d' : IndDecl} (h : d'.ctors = d.ctors) (hv : Kno
 theorem paramsNoVal_of_params {d d' : IndDecl} (h : d'.params = d.params) (hv : ParamsNoVal d) :
     ParamsNoVal d' := fun j => by have := hv j; unfold Knot.paramTerm at this ⊢; rw [h]; exact this
 
+/-- **`DecLocal`'s `caps` part** (an obligation on the decisions, for the [Entry] captures; read TRUE by
+machine10, not derived): every capture a block's [Entry] takes is in the entry or rooted at a free
+variable of the term. At the chain's decisions it is `BlockCaps.staticBlockCaps`; its derivation needs,
+besides the join's (`decLocal_join_ff`) and the closures' (`fnOccs_ok`) roots, that `Array.qsort`
+(the captures' sort) keeps membership, which Lean's core does not state. -/
+def DecCaps (D : Decisions) : Prop :=
+  ∀ sc entry t qk, qk ∈ (D.blockCaps sc entry t).2 → qk.1 ∈ entry ∨ qk.1.root ∈ t.freeVars
+
+/-- `DecLocal` but its `caps` part: PROVED at the chain's decisions (`Steps.Machine.decLocal_inv_chain`,
+`decLocal_join_chain`, `decLocal_rep_chain`; exists12, machine11). -/
+def DecLocal3 (D : Decisions) : Prop :=
+  (∀ sc p q, q ∈ D.invalidated sc p → q.root = p.root) ∧
+  (∀ sc entry t q, q ∈ D.joinMoves sc entry t → q ∈ entry ∨ q.root ∈ t.freeVars) ∧
+  (∀ sc t q, q ∈ D.rePointed sc t → q.root ∈ t.freeVars)
+
 /-- **The facts the existence of the data model rests on**, together (`exists_dataModel_facts`): about
 the checker, `NamesFact`, `VaryValFact`, `FieldHeads`; obligations on the checker's decisions,
-`DecLocal` at every state and `DecStable`. No longer fields (exists12): `ItemFacts`, proved
+`DecCaps` (`DecLocal`'s `caps` part) at every state and `DecStable`. No longer fields (exists12):
+`DecLocal`'s other three parts (`DecLocal3`, proved at the chain's decisions, its own hypothesis of
+`exists_dataModel_facts`); `ItemFacts`, proved
 (`itemFacts`); the fact about the model, `GlobalCallLevels`, proved (`globalCallLevels`); the fact about
 resolution, `NoValFact`, proved for the items a program resolves to (`Steps.Machine.noVal_runResolve`),
 which `exists_dataModel_facts` takes as its own hypothesis and `Consistency.exists_dataModel` derives
@@ -488,7 +506,7 @@ structure DataFacts : Prop where
   varyVal : VaryValFact fuel items
   names : NamesFact D fuel items
   heads : FieldHeads fuel items
-  decLocal : ∀ st, FrameLocal.DecLocal (D st)
+  decCaps : ∀ st, DecCaps (D st)
   decStable : DecStable D fuel items
 
 /-! ## The step's bookkeeping (exists10) -/
@@ -1013,16 +1031,18 @@ theorem exists_dataModel' (hIF : ItemFacts) (hNV : NoValFact items) (hVV : VaryV
   obtain ⟨dm, h⟩ := inv_all D fuel items hIF hNV hVV hN hFH hGC hDL hDS hpre items.length (Nat.le_refl _)
   exact ⟨dm, exists_of_inv D fuel items h hpre⟩
 
-/-- **The data model exists**, from the facts it rests on (`DataFacts`) and the items' having no
-embedded value (`NoValFact`, true of a resolved program: `Consistency.noValFact_of_resolvesTo`); the
-stage prefix fact is machine10's PROVED `Steps.Machine.indsOf_take_prefix`. -/
-theorem exists_dataModel_facts (hNV : NoValFact items) (hF : DataFacts D fuel items) :
+/-- **The data model exists**, from the facts it rests on (`DataFacts`), the items' having no
+embedded value (`NoValFact`, true of a resolved program: `Consistency.noValFact_of_resolvesTo`) and
+`DecLocal` but its `caps` part (`DecLocal3`, true of the chain's decisions:
+`Steps.Machine.decLocal_inv_chain`, `decLocal_join_chain`, `decLocal_rep_chain`); the stage prefix fact
+is machine10's PROVED `Steps.Machine.indsOf_take_prefix`. -/
+theorem exists_dataModel_facts (hNV : NoValFact items) (hDL : ∀ st, DecLocal3 (D st)) (hF : DataFacts D fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
   exists_dataModel' D fuel items itemFacts hNV hF.varyVal hF.names hF.heads (globalCallLevels D fuel items)
-    hF.decLocal hF.decStable
+    (fun st => ⟨(hDL st).1, (hDL st).2.1, (hDL st).2.2, hF.decCaps st⟩) hF.decStable
     (fun k _ => Steps.Machine.indsOf_take_prefix {} fuel items k)
 
 end

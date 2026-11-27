@@ -3271,6 +3271,10 @@ Read against today's resolver first: no clause of `resolveF`, `bindersF` or `res
 
 Re-read against today's `checkInd` (D128's loop and D133's split `undeclaredCheck` added steps; no check `IndChecks` mirrors moved): TRUE. Proved: `Steps/Machine/CheckIndSpec.lean` (`runs_checkInd_peel`: freshness and `TeleOk`; `runs_checkInd_fields`: at every field `foB`, `rvB`, `sortNestViolation` at `declEnv`/`ownNest`; `runs_checkInd_checks`; `checkIndGivesChecks`), from machine10's pieces; `Assembly.itemFacts` with machine10's `checkItem_tables`. `DataFacts` lost `item`. Trap recorded in the file: the checker's do-blocks copy each `if`'s continuation into both arms, so hypothesis-side `split` hits simp's step limit; `runs_ite_inv` takes an `if` apart by unification. docs/34 §18.17.
 
+### D263. `DecLocal`: `inv` and `rep` PROVED at the chain's decisions (with machine11's `join`, three of four); `caps` left as `DecCaps` (existence lane `exists12`, 2026-11-28; `spine-exists12`; the brief's task 2)
+
+Re-read: TRUE. `inv` is the empty default of the fuel-free table; `rep` by `jdAssigns_ok` (an assignment `var i := …` at `c` binders crossed, `i ≥ c`, is an occurrence of the term, so `var (i - c)` is a free variable) and `typeState_rep` (`Steps/Machine/RepLocal.lean`). `DataFacts.decLocal` is now `decCaps` (`Assembly.DecCaps`); `Assembly.DecLocal3` (the other three) is a hypothesis of `exists_dataModel_facts`, supplied by `Consistency.exists_dataModel`. What `caps` needs: membership kept by `Array.qsort` (the static captures' sort), not in Lean's core. docs/34 §18.17.
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass

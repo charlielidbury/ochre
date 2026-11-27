@@ -6,6 +6,7 @@ import Ochr.Meaning.Steps.FixKnot
 import Ochr.Meaning.DecisionsFF
 import Ochr.Meaning.DataModel.Exists.Assembly
 import Ochr.Meaning.Steps.Machine.NoVal
+import Ochr.Meaning.Steps.Machine.RepLocal
 
 /-!
 # Milestone 4: the assembly of `consistencyBounded` (docs/18 Corollaries 15 and 16)
@@ -424,8 +425,9 @@ that `items` is the resolution of a program (`hres`), from which `NoValFact` is 
 * `FieldHeads` (about the checker; read true since main's D128, not derived): a parameter heading a
   field type is written at `Prop` or `Type`, and a global heading one has a stored codomain `Prop` or
   `Type`;
-* `DecLocal` at every state (an obligation on the decisions; its `join` part proved for the checker's
-  decisions, machine11's `decLocal_join_chain`; the others read true);
+* `DecCaps` at every state (an obligation on the decisions: `DecLocal`'s `caps` part, the [Entry]
+  captures rooted at the term's free variables; read true). `DecLocal`'s other three parts are PROVED
+  at the chain's decisions (`inv`, `rep`: exists12; `join`: machine11) and supplied here;
 * `DecStable` (an obligation on the decisions, at the states the checker reaches on the program).
 `ItemFacts` (what an accepted item does to the declarations and the globals, the stored entry passing
 `Knot.IndChecks`) is proved (`Assembly.itemFacts`, exists12). The model fact `GlobalCallLevels` is
@@ -439,7 +441,9 @@ theorem exists_dataModel (p : Program) (items : List Item) (fuel : Nat) (hres : 
       ∀ k, k ≤ items.length → DataFaithful dm (chainDecisions fuel) (indsOf {} fuel items)
         (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
   DataModel.Exists.Assembly.exists_dataModel_facts (chainDecisions fuel) fuel items
-    (noValFact_of_resolvesTo p fuel items hres) hF
+    (noValFact_of_resolvesTo p fuel items hres)
+    (fun st => ⟨Steps.Machine.decLocal_inv_chain fuel st, Steps.Machine.decLocal_join_chain fuel st,
+      Steps.Machine.decLocal_rep_chain fuel st⟩) hF
 
 /-- (leaf, checker) **Every stage's declarations are a prefix of the whole program's** (docs/31 D174):
 along accepted items Σ's inductive declarations only grow at the end (a definition adds none; a
