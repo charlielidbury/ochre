@@ -14,6 +14,17 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FRAME PROPERTY ON THE FRAGMENT WITHOUT FUNCTIONS FORMED IN THE BODY AND WITHOUT `Id` (lead35, 2026-11-27, `spine-lead35`; docs/31 D221 to D227)
+
+- `Steps/FrameInduction.runFrameI_frameFree`: PROVED, standard axioms, no `sorry`: `RunFrameI`'s conclusion for every term with `Term.frameFree` (no `.fix`, `.pi`, `.id`), from `Strict.FundCtx`, `FrameStart`, `valsOk` and the internal relation at the start. Every clause is a `TermFrame` lemma (`FrameCallInv`, `FrameLet`, `FrameMatch`, `FrameBorrow`, `FrameAssign`, `FramePlace`, `FrameSimple`).
+- MODEL CHANGE (D222): `Run.entryLend` lends a match's result label only when live.
+- Invariants added (D222): `FrameInv.psites`, `heldAll`, `orderAll`, `monoAll`; `ResAtTemp`'s dead clause, `ResDead`.
+- (O6) (D223): `Steps/FrameWhole.lentOk_corr`: PROVED.
+- `HintM.runT_hintM` (D223): PROVED (a run reads its hint's type only).
+- `.fix` and `.pi` formed in the body (R2/R7): ATTACKED (D226), NOT BUILT: under the structural frame they need (O2) only; site faithfulness is owed by C3, not by the frame property; a model change with a 48-file ripple.
+- `Id` (R3): ATTACKED (D227), NOT BUILT: needed only with no parameter labels (`idFree ∨ ks = []`), where it holds by reading; `run_frame_obs` (`sorry`) is the general case, which no use reaches; (M3) is a model change.
+- `RunFrameI` itself (all terms): OPEN only at `.fix`, `.pi`, `.id`.
+
 ## THE FRAME PROPERTY CLAUSE BY CLAUSE (lead34, 2026-11-27, `spine-lead34`; docs/31 D219, D220)
 
 - `Steps/FrameOps.RunFrameI` (the frame property over the internal relation): OPEN as a whole; proved clause by clause as `TermFrame` lemmas (the frame property at a term from its subterms). The internal relation now: `FrameInv` = `AccInv` + both states good + counter + `srange` (NEW: σ's range is parameter labels and fresh ones; true at a closure run from counter 0) + `bsites` (NEW: sites in the callee's frame at bindings); `FrameAgreeI` concludes `ResAtTemp` (NEW: a live result label held by a temporary).
