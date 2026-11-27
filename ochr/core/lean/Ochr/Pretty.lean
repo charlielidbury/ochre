@@ -68,10 +68,12 @@ def Term.pp (ns : List String) : Term → String
   -- a sealed program's cell, `let cᵢ : Tᵢ = uᵢ` ([Close], D82), is printed without its type
   | .letIn h (.ascribe (.val v) (.val _)) u => s!"let {h.name} = {(Term.val v).pp ns}; {u.pp (h.name :: ns)}"
   -- a sealed block's text (exp-block-text) inside a longer program is bracketed
-  | .letIn h t@(.block ..) u => s!"let {h.name} = ({t.pp ns}); {u.pp (h.name :: ns)}"
-  | .letIn h t u => s!"let {h.name} = {t.pp ns}; {u.pp (h.name :: ns)}"
-  | .seq t@(.block ..) u => s!"({t.pp ns}); {u.pp ns}"
-  | .seq t u => s!"{t.pp ns}; {u.pp ns}"
+  | .letIn h t u =>
+    let ts := t.pp ns
+    s!"let {h.name} = {if t matches .block .. then s!"({ts})" else ts}; {u.pp (h.name :: ns)}"
+  | .seq t u =>
+    let ts := t.pp ns
+    s!"{if t matches .block .. then s!"({ts})" else ts}; {u.pp ns}"
   | .matchNat p z s => s!"match {p.pp ns} \{ Z => {z.pp ns}, S _ => {s.pp ns} }"
   | .const n => n
   | .val v => v.pp
