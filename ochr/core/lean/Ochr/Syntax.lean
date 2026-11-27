@@ -357,4 +357,55 @@ instance : Inhabited Place := ⟨.var 0⟩
 instance : Inhabited Term := ⟨.tt⟩
 instance : Inhabited Value := ⟨.unit⟩
 
+/-! D135: the same code. A function's code is its `fix` term without the values embedded in it:
+a closure's code holds values (`capture` inlines each captured proof's reads as `(⋆ : T)`), and a
+refinement or an [End] substitutes into them as into its captures, so two closures of one `fix`
+term can differ in their embedded values as in their captures. `sameCode` is `==` on terms with
+any two embedded values counted equal. -/
+mutual
+def Term.sameCodeList : List Term → List Term → Bool
+  | [], [] => true
+  | a :: as, b :: bs => a.sameCode b && Term.sameCodeList as bs
+  | _, _ => false
+termination_by structural as => as
+
+def Term.sameCodeArms : List (Hint × Term) → List (Hint × Term) → Bool
+  | [], [] => true
+  | (_, a) :: as, (_, b) :: bs => a.sameCode b && Term.sameCodeArms as bs
+  | _, _ => false
+termination_by structural as => as
+
+def Term.sameCode : Term → Term → Bool
+  | .place p, .place q | .borrow p, .borrow q => p == q
+  | .assign p t, .assign q u => p == q && t.sameCode u
+  | .letIn _ t u, .letIn _ t' u' => t.sameCode t' && u.sameCode u'
+  | .seq t u, .seq t' u' => t.sameCode t' && u.sameCode u'
+  | .matchNat p z s, .matchNat q z' s' => p == q && z.sameCode z' && s.sameCode s'
+  | .const n, .const m => n == m
+  | .val _, .val _ => true
+  | .sort l, .sort m => l == m
+  | .pi _ ds c, .pi _ ds' c' => Term.sameCodeList ds ds' && c.sameCode c'
+  | .fix _ _ ds c d b, .fix _ _ ds' c' d' b' =>
+    Term.sameCodeList ds ds' && c.sameCode c' && d == d' && b.sameCode b'
+  | .call f as h, .call g bs h' => f.sameCode g && Term.sameCodeList as bs && h == h'
+  | .nat, .nat | .zero, .zero | .unit, .unit | .tt, .tt => true
+  | .succ t, .succ u | .ref t, .ref u => t.sameCode u
+  | .cong a b, .cong c d | .ascribe a b, .ascribe c d => a.sameCode c && b.sameCode d
+  | .eq a b c, .eq d e f | .id a b c, .id d e f => a.sameCode d && b.sameCode e && c.sameCode f
+  | .prim n as, .prim m bs => n == m && Term.sameCodeList as bs
+  | .tind n as, .tind m bs => n == m && Term.sameCodeList as bs
+  | .ctor t c _ ps as, .ctor u d _ qs bs =>
+    t == u && c == d && Term.sameCodeList ps qs && Term.sameCodeList as bs
+  | .matchInd p t as, .matchInd q u bs => p == q && t == u && Term.sameCodeArms as bs
+  | _, _ => false
+termination_by structural t => t
+end
+
+/-- D135: two function values have the same code: the same global, or closures of the same `fix`
+term (`Term.sameCode`), whatever their captures. -/
+def Value.sameCode : Value → Value → Bool
+  | .gfn n, .gfn m => n == m
+  | .clo _ t _, .clo _ u _ => t.sameCode u
+  | _, _ => false
+
 end Ochr

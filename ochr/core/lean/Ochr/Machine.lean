@@ -611,6 +611,19 @@ as a fail-safe that can add a check, never remove one. -/
 def recFrameOf (ctx : RecCtx) (fv : Value) (uid? : Option Nat) : Bool :=
   uid? == some ctx.uid || ctx.fn == fv
 
+/-- D135: is `fv` a function whose check is under way (its frame on the [Rec] stack)? Its body is
+code the check has not finished with, so it is never run: a call of it closes off at once, as a
+call of an unknown function does (`callFn`, the one place a body is run), and its body runs only
+once its definition is accepted, as in Lean, where the function being defined does not unfold
+inside its own body. Decided by the function's code (`Value.sameCode`: a global's name, a
+closure's `fix` term without its embedded values), read from syntax, never by its value: a
+refinement or an [End] substitutes inside a local function's captures and the captured proofs'
+types inlined in its code, but not inside the frame (D78), and the routes that reach a call of it
+other than by its name (a sealed program's head call, re-run after a split; a λ's capture of it,
+run untyped; a sealed program's typing, `sealedType?`) see its value only. -/
+def underCheck (fv : Value) : M Bool := do
+  pure ((← get).recStack.any (·.fn.sameCode fv))
+
 /-- [Rec]: at a recursive call, a parameter position survives if its argument (the
 content, through a borrow) is a strict subterm of that parameter's entry value as
 refined so far. The recursive position is any position that survives every call.
@@ -621,7 +634,7 @@ def recCheck (fv : Value) (ws : Array Value) (uid? : Option Nat := none) : M Uni
   let st ← get
   let mut frames := #[]
   for ctx in st.recStack do
-    if recFrameOf ctx fv uid? then
+    if ctx.tests && recFrameOf ctx fv uid? then
       let cands := ctx.cands
       let cands' ← cands.filterM fun j => do
         match ctx.entries[j]?.join, ws[j]? with
@@ -629,7 +642,8 @@ def recCheck (fv : Value) (ws : Array Value) (uid? : Option Nat := none) : M Uni
           let u := match w with | .borrow _ u => u | u => u
           return (strictSubterms (← expandRefs st.refs (.abs σ))).contains u
         | _, _ => pure false
-      -- fail at the offending call, before it is run (running it may not terminate)
+      -- a call that fails the test rejects the definition here, at the call; the call itself is
+      -- never run, whatever the test says (D135: a function being checked closes off)
       if cands.isEmpty then
         err s!"[Rec] {fv} calls itself but declares no decreasing parameter (`by x`)"
       if cands'.isEmpty then
@@ -1727,7 +1741,10 @@ def sealedType? (fuel : Nat) (t : Term) : M (Option Value) := privately do
       | _ => return none
     | .call _ _ true => return ← sealedResultType? fuel' t
     | _ => return none
-  modify fun s => { s with env := #[{}], obsFrame := none, recStack := [], goal := none }
+  -- outside the enclosing functions' checks for [Rec]'s test, but they are still being checked:
+  -- D135 still keeps their bodies from running (`underCheck`)
+  modify fun s => { s with env := #[{}], obsFrame := none, goal := none,
+                           recStack := s.recStack.map ({ · with tests := false }) }
   let (_, T) ← eval fuel' true t.unHead
   pure T
 termination_by structural fuel
@@ -3365,10 +3382,13 @@ def callFn (fuel : Nat) (typed : Bool) (fT : Option Value) (n : Nat)
     for l in lent do lendEnv fuel' (.mark l g)
   -- D115: the marks map over Ω, the call's temporaries included: read them again
   let (fv, ws) ← callTemps f0 n
-  let r ← match fv with
-    | .abs _ | .sealed _ =>
-      -- a neutral head closes off at once (v1.3), except as [Seal]'s head call (D39)
-      if head then stuckNow else closeCall fuel' n kind res fills tys
+  -- a neutral head (v1.3), and a function whose check is under way (D135: its body is code the
+  -- check has not finished with, `underCheck`), close off at once, except as [Seal]'s head call (D39)
+  let closesOff ← match fv with
+    | .abs _ | .sealed _ => pure true
+    | _ => underCheck fv
+  let r ← if closesOff then (if head then stuckNow else closeCall fuel' n kind res fills tys)
+    else match fv with
     | .gfn _ | .clo _ _ _ =>
       let (cs, t, rd) ← fixOf fv
       -- [App-close]: a stuck body closes the call off; [App-head]: not a sealed program's head call
