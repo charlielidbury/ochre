@@ -58,17 +58,15 @@ def linesOfQ (cfg : Config) : List String :=
 
 /-! ## The body's start state -/
 
-/-- The body's full start state, in `checkFix`'s mode (one [Rec] context, not recursive). -/
+/-- The body's full start state, in `checkFix`'s mode (no [Rec] context: no `by`; the function's mark taken). -/
 def stQm : MState :=
-  { stQ with typing := true }
+  { stQ with typing := true, nextRecUid := 1 }
 
 -- the hand-built kernel and mode are those `checkFix` starts a body with one `Nat` parameter in (`ParGuards`)
 #guard ParGuards.kernelOk "Q" bodyQ stQ && ParGuards.kernelOk "Q" bodyQ stQm && ParGuards.modeOk "Q" stQm
 -- the surface program's recorded start state: the same kernel (but for its body, a call of `succFn`) and mode
 #guard (ParGuards.entries BlockProbe "Qs").head?.any fun st =>
-  -- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this):
-  -- since main's D136 the recorded binding of itself is unmarked (`ParGuards`, the divergence noted there)
-  ParGuards.kernelOk "Qs" (.call Ochr.Surface.succFn [matchQ] false) st none && ParGuards.modeOk "Qs" st
+  ParGuards.kernelOk "Qs" (.call Ochr.Surface.succFn [matchQ] false) st && ParGuards.modeOk "Qs" st
 
 /-! ## The block: captures, value, type, state after -/
 

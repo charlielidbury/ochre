@@ -762,3 +762,48 @@ ochr DeclaredReadings uses Nats, Words, Fixtures {
   ("MixEta", "the body of MixEta has type ⊤, but the goal is Eq(⌈MixT(σ0)⌉, σ1, σ2)"),
   ("ComputedMix", "the body of ComputedMix has type ⊤, but the goal is Eq(Unit, ⌈let c1 = σ0; GM(&c1, 0)⌉, ())"),
   ("ExAAt", "the body of ExAAt has type ⊤, but the goal is Eq(Unit, ⌈let c1 = (); TouchA(Unit, &c1, σ0); c1⌉, ())")]
+
+/-! ## [Close]'s fill at a place declared `Unit`: `()` only when the call returns data (D137)
+
+A call that closes off fills each place it borrowed with a sealed program. When the call returns
+data and the place is declared `Unit`, the fill is `()` (η at `Unit`, D80; `ExU` above). When the
+call returns a borrow, the fill keeps the returned borrow's hole `loan_k` at a `Unit` place too:
+`()` would leave the hole in no place, so what is written through the returned borrow would be
+observed nowhere and an `Id` over two different writes through it would hold. `QU` would then
+refute `Π(u : &Unit). &Nat`, as `Q` would refute `Π(n : Nat). &Nat` without D44
+(`ReturnedBorrows`): safe Rust inhabits both with a leaked borrow. Until D137 the paper and RULES
+said `()` in both rows; the checker has always kept the hole (docs/18, "Resolved determination").
+Each rejected row has its twin. -/
+
+ochr UnitFill uses Nats, Fixtures {
+  def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+  def H5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
+  -- the fill of `u` keeps the hole, so the statement observes the writes through `g(&u)`: `False`
+  reject def QU (g : Π(u : &Unit). &Nat) : False := (let u = (); G5(g(&u), refl))
+  -- twin of QU: the true statement, through the same call, by `refl`
+  def QUOk (g : Π(u : &Unit). &Nat) : Unit := (let u = (); H5(g(&u), refl))
+  -- the same at two `Unit` places, at a borrow parameter declared `&Unit`, at an annotated `let`,
+  -- at a `Unit` value parameter, at a type function every arm of which is `Unit`, at a field
+  reject def QU2 (g : Π(u : &Unit) (v : &Unit). &Nat) : False := (let u = (); let v = (); G5(g(&u, &v), refl))
+  reject def QU3 (g : Π(u : &Unit). &Nat) (u : &Unit) : False := G5(g(u), refl)
+  reject def QU4 (g : Π(u : &Unit). &Nat) : False := (let u : Unit = (); G5(g(&u), refl))
+  reject def QU5 (g : Π(u : &Unit). &Nat) (w : Unit) : False := (let u = w; G5(g(&u), refl))
+  def UU (n : Nat) : Type := match n { Z => Unit, S(m) => Unit, }
+  reject def QU6 (g : Π(u : &UU(Z)). &Nat) (w : UU(Z)) : False := (let u = w; G5(g(&u), refl))
+  reject def QUp (g : Π(u : &Unit). &Nat) : False := (let p : Pair(Nat, Unit) = Mk(0, ()); G5(g(&p.1), refl))
+  -- the two rows at the `Unit` place itself. A call returning data: the fill is `()`
+  def QD (g : Π(u : &Unit). Nat) : Id(Unit, (let u = (); g(&u); u), ()) := refl
+  -- twin of QD, a call returning a borrow: the fill, its hole filled when `r` ends, is not `()`.
+  -- True (`u` has one value), and rejected: the price of keeping the hole
+  reject def QB (g : Π(u : &Unit). &Nat) : Id(Unit, (let u = (); let r = g(&u); u), ()) := refl
+}
+
+#guard (run "UnitFill" UnitFill).rejectedWith [
+  ("QU", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
+  ("QU2", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let c2 = (); let r = σ0(&c1, &c2); *r := 0; c1⌉, ⌈let c1 = (); let c2 = (); let r = σ0(&c1, &c2); *r := 1; c1⌉) ∧ Eq(Unit, ⌈let c1 = (); let c2 = (); let r = σ0(&c1, &c2); *r := 0; c2⌉, ⌈let c1 = (); let c2 = (); let r = σ0(&c1, &c2); *r := 1; c2⌉)"),
+  ("QU3", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
+  ("QU4", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
+  ("QU5", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
+  ("QU6", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
+  ("QUp", "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"),
+  ("QB", "the body of QB has type ⊤, but the goal is Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := ⌈let c1 = (); let r = σ0(&c1); *r⌉; c1⌉, ())")]

@@ -78,27 +78,24 @@ def linesOf (d : Def) (cfg : Config) : List String :=
 
 /-! ## The body's start state -/
 
-/-- The full start states, in `checkFix`'s mode (one [Rec] context, not recursive). -/
+/-- The full start states, in `checkFix`'s mode (no [Rec] context: no `by`; the function's mark taken). -/
 def stWm : MState :=
-  { stW with typing := true }
+  { stW with typing := true, nextRecUid := 1 }
 def stKm : MState :=
-  { stK with typing := true }
+  { stK with typing := true, nextRecUid := 1 }
 
 /-- A recorded state with the function renamed to `st0`'s (its binding of itself and its global). -/
 def renamed (st0 st : MState) : MState :=
   let sb := st0.env[1]!.binds[0]!
   let fr1 := st.env[1]!
   let b0 := fr1.binds[0]!
-  let b0' : Binding := { b0 with hint := sb.hint, val := sb.val, ty := sb.ty, recUid := sb.recUid }
+  let b0' : Binding := { b0 with hint := sb.hint, val := sb.val, ty := sb.ty }
   { st with globals := st0.globals, env := st.env.set! 1 { fr1 with binds := fr1.binds.set! 0 b0' } }
 
 /-- The recorded entry of the body (frames of sizes `[1, 2]`: the cell, then the function and the parameter), renamed,
 has `st0`'s kernel, in `checkFix`'s mode. -/
 def entryOk (b : Block) (f : String) (st0 : MState) : Bool :=
   (FrameGuards.entryAt b f [1, 2]).any fun st =>
-    -- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this):
-    -- since main's D136 the recorded binding of itself is unmarked; the kernel keeps the mark (docs/31 D218)
-    st.env[1]!.binds[0]!.recUid.isNone &&
     kernEq (renamed st0 st) st0 &&
     st.typing && !st.curTail && !st.tailNext && st.tailDecl.isNone && !st.copying && !st.inPlace && st.privateDepth == 0
 

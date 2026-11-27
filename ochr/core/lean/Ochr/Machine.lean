@@ -581,7 +581,8 @@ def markCapRec (marks : Array (Option Nat)) : M Unit := do
     pure { fr with binds := bs }
 
 /-- D78: mark the top frame's last binding as the binding of itself of the function whose
-frame is `uid`. -/
+mark is `uid` (every function's check takes a fresh one; it is its [Rec] frame's when it declares
+`by`, D136's amendment). -/
 def markLastRec (uid : Nat) : M Unit := do
   let f ← topIdx
   modifyFrame f fun fr =>
@@ -3475,6 +3476,9 @@ def closeCall (fuel : Nat) (n : Nat) (kind : Kind) (res : DeclInfo := .other)
   match kind with
   | .ref =>
     let k ← freshLoan
+    -- D137: no η here. A fill at a place declared `Unit` keeps the hole `k` like any other: `()`
+    -- would leave `k` in no place, so writes through the returned borrow would be observed nowhere
+    -- (`ClosingOff.UnitFill`, `QU`)
     for ((i, l, _), j) in bs.zipIdx do
       let fill := wrapL (.letIn ⟨"r"⟩ (C 0) (.seq (.assign (.deref (.var 0)) (.val (.loan k))) (peek (cell 1 j))))
       -- D115: the argument's borrow is consumed (its content is the program's cell `cⱼ`), as [End]
@@ -4868,21 +4872,23 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
   let F1 ← popFrameRaw
   let piTy := Value.tPi cs (.pi hs ds c) rd
+  -- D78, D136's amendment: every function's binding of itself carries a fresh mark, whether or not
+  -- it recurses. The mark states a fact about the state (this binding is this function's own), which
+  -- the consistency proof's relation reads to find the function in its body's frame; the checker
+  -- reads it only through an entry of the [Rec] stack, which only a function with `by` has (below)
+  let uid := (← get).nextRecUid
+  modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
   pushFrame
   pushCaps fuel' cs rd
   -- D78: a capture of an enclosing function's binding of itself keeps its mark, so a
   -- recursive call of that function from this closure's body is still recognised by name
   markCapRec capRec
   pushBind self (some piTy) fv false (.pi cd)
+  markLastRec uid
+  for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof b.decl
   -- [Rec]: the stack holds the functions being checked that declare `by xⱼ` (v1.2, D23), which
   -- since D136 is the top-level definition being checked. A local function has no entry: it cannot
   -- name itself (D31), and no other value is it while its check is under way
-  let uid := (← get).nextRecUid
-  if dec.isSome then
-    modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
-    -- D78: this function's binding of itself carries its frame's mark
-    markLastRec uid
-  for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof b.decl
   if let some j := dec then
     if (entries[j]?.join).isNone then
       err s!"`by {(hs.getD j ⟨"?"⟩).name}`: the decreasing parameter must have an inductive type (or be a borrow of one)"

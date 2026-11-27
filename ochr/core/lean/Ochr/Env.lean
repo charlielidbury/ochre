@@ -20,8 +20,10 @@ structure Binding where
   proof : Bool := false -- v1.7 (D35): its declared type has declared sort Prop (read off syntax)
   decl : DeclInfo := .other   -- what its declared type says (the erasure pre-pass)
   cap : Bool := false         -- a closure's captured value (D53 (e): its body may not move it out)
-  /-- D78 [Rec]: this binding names a function whose body is being checked: the
-  `RecCtx.uid` of its frame. Set on the function's binding of itself, and on a closure's
+  /-- D78 [Rec]: this binding names a function whose body is being checked: the fresh mark its
+  check took (`checkFix`), its frame's `RecCtx.uid` when it declares `by`. Every function's binding
+  of itself is marked, recursive or not (D136's amendment: the consistency proof's relation reads
+  the mark to find the function in its body's frame). Set on the function's binding of itself, and on a closure's
   capture of such a binding, so a recursive call is recognised by the name it is made
   through (syntax), never by comparing function values, which a refinement, an [End] or
   a re-normalisation inside a capture can change (§6.3: which calls recurse is read from
@@ -203,7 +205,7 @@ structure MState where
   etaRefs : List (Nat × Value) := []  -- D68: η-refinements of one-constructor abstract values (σ ↦ C(σ₁, …)), kept across private copies, so every copy names σ's fields alike, and scoped to the world that made them (`exitWorld`), since the fields' types are that world's
   goal : Option Value := none
   recStack : List RecCtx := []        -- the functions whose bodies enclose the current point (top first)
-  nextRecUid : Nat := 0               -- fresh `RecCtx.uid`s (never reused)
+  nextRecUid : Nat := 0               -- fresh marks, one per function check (`Binding.recUid`, `RecCtx.uid`; never reused)
   cfg : Config := {}
   lastErased : Bool := false          -- set by `eval`: was the term just evaluated erased (D28)?
   lastProof : Bool := false           -- ... and is it a proof (its declared type has sort Prop, D35)?

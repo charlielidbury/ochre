@@ -58,23 +58,23 @@ def entryAt (b : Block) (name : String) (sizes : List Nat) : Option MState :=
 /-- A frame with no temporaries. -/
 def noTemps (st : MState) : Bool := st.env.toList.all (·.temps.isEmpty)
 
-/-- The function's binding of itself in a global's body: `.gfn f` at the global's type, marked exactly when it is
-recursive (`mark`; since main's D136 only a function that declares `by` is marked and has a [Rec] context). The unmarked
-readings below hold UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this): then every function's binding of itself is marked again, its [Rec] context still only with `by`. -/
-def selfOk (st : MState) (f : String) (d : DeclInfo) (mark : Option Nat := none) : Bool :=
+/-- The function's binding of itself in a global's body: `.gfn f` at the global's type, marked, recursive or not
+(main's D136 as amended, docs/31 D218: every function's binding of itself takes a fresh mark; only a function that
+declares `by` has a [Rec] context). -/
+def selfOk (st : MState) (f : String) (d : DeclInfo) : Bool :=
   match st.env[1]!.binds[0]?, st.globals.find? (·.name == f) with
   | some b, some g => b.hint.name == f && b.val == .gfn f && b.ty == some g.ty && b.decl == d && !b.proof &&
-      b.recUid == mark && !b.cap && b.lazyTy.isNone
+      b.recUid == some 0 && !b.cap && b.lazyTy.isNone
   | _, _ => false
 
 /-- A capture binding: the value at its type, flagged a capture, unmarked. -/
 def capOk (b : Binding) (v : Value) (T : Value) : Bool :=
   b.val == v && b.ty == some T && b.decl == .other && b.cap && !b.proof && b.recUid.isNone
 
-/-- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this). A λ's binding of itself: its closure over `cs`, unmarked (since main's D136 a local function is not recursive and has
-no [Rec] context; it was marked with its own, `uid`). -/
-def lamSelfOk (b : Binding) (cs : List Value) (_uid : Nat) : Bool :=
-  (match b.val with | .clo cs' _ _ => cs' == cs | _ => false) && b.recUid.isNone && !b.cap &&
+/-- A λ's binding of itself: its closure over `cs`, marked with the fresh mark its check took, `uid` (main's D136 as
+amended: a local function is not recursive and has no [Rec] context, but its binding of itself is marked). -/
+def lamSelfOk (b : Binding) (cs : List Value) (uid : Nat) : Bool :=
+  (match b.val with | .clo cs' _ _ => cs' == cs | _ => false) && b.recUid == some uid && !b.cap &&
     b.decl == .pi .other
 
 /-- A borrow parameter: the borrow of label `l` with content `c`, at `&T`. -/
@@ -99,7 +99,7 @@ def borOk (b : Binding) (x : String) (l : Nat) (c T : Value) : Bool :=
 
 #guard (entries FrameProbeR "Rc").head?.any fun st =>
   noTemps st && st.env.size == 2 && st.env[0]!.binds.isEmpty && st.env[1]!.binds.size == 2 &&
-  selfOk st "Rc" (.pi .other) (some 0) &&
+  selfOk st "Rc" (.pi .other) &&
   bindOk st.env[1]!.binds[1]! "n" (.abs 0) .tNat .other none &&
   st.nextLoan == 0 && st.nextAbs == 1 && st.goal == some .tNat &&
   (match st.recStack with | [r] => r.fn == .gfn "Rc" && r.entries == #[some 0] && r.cands == [0] | _ => false)

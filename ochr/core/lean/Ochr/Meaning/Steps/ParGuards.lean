@@ -81,10 +81,10 @@ def globalOk (g : GDef) (f : String) (body : Term) : Bool :=
 
 /-- The body's start state agrees with `ColumnI.stI` (renamed to `f`, `f`'s body `body`) on its kernel
 (`MState.norm`: what `Pre`, `Rel` and the steps read). -/
-def kernelOk (f : String) (body : Term) (st : MState) (mark : Option Nat := some 0) : Bool :=
+def kernelOk (f : String) (body : Term) (st : MState) : Bool :=
   st.env.size == 2 && st.env[0]!.binds.isEmpty && st.env[0]!.temps.isEmpty && st.env[1]!.temps.isEmpty &&
   st.env[1]!.binds.size == 2 &&
-  bindOk st.env[1]!.binds[0]! f (.gfn f) piNat (.pi .other) mark &&
+  bindOk st.env[1]!.binds[0]! f (.gfn f) piNat (.pi .other) (some 0) &&
   bindOk st.env[1]!.binds[1]! "n" (.abs 0) .tNat .other none &&
   (match st.globals with | [g] => globalOk g f body | _ => false) && st.inds.isEmpty &&
   st.absTy == #[.tNat] && st.nextAbs == 1 && st.nextLoan == 0 && st.goal == some .tNat &&
@@ -92,25 +92,21 @@ def kernelOk (f : String) (body : Term) (st : MState) (mark : Option Nat := some
   st.absDecl.size == 1 && declIs st.absDecl[0]! .other
 
 /-- ... and on the mode the run starts in: typed, not in tail position, no reading handed down, no
-private copy, one [Rec] context (not recursive). -/
+private copy, the function's mark taken (`nextRecUid` one past it), no [Rec] context (no `by`). -/
 def modeOk (f : String) (st : MState) : Bool :=
   st.typing && !st.curTail && !st.tailNext && st.tailDecl.isNone && !st.copying && !st.inPlace && !st.headEval &&
-  st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.obsFrame.isNone && st.nextRecUid == 0 &&
-  -- since main's D136 a function without `by` has no [Rec] context (it was one context with no candidate)
+  st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.obsFrame.isNone && st.nextRecUid == 1 &&
+  -- since main's D136 a function without `by` has no [Rec] context (it was one context with no candidate); since its
+  -- amendment the function's check still takes a mark, so `nextRecUid` is one past it
   st.recStack.isEmpty && f == f
 
 -- the first recorded state of each function is its body's entry: the same for every body
--- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this).
--- DIVERGENCE SINCE MAIN'S D136 (docs/31 D218): `checkFix` marks the function's binding of
--- itself only when it declares `by`, so the recorded start state of a non-recursive global has it UNMARKED, while the
--- hand-built kernel the column's theorems are about keeps the mark, which the relation reads (`Binding.refTy`: at a
--- marked binding the context's stage type, unmarked the stored Π-type). The guard pins the recorded state as it is.
-#guard (entries ParProbeP "Pp").head?.any fun st => kernelOk "Pp" bodyP st none && modeOk "Pp" st
-#guard (entries ParProbeI "Ip").head?.any fun st => kernelOk "Ip" (.call succFn [.place (.var 0)] false) st none && modeOk "Ip" st
+#guard (entries ParProbeP "Pp").head?.any fun st => kernelOk "Pp" bodyP st && modeOk "Pp" st
+#guard (entries ParProbeI "Ip").head?.any fun st => kernelOk "Ip" (.call succFn [.place (.var 0)] false) st && modeOk "Ip" st
 
 /-- The full start state of `I`'s body: the kernel `ColumnI.stI` in the mode `checkFix` starts it in. -/
 def stI : MState :=
-  { ColumnI.stI with typing := true }
+  { ColumnI.stI with typing := true, nextRecUid := 1 }
 
 -- the hand-built kernel passes the same test
 #guard kernelOk "I" bodyI ColumnI.stI && kernelOk "I" bodyI stI && modeOk "I" stI

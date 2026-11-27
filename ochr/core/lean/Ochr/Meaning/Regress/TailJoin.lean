@@ -43,7 +43,7 @@ def stP : MState :=
   let selfP : Binding := { ColumnI.selfB with hint := ⟨"P"⟩, val := .gfn "P" }
   let gP : GDef := { name := "P", ty := ColumnI.piNat, fn? := some (.fix ⟨"P"⟩ [⟨"n"⟩] [.nat] .nat none bodyP), val := .gfn "P" }
   let env : Env := #[{}, { binds := #[selfP, ColumnI.nB] }]
-  { ColumnI.stI with env := env, globals := [gP], typing := true }
+  { ColumnI.stI with env := env, globals := [gP], typing := true, nextRecUid := 1 }
 
 /-- A return continuation that records the leaf it is run at (the state, the value and its type). -/
 def kRec (v T : Value) : M Unit := do

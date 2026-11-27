@@ -61,24 +61,23 @@ def recordedStart (b : Ochr.Surface.Block) (n : String) : Option MState :=
 /-- The mode `checkFix` starts a body in. -/
 def modeOk (f : String) (st : MState) : Bool :=
   st.typing && !st.curTail && !st.tailNext && st.tailDecl.isNone && !st.copying && !st.inPlace && !st.headEval &&
-  st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.nextRecUid == 0 &&
+  st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.nextRecUid == 1 &&
   -- since main's D136 a function without `by` has no [Rec] context
   st.recStack.isEmpty && f == f
 
--- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this):
--- since main's D136 the recorded binding of itself is unmarked (`DataGuards.markSelf`, docs/31 D218)
+-- the recorded binding of itself is marked (main's D136 as amended, docs/31 D218), as the kernel has it
 #guard (recordedStart DataProbeWrap "Wrap").any fun st =>
-  st.env[1]!.binds[0]!.recUid.isNone && kernEqI (ColumnNot.Guards.markSelf st) stWrap && modeOk "Wrap" st
+  st.env[1]!.binds[0]!.recUid == some 0 && kernEqI st stWrap && modeOk "Wrap" st
 #guard (recordedStart DataProbeUnbox "Unbox").any fun st =>
-  st.env[1]!.binds[0]!.recUid.isNone && kernEqI (ColumnNot.Guards.markSelf st) stUnbox && modeOk "Unbox" st
+  st.env[1]!.binds[0]!.recUid == some 0 && kernEqI st stUnbox && modeOk "Unbox" st
 
 /-- The full start states. -/
 def stWrapF : MState :=
   { stWrap with
-    typing := true }
+    typing := true, nextRecUid := 1 }
 def stUnboxF : MState :=
   { stUnbox with
-    typing := true }
+    typing := true, nextRecUid := 1 }
 
 /-- The leaves of a run of `checkTail` on `t` with the continuation `k` from `st`. -/
 def leavesOf (t : Term) (k : Value → Value → M Unit) (st : MState) : List (MState × Value × Option Value) :=

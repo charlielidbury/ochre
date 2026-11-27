@@ -87,27 +87,21 @@ def declare : M Unit := do Ochr.checkInd declB; Ochr.checkDef defNot
 /-! ## The body's start state -/
 
 /-- The full start state: the kernel `stNot` in the mode `checkFix` starts it in (typed; since main's D136 no [Rec]
-context: `Not` declares no `by`). -/
+context: `Not` declares no `by`; since its amendment the check took the mark `0`, so `nextRecUid` is `1`). -/
 def stNotF : MState :=
-  { stNot with typing := true }
+  { stNot with typing := true, nextRecUid := 1 }
 
 /-- The mode `checkFix` starts the body in. -/
 def modeOk (st : MState) : Bool :=
   st.typing && !st.curTail && !st.tailNext && st.tailDecl.isNone && !st.copying && !st.inPlace && !st.headEval &&
-  st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.obsFrame.isNone && st.nextRecUid == 0 &&
+  st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.obsFrame.isNone && st.nextRecUid == 1 &&
   st.recStack.isEmpty
-
-/-- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this). A recorded state with the function's binding of itself marked as the hand-built kernel has it (main's D136 marks it
-only with `by`; the divergence is the one `ParGuards` notes, docs/31 D218). -/
-def markSelf (st : MState) : MState :=
-  let fr1 := st.env[1]!
-  { st with env := st.env.set! 1 { fr1 with binds := fr1.binds.set! 0 { fr1.binds[0]! with recUid := some 0 } } }
 
 /-- The checker's recorded state at the entry of `Not`'s body (the first with the body's frame). -/
 def recordedStart : Option MState :=
   ((entries DataProbeNot "Not").filter (fun st => st.env.size == 2 && st.env[1]!.binds.size == 2)).head?
 
-#guard recordedStart.any fun st => st.env[1]!.binds[0]!.recUid.isNone && kernEqI (markSelf st) stNot && modeOk st
+#guard recordedStart.any fun st => st.env[1]!.binds[0]!.recUid == some 0 && kernEqI st stNot && modeOk st
 #guard kernEqI stNotF stNot && modeOk stNotF
 
 /-! ## The split -/
