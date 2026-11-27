@@ -2565,3 +2565,178 @@ def AW8 : Unit := (let t = MkV(S(Z), O); match t { MkV(n, x) => (W8(&n); n := S(
 == For a fifth referee
 
 Not done. Three things are open. The first is what the reference holds at a data field of a proof (F2), which decides whether `Steps/Match.evalMatchByType_step` can be true as stated. The second is whether `RunFrameI` over today's `.fix` clause, without (M2), is true at a body that forms a closure (the second referee's R2), which the paper assumes away. The third is the core-level question of a borrow type passed as a type argument (F7). C3, RL and PR were not attempted beyond reading. Whoever lands F1's restricted change should dump every row's verdict against `main`, as the D-entries do: by reading, it changes only rows whose observation ends a caller's borrow over a content that is not whole or not packed; I did not run the suite. My probes are in the scratchpad's `r4/` (`M1`, `M2` the measured sites; `V1` to `V3` the caller variants; `RD1` to `RD4` resolved determination; `FIN` the programs above), and the running notes are in `reports/referee4.md`.
+
+= The fifth referee's report <sec-referee5>
+
+_Written by `referee5`, 27 November 2026, as the fifth adversarial referee. Scope, in the order the orchestrator set: the observation design of @sec-obs and its refinement (C+), which a checker agent is to build on this verdict; the reading of a proof's data fields in @sec-proof-fields; the frame property restated as Lean's in @sec-frame-lean. I read the paper whole, `RULES.md`, @sec-rd, @sec-obs, @sec-proof-fields, @sec-frame and the fourth referee's report; in the checker `idType`, `observe`, `obsResult`, `endAll`, `endBorrow`, `endTopLoan`, `footprint`, `owners`, `takeArgBorrow`, `callType`, `declCallType`, `argHint`, `paramTypes`, `bindTy?`, `runBodyCore`, `callFn`, the `let` clause of `evalCore` and `bindDataFields`; in Lean, on `spine` at f9b411008, `FrameInv`, `RunFrameI` and `frameInv_of` (`Steps/FrameOps.lean`), `FrameRel` (`FrameProp.lean`), the `.pi` clause of `Run.lean` and `evalMatchByType_step_stmt` (`Steps/Statements.lean`). (C+) is not built, so its verdicts are predicted by reading the change that @sec-obs-dl specifies, beside the nearest programs run today. Every program below was run with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` on the checker of `main` at 4d8144736, beside the control `def Ctl : Eq(Nat, Z, S(Z)) := refl`, rejected every time; "with the `Nat` prelude" means `uses Nats`. Nothing in the other sections was changed._
+
+== Verdict
+
+(C+) is sound for consistency as specified, and needs no restriction. I found no state where the detached comparison calls two sides equal that the caller can later tell apart, no label it fails to give a cell, and no fault from the history of the observation's tests that it lets back in. The reason is structural, not a matter of cases. At a call site the detached state is the callee's own generic state at the arguments' values: one cell per borrow parameter, holding that parameter's loan, under the frame of parameters. So a hypothesis or a conclusion read at a call site is, by construction, the proposition the function's own check computed, at those values; a deferred parameter type too, since its frame binds the arguments as passed. The checker relates that proposition to one formed in the caller's frame only by conversion, and conversion relates a callee's comparison of finals to a caller's comparison of its own places only by taking constructors apart, which is true in the model; it never inverts a stuck call's fill. So the injectivity of backward functions is used nowhere I can find, and the block lemma's `Id` row needs only the injectivity of constructors. What does not hold is the account of what (C+) costs and of what it would take to prove. (C+) is finer than today's observation, and than (C), on a borrow that the observing frame holds and lends from one of its own places: two sides that no continuation can tell apart can compute to `False` (V1, measured on the nearest programs). The lemma that replaces the frame property's `Id` clause is not the frame property with one hypothesis restated; three more of Lean's hypotheses are stated over the parameter labels and fail for the detached pair (V3). And "the formed type holds no loan" rests on a property of frames that the checker does not assert inside private copies (V4). What an implementer must not get wrong: detach on the private copy, before computing the footprint; compute the footprint in the detached state, from the labels the roots hold when the `Id` is formed (positions of the real state are not positions of the copy); give a label a second site in the observing frame only as an identity fill, never as a second loan; find a cell's type even where its holder is a temporary of an untyped run; assert at the detach that no position of the observing frame is a site of a label held below it; leave [Conv-fun]'s observation as it is; and dump every verdict of the suite against `main`. Separately, @sec-proof-fields describes a mechanism the checker does not use. The checker binds a proof's data fields as locals of the arm, and the scrutinee stays `⋆` (V2). The witness reading is right in substance, but the model change should mirror those locals; the paper's rule [T-Match-prop] describes the checker wrongly in the same way, and the two disagree on an accepted program. @sec-frame-lean agrees with the Lean on `spine` at f9b411008, row by row.
+
+== Objections, most serious first
+
+=== V1. (C+) is finer than today's observation inside the observing frame, and its list of verdict changes misses two kinds
+
+*Where.* @sec-obs-compare, (C+): "In a function's own check this changes `OwnRx` to `OwnR`'s form (`False`), so the two agree; elsewhere it changes only `Id`s over a borrow made in the observing frame whose loan sits under a fill, from the fill's equation to the final's"; "The cost of (C) and (C+) is one kind of equation (finding 3)". @sec-obs-finals: "So when $K$ is the parameters' labels, $Omega^O$ is Ω and the observation is today's, test for test", which under (C+) is no longer so, since every label the frame holds gets a cell.
+
+*Objection.* Under (C+) a borrow that the observing frame holds and lends from one of its own places is compared by its final, never through the place it lends. Two consequences are missing from the section.
+- _Equations are lost._ If a side ends such a borrow and then writes or moves its lender, what it wrote through the borrow is invisible to every continuation, but (C+) still compares it. In `ConsW` below both sides leave `a` holding `5` and `r` consumed. Today the `Id` is `⊤`, and under (C) too, since the borrow is internal and the footprint follows its loan to `a`. Under (C+) it is `Eq(Nat, 0, 7)`, which is `False`. That is consistent (the model's observation detaches the same way, so the model's `Id` is false as well), but it changes what `Id` means. Under (C+) it compares what was last written through each borrow of the frame, whether or not anything can still see it, and the paper's reading of `Id` ("indistinguishable from where the statement is made"; "equal contents in every place either of them may write", §5) stops being true inside a body. At a call site nothing changes in this respect: the caller's places are out of the side's reach (`ConsP`).
+- _Verdicts change at the whole-again tests._ A borrow of an index field of an owned dependent value, written by a side, leaves the owner open. Today the footprint follows the borrow to the owner, and [Repack] rejects the owner there (`IdxSame`). Under (C+) the footprint compares the borrow's cell, a `Nat`, and the owner is never compared or tested, so `IdxSame` is accepted; with different writes, today's stuck `Eq(VV, MkVV(1, O), MkVV(2, O))` becomes `False` (`IdxDiff`). Both changes are right: the observation's copy is discarded, and the model compares the same cell. But they are changes of verdict in a function's own check of a kind the section says does not occur.
+
+*Evidence.*
+#measured[With the `Nat` prelude, on `main` at 4d8144736:
+```
+def ConsW : Unit := (let a = 0; let r = &a; let h : Id(Unit, (let r2 = r; a := 5), (let r2 = r; *r2 := 7; a := 5)) = refl; ())
+def ConsM : Unit := (let a = 0; let r = &a; let h : Id(Unit, (let r2 = r; let z = a; ()), (let r2 = r; *r2 := 7; let z = a; ())) = refl; ())
+def ConsP (x : &Nat) : Unit := (let h : Id(Unit, (let r2 = x; ()), (let r2 = x; *r2 := 7)) = refl; ())
+inductive Void : Type
+inductive One := O
+def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+inductive VV := MkVV(n : Nat, x : Fin1(n))
+def IdxSame : Unit := (let t = MkVV(S(Z), O); match t { MkVV(k, x) => (let r = &k; let h : Id(Unit, *r := Z, *r := Z) = refl; ()), })
+def IdxDiff : Unit := (let t = MkVV(S(Z), O); match t { MkVV(k, x) => (let r = &k; let q : Eq(Prop, Id(Unit, *r := S(Z), *r := S(S(Z))), False) = refl; ()), })
+```
+`ConsW` and `ConsM` accepted. `ConsP`, whose lender is the caller's, rejected (its sides do differ for the caller). `IdxSame` rejected, "[Repack] Id observes it, but it is open: field x of MkVV holds a value of type One, but its type from the earlier fields is Void"; `IdxDiff` rejected, "the ascribed term has type ⊤, expected Eq(Prop, Eq(VV, MkVV(1, O), MkVV(2, O)), False)". Under (C+), by reading @sec-obs-dl: `ConsW` and `ConsM` rejected (`r`'s cell ends holding `0` on one side and `7` on the other), `ConsP` rejected, `IdxSame` and `IdxDiff` accepted. Under (C), all five keep today's verdicts.]
+
+*Kind.* A claim about the design's cost is incomplete, and the meaning the paper gives `Id` changes. No fault of consistency.
+
+*What would settle it.* The user's choice between (C) and (C+) made knowing it: (C+) buys "no injectivity of a backward function anywhere" with these equations, while (C) keeps them and keeps that injectivity within one frame (finding 2 of @sec-obs-attack). Whichever is built, the paper's definition of `Id` (§5 and the appendix's [Obs]) must say which places are compared. I searched the suite for sides that consume a borrow the observing frame holds and then touch its lender, and for `Id`s over a local borrow of an index field, and found neither. The `DependentFields` rows over `Id` keep their verdicts by reading; `IdMakesBroken` stays rejected, because its root is the borrow parameter, whose whole content is tested when its cell's label ends.
+
+=== V2. The checker binds a proof's data fields as locals of the arm; @sec-proof-fields, the fourth referee's F2 and the paper's [T-Match-prop] say it writes them at the scrutinee
+
+*Where.* @sec-proof-fields: "In that arm the checker puts at the scrutinee's place a constructor value whose proof fields hold `⋆` and whose data fields hold fresh unknowns"; "the reference puts at the scrutinee's place a _witness_"; "(R3) then relates the checker's $ty("C")(overline(sigma); star)$ with the reference's $ty("C")(overline(w); bullet)$"; "at `G5T`'s call in the arm the observation's owner is the proof binding `e`, holding `Wit(σ, ⋆)` on the copy"; "two witnesses of one proposition are not convertible …, and an `Id` there compares witnesses". F2 of @sec-referee4: "a borrow of it has the proof binding as owner". The paper's appendix, [T-Match-prop] and its section on matches on proofs: arm $i$ is checked from $Omega_1 [p |-> ty("C")_i (overline(v); overline(w))]$ with each data field "a fresh abstract value".
+
+*Objection.* `bindDataFields` (`Machine.lean`), which the typed run applies to the arm of such a match (in `evalMatchByType` and in `checkTailAt`; an untyped run leaves the arm as written, and by reading never reaches it, the match being a declared proof), does not touch the scrutinee. It rewrites the arm. Each data field becomes `let g = σ`, σ fresh; for a dependent constructor each proof field becomes `let h = (⋆ : T)`, with `T` computed once from those fresh values; and every place at or under the field's place in the arm (`e.w`, `e.w.0`, …), inside nested matches too, is replaced by the local. The proof binding stays `⋆`. Four consequences, each measured below.
+- _A nested erased match on the same proof sees the outer arm's writes and unknowns._ Its pattern variables name the field's place, so the outer rewrite has already turned them into the outer locals: `Nest` and `TwoW` are accepted. Under the paper's rule the inner match would overwrite the place with fresh unknowns, and `Nest` would be rejected. So the checker and the paper's rule disagree on an accepted program.
+- _A proof field's type is fixed when the arm starts._ Writing an index data field does not make a later match on the proof field see `False`: `Boom` is rejected with "[Match] on h, whose type Eq(Nat, σ1, S(σ2)) is not an inductive type", the type at the original unknowns.
+- _An `Id` over a data field compares the local, at the field's type._ In `LocalForm` it computes to `Eq(Nat, 0, 1)`, which is `False`, where a comparison at the proof binding would be a stuck equation (the constructor is dependent, and its index differs). So in a typed run no proof binding is ever the owner of a place that is written or borrowed. The "proof owner" of F2, and of resolved determination's hypothesis (b), does not occur in the checker; F2's finding stands, but as a fault of the model's match clause alone, which runs the arm as written with the scrutinee `•`.
+- _The witness reading as written relates no state of the checker's._ The reference would hold $ty("C")(overline(w); bullet)$ at `e` and no locals, the checker `⋆` at `e` and the locals, position for position different. Read literally (the witness put at each erased match), it also fails at `Nest`: the inner match would put the witness back over the outer arm's `5`, and `Eq(Nat, w2, 5)`, which the checker accepted by `refl`, would be false in the reference.
+
+*Evidence.*
+#measured[With the `Nat` prelude, on `main` at 4d8144736:
+```
+inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))
+def Nest (e : Ex) : True := match e { Wit(w, h) => (w := 5; match e { Wit(w2, h2) => (let q : Eq(Nat, w2, 5) = refl; refl), }), }
+def TwoW (e : Ex) : True := match e { Wit(w, h) => match e { Wit(w2, h2) => (let q : Eq(Nat, w, w2) = refl; refl), }, }
+inductive Succ : Prop := MkSucc(n : Nat, m : Nat, h : Eq(Nat, n, S(m)))
+def Boom (e : Succ) : Eq(Nat, Z, S(Z)) := match e { MkSucc(n, m, h) => (n := Z; match e { MkSucc(n2, m2, h2) => match h2 {}, }), }
+inductive Ex2 : Prop := Wit2(a : Nat, b : Nat, h : Eq(Nat, a, b))
+def LocalForm (e : Ex2) : True := match e { Wit2(a, b, h) => (let t : Prop = Id(Unit, a := 0, a := 1); let q : Eq(Prop, t, False) = refl; refl), }
+def EWhole (e : Ex2) : True := match e { Wit2(a, b, h) => (a := 7; let q : Eq(Ex2, e, e) = refl; refl), }
+```
+`Nest`, `TwoW`, `LocalForm` and `EWhole` accepted; `Boom` rejected with the message above. A split on a data field in the arm (`match w { Z => refl, S(m) => refl }`) is accepted too.]
+
+*Kind.* The section's description of the checker, and F2's, is wrong, and so is the paper's rule; the proposed change to the model does not match the checker. The section's conclusion stands. A classically chosen witness is compatible with the fundamental lemma's clause for a match, with conversion and with proof irrelevance where the argument uses it, since the arm is a declared proof run on a private copy and nothing computed from the witness leaves it: the generalisation and η-records made in the arm survive the copy, but they are keyed by the arm's fresh unknowns, which are never reissued, and nothing outside the arm derives them. I found no accepted program in which two witnesses give results the checker can observe.
+
+*What would settle it.* The model's `.matchInd` clause at a proof tag with data fields runs the arm as `bindDataFields` rewrites it: each data local holding the witness's field, each proof local `•` at its type at the witness, the scrutinee staying `•`, and the assignment extended at the fresh unknowns by the witness's fields, as `evalMatchByType_step_stmt` already says. Goodness then needs no new clause, and resolved determination's hypothesis (b) is vacuous. The paper's [T-Match-prop] and its section on matches on proofs should describe the locals. Whether the rewrite or the paper's rule is the design meant is the user's call; by reading both are sound, and they differ on `Nest`.
+
+=== V3. The lemma DL needs the frame property stated over two sets of labels, not one hypothesis restated
+
+*Where.* @sec-obs-dl: "If $s$ and $s'$ satisfy FR's hypotheses …, then … $"detach"(s)$ and $"detach"(s')$ satisfy them again, at the shape of C6 …, and the labels of $K$ as the cells' labels … One hypothesis of FR is stated too narrowly for the detached pair: (H8)"; @sec-obs-compare: "_DL needs no (I6)_"; "the exclusion `t.idFree = true ∨ ks = []`, `run_frame_obs`, `CellsDetermined` and `CellsAtObs` are deleted".
+
+*Objection.* In Lean's `FrameInv` (`Steps/FrameOps.lean` at f9b411008) three more clauses are stated over the parameter labels `ks`, and each fails when every label of $K$ is taken as a cell's label, as DL takes it.
+- `noParam` (the paper's (H3), with (I1)): no position of the closure's top frame reads a label that σ sends into `ks`. Under (C+), $K$ holds every label the frame holds, among them one lent at a local of the frame (`let r = &a`), and `a` reads it. Under (C) too: a call that consumed a borrow parameter and returned a borrow lent also at a local (`Pick(n, x, &b)`) closes off at the generic call, and `b` then reads the result's label, which is in $K$, through the fill.
+- `pfill` ((H7)): a label of `ks` is lent in the callee's frame only as a fill. In the first example `a` holds that label's plain loan.
+- `srange` ((H12)): every closure label, dead ones included, is sent into `ks` or past the start's counter. If the start is the state at the `Id`'s formation, the labels the body made and ended before it are sent below that counter and outside $K$.
+None of these is a fault of the design. What each protects concerns the original parameter labels (two orders of ends that the renaming may reverse; a record that may differ between the two sides) or the caller's borrows (an entry's lending reaching one), and the detached state's frame 0 holds no borrow. But the `Id` clause becomes "an ordinary clause" only once the frame property is restated with the cells' labels separated from the labels the renaming may reorder and whose records may differ. (H8) (`order`) is the one the section names; `noParam`, `pfill` and `srange` need the same, and (S1) does if the start is the formation state. Under (C+), DL indeed needs no (I6).
+
+*Kind.* A reduction is stated too easily; the Lean lane's cost for (C+) is larger than the section says, though not in kind.
+
+*What would settle it.* State `FrameInv` and `FrameStart` over two lists, the cells' labels and the labels the renaming treats specially (at a call they are the same list), and check that `frameInv_of` and the match and call clauses already proved go through with the second list where they now read `ks`.
+
+=== V4. "The formed `Id` holds no loan" needs, at the detach, that the observing frame lends nothing to a borrow held below it
+
+*Where.* @sec-obs-attack: "_A formed `Id` is a stored type, and holds no loan._ Every label of $Omega^O$ is held in $O$, and the observation ends them all"; @sec-obs-dl, step 1: "every frame below $f$ is dropped".
+
+*Objection.* That every site in the observing frame is a site of a label held in that frame is the frame property's F4. `endTopLoan` asserts it only outside private copies, and its comment records that it fails inside some of them: the checker's scaffolding binds copies of stored values that hold live loans whose borrowers are below, and with the assertion made strict there, rows of `OpenAttacks` and `DepVec` fail on it. If an `Id` were formed in such a frame, dropping the frames below would leave in it a loan with no borrow. [End] treats such a loan as inert, so the sides read it, `eq` takes two equal inert loans as reflexive, and the formed type keeps a loan, which (WF11) forbids. By reading, no `Id` is formed in such a frame today: `Id` is not a field type (`IdF` below), and a type function whose body is an `Id` (`IdG`) forms it in its own frame, whose arguments were read with their accesses. But nothing enforces it.
+#measured[With the `Nat` prelude, on `main` at 4d8144736:
+```
+inductive IdF := MkIdF(n : Nat, h : Id(Nat, clone(n), clone(n)))
+def IdT (n : Nat) : Prop := Id(Nat, clone(n), clone(n))
+inductive IdG := MkIdG(n : Nat, h : IdT(n))
+```
+`IdF` rejected, "fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"; `IdT` and `IdG` accepted.]
+
+*Kind.* The specification leaves an invariant unenforced at the one place it is needed.
+
+*What would settle it.* The detach asserts it: if a position of the frame holds a loan, fill or mark of a label held below the frame, an internal error naming the position.
+
+=== V5. Smaller points
+
+- _The model's detach is written for (C)._ @sec-obs-dl defines $K(t)$ as "the labels held in $O$ none of whose sites is at a position of $O$ or that have no site at all"; for (C+) it must be every label held in $O$, with the cell a fill site where $O$ holds another site, as the (C+) paragraph of @sec-obs-compare says for the checker.
+- _The identity fills are sealed programs that no call made._ Under (C+), "Every sealed program the observation makes comes from a call the side made in $O$" (@sec-obs-attack) is false. They are harmless: each re-runs to its label's final once the label ends, before anything compares it, and none leaves the copy. But principle 7's exception, which the section names, and N3's clause for code (every sealed program held in the state has [Close]'s shape), which it does not, must both exclude them.
+- _A cell's type comes from its holder's stored type._ A borrow argument in flight has one in an untyped run too (`evalCore` types `&p` where its context wants it), but a temporary may have none (D104), so the implementer must not assume one for every holder.
+- _Today a statement read at a call site keeps its truth, not its form._ Its conjuncts come in the order of the caller's owners, not of the parameters, so today's C2 gives an equivalent proposition, not the same one, even through constructors, and a proof in the own check's form is rejected at such a call (`SwapCall2` below). (C+) makes the two forms one, a point for it that the section does not make; it also flips the twin `SwapCall2Ok`, which relies on today's form, from accepted to rejected (one more kind of verdict change for the list of V1, none in the suite as far as I found).
+- _`spine` has moved._ @sec-frame-lean is against f9b411008; `spine` is now at b836c9b9f ("the frame property on the fragment without functions formed in the body and without Id").
+#measured[With the `Nat` prelude, on `main` at 4d8144736:
+```
+def G7 (a : Nat) (b : Nat) (x : &Nat) (y : &Nat) (e : Id(Unit, (*x := clone(a); *y := clone(b)), (*x := clone(b); *y := clone(a)))) : Unit := ()
+def G7T (a : Nat) (b : Nat) (x : &Nat) (y : &Nat) : Prop := Id(Unit, (*x := clone(a); *y := clone(b)), (*x := clone(b); *y := clone(a)))
+def OwnForm (a : Nat) (b : Nat) (x : &Nat) (y : &Nat) : Unit := (let t : Prop = G7T(clone(a), clone(b), x, y); let q : Eq(Prop, t, Eq(Nat, a, b) ∧ Eq(Nat, b, a)) = refl; ())
+def SwapForm2 (a : Nat) (b : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 5); let t : Prop = G7T(clone(a), clone(b), &p.1, &p.0); let q : Eq(Prop, t, Eq(Nat, b, a) ∧ Eq(Nat, a, b)) = refl; ())
+def SwapCall2 (a : Nat) (b : Nat) (e : Eq(Nat, a, b) ∧ Eq(Nat, b, a)) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 5); G7(clone(a), clone(b), &p.1, &p.0, e))
+def SwapCall2Ok (a : Nat) (b : Nat) (e : Eq(Nat, b, a) ∧ Eq(Nat, a, b)) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 5); G7(clone(a), clone(b), &p.1, &p.0, e))
+```
+`OwnForm`, `SwapForm2` and `SwapCall2Ok` accepted; `SwapCall2` rejected. At `G7`'s own check the conjunction is in the parameters' order, at the call with `p`'s fields swapped in `p`'s field order. Under (C+), by reading, the call has the own check's order: `SwapCall2` accepted and `SwapCall2Ok` rejected.]
+
+== The history of the observation's tests, against (C+)
+
+For each decision behind a test an observation makes: the program it was added for, what (C+) does with it, and what it does with the offending borrow moved into the caller and into the observing frame. "By reading" throughout; the measured programs are those of @sec-obs-today, @sec-rd-attack and V1.
+
+#table(columns: (13%, 29%, 29%, 29%), align: left, table.header([*Decision*], [*(C+) on the original program*], [*Moved into the caller*], [*Moved into the observing frame*]),
+  [D44, D137], [Rejected without either: a label with no site, or whose fill η would drop, is held in $O$ and gets a cell, whose finals are `0` and `1` (`QF`, `QU`).], [Not applicable.], [`let r = g(5); Id(Unit, *r := 0, *r := 1)` in a body: today `⊤` but unwritable, since D44 forbids `g`; under (C+) `False`, so D44 is not needed here either.],
+  [D53 (h), D98], [Rejected: the side's borrow ends in the detached state and is tested (`LeftOpenBoth`, `ObsBorrowThrough`).], [Accepted, rightly (`S1`, `S1u`, `CallF`, `S4`).], [Rejected as today (`ObsAfterBorrow`, `ThroughW`).],
+  [D64, D72 to D76], [Rejected wherever the own check rejects; `IdMakesBroken` stays rejected, its root being the borrow parameter, whose content is tested whole at its end.], [Accepted, rightly (`S2`, `S3`, `S5`, `CallO`).], [`IdxSame` accepted, rightly (V1).],
+  [D106], [Unchanged in $O$ (the check on temporaries held when the `Id` is formed).], [Out of the sides' reach, and now of the ends.], [Unchanged.],
+  [D113], [Unchanged. Worked through by hand: the old label's cell holds its content at the re-pointing, so `HideHide`, `DetourHide`, `TwoHide`, `TwoApart`, `FldHide`, `DiffHide` and `PickHide` stay rejected (each by a differing [Obs-ref] component or old cell) and `HideBoth`, `DetourBoth`, `TwoBoth`, `DiffSame`, `DiffRoutes`, `PickBoth` accepted.], [Not applicable: a side re-points only $O$'s bindings.], [These rows are in-frame already.],
+  [D114], [Unchanged: a consumed label ends into its cell on every path (`A1`, `ByLet`).], [Not applicable.], [Unchanged.],
+)
+
+*What (C+) rejects that is accepted today.* Three kinds, by reading: `Lift`'s, an induction hypothesis about a borrow that a stuck call returned (@sec-obs-attack, finding 3; re-run: `Lift` and `LiftR` accepted, `LiftC` rejected); `ConsW`'s, an `Id` over a borrow of the frame whose lender the side later writes or moves (V1); and any program that relies on a form today's observation gives and (C+) changes: an `Id` over a borrow made in the frame under a fill or into an index field, or a call whose borrow arguments are lent from one owner in another order than the parameters (`SwapCall2Ok`, V5). In the suite, by reading the rows that form or pass an `Id` over a borrow: `GR` stays rejected and `GROk` accepted, `BadD18` stays rejected and `BadD18Ok` and `ClosedD18Ok` accepted, the [Obs-ref] rows above keep theirs, and the hash map's and quicksort's lemmas lift through constructor contexts (`&x`, `&t` after taking `*s` apart), where the two forms are equal once `Eq` takes the constructors apart. I found no row that changes, but I did not run the suite against (C+), which is not built.
+
+== Verdicts, one per claim
+
+#table(columns: (34%, 18%, 48%), align: left, table.header([*Claim*], [*Verdict*], [*Why*]),
+  [@sec-obs-today: five sites, each an accepted function whose call at a known argument is rejected], [confirmed], [`S1Z` to `S5Z` rejected and `S1S` accepted on 4d8144736, with the messages quoted there.],
+  [@sec-obs-finals: $K$ includes the labels with no site (finding 1)], [holds], [Without it `QF` and `QU` are accepted again; under (C+) every label held in $O$ gets a cell, so the question does not arise.],
+  [A function's own check is today's, test for test, but at a consumed parameter], [holds for (C); false for (C+)], [Under (C+) every borrow of the frame is compared at its cell: `OwnRx`, `IdxSame`, `IdxDiff`, `ConsW` (V1).],
+  [A parameter type read at a call site is the own check's statement at those values, by construction, deferred types included], [holds], [`callType`, `declCallType`, `argHint` and `paramTypes` push the captures and the parameters, each borrow argument taken from its holder; a deferred type's frame binds the arguments as passed, the stale borrow then its one holder.],
+  [A body run in place detaches to the closure state, up to the renaming], [holds], [With the restatement of V3 for the lemma that says so.],
+  [The finals, case by case], [holds], [Re-borrowed, closed off, run, returned through a match, a stuck call's result held by the caller, re-pointed, consumed: each worked through.],
+  [The five sites are accepted], [holds by reading], [In each the observing frame is `FJ2`'s and $K$ is `x`'s label alone.],
+  [The attack table], [holds], [With the in-frame variants of the table above.],
+  [A formed `Id` holds no loan], [holds with a named extra hypothesis], [F4 at the detach (V4).],
+  [An `Id` between two different writes is `False` whatever the borrow's provenance], [holds], [The finals are what the sides write.],
+  [Finding 2: under (C) a residue of resolved determination at the block lemma], [holds], [`BlkFill1` measured by the author.],
+  [Finding 3: an induction hypothesis loses a stuck call's backward function], [holds], [`Lift`, `LiftC`, `LiftR` re-run.],
+  [Finding 4 and `OwnR`, `OwnRx`], [holds], [Both rejected today with a stuck expected type.],
+  [No wrong acceptance found], [agreed], [Nor by me: none in the history, in the attack table, or by the routes of V1 to V4.],
+  [(C+): finding 2's residue goes], [holds], [The direct arm and the block differ by a constructor path; where the arm writes an index field the direct form is a stuck equation and the block's `False`, the same truth by injectivity of constructors in the model.],
+  [(C+): DL needs no (I6)], [holds], [But DL needs the restatement of V3.],
+  [(C+): N1's relation $R$ is no longer used], [holds], [Checked beyond resolved determination: conversion of functions ([Conv-fun] compares symbolic backward functions, injective or not), `Eq` (never splits a neutral), `J` and `rewrite`, generalisation (never of a fill with a hole), [Rec].],
+  [(C+): the suite's 19 `Id`s over a borrow a call returned keep their verdicts], [holds by sample], [The rows named above; not dumped.],
+  [(C+): its cost is one kind of equation, beyond (C)'s one more case in the detach], [incomplete], [V1: `ConsW`'s equations, and the verdict changes at whole-again tests.],
+  [@sec-obs-dl: the checker's change], [holds], [With the implementer's notes of the verdict.],
+  [@sec-obs-dl: the model's detach], [incomplete], [Written for (C) (V5).],
+  [No longer needed: OBS and (H11)], [holds], [Given DL as in V3.],
+  [No longer needed: OI over the caller's labels], [holds], [The detached state has none.],
+  [No longer needed: resolved determination at call points, with the fourth referee's exclusions and (X5) over the caller's state], [holds], [The call-site statement is the own check's.],
+  [No longer needed: (M3)'s restriction], [holds], [Every end in the detached state is of a label held in $O$; a content $O$'s own code holds open is tested alike in place and in the closure, and alike by the checker's [Repack] at the end.],
+  [No longer needed: `CellsDetermined`, `CellsAtObs`, `run_frame_obs`], [holds], [Nothing uses them.],
+  [No longer needed: `RunFrameI`'s exclusion of `Id`], [holds with a named extra hypothesis], [Only once FR is restated as in V3.],
+  [No longer needed: N3's extension to open or partly moved owners of the caller], [holds], [Owners of $O$ are tested by [Repack] before they are compared.],
+  [No longer needed, under (C+): resolved determination within one frame; $R$; (X5); D44 and D137 for consistency], [holds], [Resolved determination was (X5)'s only user, and the block lemma's was the last.],
+  [@sec-proof-fields: the checker puts a constructor value at the scrutinee], [false], [It binds locals (V2).],
+  [@sec-proof-fields: a witness exists; with several constructors the reference runs an inhabited one's arm], [holds], [The scrutinee is a member, so the proposition is true; `anyArm` takes an arm that runs.],
+  [@sec-proof-fields: any witness serves], [holds], [The checker checked the arm at unknowns.],
+  [@sec-proof-fields: the two changes to the model (a witness written at the scrutinee; goodness admitting it)], [false as written], [They relate no state of the checker's and fail at `Nest`; the locals of V2 instead, and goodness unchanged.],
+  [@sec-proof-fields: the simulation at `PB`, `PExT`, `PExF`, `PIdSelf`], [holds with the locals], [The owner is the local, not `e`; the propositions are the ones stated.],
+  [@sec-proof-fields: "a proof is irrelevant" means three things], [holds], [The third also covers the records the arm makes, which are keyed by its fresh unknowns.],
+  [@sec-frame-lean, every row of the table], [matches Lean], [Checked at f9b411008: `srange`, `bsites`, `ResAtTemp`, `pfill` on the in-place state, `cells` as a count, `FrameRel.frames` with $s_0$ after the push, `RunFrameI`'s exclusion; (H10) and the `let` invariant absent.],
+  [@sec-frame-lean, the two rows marked wrong before: the match row's "the result's label is held in the callee's frame", and the Π-type row's earlier "argued in full"], [confirmed wrong, as now marked], [The match clause is proved only over `FrameInv` with `srange`, `bsites` and `ResAtTemp`; `Run.lean`'s `.pi` clause runs its types from `extendBy s`, the whole forming state.],
+)
+
+== For a sixth referee
+
+Three things are open. The first is the choice V1 puts to the user, between (C) and (C+), and the paper's definition of `Id` that follows from it. The second is the model's clause for a match on a proof with data fields, which should follow the checker's locals (V2); whether the checker or the paper's [T-Match-prop] is the design meant is open, and they differ on `Nest`. The third is the restated frame property of V3, which the Lean lane will meet as soon as it takes the `Id` clause on. Whoever builds (C+) should dump every row's verdict against `main` and check it against the history table above. My probes are in the scratchpad's `r5/` (`B1` the five sites and the in-frame index field, `B3` the lost equations, `B4` `Lift`, `B8` the order of conjuncts at a call, `B2` the field types, `B5` to `B7` a proof's data fields), and the running notes are in `reports/referee5.md`.
