@@ -307,6 +307,214 @@ ochr Recursion uses Nats, Fixtures {
 }
 
 
+/-! ## A function being checked is not run (D135)
+
+While a function is being checked, a call of it closes off at once, as a call of an unknown
+function does, whatever path reaches it; its body runs only once the definition is accepted (in
+Lean, too, the function being defined does not unfold inside its own body). Before, a typed
+recursive call that passed [Rec] ran the body in place, untyped: code the check had not finished
+with, whose calls no [Rec] test saw and whose unchecked arms ran. `Loop` ended "undecided (call
+depth exceeded)" instead of being rejected, and `HAt` made an untested call before its rejection.
+
+The rows are the class, hunted route by route: a typed call (`Loop`); a sealed program's head call
+re-run after a later split (`ReRun`), a stuck block's re-run (`BlkRe`); a call through a λ's
+capture, called or passed on (`LamCall`, `HoCall`); an inner recursive function, during its check
+and after it (`InLoop`, `OutIn`, `OutIn2`); conversion of function values (`ConvLoop`); a borrow
+in the decreasing position (`BLoop`); a call returning a type, which runs on a private copy
+(`TLoop`); a sealed function's type, read by typing its program from the empty state (`FR`).
+Each now meets [Rec] at the call it should. The function being checked is found by its code, not
+by its value: a split on a local function's capture (`CapRe`, `CapLam`, `Nest`), or on what a
+captured proof's type mentions (`CapPrf`), changes the value but not the code, and every route
+but the name reaches the value only.
+
+The loss, of one kind: a body that needs its own recursive call to compute (`Sel`: inside `Sel`,
+with `m` refined to `Z`, `Sel(m)` is `⌈Sel(0)⌉`, not `0`). The same equation stated after the
+definition holds (`Sel2After`), a well-founded definition computes once accepted (`OkRuns`), and
+an inner function, once its own check has ended, runs inside the outer one's (`InnerRuns`). -/
+
+ochr UnderCheck uses Nats {
+  inductive BB := TT | FF
+  inductive Box (A : Type) := MkBox(x : A)
+  def App (f : Π(u : Unit). Nat) : Nat := f(())
+  def Le (a : Nat) (b : Nat) : Prop by a := match a { Z => ⊤, S(a') => match b { Z => False, S(b') => Le(a', b'), }, }
+
+  -- a typed call: its in-place run reached the arm `FF`, unchecked, and made an untested call
+  reject def HAt (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => match m { Z => (HAt(FF, Z); Z), S(k) => Z, }, },
+    FF => match n { Z => (HAt(TT, S(S(S(Z)))); Z), S(m) => Z, }, }
+  reject def H2 (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => H2(FF, m), },
+    FF => H2(TT, n), }
+  reject def Loop (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => Loop(FF, m), },
+    FF => Loop(FF, n), }
+  def Ok (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => match m { Z => Ok(FF, m), S(k) => Ok(FF, m), }, },
+    FF => match n { Z => Z, S(m) => Ok(TT, m), }, }
+  def OkRuns : Eq(Nat, Ok(TT, S(S(S(Z)))), Z) := refl
+  -- the loss: the body states an equation about its own call
+  reject def Sel (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => match m { Z => (let e : Eq(Nat, Sel(m), Z) = refl; Z), S(k) => Z, }, }
+  def Sel2 (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => match m { Z => (let r = Sel2(m); Z), S(k) => Z, }, }
+  def Sel2After : Eq(Nat, Sel2(Z), Z) := refl
+
+  -- a sealed program's head call, re-run after a later split
+  reject def ReRun (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => (let r = ReRun(FF, clone(m)); match m { Z => r, S(k) => r, }), },
+    FF => match n { Z => ReRun(FF, n), S(k) => Z, }, }
+  reject def ReSel (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => (let r = ReSel(clone(m)); match m { Z => (let e : Eq(Nat, r, Z) = refl; Z), S(k) => Z, }), }
+  -- ... of a local function: the split refines the argument only
+  reject def CapSel0 (n : Nat) (x : Nat) : Nat := (fix go (y : Nat) : Nat by y := match y {
+    Z => Z,
+    S(p) => (let r = go(clone(p)); match p { Z => (let e : Eq(Nat, r, Z) = refl; Z), S(k) => Z, }), })(x)
+  -- ... and a split refines its capture `n`, so its value is no longer the frame's
+  reject def CapSel (n : Nat) (x : Nat) : Nat := (fix go (y : Nat) : Nat by y := match y {
+    Z => Z,
+    S(p) => (let r = go(clone(p)); match n { Z => match p { Z => (let e : Eq(Nat, r, Z) = refl; Z), S(k) => Z, }, S(j) => Z, }), })(x)
+  reject def CapRe (n : Nat) (x : Nat) : Nat := (fix go (p : BB) (y : Nat) : Nat by y := match p {
+    TT => match y { Z => Z, S(m) => (let r = go(FF, clone(m)); match n { Z => match m { Z => r, S(k) => r, }, S(j) => r, }), },
+    FF => match y { Z => go(FF, y), S(k) => Z, }, })(TT, x)
+  -- ... and its code holds a captured proof's type, `Le(n, 5)`, which the split refines
+  reject def CapPrf (n : Nat) (h : Le(n, 5)) (x : Nat) : Nat := (fix go (y : Nat) : Nat by y := match y {
+    Z => Z,
+    S(p) => (let k = h; let r = go(clone(p)); match n { Z => match p { Z => (let e : Eq(Nat, r, Z) = refl; Z), S(j) => Z, }, S(j) => Z, }), })(x)
+  reject def CapPrf0 (n : Nat) (h : Le(n, 5)) (x : Nat) : Nat := (fix go (y : Nat) : Nat by y := match y {
+    Z => Z,
+    S(p) => (let k = h; let r = go(clone(p)); match p { Z => (let e : Eq(Nat, r, Z) = refl; Z), S(j) => Z, }), })(x)
+
+  -- a stuck block's re-run after a later split
+  reject def BlkRe (p : BB) (q : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => (let r = match q { TT => BlkRe(FF, TT, clone(m)), FF => Z, }; match q { TT => match m { Z => r, S(k) => r, }, FF => r, }), },
+    FF => match n { Z => BlkRe(FF, TT, n), S(k) => Z, }, }
+  reject def BlkSel (q : BB) (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => (let r = match q { TT => BlkSel(TT, clone(m)), FF => Z, }; match q { TT => match m { Z => (let e : Eq(Nat, r, Z) = refl; Z), S(k) => Z, }, FF => Z, }), }
+  reject def CapBlkSel (n : Nat) (b : BB) (x : Nat) : Nat := (fix go (q : BB) (y : Nat) : Nat by y := match y {
+    Z => Z,
+    S(m) => (let r = match q { TT => go(TT, clone(m)), FF => Z, }; match n { Z => match q { TT => match m { Z => (let e : Eq(Nat, r, Z) = refl; Z), S(k) => Z, }, FF => Z, }, S(j) => Z, }), })(b, x)
+
+  -- a call through a λ's capture: the λ called, or passed to a complete higher-order function
+  reject def LamCall (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => (let g = (λ(u : Unit) : Nat => LamCall(FF, clone(m))); g(())), },
+    FF => LamCall(FF, n), }
+  reject def LamSel (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => match m { Z => (let g = (λ(u : Unit) : Nat => LamSel(clone(m))); let e : Eq(Nat, g(()), Z) = refl; Z), S(k) => Z, }, }
+  reject def HoCall (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => App(λ(u : Unit) : Nat => HoCall(FF, clone(m))), },
+    FF => HoCall(FF, n), }
+  reject def HoSel (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => match m { Z => (let e : Eq(Nat, App(λ(u : Unit) : Nat => HoSel(clone(m))), Z) = refl; Z), S(k) => Z, }, }
+  -- ... of a local function whose capture a split has refined (the λ's call of it is untyped)
+  reject def CapLam (n : Nat) (x : Nat) : Nat := (fix go (p : BB) (y : Nat) : Nat by y := match n {
+    Z => match p { TT => match y { Z => Z, S(m) => (let g = (λ(u : Unit) : Nat => go(FF, clone(m))); g(())), }, FF => go(FF, y), },
+    S(j) => Z, })(TT, x)
+  reject def CapLamSel (n : Nat) (x : Nat) : Nat := (fix go (y : Nat) : Nat by y := match n {
+    Z => match y { Z => Z, S(m) => match m { Z => (let g = (λ(u : Unit) : Nat => go(clone(m))); let e : Eq(Nat, g(()), Z) = refl; Z), S(k) => Z, }, },
+    S(j) => Z, })(x)
+
+  -- an inner recursive function: its own calls during its check ...
+  reject def InLoop (q : Nat) : Nat := (fix go (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => go(FF, m), },
+    FF => go(FF, n), })(TT, q)
+  -- ... its calls of the outer one during its check ...
+  reject def OutIn (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => (fix go (y : Nat) : Nat by y := match y { Z => OutIn(FF, clone(m)), S(k) => go(k), })(Z), },
+    FF => OutIn(FF, n), }
+  -- ... and after it: it runs (it is accepted code), and its calls of the outer one close off
+  reject def OutIn2 (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => (fix go (y : Nat) : Nat by y := match y { Z => OutIn2(FF, clone(m)), S(k) => go(k), })(S(Z)), },
+    FF => OutIn2(FF, n), }
+  reject def OutInSel (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => match m { Z => (let e : Eq(Nat, (fix go (y : Nat) : Nat by y := match y { Z => OutInSel(clone(m)), S(k) => go(k), })(S(Z)), Z) = refl; Z), S(k) => Z, }, }
+  def InnerRuns (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => (let e : Eq(Nat, (fix go (y : Nat) : Nat by y := match y { Z => Z, S(k) => go(k), })(S(S(Z))), Z) = refl; InnerRuns(m)), }
+  -- ... the outer one local, its capture refined, called by the inner one after the inner's check
+  reject def Nest (n : Nat) (x : Nat) : Nat := (fix outer (p : BB) (y : Nat) : Nat by y := match n {
+    Z => match p { TT => match y { Z => Z, S(m) => (fix go (k : Nat) : Nat by k := match k { Z => outer(FF, clone(m)), S(j) => go(j), })(Z), }, FF => outer(FF, y), },
+    S(j) => Z, })(TT, x)
+
+  -- conversion of function values runs both λs' generic calls
+  reject def ConvFn (n : Nat) : Nat by n := match n {
+    Z => Z,
+    S(m) => match m { Z => (let e : Eq(Π(u : Unit). Nat, λ(u : Unit) : Nat => ConvFn(clone(m)), λ(u : Unit) : Nat => (let z = ConvFn(clone(m)); Z)) = refl; Z), S(k) => Z, }, }
+  reject def ConvLoop (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => (let e : Eq(Π(u : Unit). Nat, λ(u : Unit) : Nat => ConvLoop(FF, clone(m)), λ(u : Unit) : Nat => ConvLoop(FF, clone(m))) = refl; Z), },
+    FF => ConvLoop(FF, n), }
+
+  -- a borrow in the decreasing position
+  reject def BLoop (p : BB) (x : &Nat) : Nat by x := match p {
+    TT => match *x { Z => Z, S(m) => BLoop(FF, &m), },
+    FF => BLoop(FF, x), }
+  reject def BSel (x : &Nat) : Nat by x := match *x {
+    Z => Z,
+    S(m) => match m { Z => (let e : Eq(Nat, BSel(&m), Z) = refl; Z), S(k) => Z, }, }
+
+  -- erased calls: a call returning a proof returns at once (unchanged); one returning a type runs
+  reject def PLoop (p : BB) (n : Nat) : Eq(Nat, Z, Z) by n := match p {
+    TT => match n { Z => refl, S(m) => PLoop(FF, m), },
+    FF => PLoop(FF, n), }
+  reject def TLoop (p : BB) (n : Nat) : Type by n := match p {
+    TT => match n { Z => Nat, S(m) => TLoop(FF, m), },
+    FF => TLoop(FF, n), }
+  reject def TSel (n : Nat) : Type by n := match n {
+    Z => Nat,
+    S(m) => match m { Z => (let x : TSel(m) = Z; Nat), S(k) => Nat, }, }
+
+  -- a sealed value's type: calling a sealed function types its program from the empty state
+  reject def STy (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => (let b = MkBox(STy(FF, m)); Z), },
+    FF => STy(FF, n), }
+  def STyOk (p : BB) (n : Nat) : Nat by n := match p {
+    TT => match n { Z => Z, S(m) => (let b = MkBox(STyOk(FF, m)); Z), },
+    FF => match n { Z => Z, S(m) => STyOk(FF, m), }, }
+  reject def FR (p : BB) (n : Nat) : (Π(u : Unit). Nat) by n := match p {
+    TT => match n { Z => λ(u : Unit) : Nat => Z, S(m) => (let h = FR(FF, m); let z = h(()); λ(u : Unit) : Nat => Z), },
+    FF => FR(FF, n), }
+  def FROk (p : BB) (n : Nat) : (Π(u : Unit). Nat) by n := match p {
+    TT => match n { Z => λ(u : Unit) : Nat => Z, S(m) => (let h = FROk(FF, m); let z = h(()); λ(u : Unit) : Nat => Z), },
+    FF => match n { Z => λ(u : Unit) : Nat => Z, S(m) => FROk(FF, m), }, }
+}
+
+private def recAt (f a : String) : String :=
+  s!"[Rec] at {f}({a}): the argument in the decreasing position is not a strict subterm of that parameter's entry value as refined so far"
+private def sealedSelf (e : String) : String := s!"the ascribed term has type ⊤, expected Eq(Nat, ⌈{e}"
+
+#guard (run "UnderCheck" UnderCheck).rejectedWith [
+  ("HAt", recAt "HAt" "TT, 3"), ("H2", recAt "H2" "TT, σ1"), ("Loop", recAt "Loop" "FF, σ1"),
+  ("Sel", sealedSelf "Sel(0)⌉, 0)"),
+  ("ReRun", recAt "ReRun" "FF, 0"), ("ReSel", sealedSelf "ReSel(0)⌉, 0)"),
+  ("CapSel0", sealedSelf "(fix go (y : Nat) : Nat by y := match y { Z => 0, S _ => let r = go(clone(y.0)); match y.0 {"),
+  ("CapSel", sealedSelf "(fix go (y : Nat) : Nat by y := match y { Z => 0, S _ => let r = go(clone(y.0)); match κ1 {"),
+  ("CapRe", "[Rec] at fix go (p : BB) (y : Nat) : Nat by y := match p { TT =>"),
+  ("CapPrf", sealedSelf "(fix go (y : Nat) : Nat by y := match y { Z => 0, S _ => let k = ⋆; let r = go(clone(y.0)); match κ1 {"),
+  ("CapPrf0", sealedSelf "(fix go (y : Nat) : Nat by y := match y { Z => 0, S _ => let k = ⋆; let r = go(clone(y.0)); match y.0 {"),
+  ("BlkRe", recAt "BlkRe" "FF, TT, 0"), ("BlkSel", sealedSelf "BlkSel(TT, 0)⌉, 0)"),
+  ("CapBlkSel", sealedSelf "(fix go (q : BB) (y : Nat) : Nat by y := match y {"),
+  ("LamCall", recAt "LamCall" "FF, σ1"), ("LamSel", sealedSelf "LamSel(0)⌉, 0)"),
+  ("HoCall", recAt "HoCall" "FF, σ1"), ("HoSel", sealedSelf "HoSel(0)⌉, 0)"),
+  ("CapLam", "[Rec] at fix go (p : BB) (y : Nat) : Nat by y := match κ1 { Z =>"),
+  ("CapLamSel", sealedSelf "(fix go (y : Nat) : Nat by y := match κ1 {"),
+  ("InLoop", "[Rec] at fix go (p : BB) (n : Nat) : Nat by n := match p {"),
+  ("OutIn", recAt "OutIn" "FF, σ1"), ("OutIn2", recAt "OutIn2" "FF, σ1"),
+  ("OutInSel", sealedSelf "OutInSel(0)⌉, 0)"),
+  ("Nest", "[Rec] at fix outer (p : BB) (y : Nat) : Nat by y := match κ1 {"),
+  ("ConvFn", "the ascribed term has type ⊤, expected Eq(Π(u : Unit). Nat, fix _ (u : Unit) : Nat := κ1(clone(κ2.0)) where κ1 = ConvFn, κ2 = 1,"),
+  ("ConvLoop", recAt "ConvLoop" "FF, σ1"),
+  ("BLoop", recAt "BLoop" "FF, borrow_0 σ1"), ("BSel", sealedSelf "let c1 = 0; BSel(&c1)⌉, 0)"),
+  ("PLoop", recAt "PLoop" "FF, σ1"), ("TLoop", recAt "TLoop" "FF, σ1"),
+  ("TSel", "the ascribed term has type Nat, expected ⌈TSel(0)⌉"),
+  ("STy", recAt "STy" "FF, σ1"), ("FR", recAt "FR" "FF, σ1")]
+
+
 /-! ## Proof functions are copies, and a proof function's own binding is a proof (D100)
 
 A Π-type into proofs is a proposition, so its values are proofs, erased to `⋆`, and the place

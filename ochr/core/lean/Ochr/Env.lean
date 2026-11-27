@@ -144,12 +144,18 @@ def IndDecl.fieldDependent (d : IndDecl) (c i : Nat) : Bool :=
 /-- A function whose body is being checked, for [Rec]: its entry values and the
 recursive positions that have survived its recursive calls so far. The candidates are
 an accumulator: a state restore (a branch, a private copy) keeps them, matched to the
-frame by `uid`, so no nested computation can reset or shift them (the recCands fix). -/
+frame by `uid`, so no nested computation can reset or shift them (the recCands fix).
+D135: the stack is also the set of functions whose check is under way, whose bodies are never
+run (`Machine.underCheck`). -/
 structure RecCtx where
   fn : Value
   entries : Array (Option Nat)   -- entry abstract value of each parameter (through the borrow)
   cands : List Nat               -- the positions that survive every recursive call so far
   uid : Nat                      -- identifies the frame across state restores
+  /-- whether [Rec]'s test applies to calls of `fn` here: false inside a sealed program's typing
+  (`sealedType?`), which is outside the enclosing functions' checks for the test, though not for
+  D135 (their checks are still under way, so their bodies still do not run) -/
+  tests : Bool := true
 deriving Inhabited
 
 /-- What a run records: `trace` and `derivation`, which never change a verdict. The checker
