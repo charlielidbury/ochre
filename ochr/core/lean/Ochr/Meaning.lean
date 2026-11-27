@@ -333,6 +333,8 @@ import Ochr.Meaning.Steps.UnderCheckAttack
 import Ochr.Meaning.Steps.ParamCellAttack
 import Ochr.Meaning.Steps.ProofFieldAttack
 import Ochr.Meaning.Steps.CallInPlaceFrame
+import Ochr.Meaning.Steps.StageBlockCE
+import Ochr.Meaning.Steps.RecDescAttack
 import Ochr.Meaning.Steps.Machine.HintFacts
 import Ochr.Meaning.Steps.Machine.TailOther
 import Ochr.Meaning.Steps.Machine.PlaceInv
