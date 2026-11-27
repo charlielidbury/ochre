@@ -100,7 +100,8 @@ def modeOk (f : String) (st : MState) : Bool :=
   st.recStack.isEmpty && f == f
 
 -- the first recorded state of each function is its body's entry: the same for every body
--- DIVERGENCE SINCE MAIN'S D136 (docs/31 D218; awaiting the lead's ruling): `checkFix` marks the function's binding of
+-- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this).
+-- DIVERGENCE SINCE MAIN'S D136 (docs/31 D218): `checkFix` marks the function's binding of
 -- itself only when it declares `by`, so the recorded start state of a non-recursive global has it UNMARKED, while the
 -- hand-built kernel the column's theorems are about keeps the mark, which the relation reads (`Binding.refTy`: at a
 -- marked binding the context's stage type, unmarked the stored Π-type). The guard pins the recorded state as it is.

@@ -66,6 +66,7 @@ def stQm : MState :=
 #guard ParGuards.kernelOk "Q" bodyQ stQ && ParGuards.kernelOk "Q" bodyQ stQm && ParGuards.modeOk "Q" stQm
 -- the surface program's recorded start state: the same kernel (but for its body, a call of `succFn`) and mode
 #guard (ParGuards.entries BlockProbe "Qs").head?.any fun st =>
+  -- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this):
   -- since main's D136 the recorded binding of itself is unmarked (`ParGuards`, the divergence noted there)
   ParGuards.kernelOk "Qs" (.call Ochr.Surface.succFn [matchQ] false) st none && ParGuards.modeOk "Qs" st
 

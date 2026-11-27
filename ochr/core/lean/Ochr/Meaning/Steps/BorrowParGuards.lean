@@ -96,6 +96,7 @@ def renamed (st0 st : MState) : MState :=
 has `st0`'s kernel, in `checkFix`'s mode. -/
 def entryOk (b : Block) (f : String) (st0 : MState) : Bool :=
   (FrameGuards.entryAt b f [1, 2]).any fun st =>
+    -- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this):
     -- since main's D136 the recorded binding of itself is unmarked; the kernel keeps the mark (docs/31 D218)
     st.env[1]!.binds[0]!.recUid.isNone &&
     kernEq (renamed st0 st) st0 &&

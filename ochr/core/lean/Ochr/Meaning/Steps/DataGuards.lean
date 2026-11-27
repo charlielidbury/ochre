@@ -97,7 +97,7 @@ def modeOk (st : MState) : Bool :=
   st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.obsFrame.isNone && st.nextRecUid == 0 &&
   st.recStack.isEmpty
 
-/-- A recorded state with the function's binding of itself marked as the hand-built kernel has it (main's D136 marks it
+/-- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this). A recorded state with the function's binding of itself marked as the hand-built kernel has it (main's D136 marks it
 only with `by`; the divergence is the one `ParGuards` notes, docs/31 D218). -/
 def markSelf (st : MState) : MState :=
   let fr1 := st.env[1]!

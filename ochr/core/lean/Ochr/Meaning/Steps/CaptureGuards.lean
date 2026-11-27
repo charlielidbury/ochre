@@ -43,7 +43,7 @@ def exits : List (Value × MState) :=
   | none => []
 
 -- the lambda's body at its generic call: the capture `κ ↦ σ0` (a capture), the closure's own binding (unmarked since
--- main's D136: a local function is not recursive; it was marked with uid `1`), `m ↦ σ2`; its value `σ0`
+-- main's D136: a local function is not recursive; it was marked with uid `1`; UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this)), `m ↦ σ2`; its value `σ0`
 #guard exits.any fun (v, st) => v.exact (.abs 0) && st.env.size == 2 && st.env[1]!.binds.size == 3 &&
   st.env[1]!.binds[0]!.cap && (st.env[1]!.binds[0]!.val).exact (.abs 0) &&
   st.env[1]!.binds[1]!.recUid.isNone && st.env[1]!.binds[1]!.hint.name == "_" &&

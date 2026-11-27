@@ -65,6 +65,7 @@ def modeOk (f : String) (st : MState) : Bool :=
   -- since main's D136 a function without `by` has no [Rec] context
   st.recStack.isEmpty && f == f
 
+-- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this):
 -- since main's D136 the recorded binding of itself is unmarked (`DataGuards.markSelf`, docs/31 D218)
 #guard (recordedStart DataProbeWrap "Wrap").any fun st =>
   st.env[1]!.binds[0]!.recUid.isNone && kernEqI (ColumnNot.Guards.markSelf st) stWrap && modeOk "Wrap" st

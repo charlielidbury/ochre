@@ -59,7 +59,8 @@ def entryAt (b : Block) (name : String) (sizes : List Nat) : Option MState :=
 def noTemps (st : MState) : Bool := st.env.toList.all (·.temps.isEmpty)
 
 /-- The function's binding of itself in a global's body: `.gfn f` at the global's type, marked exactly when it is
-recursive (`mark`; since main's D136 only a function that declares `by` is marked and has a [Rec] context). -/
+recursive (`mark`; since main's D136 only a function that declares `by` is marked and has a [Rec] context). The unmarked
+readings below hold UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this): then every function's binding of itself is marked again, its [Rec] context still only with `by`. -/
 def selfOk (st : MState) (f : String) (d : DeclInfo) (mark : Option Nat := none) : Bool :=
   match st.env[1]!.binds[0]?, st.globals.find? (·.name == f) with
   | some b, some g => b.hint.name == f && b.val == .gfn f && b.ty == some g.ty && b.decl == d && !b.proof &&
@@ -70,7 +71,7 @@ def selfOk (st : MState) (f : String) (d : DeclInfo) (mark : Option Nat := none)
 def capOk (b : Binding) (v : Value) (T : Value) : Bool :=
   b.val == v && b.ty == some T && b.decl == .other && b.cap && !b.proof && b.recUid.isNone
 
-/-- A λ's binding of itself: its closure over `cs`, unmarked (since main's D136 a local function is not recursive and has
+/-- UNTIL MAIN'S AMENDMENT TO D136 (the lead's ruling (a), docs/31 D218: every function's binding of itself is marked again; the merge of the amendment deletes this). A λ's binding of itself: its closure over `cs`, unmarked (since main's D136 a local function is not recursive and has
 no [Rec] context; it was marked with its own, `uid`). -/
 def lamSelfOk (b : Binding) (cs : List Value) (_uid : Nat) : Bool :=
   (match b.val with | .clo cs' _ _ => cs' == cs | _ => false) && b.recUid.isNone && !b.cap &&
