@@ -1,0 +1,133 @@
+### Blk14 (the brief's shapes)
+
+- **BB**: accepted
+- **MB0r**: accepted
+- **MB0**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (MB0 : Π(m : Nat) (n : Nat). Nat) (m : Nat) (n : Nat) : Nat := match m { Z => 0, S _ => match n { Z => 0, S _ => MB0(m.0, n.0) } })(MB0, σ0, σ1)⌉`
+  - branch: `hole1 r ↦ ⌈let m = σ0; let n = σ1; match m { Z => 0, S _ => match n { Z => 0, S _ => MB0(m.0, n.0) } }⌉`
+- **NTr**: accepted
+- **NT**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (n : Nat) (m : Nat) : Nat := match m { Z => clone(n), S _ => clone(n.0) })(S(σ2), σ1)⌉`
+  - branch: `hole1 r ↦ ⌈let n = S(σ2); let m = σ1; match m { Z => clone(n), S _ => clone(n.0) }⌉`
+- **MB**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (MB : Π(m : Nat) (n : Nat). Nat) (m : Nat) (n : Nat) : Nat := match m { Z => MB(0, n.0), S _ => MB((fix _ (n : Nat) : Nat := S(n))(0), n.0) })(MB, σ0, S(σ2))⌉`
+  - branch: `hole1 r ↦ ⌈let m = σ0; let n = S(σ2); match m { Z => MB(0, n.0), S _ => MB((fix _ (n : Nat) : Nat := S(n))(0), n.0) }⌉`
+- **TBB**: accepted
+  - main:   `hole1 x ↦ borrow_0 S(⌈let c1 = σ2; let r = (fix _ (TBB : Π(b : BB) (x : &Nat). &Nat) (b : BB) (x_0 : &Nat) : &Nat := match b { TT => TBB(TT, &*x_0), FF => TBB(FF, &*x_0) })(TBB, σ0, &c1); *r := loan_8; c1⌉)`
+  - branch: `hole1 x ↦ borrow_0 S(⌈let c1 = σ2; let r = (let b = σ0; let x_0 = &c1; match b { TT => TBB(TT, &*x_0), FF => TBB(FF, &*x_0) }); *r := loan_8; c1⌉)`
+  - main:   `hole1 r ↦ borrow_8 ⌈let c1 = σ2; let r = (fix _ (TBB : Π(b : BB) (x : &Nat). &Nat) (b : BB) (x_0 : &Nat) : &Nat := match b { TT => TBB(TT, &*x_0), FF => TBB(FF, &*x_0) })(TBB, σ0, &c1); *r⌉`
+  - branch: `hole1 r ↦ borrow_8 ⌈let c1 = σ2; let r = (let b = σ0; let x_0 = &c1; match b { TT => TBB(TT, &*x_0), FF => TBB(FF, &*x_0) }); *r⌉`
+- **NU**: accepted
+  - main:   `hole1 n ↦ ⌈let c1 = S(σ2); (fix _ (n : &Nat) (m : Nat) : Nat := match m { Z => *n := 0; 0, S _ => clone((*n).0) })(&c1, σ1); c1⌉`
+  - branch: `hole1 n ↦ ⌈let c1 = S(σ2); (let n = &c1; let m = σ1; match m { Z => *n := 0; 0, S _ => clone((*n).0) }); c1⌉`
+  - main:   `hole1 r ↦ ⌈let c1 = S(σ2); (fix _ (n : &Nat) (m : Nat) : Nat := match m { Z => *n := 0; 0, S _ => clone((*n).0) })(&c1, σ1)⌉`
+  - branch: `hole1 r ↦ ⌈let c1 = S(σ2); let n = &c1; let m = σ1; match m { Z => *n := 0; 0, S _ => clone((*n).0) }⌉`
+- **RB**: accepted
+- **BR**: accepted
+  - main:   `hole1 x ↦ borrow_0 ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => &*x, FF => &*y })(TT, &c1, &c2); *r := loan_6; c1⌉`
+  - branch: `hole1 x ↦ borrow_0 ⌈let c1 = σ1; let c2 = σ2; let r = (let b = TT; let x = &c1; let y = &c2; match b { TT => &*x, FF => &*y }); *r := loan_6; c1⌉`
+  - main:   `hole1 y ↦ borrow_1 ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => &*x, FF => &*y })(TT, &c1, &c2); *r := loan_6; c2⌉`
+  - branch: `hole1 y ↦ borrow_1 ⌈let c1 = σ1; let c2 = σ2; let r = (let b = TT; let x = &c1; let y = &c2; match b { TT => &*x, FF => &*y }); *r := loan_6; c2⌉`
+  - main:   `hole2 x ↦ borrow_0 ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => &*x, FF => &*y })(FF, &c1, &c2); *r := loan_6; c1⌉`
+  - branch: `hole2 x ↦ borrow_0 ⌈let c1 = σ1; let c2 = σ2; let r = (let b = FF; let x = &c1; let y = &c2; match b { TT => &*x, FF => &*y }); *r := loan_6; c1⌉`
+  - main:   `hole2 y ↦ borrow_1 ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => &*x, FF => &*y })(FF, &c1, &c2); *r := loan_6; c2⌉`
+  - branch: `hole2 y ↦ borrow_1 ⌈let c1 = σ1; let c2 = σ2; let r = (let b = FF; let x = &c1; let y = &c2; match b { TT => &*x, FF => &*y }); *r := loan_6; c2⌉`
+- **BR0**: accepted
+  - main:   `hole1 x ↦ borrow_0 ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => &*x, FF => &*y })(σ0, &c1, &c2); *r := loan_6; c1⌉`
+  - branch: `hole1 x ↦ borrow_0 ⌈let c1 = σ1; let c2 = σ2; let r = (let b = σ0; let x = &c1; let y = &c2; match b { TT => &*x, FF => &*y }); *r := loan_6; c1⌉`
+  - main:   `hole1 y ↦ borrow_1 ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => &*x, FF => &*y })(σ0, &c1, &c2); *r := loan_6; c2⌉`
+  - branch: `hole1 y ↦ borrow_1 ⌈let c1 = σ1; let c2 = σ2; let r = (let b = σ0; let x = &c1; let y = &c2; match b { TT => &*x, FF => &*y }); *r := loan_6; c2⌉`
+  - main:   `hole1 r ↦ borrow_6 ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => &*x, FF => &*y })(σ0, &c1, &c2); *r⌉`
+  - branch: `hole1 r ↦ borrow_6 ⌈let c1 = σ1; let c2 = σ2; let r = (let b = σ0; let x = &c1; let y = &c2; match b { TT => &*x, FF => &*y }); *r⌉`
+- **BS**: accepted
+  - main:   `hole2 r ↦ ⌈(fix _ (n : Nat) (m : Nat) : Nat := match n { Z => 0, S _ => match m { Z => 0, S _ => (fix _ (n : Nat) : Nat := S(n))(m.0) } })(S(σ6), σ1)⌉`
+  - branch: `hole2 r ↦ ⌈let n = S(σ6); let m = σ1; match n { Z => 0, S _ => match m { Z => 0, S _ => (fix _ (n : Nat) : Nat := S(n))(m.0) } }⌉`
+- **BB2**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (n : Nat) (m : Nat) : Nat := match n { Z => 0, S _ => let s = match m { Z => 0, S _ => clone(m.0) }; (fix _ (n : Nat) : Nat := S(n))(s) })(σ0, σ1)⌉`
+  - branch: `hole1 r ↦ ⌈let n = σ0; let m = σ1; match n { Z => 0, S _ => let s = match m { Z => 0, S _ => clone(m.0) }; (fix _ (n : Nat) : Nat := S(n))(s) }⌉`
+- **BB2s**: accepted
+- **RR**: accepted
+- **BW**: accepted
+- **JB**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _  : Nat := J Nat σ0 σ1 (fix _ (z : Nat) : Type := Nat) (⋆ : Eq(Nat, σ0, σ1)) 0)()⌉`
+  - branch: `hole1 r ↦ ⌈J Nat σ0 σ1 (fix _ (z : Nat) : Type := Nat) (⋆ : Eq(Nat, σ0, σ1)) 0⌉`
+- **JBs**: accepted
+  - main:   `hole2 r ↦ ⌈(fix _  : Nat := J Nat 0 S(σ5) (fix _ (z : Nat) : Type := Nat) (⋆ : False) (fix _ (n : Nat) : Nat := S(n))(0))()⌉`
+  - branch: `hole2 r ↦ ⌈J Nat 0 S(σ5) (fix _ (z : Nat) : Type := Nat) (⋆ : False) (fix _ (n : Nat) : Nat := S(n))(0)⌉`
+  - main:   `hole3 r ↦ ⌈(fix _  : Nat := J Nat S(σ7) σ1 (fix _ (z : Nat) : Type := Nat) (⋆ : Eq(Nat, S(σ7), σ1)) (fix _ (n : Nat) : Nat := S(n))(0))()⌉`
+  - branch: `hole3 r ↦ ⌈J Nat S(σ7) σ1 (fix _ (z : Nat) : Type := Nat) (⋆ : Eq(Nat, S(σ7), σ1)) (fix _ (n : Nat) : Nat := S(n))(0)⌉`
+- **BE**: accepted
+  - main:   `hole1 x ↦ ⌈let c1 = 0; (fix _ (m : Nat) (x : &Nat) : Nat := match m { Z => let h = (refl : Eq(Nat, *x := (fix _ (n : Nat) : Nat := S(n))(0); clone(*x), (fix _ (n : Nat) : Nat := S(n))(0))); 0, S _ => 0 })(σ0, &c1); c1⌉`
+  - branch: `hole1 x ↦ ⌈let c1 = 0; (let m = σ0; let x = &c1; match m { Z => let h = (refl : Eq(Nat, *x := (fix _ (n : Nat) : Nat := S(n))(0); clone(*x), (fix _ (n : Nat) : Nat := S(n))(0))); 0, S _ => 0 }); c1⌉`
+  - main:   `hole1 r ↦ ⌈let c1 = 0; (fix _ (m : Nat) (x : &Nat) : Nat := match m { Z => let h = (refl : Eq(Nat, *x := (fix _ (n : Nat) : Nat := S(n))(0); clone(*x), (fix _ (n : Nat) : Nat := S(n))(0))); 0, S _ => 0 })(σ0, &c1)⌉`
+  - branch: `hole1 r ↦ ⌈let c1 = 0; let m = σ0; let x = &c1; match m { Z => let h = (refl : Eq(Nat, *x := (fix _ (n : Nat) : Nat := S(n))(0); clone(*x), (fix _ (n : Nat) : Nat := S(n))(0))); 0, S _ => 0 }⌉`
+- **BL**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (m : Nat) (f : Π(k : Nat). Nat) : Nat := match m { Z => f(0), S _ => f(m.0) })(σ0, fix _ (k : Nat) : Nat := (fix _ (n : Nat) : Nat := S(n))(k))⌉`
+  - branch: `hole1 r ↦ ⌈let m = σ0; let f = fix _ (k : Nat) : Nat := (fix _ (n : Nat) : Nat := S(n))(k); match m { Z => f(0), S _ => f(m.0) }⌉`
+- **BLi**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (m : Nat) (n : Nat) : Nat := match m { Z => let g = fix _ (k : Nat) : Nat := (fix _ (n : Nat) : Nat := S(n))(k); g(n), S _ => 0 })(σ0, σ1)⌉`
+  - branch: `hole1 r ↦ ⌈let m = σ0; let n = σ1; match m { Z => let g = fix _ (k : Nat) : Nat := (fix _ (n : Nat) : Nat := S(n))(k); g(n), S _ => 0 }⌉`
+- **BLR**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (BLR : Π(m : Nat) (n : Nat). Nat) (m : Nat) (n : Nat) : Nat := match m { Z => let g = fix _ (j : Nat) : Nat := BLR(j, clone(n.0)); g(0), S _ => 0 })(BLR, σ0, S(σ2))⌉`
+  - branch: `hole1 r ↦ ⌈let m = σ0; let n = S(σ2); match m { Z => let g = fix _ (j : Nat) : Nat := BLR(j, clone(n.0)); g(0), S _ => 0 }⌉`
+- **BU**: accepted
+  - main:   `hole1 x ↦ borrow_0 ⌈let c1 = σ1; (fix _ (m : Nat) (x : &Nat) : Unit := match m { Z => *x := 0; (), S _ => () })(σ0, &c1); c1⌉`
+  - branch: `hole1 x ↦ borrow_0 ⌈let c1 = σ1; (let m = σ0; let x = &c1; match m { Z => *x := 0; (), S _ => () }); c1⌉`
+- **BT**: accepted
+
+### Hunt14 (the extended hunt)
+
+- **BB**: accepted
+- **F**: accepted
+- **Id1**: accepted
+- **SC**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (m : Nat) (a : Nat) : Nat := match m { Z => a, S _ => 0 })(σ1, 0)⌉`
+  - branch: `hole1 r ↦ ⌈let m = σ1; let a = 0; match m { Z => a, S _ => 0 }⌉`
+  - main:   `hole2 r ↦ ⌈(fix _ (m : Nat) (a : Nat) : Nat := match m { Z => a, S _ => 0 })(σ1, 1)⌉`
+  - branch: `hole2 r ↦ ⌈let m = σ1; let a = 1; match m { Z => a, S _ => 0 }⌉`
+- **GB**: accepted
+- **GB2**: accepted
+- **PB**: accepted
+- **SP**: accepted
+- **EqSame**: accepted
+- **EqDiff**: MAIN rejected: the body of EqDiff has type ⊤, but the goal is Eq(Nat, ⌈(fix _ (n : Nat) : Nat := match n { Z => 0, S _ => (fix _ (n : Nat) : Nat := S(n))(0) })(σ0)⌉, ⌈(fix _ (n : Nat) : Nat := match n { Z => 0, S _ => clone(n.0) })(σ0)⌉) / BRANCH rejected: the body of EqDiff has type ⊤, but the goal is Eq(Nat, ⌈let n = σ0; match n { Z => 0, S _ => (fix _ (n : Nat) : Nat := S(n))(0) }⌉, ⌈let n = σ0
+- **EqJ**: MAIN rejected: the body of EqJ has type ⊤, but the goal is Eq(Nat, ⌈(fix _  : Nat := J Nat σ0 σ1 (fix _ (z : Nat) : Type := Nat) (⋆ : Eq(Nat, σ0, σ1)) 0)()⌉, ⌈(fix _  : Nat := J Nat σ0 σ1 (fix _ (z : Nat) : Type := let w = Nat; w) (⋆ : Eq(Nat, σ0, σ1)) 0)()⌉) / BRANCH accepted
+- **TB**: accepted
+- **BI**: accepted
+  - main:   `hole2 r ↦ ⌈(fix _ (n : Nat) (m : Nat) : Nat := match n { Z => let h = (hole : Id(Nat, match m { Z => 0, S _ => (fix _ (n : Nat) : Nat := S(n))(0) }, 0)); 0, S _ => 0 })(0, σ1)⌉`
+  - branch: `hole2 r ↦ ⌈let n = 0; let m = σ1; match n { Z => let h = (hole : Id(Nat, match m { Z => 0, S _ => (fix _ (n : Nat) : Nat := S(n))(0) }, 0)); 0, S _ => 0 }⌉`
+- **CL**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (m : Nat) (g : Π(j : Nat). Nat where κ1 = CL, κ2 = S(σ2)) : Nat := match m { Z => g(0), S _ => 0 })(σ0, fix _ (j : Nat) : Nat := κ1(j, clone(κ2.0)) where κ1 = CL, κ2 = S(σ2))⌉`
+  - branch: `hole1 r ↦ ⌈let m = σ0; let g = fix _ (j : Nat) : Nat := κ1(j, clone(κ2.0)) where κ1 = CL, κ2 = S(σ2); match m { Z => g(0), S _ => 0 }⌉`
+- **BRm**: accepted
+  - main:   `hole1 x° ↦ ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => x, FF => y })(TT, &c1, &c2); *r := loan_2; c1⌉`
+  - branch: `hole1 x° ↦ ⌈let c1 = σ1; let c2 = σ2; let r = (let b = TT; let x = &c1; let y = &c2; match b { TT => x, FF => y }); *r := loan_2; c1⌉`
+  - main:   `hole1 y° ↦ ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => x, FF => y })(TT, &c1, &c2); *r := loan_2; c2⌉`
+  - branch: `hole1 y° ↦ ⌈let c1 = σ1; let c2 = σ2; let r = (let b = TT; let x = &c1; let y = &c2; match b { TT => x, FF => y }); *r := loan_2; c2⌉`
+  - main:   `hole2 x° ↦ ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => x, FF => y })(FF, &c1, &c2); *r := loan_2; c1⌉`
+  - branch: `hole2 x° ↦ ⌈let c1 = σ1; let c2 = σ2; let r = (let b = FF; let x = &c1; let y = &c2; match b { TT => x, FF => y }); *r := loan_2; c1⌉`
+  - main:   `hole2 y° ↦ ⌈let c1 = σ1; let c2 = σ2; let r = (fix _ (b : BB) (x : &Nat) (y : &Nat) : &Nat := match b { TT => x, FF => y })(FF, &c1, &c2); *r := loan_2; c2⌉`
+  - branch: `hole2 y° ↦ ⌈let c1 = σ1; let c2 = σ2; let r = (let b = FF; let x = &c1; let y = &c2; match b { TT => x, FF => y }); *r := loan_2; c2⌉`
+- **BUF**: accepted
+- **BUN**: accepted
+  - main:   `hole1 x° ↦ ⌈let c1 = σ1; (fix _ (n : Nat) (x : &Nat) : Unit := match n { Z => let y = x; (), S _ => () })(σ0, &c1); c1⌉`
+  - branch: `hole1 x° ↦ ⌈let c1 = σ1; (let n = σ0; let x = &c1; match n { Z => let y = x; (), S _ => () }); c1⌉`
+- **LB**: accepted
+- **LBh**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (κ : Π(m : Nat) (n : Nat). Nat) (κ_0 : Nat) (j : Nat) : Nat := match j { Z => κ(j, clone(κ_0)), S _ => 0 })(LBh, σ2, σ3)⌉`
+  - branch: `hole1 r ↦ ⌈let κ_0 = σ2; let j = σ3; match j { Z => LBh(j, clone(κ_0)), S _ => 0 }⌉`
+- **JR**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (JR : Π(a : Nat) (b : Nat) (h : Eq(Nat, a, b)) (n : Nat). Nat) (a : Nat) (b : Nat) (h : (Eq(Nat, σ0, σ1) : Prop)) (n_0 : Nat) : Nat := J Nat σ0 σ1 (fix _ (z : Nat) : Type := Nat) (⋆ : Eq(Nat, σ0, σ1)) JR(a, b, h, n_0))(JR, σ0, σ1, ⋆, σ3)⌉`
+  - branch: `hole1 r ↦ ⌈let a = σ0; let b = σ1; let h = ⋆; let n_0 = σ3; J Nat σ0 σ1 (fix _ (z : Nat) : Type := Nat) (⋆ : Eq(Nat, σ0, σ1)) JR(a, b, h, n_0)⌉`
+- **IdB**: accepted
+- **IdBHolds**: accepted
+- **BX**: accepted
+  - main:   `hole1 r ↦ ⌈(fix _ (x : Nat) (m : Nat) : Nat := match m { Z => clone(x), S _ => 0 })(0, σ1)⌉`
+  - branch: `hole1 r ↦ ⌈let x = 0; let m = σ1; match m { Z => clone(x), S _ => 0 }⌉`
+  - main:   `hole2 r ↦ ⌈(fix _ (x : Nat) (m : Nat) : Nat := match m { Z => clone(x), S _ => 0 })(S(σ4), σ1)⌉`
+  - branch: `hole2 r ↦ ⌈let x = S(σ4); let m = σ1; match m { Z => clone(x), S _ => 0 }⌉`
+- **BIL**: accepted
+- **AddOne**: accepted
+- **BC**: accepted
+- **NB**: accepted
+
