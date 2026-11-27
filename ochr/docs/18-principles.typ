@@ -924,6 +924,146 @@ With the `.fix` clause as it stands, a closure formed in the body has its meanin
 
 *Not proved, in words.* (1) `Id` over a parameter rests on RD, which rests on N5 (open), and needs Lean's `run_frame_obs` restated. (2) A closure value's fixpoint equation, when the closure was formed by an untyped run: CloDesc, which needs an argument where the closure captures the enclosing function's own binding, (II) at every assignment of the enclosing check, and D205's repair. (3) The block lemma's place renaming, PR: outlined only. (4) Without (M2), a closure formed in the body: the relation at a depth. Everything else in this section is argued in full on paper, and none of it is mechanised beyond the lemmas named #a-lean.
 
+= Resolved determination, and the borrows an observation ends <sec-rd>
+
+_Written by `theory5`._ A statement `Id` over a borrow parameter is checked once, at the function's generic call, where the parameter's loan sits in a fresh cell, and is then used at every call site and in every run of the body in place, where the loan sits somewhere in the caller's places. The function's own check sees the parameter's final content in the cell; a call site sees it only through the caller's places, after every borrow between them has ended. The two readings of the statement agree only if the caller's places, once those borrows have ended, determine what was written through the parameter. If an accepted program could lend a borrow whose owners all ignored what is written through it, then
+```
+def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+```
+which the checker accepts (at its generic call the cell ends holding `0` on one side and `1` on the other, so `e : False`), could be called with `refl` there: a closed proof of `False`. This section states the property (_resolved determination_, RD), attacks it on the checker with a program aimed at each way an owner could ignore a write (none found), proves it on paper and names the checker's sites it rests on (@sec-rd-proof), and answers which borrows an observation must end (@sec-rd-ends): fewer than today, but more than the ones the observing body holds, and tested only where the body holds them. Every program below was run on `main` at 662110042 with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so`, beside the control `def Ctl : Eq(Nat, Z, S(Z)) := refl` (rejected every time); each is self-contained but for `G5`, the control `H` below, and the preludes it names (`Nats`; `Fixtures` for `Pick`).
+
+== The statement <sec-rd-stmt>
+
+Four notions first, in the checker's state Ω.
+- The _observing frame_ $O$ is the frame in which an `Id` is formed and its sides run: at a function's own check, the body's frame or the frame [Def] pushes to read the parameter types; at a call site, the frame [Call-type] pushes on its private copy; in a body run in place, the callee's frame.
+- A label's _sites_ are the places where it is lent: each occurrence of its loan, each sealed fill whose text holds its loan (a hole), and each mark `lent` of it. A site lies either at a position that holds no borrow, which is then an _owner_ of the label (paper A.1, item 3), or inside the content of another live borrow $"borrow"_m$; $m$ is then _above_ the label. By acyclicity (N5's (X3)) "above" is a well-founded order.
+- The _lending ancestors_ of a set $K$ of labels are the labels above a label of $K$, and above those, and so on. $E(K)$ is $K$ with its lending ancestors.
+- The _resolution context_ of a site, as a function of its label's final content $x$: the identity for a loan; for a fill, the meaning of the fill's text with $x$ put for the hole, which is a component of the backward function of the function value whose call (or stuck block) made the fill; a mark contributes nothing (it is transparent: where a call that ran points its result, the place holds the result's loan itself).
+
+*Resolved determination (RD).* Let Ω be a state the checker reaches, $O$ its top frame, and $K$ a set of live labels each held by a position of $O$. For a family $v = (v_k)_(k in K)$ of whole members of the labels' content types, let $Omega[v]$ be Ω with the content of each $"borrow"_k$ replaced by $v_k$ and then every label of $E(K)$ ended, in any order (the order does not matter: lemma OI of @sec-frame-id). Let $W(K)$ be the owners of the labels of $K$, which are positions of Ω below $O$ or in it. Then for every assignment γ of Ω's unknowns: _if every position of $W(K)$ means the same in $Omega[v]$ as in $Omega[v']$ under γ, then $v = v'$._
+
+It is about the checker's own state, and it is what the `Id` clause of the frame property needs at the call point (lemma OBS, @sec-frame-id), what the hypothesis direction of case 2 needs at every call (@sec-tw-types), and what keeps `G5` from being called with `refl`. Its assumptions, each proved, argued or named below:
++ the state is well formed: one holder per label, every loan bound, lending acyclic, and (X5) of @sec-excl, _holes are placed injectively_, in the form RD needs: the resolution of Ω, as a function of the final contents of its live labels, is injective on whole members (@sec-rd-proof states it exactly);
++ every function value Ω holds, or embeds in a sealed program, means a member of its function type, so that every backward function a fill computes is injective (N1's relation $R$; for an abstract function, the assignment's value, which is in $R$);
++ _site faithfulness_: a position's meaning depends on a label's final content only where that label is lent (the thirty-third lead's finding, docs/31 D217, which the frame property's clause for a closure formed in the body needs too);
++ the comparison is injective at each owner's type: `eq` keeps two different whole members apart (injectivity, disjointness, `⊥` apart from every value), and a place declared `Unit` has one value.
+
+== The attack <sec-rd-attack>
+
+An attack is a state at which `G5(r, refl)` is accepted for some borrow `r` the program has made, that is, at which `Id(Unit, *r := 0, *r := 1)` computes to `⊤`. Each row below aims at one way an owner could ignore a write; beside each, a twin with the true statement
+```
+def H (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
+```
+shows the shape is otherwise accepted. No row gives an accepted call of `G5`.
+
+#table(columns: (19%, 47%, 34%), align: left, table.header([*Shape*], [*Program (the call of `G5`)*], [*Verdict, and whether two different writes look equal*]),
+  [A returned borrow from a function that picks one of two arguments], [`APick (n : Nat) : False := (let a = 0; let b = 0; let r = Pick(n, &a, &b); G5(r, refl))`; the same at `Z` (`APickZ`); `H` in place of `G5` (`APickOk`)], [Rejected: at an unknown `n` the type is the conjunction over both fills, $ty("Eq")(⌈dots *r := 0; c_1⌉, ⌈dots *r := 1; c_1⌉) and ty("Eq")(⌈dots c_2⌉, ⌈dots c_2⌉)$, stuck; at `Z`, `False`. The twin accepted. Does not arise: both places are owners, and the fills are jointly injective.],
+  [A borrow of a field whose type depends on another field], [`Tagged := MkT(b : Bit, x : Payload(b))` with `Payload(B0) = Nat`, `Payload(B1) = Unit`; a borrow of the leaf, `match t { MkT(b, x) => G5(&x, refl) }` (`ATagLeaf`, and at an unknown tagged value `ATagLeaf2`); of the index, with `GB (x : &Bit) (e : Id(Unit, *x := B0, *x := B1)) : False` (`ATagIdx`, `ATagIdx2`)], [Leaf: rejected, `False`. Index: rejected by [Repack] at `Id`'s owner ("field x of MkT: it holds ⊥"), the borrow of the index having invalidated the leaf. Does not arise: the context `MkT(·, ⊥)` or `MkT(B0, ·)` is a constructor around the hole.],
+  [A borrow into a value later moved, partly moved, or overwritten], [`let r = &p.0` then `let q = p` (`AMoved`), `a := 5` after `let r = &a` (`AOver`), `p.1 := 7` (`AOverPart`), `let z = p.1` and back (`AMovedThenRefill`), `let z = p.1` left moved (`APart`)], [Moving or overwriting the owner ends `r` first ([Access]), so `G5` reads `⊥` and is rejected; a part beside the borrowed one gives `False` ($ty("Eq")(ty("Mk")(0, bot), ty("Mk")(1, bot))$). Does not arise.],
+  [A borrow through a borrow whose content is partly moved], [`AAnc : False := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; G5(&(*r).0, refl))`; twin `AAncOk` with `H` and `(*r).1 := z` after], [Both rejected, "[D53] a borrow ends while its content is partly moved out ((loan_1, ⊥))": the observation ends the caller's `r` to reach the owner `p`, and tests it. The rejection of the twin is a fault for type safety (@sec-rd-ends). With `r` whole (`AAncWhole`): `False`. Does not arise.],
+  [A reborrow through two levels], [`ATwo : False := (let a = 0; let r1 = &a; let r2 = &*r1; G5(&*r2, refl))`], [Rejected, `False`; the twin accepted. Contexts compose.],
+  [A borrow whose loan is in a stuck call's fill], [`AFill (n : Nat) : False := (let a = n; let r = TailM(&a); G5(r, refl))`; a reborrow of that result passed to `TailM` again (`AFill2`)], [Rejected: $ty("Eq")(⌈dots *r := 0; c_1⌉, ⌈dots *r := 1; c_1⌉)$, stuck, nested in `AFill2`. Does not arise: the fill is `TailM`'s backward function, injective.],
+  [A borrow whose lender is a proof, or erased], [`inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))`; `PEx (e : Ex) : False := match e { Wit(w, h) => G5(&w, refl) }`, a borrow of a proof's data field in an erased match; and the same `Id` formed there directly (`PExId`)], [Rejected, `False`: the checker compares the proof's constructor fields. In the model every proof is •, so there the `Id` is `True`; the checker's reading is the finer one, which can only reject more, never prove a false `Id`. A borrow made in a type or a proof is ended with its private copy. Does not arise.],
+  [A function whose backward function an overwrite after an inner call might make constant], [`KG (x : &Nat) : &Nat := (let r = TailM(&*x); *x := 0; r)`; `KF (x y : &Nat) : &Nat := (let r = TailM(&*x); x := y; r)` (re-point `x` after reborrowing through it) with `G5(KF(&a, &b), refl)` at `0` (`AKF`) and at an unknown (`AKFn`); `KR (x y : &Nat) : &Nat := (x := y; x)` (`AKRz`); `KH` returning `Pick(Z, r, y)` of an inner result (`AKH`, `AKHz`)], [`KG` rejected (the write `*x := 0` ends `r`, which is then returned as `⊥`). The others accepted, and every call of `G5` on them rejected: `False` at known arguments, a stuck conjunction over the fills at unknown ones. After a function returns nothing of its runs, so its backward function is the context of its parameters' contents around the returned borrow's loan when it returns, which [Access] keeps from being overwritten while the loan is live. Does not arise.],
+  [`Unit` places, where every value is equal], [`PU (n : Nat) (u : &Unit) (x : &Nat) : &Nat`, returning `x` on both arms, with `G5(PU(n, &u, &a), refl)` (`APU`); a function type whose only borrow parameter is a `Unit`, `QU (g : Π(u : &Unit). &Nat) : False := (let u = (); G5(g(&u), refl))`, with variants passing a parameter `u : &Unit`, an annotated `Unit`, and a type function every arm of which is `Unit` (`QU2` to `QU6`)], [All rejected: the fill at the `Unit` place keeps the hole, $ty("Eq")(ty("Unit"), ⌈dots *r := 0; c_1⌉, ⌈dots *r := 1; c_1⌉)$, stuck. Does not arise, but only because of a choice the code makes and the paper does not (below).],
+)
+
+#measured[*The `Unit` row: the code keeps the hole, the paper drops it.* With the `Nat` prelude, on `main` at 662110042:
+```
+def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+def QU (g : Π(u : &Unit). &Nat) : False := (let u = (); G5(g(&u), refl))
+def IU1 (u : &Unit) : &Nat := (let a = 0; &a)
+```
+`QU` rejected, "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"; `IU1` rejected ("[Drop] a dies while a value in flight borrows it").]
+The paper (appendix A.2, [Close]: "$f_i$ is `()` when $c_i$'s place is declared `Unit`") and `RULES.md` §3 ("`loan_ℓᵢ` becomes `()` when the place it lends is declared `Unit`") apply η to a fill in both rows of [Close]; the checker's `closeCall` applies it in the data row only (`Machine.lean`, the `| _ =>` branch, `fills.getD i false`), and the borrow row keeps the sealed fill with its hole. The code's choice is the one RD needs. Under the paper's, `g(&u)` would leave its hole in no place, so `Id(Unit, *r := 0, *r := 1)` would be `⊤` at `QU`'s call and `QU` would be accepted: a proof that `Π(u : &Unit). &Nat` is empty. That is consistent (the model makes the type empty too, since a backward function from `Nat` to `Unit` is not injective, and no accepted closed term has the type: `IU1` is the obvious attempt), but it is the leaked-borrow fault of the paper's note 7 again, with D44's guard ("a borrow-returning function type takes a borrow") met by a `&Unit` that carries nothing. *Proposed:* the paper and `RULES.md` say that η replaces a fill by `()` in the data row only, with `QU` as the reason. No change to the checker.
+
+== The proof <sec-rd-proof>
+
+Write Φ for the _resolution map_ of Ω: it sends a family ψ of final contents, one whole member for each live label, to the meanings of the positions of Ω that hold no borrow, after each label is ended with its content ψ(ℓ). The form of (X5) RD needs is:
+
+*(X5), resolution is injective.* For every state the checker reaches, Φ is injective on families of whole members, under every assignment of the unknowns.
+
+*Lemma RD1 (readback).* If Φ is injective, the labels of $E(K)$ are upward closed in the lending order, and site faithfulness holds, then RD holds. _Proof._ In $Omega[v]$ every label of $E(K)$ ends with a content determined by $v$: a label of $K$ with $v_k$; an ancestor $m$ with its content in Ω, in which the labels below it that lie in $E(K)$ are put their finals, so $m$'s final is a function $c_m (v)$. Every label not in $E(K)$ ends with its content in Ω, which holds no loan of a label of $E(K)$ (were it to hold one, the label would be above a label of $E(K)$, hence in it, by upward closure), so its final does not depend on $v$. So $Omega[v]$'s positions are $Phi(psi_v)$ with $psi_v (k) = v_k$ for $k in K$, $psi_v (m) = c_m (v)$ for the ancestors, and fixed values elsewhere. A position outside $W(K)$ depends, by site faithfulness, only on the labels lent at it; if one of them were in $E(K)$ the position would be an owner of it, and so of a label of $K$ (an owner of an ancestor is an owner of every label below it: paper A.1, item 3, follows loans outward), so in $W(K)$. Hence the positions outside $W(K)$ mean the same in $Omega[v]$ and $Omega[v']$, and if those in $W(K)$ do too, $Phi(psi_v) = Phi(psi_(v'))$, so $psi_v = psi_(v')$ by (X5), and in particular $v = v'$. #a-full
+
+*Lemma RD2 ((X5) is kept by every step).* By induction on the run, one operation at a time, with Φ read as a composition along the lending forest: each position's meaning is built from the resolution contexts of the sites inside it, applied to the finals of their labels, and a label's final, where it is lent inside another's content, is read back from that content at the site's path. Φ is injective exactly when, label by label from the top of the forest down, the contexts at the sites of the labels whose sites lie in already-determined values are jointly injective in those labels' finals. Each operation keeps that:
+- A borrow puts a fresh label's loan at the borrowed place, whose content [Access] has emptied of live loans: the identity at a path, and the old content becomes the label's own, whole.
+- An end substitutes a label's content into its sites: the contexts of the loans inside that content are composed with the ended label's contexts, and a composition of jointly injective maps is jointly injective (where the label had several sites, its content, and every loan inside it, is substituted into each fill: the fills' joint injectivity, then the content's constructor context).
+- [Close] replaces each argument's loan by a fill of the call's text and, for a borrow result, puts the fresh hole in every fill (one [Close] makes every fill of its hole, closing off's (C3)); the fills together are the callee's backward function, injective by assumption 2. A fill keeps no live loan of its inputs (the precondition, asserted in `closeCall`).
+- A call that runs and returns a borrow leaves the result's loan where it points and marks the other places lent to it ([Lend], D99): the identity and constants, jointly injective. A borrow-typed match's [Entry] lending is the same for a block.
+- An assignment, a read, a match and a drop each first end the borrows lent at what they touch ([Access], [Drop]); between a label's making and its end, no step changes the value around any of its sites. A drop that would end a borrow held by a value in flight is an error (D106), so no label loses its holder unseen.
+- A refinement substitutes a member's meaning for an unknown, the same under the assignment; a sealed fill holding a hole is never run (D97), so its context stays the meaning of its text; a sealed program is generalised only after the borrows with holes inside it have ended (D29, D90's `G1`), so no hole is replaced by an unknown.
+- η at `Unit` replaces a value by `()` only at a place declared `Unit`, which has one member; in [Close]'s borrow row the fill is kept (above).
+#a-full by reading, operation by operation; it is the (X5) row of each operation in @sec-excl, made exact. Not mechanised.
+
+*Theorem RD.* Under assumptions 1 to 4, RD holds. From RD1 and RD2, with site faithfulness (the thirty-third lead's, argued by reading in docs/31 D217, not proved) and assumption 4 (`eq` is injective on whole members: N3's clauses for constructors and `⊥`). #a-full (given site faithfulness and N1's $R$)
+
+*The checker's sites it rests on.* Each is a place in the code that makes one of the steps above true; a failure at any of them is a predicted way for RD to fail.
+
+#table(columns: (30%, 70%), align: left, table.header([*Site*], [*What it guarantees for RD*]),
+  [[Access]: `accessPath`, `accessInside`, `accessNeutralHead`, `Value.ownedLoans` (assignment)], [No read, write, match or borrow touches a value around a live site; a match on a fill ends its hole first.],
+  [[Drop]: `dropTopBind`, `dropValue`, `popFrame`; D106 in `endTopLoan`], [A site's place never dies while its label is live; no label loses its holder unseen.],
+  [`closeCall`: the precondition assertion, the fill per borrow argument with the one hole $k$, and no η in the borrow row], [Fills are the callee's backward function, whole; the hole is in every borrowed place, `Unit` ones included (`QU`).],
+  [`callFn`'s [Lend] (`lendEnv .mark`, `.into`, D99); `blockEntry`'s lending], [A borrow returned by a call that runs, or by a match, is lent at every place its borrow arguments lend, so where it points is an owner.],
+  [`generalizeNeutral` after `accessNeutralHead` (D29, D90); `nfSealed`'s [Seal-hole] (D97)], [No hole is generalised away, and no fill with a hole runs.],
+  [`owners` and `footprint` (`Obs.lean`); `Value.hasLoan` counting marks], [The observation compares every owner of every label a side writes or passes on.],
+  [D44 in [T-Pi] and `checkFix`], [A borrow-returning call has a borrow argument, so its hole has a place (`QF` of the paper's note 7).],
+  [D48, D66, `capture`, D110 (`strongUpdate`), D111's assertions], [A borrow is only ever the whole value of a binding or temporary: the lending forest's nodes are positions.],
+  [`endBorrow`'s D98 test], [Each label the sides leave ends over a whole content, so its final is in RD's domain.],
+)
+
+== Which borrows an observation must end <sec-rd-ends>
+
+*Today.* The observation (`obsResult`) ends every borrow of the whole state (`endAll` over every position), and each end makes the tests of `endBorrow`: D98 (the content whole) and, in a typed run, [Repack] (the content of its type); `idType` then checks [Repack] on every owner it compares. So a side's private run tests the caller's state below its own frame, three ways, and each rejects a call that runs fine. The first is the third referee's (`CallI`, `CallH`, `CallK`); the second and third are new.
+
+#measured[*Three sites where an observation tests the caller.* With the `Nat` prelude, on `main` at 662110042; in each group the first two definitions are accepted.
+```
+def H (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
+def FJ2 (n : Nat) (x : &Nat) : Unit := match n { Z => (let h : Id(Unit, *x := 0, *x := 0) = refl; ()), S(m) => (), }
+def CallK2 (n : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; FJ2(n, &(*r).0); (*r).1 := z; ())
+def UseK2 : Unit := CallK2(Z)
+def UseK2S : Unit := CallK2(S(Z))
+def AAncOk : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; H(&(*r).0, refl); (*r).1 := z; ())
+```
+(1) D98 at the end of a caller's borrow that lies between the parameter and its owner: `UseK2` and `AAncOk` rejected, "[D53] a borrow ends while its content is partly moved out ((loan_1, ⊥))"; `UseK2S` accepted. The third referee's `CallK` is the same with a borrow the callee does not need.
+```
+inductive Bit := B0 | B1
+def Payload (b : Bit) : Type := match b { B0 => Nat, B1 => Unit, }
+inductive TW := MkTW(b : Bit, x : Payload(b), w : Nat)
+def FJ3 (n : Nat) (x : &Nat) : Unit := match n { Z => (let h : Id(Unit, *x := 0, *x := 0) = refl; ()), S(m) => (), }
+def CallK3 (n : Nat) : Unit := (let t = MkTW(B0, 3, 5); match t { MkTW(b, x, w) => (b := B1; FJ3(n, &w); x := ()), })
+def UseK3 : Unit := CallK3(Z)
+def OpenCall : Unit := (let t = MkTW(B0, 3, 5); match t { MkTW(b, x, w) => (b := B1; H(&w, refl); x := ()), })
+```
+(2) [Repack] on a caller owner that the caller holds open, as it may (the leaf `x` invalidated by `b := B1`, refilled before the match ends): `UseK3` and `OpenCall` rejected, "[Repack] Id observes it, but it is open: field x of MkTW: it holds ⊥"; `CallK3`, `CallK3(S(Z))`, and `OpenCall` with `let r = &w; *r := 0` in place of the call of `H`, accepted.
+```
+inductive Void : Type
+inductive One := O
+def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+inductive VW2 := MkVW2(n : Nat, x : Fin1(n), w : Nat)
+def OpenAnc : Unit := (let t = MkVW2(S(Z), O, 5); let r = &t; match *r { MkVW2(n, x, w) => (n := Z; H(&w, refl); n := S(Z)), })
+```
+(3) [Repack] at the end of a caller's borrow whose content the caller holds open: `OpenAnc` rejected, "[Repack] a borrow of it ends, but it is open: field x of MkVW2 holds a value of type One, but its type from the earlier fields is Void"; the same with `let q = &w; *q := 0` for the call accepted.]
+
+Each is a fault for type safety, not consistency: a call of an accepted function rejected where it would run fine, or, with `CallK2` and `CallK3`, an accepted function whose call at a known argument is rejected, which principle 4 forbids. Each comes from one omission: an observation's private run reaches below its frame (principle 6).
+
+*What the comparison needs.* Let $O$ be the observing frame after a side has run, and $E_1$ the labels held in $O$: the parameters' borrows, the borrows the side made and kept, a re-pointed binding's, a borrow result's ([Obs-borrow]). The observation must end
+- every label of $E_1$: its end is how what the side wrote through it reaches the places it is lent at; and
+- every lending ancestor of $E_1$, the set $E_2$: the footprint compares _owners_, positions holding no borrow, and between a parameter's label and its owners there may be caller borrows (the `r` of `CallK2`) whose ends carry the write there.
+
+It needs nothing else: a label outside $E = E_1 union E_2$ is lent at no position whose meaning a side changes, since a side reaches below $O$ only through $E_1$ (principle 6, and a call's arguments are loan-free: N5's (X4)), and its content holds no loan of $E$ (upward closure); so its end changes both observations alike, and ending it or not gives the same proposition.
+
+$E_2$ cannot be dropped. Ending only the observing frame's own borrows, the repair that suggests itself, is unsound: in `AAnc` above it ends the argument's label, whose final reaches `r`'s content, `Mk(0, ⊥)` against `Mk(1, ⊥)`, but the owner `p` still holds `r`'s loan on both sides, so `Eq(Pair(Nat, Nat), loan, loan)` is `⊤` and `G5(&(*r).0, refl)` would be accepted: a closed proof of `False` (predicted by reading; the checker cannot be run with that repair without changing it). The alternative to ending $E_2$ is to compare, for each label of $E_1$, the value at its sites (inside the content of the nearest ancestor) instead of at its owners; that changes the footprint and its order, so we do not propose it.
+
+*What the observation must test.* Exactly what the side produced: D98 and [Repack] at the end of each label of $E_1$, [Repack] at each owner that is a position of $O$ (an owned local of the observing body) and at the result. Not at the end of a label of $E_2$, and not at a caller owner: those hold the caller's state as the caller left it, which may be open while the caller's code runs (principle 9's (W)), and the caller's own run tests them where they end. Ending $E_2$ unchecked puts `⊥` or an open value into an owner, which `eq` compares as it is: `⊥` equal to itself only, open values field by field; N3 must say so for open members (@sec-theorems, N3's row).
+
+*The same in the three runs.*
+- _The function's own check_ ([Def]; [Conv-pi] and [Conv-fun] at their generic calls): $O$ is the body's frame or the frame that reads the parameter types; $E_1$ holds the cells' labels; the cells are bindings of frame 0 that hold no borrow, so $E_2 = emptyset$, and the tests are exactly today's: no verdict of any definition's own check changes.
+- _A call site_ ([Call-type]): $O$ is the frame pushed on the private copy, which takes the arguments' borrows (`takeArgBorrow`); $E_2$ is the caller's borrows between the arguments and their owners.
+- _A body run in place_: $O$ is the callee's frame; the same as at a call site, with the callee's own locals in $O$.
+They agree. The labels of $E_1$ correspond through the frame property's renaming (a parameter label to its cell's label, a label the body made to its counterpart), and their final contents are equal (theorem FR at the sides), so D98 and [Repack] on them give the same verdict in all three. The own check compares the cells, which hold the finals; a call site and a run in place compare the caller's owners after the ends of $E$, which read the finals through the resolution contexts (FR's (F4)). The conclusion direction (a statement proved in the closure holds at the call) is immediate, since the owners are functions of the finals; the hypothesis direction is RD. #a-red[FR, RD]
+
+*In the code* (a proposal; not made): `obsResult` passes the observing frame to `endAll`; `endBorrow`'s D98 test and its typing-mode [Repack] apply only to a borrow held at a position of that frame or above; `idType`'s [Repack] on owners only to owners in that frame. Ending every other borrow, as `endAll` does now, is then harmless. With it `CallI`, `CallH`, `UseK`, `UseK2`, `AAncOk`, `UseK3`, `OpenCall` and `OpenAnc` are accepted, `AAnc` and every row of @sec-rd-attack still rejected. In the model it is the third referee's restricted (M3): strict ends for the observing frame's labels only (@sec-frame-model).
+
 = Exclusive access is preserved, for the clauses the argument uses <sec-excl>
 
 _Written by `theory3`; task 4, in part._ N5 says every step keeps the state well formed. The argument above uses five of its clauses: (X1) each label has at most one borrow, held as the whole value of a binding or temporary; (X2) every loan or mark has its borrow in the state, and outside sealed programs a label occurs as a loan at most once; (X3) loans nest acyclically; (X4) at a call point each argument is loan-free or a borrow of loan-free content; (X5) _holes are placed injectively_: the contexts around each live label's loans, fills and marks are jointly injective in its final value on whole members; (X6) after a write's access no live loan or mark lies on the written path; (X7) the typing of places: a place declared a borrow type holds a borrow, `⊥`, a loan or a mark, and a place holding a borrow is declared a borrow type. One lemma per operation of the machine; each row says what the operation does to the clauses and why they are kept.
