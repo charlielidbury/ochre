@@ -7,6 +7,7 @@ import Ochr.Meaning.DataModel.Exists.Knot.CongrN
 import Ochr.Meaning.DataModel.Exists.DeclStep
 import Ochr.Meaning.Steps.Machine.CheckItem
 import Ochr.Meaning.DataModel.Exists.FieldLevel
+import Ochr.Meaning.DataModel.Exists.GlobalCalls
 
 /-!
 # The assembly: the induction's invariant, and the existence of the data model (exists8–exists10)
@@ -23,20 +24,20 @@ items under the stage's model (`stage`). The invariant `Inv` at stage `k` says, 
 
 PROVED, standard axioms, in the default build: `inv_zero`, `inv_step` (a rejected item, `inv_reject`;
 an accepted definition, `inv_defn`; an accepted inductive declaration of either sort, `inv_ind_core`
-with `inv_ind_faithful`), `exists_of_inv`, and `exists_dataModel_facts`, which assumes the facts in
-`DataFacts` (docs/34 §18.16 gives each one's exact statement and status):
+with `inv_ind_faithful`), `exists_of_inv`, `globalCallLevels` (exists12, `GlobalCalls.lean`), and
+`exists_dataModel_facts`, which assumes the facts in `DataFacts` (docs/34 §18.16 and §18.17 give each
+one's exact statement and status):
 * about the checker: `ItemFacts` (read true; all but its `IndChecks` part proved by machine10),
-  `NamesFact` (read true for resolved items), `VaryValFact` (FALSE TODAY, true after main's D128),
-  `FieldHeads` (its call part read true, its parameter part FALSE TODAY, true after main's D128);
-* about resolution: `NoValFact` (no embedded value in an inductive item's types);
-* about the model, not proved: `GlobalCallLevels` (a global whose stored codomain is `Prop` or `Type`
-  calls to level-0 type values); with `FieldHeads` it gives the field types' level
-  (`FieldLevel.fieldLevel0_of`, proved), which exists10 assumed whole as `FieldLevels`;
-* obligations on the checker's decisions: `DecLocal` at every state (its `join` part FALSE TODAY,
-  a checker bug, true after main's D129) and `DecStable` (at the states the checker reaches).
-The stage prefix fact is proved (machine10's `Steps.Machine.indsOf_take_prefix`). `DecLocal` is asked
-at every state and is false at one, so today no list of items satisfies `DataFacts` and the theorem
-says nothing about today's checker; the counterexamples are checked in `FactsCE.lean`.
+  `NamesFact` (read true for resolved items), `VaryValFact` and `FieldHeads` (read true since main's
+  D128, merged into this line by machine12; not derived);
+* about resolution: `NoValFact` (no embedded value in an inductive item's types; read true, not derived);
+* obligations on the checker's decisions: `DecLocal` at every state (its `join` part proved for the
+  checker's decisions, machine11's `Steps.Machine.decLocal_join_chain`; the other parts read true) and
+  `DecStable` (at the states the checker reaches).
+The one fact about the model, `GlobalCallLevels` (a global whose stored codomain is `Prop` or `Type`
+calls to level-0 type values, which with `FieldHeads` gives the field types' level,
+`FieldLevel.fieldLevel0_of`), is PROVED and no longer assumed. The stage prefix fact is proved
+(machine10's `Steps.Machine.indsOf_take_prefix`). The old forms' counterexamples are in `FactsCE.lean`.
 -/
 
 namespace Ochr.Meaning.DataModel.Exists.Assembly
@@ -427,20 +428,27 @@ def FieldHeads : Prop :=
     HeadLevels st'.globals d'
 
 /-- **A global whose stored codomain is `Prop` or `Type` calls to level-0 type values** (the
-model's part of exists10's `FieldLevels`; about the model, NOT PROVED). At every stage, at every model's
-read, every call through the stage's meaning of such a global gives a level-0 type value or no type
-value (`FieldLevel.CallsLevel0`). Why it should hold: the stage's type of the global is `err` or the
-meaning of its stored type, `globalTyS` (the stored type is found first in every later stage's
-globals, which only grow); that meaning is `err` or `piTyAt R l' ps out` with `out` constantly
-`univ l`; at `l' ≤ 2` it is not a level-2 type, so `FieldLevel.callsLevel0_of_not_t2` gives it; at
-`l' = 3` (a domain in `Type₁`) the telescope's codomain is `(lvl2 R).codeOf (univ l)`, a lifted level-1
-code, whose elements encode as level-0 type values. What a proof needs: that stage invariant on the
-means' types, `meanV` and `runT` at `tPi`/`pi`, and the codomain of `telL`. -/
+model's part of exists10's `FieldLevels`; about the model; PROVED, `globalCallLevels` below, exists12).
+At every stage, at every model's read, every call through the stage's meaning of such a global gives
+a level-0 type value or no type value (`FieldLevel.CallsLevel0`). The proof (`GlobalCalls.lean`): the
+stage's type of the global is `err` or the meaning (`globalTyS`) of `.bot` or of the first stored
+entry of its name (`GlobalCalls.TyInv`, kept by every item); that meaning is `err` or
+`piTyAt R l' ps out` with `out` constantly `univ l` (`globalTyS_tPi_sort`); at `l' ≠ 3` it is not a
+level-2 code (`FieldLevel.callsLevel0_of_not_t2`), and at `l' = 3` (a domain in `Type₁`, the hard
+case) every leaf of the telescope is `code2 (univ l)`, a lifted level-1 code, so a call is its
+encoding there, a level-0 type value (`GlobalCalls.callOfL_datLeaf`, the referee's Y3 lemma). -/
 def GlobalCallLevels : Prop :=
   ∀ (dm : DataModel) (k : Nat), k ≤ items.length →
     ∀ (f : String) (cs : List Value) (hs : List Hint) (ds : List Term) (l : Nat) (rd : List (DeclInfo × Value)), l ≤ 1 →
       ((stage D fuel items dm k).globals.find? (·.name == f)).map (·.ty) = some (.tPi cs (.pi hs ds (.sort l)) rd) →
       ∀ dmR : DataModel, FieldLevel.CallsLevel0 dmR ((stage D fuel items dm k).baseC.global f)
+
+/-- **`GlobalCallLevels` holds** (PROVED, no hypothesis; exists12): every stage keeps
+`GlobalCalls.TyInv` (`tyInv_progMeaningFrom`), from which `callsLevel0_of_tyInv`. -/
+theorem globalCallLevels : GlobalCallLevels D fuel items :=
+  fun dm _ _ f cs hs ds l rd hl hf dmR =>
+    GlobalCalls.callsLevel0_of_tyInv (fun _ => .err) _
+      (GlobalCalls.tyInv_progMeaningFrom dm D _ _ {} fuel _ {} (GlobalCalls.tyInv_empty _)) f cs hs ds l rd hl hf dmR
 
 theorem fieldsNoVal_of_ctors {d d' : IndDecl} (h : d'.ctors = d.ctors) (hv : Knot.FieldsNoVal d) :
     Knot.FieldsNoVal d' := fun c i FT hFT => hv c i FT (by unfold fieldTerm at hFT ⊢; rw [← h]; exact hFT)
@@ -449,16 +457,15 @@ theorem paramsNoVal_of_params {d d' : IndDecl} (h : d'.params = d.params) (hv : 
     ParamsNoVal d' := fun j => by have := hv j; unfold Knot.paramTerm at this ⊢; rw [h]; exact this
 
 /-- **The facts the existence of the data model rests on**, together (`exists_dataModel_facts`): about
-the checker, `ItemFacts`, `NamesFact`, `VaryValFact`, `FieldHeads`; about resolution, `NoValFact`; about
-the model, `GlobalCallLevels`; obligations on the
-checker's decisions, `DecLocal` at every state and `DecStable`. -/
+the checker, `ItemFacts`, `NamesFact`, `VaryValFact`, `FieldHeads`; about resolution, `NoValFact`;
+obligations on the checker's decisions, `DecLocal` at every state and `DecStable`. The one fact about
+the model, `GlobalCallLevels`, is proved (`globalCallLevels`, exists12) and no longer a field. -/
 structure DataFacts : Prop where
   item : ItemFacts
   noVal : NoValFact items
   varyVal : VaryValFact fuel items
   names : NamesFact D fuel items
   heads : FieldHeads fuel items
-  callLevels : GlobalCallLevels D fuel items
   decLocal : ∀ st, FrameLocal.DecLocal (D st)
   decStable : DecStable D fuel items
 
@@ -991,7 +998,8 @@ theorem exists_dataModel_facts (hF : DataFacts D fuel items) :
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
-  exists_dataModel' D fuel items hF.item hF.noVal hF.varyVal hF.names hF.heads hF.callLevels hF.decLocal hF.decStable
+  exists_dataModel' D fuel items hF.item hF.noVal hF.varyVal hF.names hF.heads (globalCallLevels D fuel items)
+    hF.decLocal hF.decStable
     (fun k _ => Steps.Machine.indsOf_take_prefix {} fuel items k)
 
 end
