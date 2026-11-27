@@ -14,6 +14,15 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FRAME PROPERTY CLAUSE BY CLAUSE (lead34, 2026-11-27, `spine-lead34`; docs/31 D219, D220)
+
+- `Steps/FrameOps.RunFrameI` (the frame property over the internal relation): OPEN as a whole; proved clause by clause as `TermFrame` lemmas (the frame property at a term from its subterms). The internal relation now: `FrameInv` = `AccInv` + both states good + counter + `srange` (NEW: σ's range is parameter labels and fresh ones; true at a closure run from counter 0) + `bsites` (NEW: sites in the callee's frame at bindings); `FrameAgreeI` concludes `ResAtTemp` (NEW: a live result label held by a temporary).
+- A match (`matchNat`, `matchInd`, on a proof, on a one-constructor type): PROVED (`Steps/FrameMatch.runFrameI_matchNat`, `runFrameI_matchInd`), given the clause's induction hypothesis.
+- A call: the fixes PROVED (`Steps/FrameCall.frameRel_mapFix`, `frameRel_callData`); the ref case, `AccInv` after the call, the head and arguments, `BorrowArgsTyped`, the assembly: OPEN (D220's list).
+- `let`/`;`: needs a further invariant (live labels' sites in the callee's frame at existing bindings, with runs keeping the frame's number of bindings): by reading true, not stated (D220).
+- `.pi` formed in the body, and `.fix`'s types: FINDING for ruling R2 (D220): they run from the whole forming state under a fresh frame, so their clause needs the relation at a depth unless R2's structural frame hosts them (captures on a copy).
+- The other clauses (place, borrow, assign, J, erased forms, embedded values): not attacked in Lean; by reading routine with the tools of `FrameMatch` (D220's order).
+
 ## MAIN'S D136 MERGED; A NON-RECURSIVE GLOBAL'S BINDING OF ITSELF UNMARKED (lead34, 2026-11-27, `spine-lead34`; docs/31 D218)
 
 - Merged; guards restated to D136's start states (a mark and a [Rec] context exactly with `by`); `GoH` rejected (history kept).
