@@ -149,4 +149,38 @@ theorem stage0_apply (rk : List Sem → Nat) (φ : Future) (g : List Sem → Opt
 
 end
 
+/-! ## A block is checked only at its captured values (D232's ruling, attack (b))
+
+`NTr (n : Nat) (m : Nat) : Nat := match n { Z => Z, S p => let r = match m { Z => clone(n), S q => clone(p) }; r }` is
+accepted; its non-tail match closes off as `⌈(fix _ (n : Nat) (m : Nat) : Nat := match m { Z => clone(n), S _ =>
+clone(n.0) })(S(σ2), σ1)⌉` (`Steps/RecDescAttack`): the block takes `n` whole and reads its predecessor, which exists at
+the captured `S(σ2)` and at no `0`. The model reads a closure strictly, as an element of its function type, so it asks
+the block's function at EVERY value of its parameters: at `(0, 1)` its run reads the predecessor of `0`, which is
+undefined (`step_pred_zero`), and a closure whose function fails at one fitting argument is `err`
+(`closureL_err_of_none`). So today the model reads `NTr`'s leaf as `err`, for a definition with no recursion at all. -/
+
+section
+variable {L : Lvl}
+
+/-- **A closure whose function fails at one argument tuple that fits its code is `err`**: the carrier holds total
+functions only. -/
+theorem closureL_err_of_none (hL : L.Lawful) (φ : Future) {C : Type _} (t : Tel L.Code PUnit C)
+    (g : List Sem → Option BodyOut) (args : List Sem) (hfit : ArgsFitL L t args) (hg : g args = none) :
+    closureL L φ t g = .err := by
+  unfold closureL
+  split
+  · rename_i F hF
+    obtain ⟨o, -, hgo, -, -⟩ := applyTelL_mkTelL L hL φ g t [] _ (fun _ => []) F args finInv_start hF hfit
+    rw [List.nil_append, hg] at hgo
+    cases hgo
+  · rfl
+
+end
+
+/-- The predecessor of `0` is undefined: a run that reads it fails. -/
+theorem step_pred_zero (dm : DataModel) (Γ : List IndDecl) (T : TyS) :
+    Sem.step dm Γ T (.proj 0) (.el0 Nat 0) = none := by
+  have h : (Sem.el0 Nat 0).asNat = some 0 := by simp [Sem.asNat, Sem.as]
+  simp [Sem.step, h]
+
 end Ochr.Meaning.Steps.StageBlock

@@ -40,6 +40,9 @@ ochr RecDescAtk {
   def TBB (b : BB) (x : &Nat) : &Nat by x := match *x { Z => x, S p => (let r = (match b { TT => TBB(TT, &p), FF => TBB(FF, &p) }); ?) }
   def MB0 (m : Nat) (n : Nat) : Nat by n := (let r = (match m { Z => Z, S p => match n { Z => Z, S k => MB0(p, k) } }); ?)
   def MB0r (m : Nat) (n : Nat) : Nat by n := (let r = (match m { Z => Z, S p => match n { Z => Z, S k => MB0r(p, k) } }); r)
+  def NT (n : Nat) (m : Nat) : Nat := match n { Z => Z, S p => (let r = (match m { Z => clone(n), S q => clone(p) }); ?) }
+  def NTr (n : Nat) (m : Nat) : Nat := match n { Z => Z, S p => (let r = (match m { Z => clone(n), S q => clone(p) }); r) }
+  def NU (n : Nat) (m : Nat) : Nat := match n { Z => Z, S p => (let r = (match m { Z => (n := Z; Z), S q => clone(p) }); ?) }
 }
 
 namespace Ochr.Meaning.Steps.Form.RecDescAtk
@@ -68,7 +71,9 @@ def valOf (Ω : List (String × Option Value × Value)) (x : String) : String :=
 #guard (holes "TB").map (valOf · "r") == ["borrow_2 ⌈let c1 = σ1; let r = TB(&c1); *r⌉"]
 #guard (holes "TB").map (valOf · "x") == ["borrow_0 S(⌈let c1 = σ1; let r = TB(&c1); *r := loan_2; c1⌉)"]
 -- a non-tail match on another argument: a stuck block taking the definition's own binding as a parameter at its
--- declared type, calling it at a part of another parameter, applied to the global
+-- declared type, calling it at a part of another parameter, applied to the global. UNTIL MAIN'S D139 (ruled on D232:
+-- a sealed block's text names the function under check by its global; its binding of itself is never a block's
+-- parameter): the merge flips these three guards
 #guard (holes "MB0").map (valOf · "r") ==
   ["⌈(fix _ (MB0 : Π(m : Nat) (n : Nat). Nat) (m : Nat) (n : Nat) : Nat := match m { Z => 0, S _ => match n { Z => 0, S _ => MB0(m.0, n.0) } })(MB0, σ0, σ1)⌉"]
 #guard (holes "MB").map (valOf · "r") ==
@@ -76,5 +81,14 @@ def valOf (Ω : List (String × Option Value × Value)) (x : String) : String :=
 -- the same with a returned borrow: the lender's fill applies the block, the global passed at its declared type
 #guard (holes "TBB").map (valOf · "x") ==
   ["borrow_0 S(⌈let c1 = σ2; let r = (fix _ (TBB : Π(b : BB) (x : &Nat). &Nat) (b : BB) (x_0 : &Nat) : &Nat := match b { TT => TBB(TT, &*x_0), FF => TBB(FF, &*x_0) })(TBB, σ0, &c1); *r := loan_8; c1⌉)"]
+
+-- a block is checked only at its captured values (not a recursion matter): `NT`'s block takes `n` WHOLE and reads its
+-- predecessor, which the captured `S(σ2)` has and `0` has not (`StageBlock.step_pred_zero`, `closureL_err_of_none`:
+-- the model's closure of this block, asked at every value of its parameters, is `err`, so today the model reads the
+-- leaf of the accepted `NTr` as `err`); `NU` takes `n` by borrow and writes it in one arm
+#guard (holes "NT").map (valOf · "r") ==
+  ["⌈(fix _ (n : Nat) (m : Nat) : Nat := match m { Z => clone(n), S _ => clone(n.0) })(S(σ2), σ1)⌉"]
+#guard (holes "NU").map (valOf · "r") ==
+  ["⌈let c1 = S(σ2); (fix _ (n : &Nat) (m : Nat) : Nat := match m { Z => *n := 0; 0, S _ => clone((*n).0) })(&c1, σ1)⌉"]
 
 end Ochr.Meaning.Steps.Form.RecDescAtk
