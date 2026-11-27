@@ -297,3 +297,48 @@ def failsWith {α : Type} (r : Except String α) (pre : String) : Bool :=
   | _ => false
 
 end Ochr.Units
+
+/-! ## Every function's binding of itself is marked (D78, D136's amendment)
+
+Where a function's check starts (`checkFix`), its binding of its own name, the first of its body's
+frame after the captures, carries a fresh mark (`Binding.recUid`), whether or not the function
+recurses; only a function that declares `by` also gets an entry on the [Rec] stack, with that mark
+(D136). The checker reads the mark only through such an entry (`recFrameOf`), so for a function
+without `by` it decides nothing, and no verdict depends on it. It states a fact about the state,
+that this binding is the function's own, which the consistency proof's relation reads to find the
+function in its body's frame: D136's deletion commit marked only functions with `by`, and eight of
+the proof's checks of recorded states failed. Pinned here on the states at each function's hole. -/
+
+namespace Ochr.Units
+
+#guard_msgs (drop warning) in
+ochr SelfMarks uses Nats {
+  -- a top-level definition that does not recurse
+  def NR (n : Nat) : Nat := ?
+  -- one that does
+  def R (n : Nat) : Nat by n := match n { Z => ?, S(m) => R(m), }
+  -- a local function (never recursive, D136) inside one that does not recurse
+  def L (n : Nat) : Nat := (fix go (y : Nat) : Nat := ?)(n)
+}
+
+/-- At each recorded state of `name`'s own code whose top frame holds a binding named `self` (the
+function's binding of itself: its body, the hole included), that binding's mark and the marks of
+the [Rec] stack's entries (`Config.recordStates`, located). -/
+def selfMarks (name self : String) : List (Option Nat × List Nat) :=
+  let r := runWith (some Prelude) "SelfMarks" SelfMarks { recordStates := true } (located := true)
+  match r.rows.find? (·.name == name) with
+  | some row => row.trace.toList.filterMap fun
+      | .state _ false _ st => (st.env.back!.binds.find? (·.hint.name == self)).map fun b =>
+          (b.recUid, st.recStack.map (·.uid))
+      | _ => none
+  | none => []
+
+-- the hole of a non-recursive global's body: its binding of itself carries a mark, and the [Rec]
+-- stack is empty (D136's deletion left the mark off)
+#guard !(selfMarks "NR" "NR").isEmpty && (selfMarks "NR" "NR").all fun (m, rs) => m.isSome && rs.isEmpty
+-- a recursive global: its mark is its [Rec] entry's, the only one on the stack
+#guard !(selfMarks "R" "R").isEmpty && (selfMarks "R" "R").all fun (m, rs) => m.isSome && rs == m.toList
+-- a local function's binding of itself carries a mark too, and it has no [Rec] entry
+#guard !(selfMarks "L" "go").isEmpty && (selfMarks "L" "go").all fun (m, rs) => m.isSome && rs.isEmpty
+
+end Ochr.Units
