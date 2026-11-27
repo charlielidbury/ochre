@@ -312,9 +312,138 @@ Of the 139 rows, 10 are design choices or features. Of the other 129, 67 fit a p
 
 = The principles audited <sec-audits>
 
-_Stage 2, in progress._ Each principle in turn: what in the consistency argument consumes it, how the checker enforces it today, an audit of every site in the code where it could fail, and the redesign that would make it hold by construction. Principles whose audit is not written yet say so.
+Each principle in turn: what in the consistency argument consumes it, how the checker enforces it today, an audit of the sites where it could fail, and the redesign that would make it hold by construction. The audits of principles 4, 3 and 5 were done from the code (`ochr/core/lean/Ochr/Machine.lean`, `Env.lean`, `Decide.lean`, `Runtime.lean` at 105021637) and their predictions run; the others are shorter and say what was not audited. The status tags are #s-cons, #s-check, #s-not, and #s-open for a site this pass did not read.
 
-= What is done, and what is next <sec-next>
+== Principle 4: one code, two runs <sec-a4>
 
-_Done:_ the ledger (@sec-ledger) and the list of principles (@sec-principles).
-_Next:_ the audits (@sec-audits), starting with principles 4 and 3, then 5, 1 and 2; then the argument from the principles alone.
+*What consumes it.* The meaning-preservation theorem relates the checker's _typed_ run of a definition (at its generic call, the unknowns standing for anything) to the model, and supplies every other run of the same code from that one: an untyped run of a body at a call, a sealed program's re-run, a direct arm on a known constructor, the runtime. The supply is the callee's membership (its meaning is a member of its function type) carried through the frame property, so it exists only for code whose typed check has finished, and it says something about the untyped run only if that run is the same computation as the checked one. "The same" means: the same decisions at corresponding points (D90's alignment property is the borrow part of it), and differences only in the values the unknowns stand for. The historical counterexamples are of two shapes. A wrong acceptance where the two paths decided differently, such as `Same` (D83, D84): at an unknown `n` a block took `x` by move because one arm moved it, at `n = 1` the arm that ran left it, so two observations were equal at the generic run and different at the instance. And an accepted function that cannot be called (D119, D125, D129, D131, D132), with the smallest of them:
+#measured[
+```
+inductive B := T | F
+def IsZ (n : Nat) : B := match n { Z => T, S(m) => F, }
+def V (b : B) : Type := match b { T => Nat, F => Unit, }
+def G (n : Nat) : V(IsZ(n)) := split IsZ(n) { T => Z, F => (), }
+def H : Nat := G(Z)
+```
+With the `Nat` prelude, both accepted today (D125, D126); before D125, `G` was accepted and `H` rejected ("split: only in tail position").]
+
+*How it is enforced today.* By construction for the decisions read from syntax: `Decide.lean` does not import the machine (D74), writes no cache (D95), and reads unknowns by frozen readings (D96), so erasure, a function type's class and row, copy or move, η at `Unit`, whether a statement argument runs in place, and the join's moved set (`Decide.jdMatch`, D84) are functions of syntax and declarations. By construction, with listed obligations, for borrow ends: D90's fills and marks make every run end the same borrows at the same points, under eight obligations D90 lists, and D99 gives a call's result one label on every path. By checks at enumerated sites for hints (D124's table of fourteen sites, each consulting `readsHint`) and for the test a deferred call makes (D134's shared `callPi`). Not at all, today, for "an untyped run runs only checked code": that is D135, ruled and not landed.
+
+*The audit, part (a): every place an untyped run starts, and why its code was checked first.*
+#table(columns: (25%, 45%, 30%), align: left, table.header([*Site*], [*What guarantees the code was checked*], [*Status*]),
+  [A call of a known function (`callFn`, its `.gfn` and `.clo` cases, through `runBody`)], [A global enters Σ _before_ its own check (`Check.lean`: the definition is appended to `globals`, then `checkFix` runs), so during that check it is the one global in Σ not yet accepted; if the check fails, later declarations do not see it (D118). A closure was formed by a typed run, which checks a λ where it is formed (`checkFix` in `evalCore`'s `.fix` case), or by an untyped run of code so checked. Exception: the function whose check is running, reached through its binding of itself or its provisional entry in Σ.], [#s-not for the function under check (D135); #s-cons otherwise],
+  [A sealed program's re-run (`nfSealed`)], [Its text is made by [Close] from a call in checked code (head as above) or by `closeBlock`, which checks every arm itself before it forms the block (D76). Inherits the exception: a sealed call of the function under check, re-run after a split in its own check.], [#s-cons, with the same exception],
+  [Conversion's generic call of a function value (`convFnRun` → `callFn`)], [As a call. The function's own name used as a value is refused by [Rec] ("occurs in its own body other than as the head of a call"); a closure that calls it is not.], [#s-not for a closure calling the function under check],
+  [A stuck block's call (`closeBlock` → `evalCall`)], [The block's arms were checked by `closeBlock` before the call.], [#s-cons],
+  [`J`'s transported term, and a match on a proof's arm, in an untyped run], [Parts of code being run, checked with it.], [#s-cons],
+  [The goal's stuck scrutinee for `split` (`stuckScrutinee`)], [A sealed program's text, as above.], [#s-cons],
+  [The runtime (`Runtime.closedCall`)], [Its caller passes the accepted globals; nothing in `runCall`'s type requires acceptance. Outside `checkProgram`, so outside the consistency theorem; it matters for type safety.], [#s-check by convention only],
+  [A static analysis that reads an arm no run takes (the join's moved set, `Decide.jdMoves`; a block's captures)], [Checked there: a moved field exists (D94, at the join's run), a dereference is of a declared borrow (D101), names are declared (D118). Everything else in an arm of a match on a known constructor is never checked, by the ruling recorded in D118.], [#s-not beyond places and names],
+)
+
+#fault[*Predicted:* the function under check runs its own body at a typed recursive call, so a call inside that run is never tested and the check does not end. *Run:*
+```
+inductive BB := TT | FF
+def Loop (p : BB) (n : Nat) : Nat by n := match p { TT => match n { Z => Z, S(m) => Loop(FF, m), }, FF => Loop(FF, n), }
+def Sel (n : Nat) : Nat by n := match n { Z => Z, S(m) => match m { Z => (let e : Eq(Nat, Sel(m), Z) = refl; Z), S(k) => Z, }, }
+```
+With the `Nat` prelude: `Loop` is "undecided (call depth exceeded)", where its `FF` arm's call is not decreasing and should be rejected; `Sel` is accepted, its statement proved by running `Sel`'s own body before its check finished. Both as D135 says.]
+
+#fault[*Predicted:* a second route to the same site, which D135's text does not name: conversion compares a closure that calls the function under check by running its generic call, which runs the body under check. *Run:*
+```
+inductive BB := TT | FF
+def LC2 (p : BB) (n : Nat) : Nat by n := match p {
+  TT => match n { Z => Z, S(m) => (let e : Eq(Π(u : Unit). Nat, λ(u : Unit) : Nat => LC2(FF, clone(m)), λ(u : Unit) : Nat => 0) = refl; Z), },
+  FF => LC2(FF, n), }
+```
+"undecided (call depth exceeded)". The closure's call `LC2(FF, m)` passes [Rec] where the closure is formed (`m` is a strict part of `n`); comparing the closures runs it, and the run reaches `LC2(FF, n)`, untested, for ever. (With the `FF` arm returning `Z`, the same definition is rejected because the closures differ, which is right.) *Consequence for D135's landing:* the rule must sit where every run of a body starts (`callFn`, or a certificate it requires, below), not at the typed call site, or the comparison route (and the re-normalisation of the function's own sealed call after a split) stays open.]
+
+#fault[*Predicted:* a static decision read from an arm no run takes changes what the live code may do, while the arm itself is never checked. *Run:*
+```
+def DeadIll (x : &Nat) : Nat := (let k = Z; match k { Z => 0, S(j) => (let c = (λ(u : Unit) : Nat => clone(*x)); S(())), })
+def LiveIll (x : &Nat) : Nat := (let k = S(Z); match k { Z => 0, S(j) => (let c = (λ(u : Unit) : Nat => clone(*x)); S(())), })
+def DeadMoves (x : &Nat) : Nat := (let k = Z; let r = match k { Z => 0, S(j) => (let c = (λ(u : Unit) : Nat => clone(*x)); 0), }; *x := 5; r)
+```
+With the `Nat` prelude: `DeadIll` accepted, with a closure that captures a borrow and `S(())` in its dead arm; `LiveIll` rejected ("closures capture no borrows"); `DeadMoves` rejected ("no such place `*x`"): the dead arm's illegal capture consumes `x` at the join, for the live code after it. Not a route to `False`: a static decision is the same on every path, and a dead arm's moves only add to the join's set, which only removes options. It is the class of D94, D101 and D118, which each closed one kind of unchecked thing (a field, a dereference, a name) the join reads. The model has to give the join of ill-typed code a meaning, which is the obligation D94 and D101 were landed to avoid.]
+
+*The audit, part (b): every kind of decision, and what makes the untyped run make the checker's.*
+#table(columns: (30%, 45%, 25%), align: left, table.header([*Decision*], [*Mechanism*], [*Status*]),
+  [Erasure, proof flags, a function type's class and [Close] row, copy or move, η at `Unit`, statement argument in place], [`Decide.lean`, which cannot run anything (D74, D95, D96); `evalAt` asserts the pre-pass against the run's own classification (`INTERNAL [pre-pass]`).], [#s-cons],
+  [What a match moves (the join), at which grain], [`Decide.jdMatch` from syntax and declared types (D84, D129); `movedPlace` resolves each place in the state, under D90's obligation 1.], [#s-cons, with an obligation],
+  [When a borrow ends and what it lends; a result's label], [Fills and marks (D90 rules 1 and 2), the block's entry before its arms (D91), D99's reserved label, no block for one-constructor matches (D93).], [#s-cons under D90's eight obligations],
+  [Tail position (D90's obligation 2)], [Read for every form `checkTailAt` recurses into: `let`, `;`, `split`, `rewrite`, both matches and a match on a proof pass `tailNext` in the untyped run; an ascription and `J` are not tail on either path.], [#s-check (by reading: consistent)],
+  [The hint a term is given], [D124's fourteen sites, each consulting `readsHint` (and `forceHint`).], [#s-check],
+  [The tests a step makes], [Typed-only checks only ever reject a definition. An untyped-only rejection makes an accepted function uncallable; the one shared test (`callPi`, D134) covers a call's head; nothing structural stops another.], [#s-not in general],
+  [The reading of a binding], [D131's net, at the bindings a typed run makes; the bindings only untyped runs make ([Close]'s cells, a block's parameters) are typed by construction from declared types.], [#s-check],
+)
+
+*The redesign.* Three structural changes would make principle 4 hold by construction, and delete most of the checks above.
++ *Untyped evaluation takes a certificate only the typed check can produce.* A `Checked g` record (a Lean structure whose constructor is private to the module of `checkFix`) is put into Σ when a definition is accepted, and `callFn` runs a body only given the callee's certificate; a closure carries the certificate of the λ it was formed from. The function under check has none, so every route to running it (a typed call, a re-normalisation, conversion's generic call, a closure) closes off, as D135 rules, by one test in one place. Cost: a field in `GDef` and in closures; D135's loss (`Sel`). Deletes: the need to find D135's routes one by one.
++ *One evaluator, with the typed mode as checks only.* Today `checkTailAt` and `evalCore` are two evaluators for the forms a body ends in, and `evalCore` branches on `typed` in about forty places, some of which change what runs (a hint handed, a split rejected or run, a flag set) rather than only add a check. The redesign makes `typed` a parameter that may only guard checks and type computations: every branch that changes control flow, state or hints is moved behind one function both modes call (the hint table of D124 becomes the definition, not a list of sites kept in agreement). `checkTailAt` becomes `evalCore` with the goal as a check at the end. Cost: a refactor of `Machine.lean`'s largest functions. Deletes: D119's, D124's and D125's patches as separate rules, and the class of "an accepted function whose call is rejected", which recurred five times.
++ *Every arm is checked.* Check every arm of a match on a known constructor at its declared types, as Lean and Rust do, so that every static analysis reads checked code. Cost: reverses the ruling recorded in D118 (dead arms must be well typed; no program of the suite is known to rely on an ill-typed dead arm). Deletes: D94's run-time rejection, D101's check, D118's special walk (subsumed), and the model's obligation to interpret ill-typed arms.
+
+== Principle 3: readings are true <sec-a3>
+
+*What consumes it.* The strict reference run decides erasure, copy and move, and a function's class from the same readings the checker uses (it must, by principle 4), but the model gives each value a meaning by its _type_: a member of a proposition is a proof, irrelevant and without effect; a member of a sort is a type. The two agree only if every reading agrees with the type it reads. Where they disagree the run the model follows is not one the model can give a meaning to: an effect it does not erase, a proof it moves, a value it reads at the wrong type. Counterexamples: D54's `RunGGen(H)` (a closed `False`: a function read as a proof-class function writes), D55's two notions of proposition (closed proofs of `False`), D110's `BoomF` (`⋆` read as data of a field's declared type: a closed `False`), and D131's `V1`, re-run today:
+#measured[
+```
+def PropF (n : Nat) : Type₁ := Prop
+def V1 (k : Nat) : Unit := (let y = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); match k { Z => (let z = y; ()), S(j) => (), }; let w = y; ())
+```
+With the `Nat` prelude: rejected, "[D131] y is a proof (its type ⊤ is a proposition), but its declared type reads as data". Before D131 it was accepted and `V1(Z)` rejected.]
+
+*How it is enforced today.* By one reader of declared types (`Decide.typeDecl`, `declOf`) that every decision consults, made syntactic (D55, D77, D80, D86, D96, D100, D116, D128), and by checks where a reading meets a type: D131's net at every binding a typed run makes (`readingAgrees`: the `let` of an evaluation, `checkTailAt`'s `let`, `checkFix`'s parameters); the pre-pass assertion in `evalAt` (`INTERNAL [pre-pass]`), which compares the reading with the run's own classification of the same term but not with its type; D55's assertion in [T-Pi]; D128's check at a declaration's parameters; and, for a type read off a value, D110's `strongStorable`, D112's leaf fields and the census behind `depFieldType`'s internal error.
+
+*The audit.* Every place a reading is made or consumed, and whether it is tied to the type:
+#table(columns: (30%, 45%, 25%), align: left, table.header([*Reading*], [*What ties it to the type*], [*Status*]),
+  [A binding made by a typed run (`let`, a parameter, a λ's parameter)], [D131's `readingAgrees`: class of the reading, of the stored type and of the value.], [#s-check],
+  [A binding made only by untyped runs ([Close]'s cells, a block's parameters, a called body's parameters)], [Typed from declared types written by the checker; a cell's type is a borrow's content type, in `Type₀`.], [#s-cons],
+  [A pattern variable, a field], [Fields are first-order data (D36); a dependent field's type at its index is a data type or a leaf (D112).], [#s-cons],
+  [A capture], [Copies the captured binding's recorded reading (D80, D82), tested where the binding was made.], [#s-cons],
+  [A term that is not bound: a statement `t; u`, an argument, an arm's result, a value dropped], [The pre-pass asserts the reading equals the run's classification, both read from syntax; nothing compares either with the term's type.], [#s-not],
+  [A function type's class and row (from its codomain term)], [D54: part of the Π-type, compared by conversion; D55: a codomain's declared type is a sort. A codomain that _computes_ to a sort behind a call (`PropF(Z)`) reads as data, so its function's calls run.], [#s-not (same root as the row above)],
+  [The sort of a Π-type term], [Read from declared sorts (D86); [T-Pi] asserts it against evaluation.], [#s-check],
+  ["Is a type" for an inductive's parameter], [D128: written as a sort exactly when it reads as one.], [#s-check],
+  [Copy or move against erasure], [`declCopy` counts every proposition a copy (D100).], [#s-cons],
+  [A type read off a value in a dependent field], [D110, D112 and its amendment; the census of contents.], [#s-check],
+)
+
+#fault[*Predicted:* a term whose type is a proposition, not bound to a name, reads as data when its proposition hides behind a call, so it is not erased and its effects stay; the same term with the sort written is erased. *Run:*
+```
+def PropF (n : Nat) : Type₁ := Prop
+def W2 (x : &Nat) : Unit := ((*x := 7; J(Nat, Z, Z, λ(z : Nat) : PropF(z) => ⊤, refl, refl)); ())
+def W2Runs : Eq(Nat, (let c = 0; W2(&c); c), 7) := refl
+def WP2 (x : &Nat) : Unit := ((*x := 7; J(Nat, Z, Z, λ(z : Nat) : Prop => ⊤, refl, refl)); ())
+def WP2Runs : Eq(Nat, (let c = 0; WP2(&c); c), 0) := refl
+```
+With the `Nat` prelude: all accepted. The inner term `(*x := 7; J(…))` has type `⊤` in both; in `W2` it reads as data and writes `7`, in `WP2` it reads as a proof, runs on a private copy, and writes nothing. *Not a route to `False` found:* the reading is the same on every path (principle 4 holds), and conversion cannot identify the two motives, whose Π-types differ in class (D54). *What it breaks:* the paper's appendix sentence after D131 is careful to say "a binding is a proof exactly when its type is a proposition"; the stronger "a term is a proof exactly when its type is a proposition", which erasure arguments and a type-directed compiler would assume, is false, and the reference run must erase by reading, never by type.]
+
+*The redesign.* Make the reading a function of the type, so that it cannot disagree: either (a) complete the reader so that a call of a type function whose body is a sort reads as that sort (D131's "not done" third case of `typeFnDecl`), and then assert in `evalAt`, for every term a typed run evaluates, that the pre-pass class equals the class of its type, as it already asserts the pre-pass against the run's own classification; or (b) the converse restriction, cheaper and in D55's spirit: a type function whose body reads as a sort (`PropF`) may not be called where a type's sort is read (a codomain, a motive's codomain, an annotation), so the hidden-sort spellings are rejected where they are written. (a) deletes D131's net as a separate rule (it becomes an instance of the assertion); (b) deletes the case.
+
+== Principle 5: the state is the whole truth <sec-a5>
+
+*What consumes it.* The invariant every step of the simulation carries is a predicate on the checker's state: every position holds a member of its type (D104 made the temporaries positions), every live borrow is held once and lends exactly its places (the spine's (WF1), (WF2)), and nothing else in the state changes what the next step does. A value held only in a variable of the checker's Lean code is outside the predicate: a refinement or an [End] that maps over Ω does not reach it (it goes stale), and a borrow it holds has no holder (D115's 662,366 states with a loan of an ended borrow). A fact kept in the state that is not about the program is outside the predicate too: a cache (D95) or a one-shot flag left set (D130) makes the next step depend on something the invariant does not say. Counterexample with a closed `False`: D110's `ViaLoan`, a borrow stored inside a value, where no holder is looked for, and read back as data.
+
+*How it is enforced today.* By checks at each site found: D104 and D115 push every value in flight as a typed temporary (a call's head and arguments, a constructor's fields, an assignment's right-hand side, a borrow during [Open]'s invalidation, a result across the join, [Lend]'s renaming and a frame's pop, the generic arguments of [Conv-fun] and [Conv-pi]); D106 rejects ending a borrow a temporary holds, at the one place every access ends one (`endTopLoan`); D111 asserts no borrow below a root and no loan without its borrow; D92 and D117 keep scaffolding frames from holding a loan twice. By construction: one-shot flags are consumed in one update at `evalAt`'s entry (D130); mode flags (`copying`, `erasedDepth`, `modelDepth`, `typing`) are bracketed by `onFail`; every private computation restores the whole state but the names (`restoreKeep`, `restoreNames`).
+
+*The audit.*
+#table(columns: (30%, 45%, 25%), align: left, table.header([*Site*], [*What keeps it in the state, or out*], [*Status*]),
+  [A value in flight while other code runs], [Pushed as a typed temporary at each of D115's sites, found by a hunt; no structural rule forces the next site.], [#s-check],
+  [`J`'s endpoint values `av`, `bv` (typed `J`) held in Lean variables while the motive, the proof and `mkEqM` run], [Not in Ω. Harmless: everything that runs meanwhile runs on private copies (principle 6), so nothing maps over the real Ω.], [#s-not (harmless by locality)],
+  [One-shot flags (`tailNext`, `tailDecl`, `wantTy`, `deferCallTy`, `headEval`)], [Read and cleared in one update at `evalAt`'s entry (D130).], [#s-cons],
+  [`inPlace`, set before a call's head is read, consumed by the next `readPlace`], [Between the set and the read the head's access can end borrows and so re-run sealed programs, which read places. See the prediction below: [End]'s re-runs are private (`nfSealed` restores the whole state), so the flag survives them.], [#s-cons (by `nfSealed`'s restore)],
+  [Results passed back through the state: the erasure flags (`lastErased`, `lastProof`) and the deferred call's record (`callTyLater`)], [Each reader reads them right after the evaluation that set them, or saves and restores them around a drop; carried out of a private copy explicitly (flags) or not deferred across one (D132).], [#s-check],
+  [Caches written by decisions], [Removed (D95); the nestable sets are declaration data (D107).], [#s-cons],
+  [A borrow stored where no holder is looked for (inside a value, a type, a record)], [D48 and D110 keep a borrow out of data; types and records hold no loan ((WF11), swept, not proved); D111 asserts at overwrite, drop and read.], [#s-check],
+)
+
+#fault[*Predicted:* the `inPlace` flag, set before a call's head is read, is consumed by a read inside a sealed program that the head's own [Access] re-runs, so the head is read by move and a second call of the same function finds it moved, at the generic call and not at an instance. *Run:*
+```
+def PickF (n : Nat) (a : &(Π(x : Nat). Nat)) (b : &(Π(x : Nat). Nat)) : &(Π(x : Nat). Nat) := match n { Z => a, S(k) => b, }
+def Inc (x : Nat) : Nat := S(x)
+def T5 (n : Nat) : Nat := (let g = Inc; let h = Inc; let r = PickF(clone(n), &g, &h); match n { Z => (let a = g(0); g(1)), S(m) => 0, })
+def T5Z : Nat := T5(0)
+```
+With the `Nat` prelude: both accepted, so the prediction is refuted. Why: `nfSealed`, the only code that re-runs a sealed program at an [End], saves the state and puts it all back but the names (`restoreKeep saved`), so whatever the re-run consumed, the flag included, is restored. That is a by-construction protection, but an incidental one: a nested run that is not wrapped this way, started between a one-shot flag's set and its read, would consume it. The redesign below removes the class.]
+
+*The redesign.* Two changes would make principle 5 structural. (1) _Values in flight are the evaluator's stack, and the stack is in the state._ Every function of the machine that holds a value across a call to another function that can run code takes and returns it through `pushTemp`/`popTemp`, which a Lean type can force: give `eval` the type `M Unit` with its result left on the temporaries, so a value can only be held where the invariant sees it. Cost: a rewrite of every caller of `eval` (about sixty in `Machine.lean`); deletes the D115 hunt as a method. (2) _Control information is a parameter, never state._ The one-shot flags (`tailNext`, `wantTy`, `deferCallTy`, `inPlace`, `headEval`) and the results passed back through the state (`lastErased`, `lastProof`, `callTyLater`) become arguments and return values of `eval`, so nothing a nested run does can consume or clobber them and a private copy cannot discard them. Cost: wider signatures; deletes D130 and D132 as rules (each becomes impossible to write).
