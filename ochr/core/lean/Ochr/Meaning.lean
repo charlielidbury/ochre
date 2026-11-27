@@ -314,8 +314,10 @@ import Ochr.Meaning.Steps.FrameRec
 import Ochr.Meaning.Steps.FixEqR
 import Ochr.Meaning.Steps.FrameEnd
 import Ochr.Meaning.Steps.FrameEndShape
+import Ochr.Meaning.Steps.FrameEndRel
 import Ochr.Meaning.Steps.UnderCheck
 import Ochr.Meaning.Steps.UnderCheckAttack
+import Ochr.Meaning.Steps.ParamCellAttack
 import Ochr.Meaning.Steps.Machine.HintFacts
 import Ochr.Meaning.Steps.Machine.TailOther
 import Ochr.Meaning.Steps.Machine.PlaceInv

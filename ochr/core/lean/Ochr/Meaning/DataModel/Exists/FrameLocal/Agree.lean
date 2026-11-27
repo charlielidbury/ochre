@@ -197,29 +197,30 @@ theorem BAgree.tail {n : Nat} {b b' : PBind} {bs bs' : List PBind} (h : BAgree n
   obtain ⟨hd, hty⟩ := h.2 (i + 1) c c' (by simpa using hc) (by simpa using hc')
   exact ⟨hd, fun acc ha => hty acc (by omega)⟩
 
-theorem extendBinds_agree {bs bs' : List PBind} (h : BAgree 0 bs bs') (acc : List Sem) :
-    extendBinds bs acc = extendBinds bs' acc := by
-  unfold extendBinds
-  refine List.map_congr_left fun ai hai => ?_
-  obtain ⟨hlt, -⟩ := List.mem_zipIdx' hai
-  cases hb : bs[ai.2]? with
+/-- Agreeing binders bind each parameter alike (`paramPush` reads the binder at the arguments so far, whose number is
+the parameter's index). -/
+theorem paramPush_agree {bs bs' : List PBind} (h : BAgree 0 bs bs') : paramPush bs = paramPush bs' := by
+  funext sa ap
+  obtain ⟨s, acc, cells⟩ := sa
+  unfold paramPush
+  dsimp only
+  cases hb : bs[acc.length]? with
   | none =>
-    have : bs'[ai.2]? = none := by
+    have : bs'[acc.length]? = none := by
       rw [List.getElem?_eq_none_iff] at hb ⊢; rw [← h.1]; exact hb
     rw [this]
   | some b =>
-    obtain ⟨b', hb'⟩ : ∃ b', bs'[ai.2]? = some b' := by
-      have : ai.2 < bs'.length := by
-        rw [← h.1]; exact (List.getElem?_eq_some_iff.1 hb).1
+    obtain ⟨b', hb'⟩ : ∃ b', bs'[acc.length]? = some b' := by
+      have : acc.length < bs'.length := by rw [← h.1]; exact (List.getElem?_eq_some_iff.1 hb).1
       exact ⟨_, List.getElem?_eq_getElem this⟩
     rw [hb']
-    obtain ⟨hd, hty⟩ := h.2 ai.2 b b' hb hb'
+    obtain ⟨hd, hty⟩ := h.2 acc.length b b' hb hb'
     dsimp only
-    rw [hd, hty (acc.take ai.2) (by simp; omega)]
+    rw [hd, hty acc (by simp)]
 
-theorem extendBy_agree {bs bs' : List PBind} (h : BAgree 0 bs bs') (s : SState) (acc : List Sem) :
-    extendBy s bs acc = extendBy s bs' acc := by
-  unfold extendBy; rw [extendBinds_agree h]
+theorem extendBy_agree {bs bs' : List PBind} (h : BAgree 0 bs bs') (s : SState) (rs : List Bool) (acc : List Sem) :
+    extendBy s bs rs acc = extendBy s bs' rs acc := by
+  unfold extendBy; rw [paramPush_agree h]
 
 theorem psOf_length : ∀ (bs : List PBind) (ds : List Term), bs.length = ds.length → (psOf bs ds).length = ds.length
   | [], [], _ => rfl

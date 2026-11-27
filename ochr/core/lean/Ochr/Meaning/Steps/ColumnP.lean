@@ -395,7 +395,7 @@ theorem column_P_run (hSp : SplitPInv) (ρ : Assignment) (hDP : DecTab D stP) {f
       subst hx
       obtain ⟨o, ho, hr, hf⟩ := fixBodyAt_P (dm := dm) (D := D) (φ := φ) hSp ρ
         (bindsOf (KP dm D φ ΔP) ρ φ (emptyState 0) [.nat],
-          fixCod (KP dm D φ ΔP) ρ φ (emptyState 0) (bindsOf (KP dm D φ ΔP) ρ φ (emptyState 0) [.nat]) .nat,
+          fixCod (KP dm D φ ΔP) ρ φ (emptyState 0) (bindsOf (KP dm D φ ΔP) ρ φ (emptyState 0) [.nat]) ([.nat].map Term.isRefTy) .nat,
           (KP dm D φ ΔP).D.typeDecl ((KP dm D φ ΔP).D.teleDecls (scopeOf (emptyState 0)) [.nat]) .nat) h1 h2 hDP hk
         hkern hm htd h m
       refine ⟨o, ho, ⟨?_, fun i d hi hd => ?_⟩, by rw [hf]; rfl⟩

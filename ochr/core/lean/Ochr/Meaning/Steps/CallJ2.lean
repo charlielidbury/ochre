@@ -208,7 +208,7 @@ theorem hint_nLazy (hpd : K.D.paramDecls [] [.nat] = [.other]) :
     [.nat])[0]? with
     | some b => b.1 ([Value.succ .zero].map (meanV K ρ noFuture (.plain TyM.err)) |>.take 0)
     | none => fixCod K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture []) (capsTys K ρ noFuture [])))
-        (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture []) (capsTys K ρ noFuture []))) [.nat]) .nat
+        (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture []) (capsTys K ρ noFuture []))) [.nat]) ([.nat].map Term.isRefTy) .nat
         ([Value.succ .zero].map (meanV K ρ noFuture (.plain TyM.err)))) : TyS).m = TyM.nat
   rw [ColumnI.bindsOf_nat K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture []) (capsTys K ρ noFuture [])))
     (by rw [show scopeOf (stateOf 0 (capsState (capsVals K ρ noFuture []) (capsTys K ρ noFuture []))) = [] by

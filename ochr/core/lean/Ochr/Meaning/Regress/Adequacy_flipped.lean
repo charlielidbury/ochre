@@ -174,13 +174,13 @@ theorem stored_pi_code (caps : List Value) (hs : List Hint) (ds : List Term) (c 
     (hcap : CapsOk K.dm.read (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))
     (hok : PiOk K.dm.read (runDoms K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds) []
       (codOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)))
-          (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds) c)) :
+          (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds) (ds.map Term.isRefTy) c)) :
     (Value.tyS K.dm K.M K.Γ ρ (.tPi caps (.pi hs ds c) rd)).m =
       piTyAt K.dm.read (K.D.piSort (scopeOf (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))))
           (.pi hs ds c))
         (runDoms K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds)
         (codOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)))
-          (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds) c) := by
+          (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds) (ds.map Term.isRefTy) c) := by
   show (meanV K ρ noFuture (.plain .err) (.tPi caps (.pi hs ds c) rd)).asTy = _
   rw [meanV, if_pos hcap, run_pi_def, if_pos hok]
   rfl
@@ -195,22 +195,22 @@ theorem captured_pi_code (d : DeclInfo) (caps : List Value) (t : Term) (rd rest 
 /-- R6: a parameter whose domain term is a Π-type is bound at the code that term runs to, so it
 can be called (`Regress/NoShape_R6.lean` records the failure before: a parameter was bound at
 `.plain _`). The `.fix` clause's frame binds parameter `i` at `(runBinds …)[i].1 acc`. -/
-theorem pi_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (hs : List Hint)
+theorem pi_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (rs : List Bool) (hs : List Hint)
     (ds : List Term) (c : Term) (acc : List Sem)
-    (hok : PiOk K.dm.read (runDoms K ρ φ (extendBy s pre acc) ds) []
-      (codOf K ρ φ (extendBy s pre acc) (bindsOf K ρ φ (extendBy s pre acc) ds) c)) :
-    ((mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre acc)).1 acc).m
-      = piTyAt K.dm.read (K.D.piSort (scopeOf (extendBy s pre acc)) (.pi hs ds c)) (runDoms K ρ φ (extendBy s pre acc) ds)
-          (codOf K ρ φ (extendBy s pre acc) (bindsOf K ρ φ (extendBy s pre acc) ds) c) := by
+    (hok : PiOk K.dm.read (runDoms K ρ φ (extendBy s pre rs acc) ds) []
+      (codOf K ρ φ (extendBy s pre rs acc) (bindsOf K ρ φ (extendBy s pre rs acc) ds) (ds.map Term.isRefTy) c)) :
+    ((mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre rs acc)).1 acc).m
+      = piTyAt K.dm.read (K.D.piSort (scopeOf (extendBy s pre rs acc)) (.pi hs ds c)) (runDoms K ρ φ (extendBy s pre rs acc) ds)
+          (codOf K ρ φ (extendBy s pre rs acc) (bindsOf K ρ φ (extendBy s pre rs acc) ds) (ds.map Term.isRefTy) c) := by
   simp only [mkBind, run, run_pi_def]
   rw [if_pos hok]
   rfl
 
 /-- ... and that binder is the one `runBinds` gives a Π-typed parameter. -/
-theorem runBinds_pi (s : SState) (dcs : List DeclInfo) (pre : List PBind) (hs : List Hint)
+theorem runBinds_pi (s : SState) (dcs : List DeclInfo) (pre : List PBind) (rs : List Bool) (hs : List Hint)
     (ds : List Term) (c : Term) (rest : List Term) :
-    (runBinds K ρ φ s dcs pre (.pi hs ds c :: rest)).head?
-      = some (mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre acc)) := by
+    (runBinds K ρ φ s dcs pre rs (.pi hs ds c :: rest)).head?
+      = some (mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre rs acc)) := by
   simp only [runBinds, List.head?_cons]
 
 end Ochr.Meaning.Regress.AdequacyFlip

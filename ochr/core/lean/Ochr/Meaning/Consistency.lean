@@ -178,7 +178,7 @@ theorem fix_sortRule (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd :
     Steps.SortRule dm.read ((P.ctx dm D Γ st').D.piSort (scopeOf (emptyState 0)) (.pi d.hs d.doms d.cod))
       (runDoms (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms)
       (codOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0)
-        (bindsOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
+        (bindsOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms) (d.doms.map Term.isRefTy) d.cod) := by
   sorry
 
 /-- (leaf, OPEN) **The parts of an accepted definition's function type are canonical codes**
@@ -192,7 +192,7 @@ theorem fix_canon (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     Steps.CanonRule dm.read (runDoms (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms)
       (codOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0)
-        (bindsOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
+        (bindsOf (P.ctx dm D Γ st') (fun _ => .err) noFuture (emptyState 0) d.doms) (d.doms.map Term.isRefTy) d.cod) := by
   sorry
 
 /-- **`checkDef`'s function branch, taken apart** (leaf; docs/31 D73, D79). Two halves.

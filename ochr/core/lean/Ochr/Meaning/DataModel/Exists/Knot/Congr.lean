@@ -445,16 +445,16 @@ theorem runT_congrR : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Avoi
     intro _ _; rfl
   | tl, .pi hs ds c, hint, s, ha => by
     rw [runT, runT]
-    have hbs := runBinds_congrR s (K.D.paramDecls (scopeOf s) ds) ds []
+    have hbs := runBinds_congrR s (K.D.paramDecls (scopeOf s) ds) ds [] []
       (avoids_of_list (by simp_all [Avoids, Term.mentionsType]) (by simp_all [Avoids, Term.anyAtom]))
-    have hc : ∀ bs acc, runT K ρ φ false (.plain .err) c (extendBy s bs acc) = runT (KR K d R) ρ φ false (.plain .err) c (extendBy s bs acc) :=
-      fun bs acc => runT_congrR false c _ _ (by avd)
+    have hc : ∀ bs rs acc, runT K ρ φ false (.plain .err) c (extendBy s bs rs acc) = runT (KR K d R) ρ φ false (.plain .err) c (extendBy s bs rs acc) :=
+      fun bs rs acc => runT_congrR false c _ _ (by avd)
     dsimp only
     rw [hbs]
     cases c with
     | ref U =>
-      have hU : ∀ bs acc, runT K ρ φ false (.plain .err) U (extendBy s bs acc) = runT (KR K d R) ρ φ false (.plain .err) U (extendBy s bs acc) :=
-        fun bs acc => runT_congrR false U _ _ (by avd)
+      have hU : ∀ bs rs acc, runT K ρ φ false (.plain .err) U (extendBy s bs rs acc) = runT (KR K d R) ρ φ false (.plain .err) U (extendBy s bs rs acc) :=
+        fun bs rs acc => runT_congrR false U _ _ (by avd)
       simp only [hU]
       rfl
     | _ => simp only [hc]; rfl
@@ -546,22 +546,22 @@ theorem runT_congrR : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Avoi
     all_goals first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3 | exact hs'
   | tl, .fix self hs ds c dec body, hint, s, ha => by
     have hbs : bindsOf K ρ φ s ds = bindsOf (KR K d R) ρ φ s ds :=
-      runBinds_congrR s (K.D.paramDecls (scopeOf s) ds) ds []
+      runBinds_congrR s (K.D.paramDecls (scopeOf s) ds) ds [] []
         (avoids_of_list (by simp_all [Avoids, Term.mentionsType]) (by simp_all [Avoids, Term.anyAtom]))
     have hds : runDoms K ρ φ s ds = runDoms (KR K d R) ρ φ s ds := by unfold runDoms; rw [hbs]
-    have hc : ∀ bs acc, runT K ρ φ false (.plain .err) c (extendBy s bs acc) = runT (KR K d R) ρ φ false (.plain .err) c (extendBy s bs acc) :=
-      fun bs acc => runT_congrR false c _ _ (by avd)
+    have hc : ∀ bs rs acc, runT K ρ φ false (.plain .err) c (extendBy s bs rs acc) = runT (KR K d R) ρ φ false (.plain .err) c (extendBy s bs rs acc) :=
+      fun bs rs acc => runT_congrR false c _ _ (by avd)
     have hb : ∀ (hint : TyS) (s₂ : SState), runT K ρ φ true hint body s₂ = runT (KR K d R) ρ φ true hint body s₂ :=
       fun hint s₂ => runT_congrR true body hint s₂ (by avd)
-    have hout : ∀ bs, codOf K ρ φ s bs c = codOf (KR K d R) ρ φ s bs c := by
-      intro bs
+    have hout : ∀ bs rs, codOf K ρ φ s bs rs c = codOf (KR K d R) ρ φ s bs rs c := by
+      intro bs rs
       cases c with
       | ref U =>
-        have hU : ∀ bs acc, runT K ρ φ false (.plain .err) U (extendBy s bs acc) = runT (KR K d R) ρ φ false (.plain .err) U (extendBy s bs acc) :=
-          fun bs acc => runT_congrR false U _ _ (by avd)
+        have hU : ∀ bs rs acc, runT K ρ φ false (.plain .err) U (extendBy s bs rs acc) = runT (KR K d R) ρ φ false (.plain .err) U (extendBy s bs rs acc) :=
+          fun bs rs acc => runT_congrR false U _ _ (by avd)
         simp only [codOf, hU]
       | _ => simp only [codOf, hc]
-    have hcod : ∀ bs, fixCod K ρ φ s bs c = fixCod (KR K d R) ρ φ s bs c := fun bs => by unfold fixCod; rw [hout]
+    have hcod : ∀ bs rs, fixCod K ρ φ s bs rs c = fixCod (KR K d R) ρ φ s bs rs c := fun bs rs => by unfold fixCod; rw [hout]
     rw [run_fix_def, run_fix_def, hds, hbs, hout, hcod]
     rw [fixG_congrR K d R ρ φ hb]
     rfl
@@ -575,20 +575,20 @@ theorem runAll_congrR : ∀ (ts : List Term) (t : Term), t ∈ ts → ∀ (tl : 
     · rw [e] at ha ⊢; exact runT_congrR tl a hint s ha
     · exact runAll_congrR as t h tl hint s ha
 
-theorem runBinds_congrR (s : SState) (dcs : List DeclInfo) : ∀ (ds : List Term) (pre : List PBind),
+theorem runBinds_congrR (s : SState) (dcs : List DeclInfo) : ∀ (ds : List Term) (pre : List PBind) (rs : List Bool),
     (∀ a ∈ ds, Avoids d.name a) →
-    runBinds K ρ φ s dcs pre ds = runBinds (KR K d R) ρ φ s dcs pre ds
-  | [], _, _ => rfl
-  | x :: ds, pre, ha => by
-    have hds := fun pre' => runBinds_congrR s dcs ds pre' (fun a h => ha a (List.mem_cons_of_mem _ h))
+    runBinds K ρ φ s dcs pre rs ds = runBinds (KR K d R) ρ φ s dcs pre rs ds
+  | [], _, _, _ => rfl
+  | x :: ds, pre, rs, ha => by
+    have hds := fun pre' rs' => runBinds_congrR s dcs ds pre' rs' (fun a h => ha a (List.mem_cons_of_mem _ h))
     have hx := ha x (List.mem_cons_self ..)
-    have hd : (fun acc => runT K ρ φ false (.plain .err) x (extendBy s pre acc))
-        = (fun acc => runT (KR K d R) ρ φ false (.plain .err) x (extendBy s pre acc)) :=
+    have hd : (fun acc => runT K ρ φ false (.plain .err) x (extendBy s pre rs acc))
+        = (fun acc => runT (KR K d R) ρ φ false (.plain .err) x (extendBy s pre rs acc)) :=
       funext fun acc => runT_congrR false x _ _ hx
     cases x with
     | ref A =>
-      have hA : (fun acc => runT K ρ φ false (.plain .err) A (extendBy s pre acc))
-          = (fun acc => runT (KR K d R) ρ φ false (.plain .err) A (extendBy s pre acc)) :=
+      have hA : (fun acc => runT K ρ φ false (.plain .err) A (extendBy s pre rs acc))
+          = (fun acc => runT (KR K d R) ρ φ false (.plain .err) A (extendBy s pre rs acc)) :=
         funext fun acc => runT_congrR false A _ _
           ⟨by simpa [Term.mentionsType] using hx.1, by simpa [Term.anyAtom] using hx.2⟩
       simp only [runBinds, hA, hds]

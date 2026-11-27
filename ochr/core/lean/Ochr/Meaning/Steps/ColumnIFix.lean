@@ -26,7 +26,7 @@ theorem bindsOf_nat (s : SState) (hd : K.D.paramDecls (scopeOf s) [.nat] = [.oth
   unfold bindsOf; rw [hd]
   simp only [runBinds, mkBind, runT_nat]
   rfl
-theorem codOf_nat (s : SState) (bs : List PBind) : codOf K ρ φ s bs .nat = outI := by
+theorem codOf_nat (s : SState) (bs : List PBind) (rs : List Bool) : codOf K ρ φ s bs rs .nat = outI := by
   unfold codOf; simp only [runT_nat]; rfl
 theorem runDoms_nat (s : SState) (hd : K.D.paramDecls (scopeOf s) [.nat] = [.other]) :
     runDoms K ρ φ s [.nat] = psI := by

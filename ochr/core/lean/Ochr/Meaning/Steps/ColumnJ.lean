@@ -137,7 +137,7 @@ variable {dm : DataModel} {D : Decisions} {ρ : Assignment} {φ : Future}
 /-- The binders and codomain the `.fix` clause reads `I`'s signature at, from the empty state. -/
 noncomputable def fbI (dm : DataModel) (D : Decisions) (ρ : Assignment) (φ : Future) : List PBind × PBind :=
   (bindsOf (KI dm D φ) ρ φ (emptyState 0) [.nat],
-    fixCod (KI dm D φ) ρ φ (emptyState 0) (bindsOf (KI dm D φ) ρ φ (emptyState 0) [.nat]) .nat,
+    fixCod (KI dm D φ) ρ φ (emptyState 0) (bindsOf (KI dm D φ) ρ φ (emptyState 0) [.nat]) ([.nat].map Term.isRefTy) .nat,
     (KI dm D φ).D.typeDecl ((KI dm D φ).D.teleDecls (scopeOf (emptyState 0)) [.nat]) .nat)
 
 /-- `I`'s function: the body's run at each argument tuple (stage 1, rank 0: `I` does not recurse). -/

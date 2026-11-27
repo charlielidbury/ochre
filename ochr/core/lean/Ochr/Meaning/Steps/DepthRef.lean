@@ -126,7 +126,7 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 /-- The binders and codomain the `.fix` clause reads the closure's signature at, in the forming state `s`. -/
 noncomputable def fbC (K : RunCtx) (ρ : Assignment) (φ : Future) (s : SState) : List PBind × PBind :=
-  (bindsOf K ρ φ s [.nat], fixCod K ρ φ s (bindsOf K ρ φ s [.nat]) .nat, K.D.typeDecl (K.D.teleDecls (scopeOf s) [.nat]) .nat)
+  (bindsOf K ρ φ s [.nat], fixCod K ρ φ s (bindsOf K ρ φ s [.nat]) ([.nat].map Term.isRefTy) .nat, K.D.typeDecl (K.D.teleDecls (scopeOf s) [.nat]) .nat)
 
 /-- **The closure's function** (stage 1 at rank 0: it does not recurse), formed in `s`. -/
 noncomputable def gCap (K : RunCtx) (ρ : Assignment) (φ : Future) (s : SState) : List Sem → Option BodyOut :=
@@ -545,7 +545,7 @@ theorem runT_sort (tl : Bool) (h : TyS) (l : Nat) (s : SState) :
     runT K ρ φ tl h (.sort l) s = some ((.ty (TyM.univ l), .plain (TyM.univ (sortSucc l))), s) := by
   rw [runT]; rfl
 
-theorem codOf_type (s : SState) (bs : List PBind) : codOf K ρ φ s bs (.sort 1) = outT := by
+theorem codOf_type (s : SState) (bs : List PBind) (rs : List Bool) : codOf K ρ φ s bs rs (.sort 1) = outT := by
   unfold codOf; simp only [runT_sort]; rfl
 
 /-- The body state the `.fix` clause builds for `X` at the argument `a`, `self` bound by `b`. -/
@@ -579,7 +579,7 @@ theorem fix_typeFn (hX : Hint) (t : Term) (hd : ParDecDef K.D (.fix hX [⟨"n"�
       (fun _ _ => Nat.le_refl 2) fun args ha => ?_
     obtain ⟨a, rfl⟩ := ColumnR.domMembers_one ha
     let fb : List PBind × PBind := (bindsOf K ρ φ (emptyState 0) [.nat],
-      fixCod K ρ φ (emptyState 0) (bindsOf K ρ φ (emptyState 0) [.nat]) (.sort 1),
+      fixCod K ρ φ (emptyState 0) (bindsOf K ρ φ (emptyState 0) [.nat]) ([.nat].map Term.isRefTy) (.sort 1),
       K.D.typeDecl (K.D.teleDecls (scopeOf (emptyState 0)) [.nat]) (.sort 1))
     let selfM : Sem := closureAt K.dm.read 2 φ psI (weakCod 2 (fixRank none) 0 outT)
       (stageFn 2 psI (fixRank none) 0 (fun _ => none))

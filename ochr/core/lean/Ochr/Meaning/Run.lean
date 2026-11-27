@@ -235,18 +235,6 @@ def scopeOf (s : SState) : List DeclInfo :=
 a function of the earlier arguments, and its declared reading. -/
 abbrev PBind : Type 3 := (List Sem → TyS) × DeclInfo
 
-/-- The bindings `extendBy` pushes: argument `i` at parameter `i`'s type at the earlier arguments
-and at its declared reading (`err` and `other` beyond `bs`). -/
-def extendBinds (bs : List PBind) (acc : List Sem) : List SBinding :=
-  acc.zipIdx.map fun ai =>
-    { ty := match bs[ai.2]? with | some b => { b.1 (acc.take ai.2) with label := none } | none => .plain TyM.err, val := fun _ => ai.1, decl := match bs[ai.2]? with | some b => b.2 | none => .other }
-
-/-- The state's top frame extended by bindings holding the given meanings (a Π's or a closure's
-parameters at formation), each at its parameter's type and reading (`bs`): a later domain term or
-the codomain may call an earlier parameter, and reads its declared type for copy or move. -/
-def extendBy (s : SState) (bs : List PBind) (acc : List Sem) : SState :=
-  (extendBinds bs acc).foldl (fun s b => s.pushBind b) s
-
 /-- A parameter's binder from the run of its domain term at each prefix of arguments (`r`): the
 type the term runs to (its code), and the reading `dcs` gives parameter `pre.length`. -/
 def mkBind (dcs : List DeclInfo) (pre : List PBind) (r : List Sem → Option ((Sem × TyS) × SState)) : PBind :=
@@ -328,6 +316,48 @@ noncomputable def pushBindShaped (s : SState) (b : SBinding) : SState :=
     | some fr => { s' with shape := fun p => if p = .bind s'.topIdx (fr.binds.length - 1) then some l else s'.shape p }
     | none => s'
   | none => s.pushBind b
+
+/-- **A parameter bound as [Def]'s generic call binds it** (paper appendix, item 10 of the auxiliary definitions;
+docs/31 D126, D138, D210). A BORROW parameter (`ap.2.isRef`: its domain is written `&A`) gets a fresh label `l`; its
+CELL, a binding of frame 0 at the content type reading `l`'s final content, is the label's one loan site (the checker's
+owned place `c ↦ loan l`); the argument is recorded as the label's member, and the parameter holds the label at the
+content type (the checker's `x ↦ borrow_l σ`). Any other parameter is a plain binding holding its argument. Each is at
+its type at the earlier arguments (`bs`; for a borrow, the content type) and at its declared reading. The cells are
+collected, in order. A closure's body (the `.fix` clause's `bodyAt`) and a later domain or the codomain of a Π-type or
+a closure (`extendBy`) are read in frames built by this one step, so a type that observes a borrow parameter observes
+its lender, as the checker's [Def], [Conv-pi] and [Conv-fun] do. Principle 4 (one code, two runs: the model reads a
+parameter's type in the frame the checker reads it in) and principle 11 (observation names every owner). -/
+noncomputable def paramPush (bs : List PBind) (sa : SState × List Sem × List Pos) (ap : Sem × PiDom) :
+    SState × List Sem × List Pos :=
+  let (s, acc, cells) := sa
+  let T : TyS := match bs[acc.length]? with | some b => b.1 acc | none => .plain (ap.2.dom acc)
+  let d : DeclInfo := match bs[acc.length]? with | some b => b.2 | none => .other
+  if ap.2.isRef then
+    let (l, s) := s.freshLoan
+    let cell : Pos := .bind 0 (((s.env[0]?).map (·.binds.length)).getD 0)
+    let s := (s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }).setLent l [⟨cell, [], false⟩]
+    let s := pushBindShaped ((s.setHeldMem l ap.1).setHeldTy l T.m) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
+    (s, acc ++ [ap.1], cells ++ [cell])
+  else
+    (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
+
+/-- The parameters' descriptions `extendBy` folds over: borrow or not (`rs`, read off the domain terms by
+`Term.isRefTy`); the type is the binder's (`paramPush` reads `bs` first). -/
+def refDoms (rs : List Bool) : List PiDom := rs.map fun r => ⟨r, fun _ => TyM.err⟩
+
+/-- **The state a later domain term or the codomain of a Π-type or a closure is read in** (`runBinds`, the `.pi` and
+`.fix` clauses): the forming state under a fresh bottom frame (`SState.under`), its top frame extended by the earlier
+parameters bound to the given meanings as [Def]'s generic call binds them (`paramPush`): a borrow parameter (`rs`) at a
+fresh label lent at a cell of frame 0. A later domain or the codomain may call an earlier parameter, read its declared
+type for copy or move, and observe what is written through a borrow parameter at its cell.
+
+docs/31 D210: as first written the earlier parameters were plain bindings of the forming state's top frame, a borrow
+parameter holding its content with no label and no cell. The checker reads the same types with a cell (its [Def]'s
+generic state), so an `Id` whose sides write through a borrow parameter and then move or re-point it meant `True` in the
+model where the checker computes `False`, and the accepted `G1 (x : &Nat) (e : Id(Unit, (*x := 0; let z = x; ()),
+(*x := 1; let z = x; ()))) : False := e` was not a member of its type in the model (`Steps/ParamCellAttack`). -/
+noncomputable def extendBy (s : SState) (bs : List PBind) (rs : List Bool) (acc : List Sem) : SState :=
+  ((acc.zip (refDoms rs)).foldl (paramPush bs) (s.under, [], [])).1
 
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
@@ -1374,13 +1404,13 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
   | .pi hs ds c => fun s =>
     -- [T-Pi]: the parameters' and output's meanings as functions of the earlier parameters
     -- (`runBinds`), the carrier at the declared sort (D55, `Decisions.piSort`)
-    let bs := runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds
+    let bs := runBinds s (K.D.paramDecls (scopeOf s) ds) [] [] ds
     let ps := psOf bs ds
     let out : PiCod := match c with
-      | .ref U => ⟨true, fun acc => match runT false (.plain TyM.err) U (extendBy s bs acc) with
+      | .ref U => ⟨true, fun acc => match runT false (.plain TyM.err) U (extendBy s bs (ds.map Term.isRefTy) acc) with
         | some ((v, _), _) => v.asTy
         | none => TyM.err⟩
-      | c => ⟨false, fun acc => match runT false (.plain TyM.err) c (extendBy s bs acc) with
+      | c => ⟨false, fun acc => match runT false (.plain TyM.err) c (extendBy s bs (ds.map Term.isRefTy) acc) with
         | some ((v, _), _) => v.asTy
         | none => TyM.err⟩
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
@@ -1396,13 +1426,13 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- `Unit` above, docs/34), and the function at arguments whose decreasing argument has rank
     -- `r` is stage `r + 1`; so a call that does not decrease reads `()` at `Unit`, and the
     -- closure, built strictly at the true type, is `err` unless the codomain holds it.
-    let bs := runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds
+    let bs := runBinds s (K.D.paramDecls (scopeOf s) ds) [] [] ds
     let ps := psOf bs ds
     let out : PiCod := match c with
-      | .ref U => ⟨true, fun acc => match runT false (.plain TyM.err) U (extendBy s bs acc) with
+      | .ref U => ⟨true, fun acc => match runT false (.plain TyM.err) U (extendBy s bs (ds.map Term.isRefTy) acc) with
         | some ((v, _), _) => v.asTy
         | none => TyM.err⟩
-      | c => ⟨false, fun acc => match runT false (.plain TyM.err) c (extendBy s bs acc) with
+      | c => ⟨false, fun acc => match runT false (.plain TyM.err) c (extendBy s bs (ds.map Term.isRefTy) acc) with
         | some ((v, _), _) => v.asTy
         | none => TyM.err⟩
     -- the codomain, the body's hint (the audit's A8: a body that is a bare `Nil` reads its
@@ -1425,24 +1455,10 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       -- docs/31 D126: under a fresh bottom frame (`SState.under`), as the checker's `checkFix`
       -- frames the body: frame 0 for the cells, the top frame the captures, `self`, the parameters
       let s₁ := s.under.pushBind { ty := .plain selfT, val := fun _ => selfM, decl := .pi cd }
-      -- each parameter is bound at its type (its code) and at its declared reading (`bs`)
-      let step (sa : SState × List Sem × List Pos) (ap : Sem × PiDom) : SState × List Sem × List Pos :=
-        let (s, acc, cells) := sa
-        let T : TyS := match bs[acc.length]? with | some b => b.1 acc | none => .plain (ap.2.dom acc)
-        let d : DeclInfo := match bs[acc.length]? with | some b => b.2 | none => .other
-        if ap.2.isRef then
-          let (l, s) := s.freshLoan
-          -- docs/31 D126: the cell is a binding of frame 0, `x° ↦ loan l` at the content type, as
-          -- the checker's `checkFix` makes it
-          let cell : Pos := .bind 0 (((s.env[0]?).map (·.binds.length)).getD 0)
-          -- docs/31 D138: the cell is the label's one loan site, as the checker's `loan l` is
-          let s := (s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }).setLent l [⟨cell, [], false⟩]
-          -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
-          let s := pushBindShaped ((s.setHeldMem l ap.1).setHeldTy l T.m) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
-          (s, acc ++ [ap.1], cells ++ [cell])
-        else
-          (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
-      let (s₂, _, cells) := (args.zip ps).foldl step (s₁, [], [])
+      -- each parameter is bound at its type (its code) and at its declared reading (`bs`), a borrow parameter at a
+      -- fresh label with a cell of frame 0 (`paramPush`: docs/31 D126, D138; the same step reads a later domain and the
+      -- codomain, `extendBy`, D210)
+      let (s₂, _, cells) := (args.zip ps).foldl (paramPush bs) (s₁, [], [])
       match runT true (cod args) body s₂ with
       | some ((r, R), s₃) =>
         -- the frame pop ends the borrows the body made and the parameters' (their cells then
@@ -1622,14 +1638,14 @@ forming state extended by the earlier parameters at THEIR types and readings (`p
 parameter's type with its Π-shape (the run of a Π-term returns the Π's shape in its result type)
 as a function of the earlier arguments; `dcs` are the telescope's declared readings. For `&A` the
 content type `A` is run. (D19, R6; `psOf` reads the telescope's description off the result.) -/
-noncomputable def runBinds (s : SState) (dcs : List DeclInfo) (pre : List PBind) : List Term → List PBind
+noncomputable def runBinds (s : SState) (dcs : List DeclInfo) (pre : List PBind) (rs : List Bool) : List Term → List PBind
   | [] => []
   | .ref A :: ds =>
-    mkBind dcs pre (fun acc => runT false (.plain TyM.err) A (extendBy s pre acc)) ::
-      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => runT false (.plain TyM.err) A (extendBy s pre acc))]) ds
+    mkBind dcs pre (fun acc => runT false (.plain TyM.err) A (extendBy s pre rs acc)) ::
+      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => runT false (.plain TyM.err) A (extendBy s pre rs acc))]) (rs ++ [true]) ds
   | d :: ds =>
-    mkBind dcs pre (fun acc => runT false (.plain TyM.err) d (extendBy s pre acc)) ::
-      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => runT false (.plain TyM.err) d (extendBy s pre acc))]) ds
+    mkBind dcs pre (fun acc => runT false (.plain TyM.err) d (extendBy s pre rs acc)) ::
+      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => runT false (.plain TyM.err) d (extendBy s pre rs acc))]) (rs ++ [false]) ds
 termination_by structural ds => ds
 
 /-- An inductive's parameters, each at its parameter type (a statement position, on a copy). -/
@@ -1789,24 +1805,25 @@ noncomputable abbrev run (hint : TyS) (t : Term) : SM Res := runT K ρ φ false 
 
 /-- The binders of a telescope formed in `s`: `runBinds` at the telescope's declared readings. -/
 noncomputable def bindsOf (s : SState) (ds : List Term) : List PBind :=
-  runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds
+  runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] [] ds
 
 /-- The parameters of a Π-term formed in `s`, as the `.pi` and `.fix` clauses read them. -/
 noncomputable def runDoms (s : SState) (ds : List Term) : List PiDom := psOf (bindsOf K ρ φ s ds) ds
 
 /-- A Π-term's or closure's codomain, as the `.pi` and `.fix` clauses read it: a returned borrow
-or borrow-free data, its type at each tuple of arguments. -/
-noncomputable def codOf (s : SState) (bs : List PBind) (c : Term) : PiCod := match c with
-  | .ref U => ⟨true, fun acc => match run K ρ φ (.plain TyM.err) U (extendBy s bs acc) with
+or borrow-free data, its type at each tuple of arguments, read with the parameters bound as [Def] binds them
+(`extendBy`; `rs` the borrow parameters, `ds.map Term.isRefTy` at the clauses). -/
+noncomputable def codOf (s : SState) (bs : List PBind) (rs : List Bool) (c : Term) : PiCod := match c with
+  | .ref U => ⟨true, fun acc => match run K ρ φ (.plain TyM.err) U (extendBy s bs rs acc) with
     | some ((v, _), _) => v.asTy
     | none => TyM.err⟩
-  | c => ⟨false, fun acc => match run K ρ φ (.plain TyM.err) c (extendBy s bs acc) with
+  | c => ⟨false, fun acc => match run K ρ φ (.plain TyM.err) c (extendBy s bs rs acc) with
     | some ((v, _), _) => v.asTy
     | none => TyM.err⟩
 
 /-- A closure's codomain, its code, as a function of the parameters: its body's hint. -/
-noncomputable def fixCod (s : SState) (bs : List PBind) (c : Term) : List Sem → TyS :=
-  fun acc => .plain ((codOf K ρ φ s bs c).cod acc)
+noncomputable def fixCod (s : SState) (bs : List PBind) (rs : List Bool) (c : Term) : List Sem → TyS :=
+  fun acc => .plain ((codOf K ρ φ s bs rs c).cod acc)
 
 /-- The code meaning the run induces (the knot of `Value.mean`): each code-dependent form read by
 the run **at the assignment and future it is asked at**. As first written it ignored both and read
@@ -1830,7 +1847,7 @@ noncomputable def codeMeaning (K : RunCtx) : CodeMeaning where
         let acc := ws.map (meanV K ρ noFuture (.plain TyM.err))
         match (bindsOf K ρ noFuture s₀ ds)[j]? with
         | some b => b.1 (acc.take j)
-        | none => fixCod K ρ noFuture s₀ (bindsOf K ρ noFuture s₀ ds) c acc
+        | none => fixCod K ρ noFuture s₀ (bindsOf K ρ noFuture s₀ ds) (ds.map Term.isRefTy) c acc
       | _ => .plain TyM.err
     | _ => .plain TyM.err
 

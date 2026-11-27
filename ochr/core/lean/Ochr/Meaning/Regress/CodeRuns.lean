@@ -276,9 +276,9 @@ theorem run_fnNat (hint : TyS) (s : SState) :
 
 /-- **A parameter typed `Fn(Nat)` is bound at `Π(x : Nat). Nat`'s code** (the `.fix` clause binds a
 parameter at the type its domain term runs to, `mkBind`), whatever the frame. -/
-theorem fn_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (acc : List Sem) :
+theorem fn_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (rs : List Bool) (acc : List Sem) :
     (mkBind dcs pre fun acc => run (Kp dm Γ (gFn dm.read)) ρ φ (.plain .err) (.call (.const "Fn") [.nat] false)
-      (extendBy s pre acc)).1 acc = .plain (piTyL (lvl0 dm.read) tNN) := by
+      (extendBy s pre rs acc)).1 acc = .plain (piTyL (lvl0 dm.read) tNN) := by
   simp only [mkBind, run_fnNat, Sem.asTy]
 
 /-- A function value at the code `Π(n : Nat). Nat` is a member of its type. -/
@@ -597,9 +597,9 @@ theorem run_predNat (hint : TyS) (s : SState) :
   exact callOf_data2 dm tPred _ _ s _ _ (by simp [telRefsL, tPred, hA]) (pred_apply dm noFuture)
 
 /-- **A parameter typed `Pred(Nat)` is bound at `Π(x : Nat). Prop`'s code**, whatever the frame. -/
-theorem pred_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (acc : List Sem) :
+theorem pred_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (rs : List Bool) (acc : List Sem) :
     (mkBind dcs pre fun acc => run (Kp dm Γ (gPred dm.read)) ρ φ (.plain .err) (.call (.const "Pred") [.nat] false)
-      (extendBy s pre acc)).1 acc = .plain (piTyL (lvl1 dm.read) tPN) := by
+      (extendBy s pre rs acc)).1 acc = .plain (piTyL (lvl1 dm.read) tPN) := by
   simp only [mkBind, run_predNat, Sem.asTy]
 
 /-- **`UsePred` in the model**: in a frame binding `P` at `Pred(Nat)`'s code to a predicate `Pf`,

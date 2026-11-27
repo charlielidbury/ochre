@@ -17,7 +17,8 @@ environment; the guards read the variable bound to the call's result:
 - `GoH`: a LOCAL recursive function `go` capturing `n`; the split on `n` refines the capture; a closure `h` capturing `go`
   is called in place and calls `go`, which closes off: the sealed head is the closure VALUE with its capture refined to
   `0` (recognised by code), `go`'s own binding is moved into `h`, and `h` holds `go`'s refined closure. The model has no
-  counterpart (docs/31 D205).
+  counterpart (docs/31 D205). ACCEPTED UNTIL main's D136 (ruled by the lead, 2026-11-27: a local function is not
+  recursive, as in Lean's kernel); then `GoH` becomes a `reject def` and its two guards go.
 -/
 
 open Ochr.Test

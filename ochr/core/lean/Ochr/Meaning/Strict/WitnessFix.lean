@@ -35,14 +35,14 @@ noncomputable def fixSort (K : RunCtx) (s : SState) (hs : List Hint) (ds : List 
 /-- The type the `.fix` clause builds its closure at. -/
 noncomputable def fixTy (K : RunCtx) (ρ : Assignment) (φ : Future) (s : SState) (hs : List Hint) (ds : List Term)
     (c : Term) : TyM :=
-  piTyAt K.dm.read (fixSort K s hs ds c) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
+  piTyAt K.dm.read (fixSort K s hs ds c) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c)
 
 /-- The closure the `.fix` clause builds. -/
 noncomputable def fixClo (K : RunCtx) (ρ : Assignment) (φ : Future) (s : SState) (hs : List Hint) (ds : List Term)
     (c : Term) (dec : Option Nat) (body : Term) : Sem :=
-  closureAt K.dm.read (fixSort K s hs ds c) φ (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
-    (fixG K ρ φ (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
-      (fixSort K s hs ds c) s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
+  closureAt K.dm.read (fixSort K s hs ds c) φ (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c)
+    (fixG K ρ φ (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
+      (fixSort K s hs ds c) s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c)
       (fixTy K ρ φ s hs ds c) s.nextLoan dec body)
 
 /-- **The `.fix` clause runs where its closure is a member.** -/

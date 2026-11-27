@@ -71,7 +71,7 @@ noncomputable def runBodyRef (fres : Res) (cs : List Value) (t : Term) (rd : Lis
   | .fix _ _ ds c _ body =>
     let s₀ := (capsState (capsVals K ρ φ cs) (capsTys K ρ φ rd)).foldl SState.pushBind s.pushFrame
     let bs := bindsOf K ρ φ s₀ ds
-    let out := codOf K ρ φ s₀ bs c
+    let out := codOf K ρ φ s₀ bs (ds.map Term.isRefTy) c
     let cd := K.D.typeDecl (K.D.teleDecls (scopeOf s₀) ds) c
     let start := s.nextLoan
     match runT K ρ φ true (.plain (out.cod (args.map (·.1)))) body (callFrame K ρ φ cs rd fres cd bs args s) with

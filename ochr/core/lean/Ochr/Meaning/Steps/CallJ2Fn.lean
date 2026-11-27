@@ -131,7 +131,7 @@ open Ochr.Meaning.Steps.Form.ColumnJ (KJ)
 /-- The binders and codomain the `.fix` clause reads `I`'s signature at, from the empty state, in `J2`'s context. -/
 noncomputable def fbJ2 (dm : DataModel) (D : Decisions) (f : Sem) (ρ : Assignment) (φ : Future) : List PBind × PBind :=
   (bindsOf (KJ dm D f) ρ φ (emptyState 0) [.nat],
-    fixCod (KJ dm D f) ρ φ (emptyState 0) (bindsOf (KJ dm D f) ρ φ (emptyState 0) [.nat]) .nat,
+    fixCod (KJ dm D f) ρ φ (emptyState 0) (bindsOf (KJ dm D f) ρ φ (emptyState 0) [.nat]) ([.nat].map Term.isRefTy) .nat,
     (KJ dm D f).D.typeDecl ((KJ dm D f).D.teleDecls (scopeOf (emptyState 0)) [.nat]) .nat)
 
 /-- **`I`'s function in `J2`'s context** (stage 1 at rank 0: `I` does not recurse). -/

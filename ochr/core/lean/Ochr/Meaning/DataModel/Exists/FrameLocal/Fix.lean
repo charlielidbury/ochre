@@ -203,9 +203,6 @@ theorem Adm.pushes {K : RunCtx} {Q : Pos → Prop} {β β' : Pos → SBinding} :
   | [], _, h => h
   | b :: l, _, h => Adm.pushes l (h.pushBind b)
 
-theorem Adm.extend {K : RunCtx} {Q : Pos → Prop} {β β' : Pos → SBinding} {s : SState} (h : Adm K Q β β' s)
-    (bs : List PBind) (acc : List Sem) : Adm K Q β β' (extendBy s bs acc) := h.pushes _
-
 theorem qset_pushes {Q : Pos → Prop} {β : Pos → SBinding} :
     ∀ (l : List SBinding) (s : SState), (∀ p, Q p → p ∈ s.positions) →
       l.foldl (fun s b => s.pushBind b) (qset Q β s) = qset Q β (l.foldl (fun s b => s.pushBind b) s)
@@ -214,10 +211,6 @@ theorem qset_pushes {Q : Pos → Prop} {β : Pos → SBinding} :
     simp only [List.foldl_cons]
     rw [qset_pushBind s hQ b]
     exact qset_pushes l _ fun p hp => mem_positions_pushBind s b (hQ p hp)
-
-theorem qset_extendBy {Q : Pos → Prop} {β : Pos → SBinding} (s : SState) (hQ : ∀ p, Q p → p ∈ s.positions)
-    (bs : List PBind) (acc : List Sem) : extendBy (qset Q β s) bs acc = qset Q β (extendBy s bs acc) :=
-  qset_pushes _ s hQ
 
 theorem varPos_pushes : ∀ (l : List SBinding) (s : SState) (i : Nat),
     (l.foldl (fun s b => s.pushBind b) s).varPos (i + l.length) = s.varPos i
@@ -237,23 +230,6 @@ theorem varPos_pushes_new {Q : Pos → Prop} : ∀ (l : List SBinding) (s : SSta
     · have e : i = 0 + l.length := by simp at hi; omega
       rw [e, varPos_pushes] at hp
       exact varPos_zero_push (envPush_pushBind s b) hQ pos hp
-
-theorem extendBinds_length (bs : List PBind) (acc : List Sem) : (extendBinds bs acc).length = acc.length := by
-  simp [extendBinds]
-
-/-- The variables of a term under `k` more binders, at the state with `k` arguments pushed. -/
-theorem VarsAvoid.extend {Q : Pos → Prop} {s : SState} {T u : Term} {k : Nat} (hV : VarsAvoid Q s T)
-    (hsub : ∀ x ∈ u.placeOccs k, x ∈ T.placeOccs 0) (hQ : ∀ p, Q p → p ∈ s.positions) (bs : List PBind)
-    {acc : List Sem} (ha : acc.length = k) : VarsAvoid Q (extendBy s bs acc) u := by
-  intro v hv pos hp
-  unfold extendBy at hp
-  have hl := extendBinds_length bs acc
-  by_cases hvk : v < k
-  · exact varPos_pushes_new _ s hQ v (by omega) pos hp
-  · rcases freeVars_sub hsub v hv with h0 | h0
-    · omega
-    · rw [show v = (v - k) + (extendBinds bs acc).length by omega, varPos_pushes] at hp
-      exact hV _ h0 pos hp
 
 /-! ## Under a fresh bottom frame -/
 
@@ -602,6 +578,39 @@ theorem fixBodyAt_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → 
     simp only [Option.map_some, qset_nextLoan, hco, qset_liveLabels hP.shape, fun ls => endsOk_qset K φ ls hP,
       qset_foldl_endLabel hP.temp hP.const _ _ hP.shape, hfin]
     split <;> rename_i hE <;> simp only [hE, if_true, if_false, not_false_eq_true]
+
+/-- **The frame a later domain or the codomain is read in, across the transform** (docs/31 D210): `extendBy` is the
+forming state under a fresh bottom frame with the parameters bound as [Def] binds them (`paramPush`, a borrow
+parameter at a fresh label with a cell of frame 0), so the transform acts on it ONE FRAME UP, as on a closure's body
+frame (`fixBodyAt_qset`); the extended state meets what the induction hypothesis asks there. -/
+theorem extendBy_qset {Q : Pos → Prop} {β β' : Pos → SBinding} {s : SState} (hA : Adm K Q β β' s)
+    (hR : RInv (fun _ => True) s) {T u : Term} (hV : VarsAvoid Q s T) {k : Nat}
+    (hsub : ∀ x ∈ u.placeOccs k, x ∈ T.placeOccs 0) {bs bs' : List PBind} (hB : BAgree 0 bs bs')
+    (rs : List Bool) (acc : List Sem) (ha : acc.length = k) (hrs : rs.length = k) :
+    extendBy (qset Q β' s) bs' rs acc = qset (Qup Q) (βup β') (extendBy s bs rs acc) ∧
+    Adm K (Qup Q) (βup β) (βup β') (extendBy s bs rs acc) ∧ VarsAvoid (Qup Q) (extendBy s bs rs acc) u ∧
+    RInv (fun _ => True) (extendBy s bs rs acc) := by
+  have hA₀ := hA.under
+  have hI : FInv (Qup Q) (βup β) (βup β') s.under := ⟨hA₀.twin.pre, hA₀.twin.pre', hA₀.twin.fix⟩
+  have hdom : DomAgree 0 (refDoms rs) (refDoms rs) := DomAgree.refl 0 _
+  have hz : ZipAgree ([] : List Sem).length (acc.zip (refDoms rs)) (acc.zip (refDoms rs)) := by
+    simpa using zipAgree_zip acc hdom
+  let fb : List PBind × PBind := (bs, ((fun _ => .plain TyM.err), DeclInfo.other))
+  let fb' : List PBind × PBind := (bs', ((fun _ => .plain TyM.err), DeclInfo.other))
+  obtain ⟨hfold, hI₂⟩ := foldl_fixStep_qset (fb := fb) (fb' := fb') hB (acc.zip (refDoms rs)) (acc.zip (refDoms rs)) _ [] [] hz hI
+  have hRF : RInv (fun _ => True) (extendBy s bs rs acc) := rinv_extendBy hR bs rs acc
+  have hG : TopGrow s.under ((acc.zip (refDoms rs)).foldl (fixStep fb) (s.under, [], [])).1 k := by
+    have := foldl_fixStep_topGrow fb (acc.zip (refDoms rs)) s.under [] [] (under_topIdx_pos s)
+    rwa [List.length_zip, ha, refDoms, List.length_map, hrs, Nat.min_self] at this
+  have e1 : extendBy s bs rs acc = ((acc.zip (refDoms rs)).foldl (fixStep fb) (s.under, [], [])).1 := rfl
+  have e2 : extendBy (qset Q β' s) bs' rs acc =
+      ((acc.zip (refDoms rs)).foldl (fixStep fb') (qset (Qup Q) (βup β') s.under, [], [])).1 := by
+    show ((acc.zip (refDoms rs)).foldl (fixStep fb') ((qset Q β' s).under, [], [])).1 = _
+    rw [qset_under]
+  rw [e2, hfold, e1]
+  rw [e1] at hRF
+  exact ⟨rfl, ⟨⟨hI₂.1, hI₂.2.1, hI₂.2.2, EnvLe.refl _⟩, hA₀.decl, hA₀.good, hA₀.good'⟩,
+    VarsAvoid.body hV hsub hA.twin.pre.pos hG, hRF⟩
 
 end
 

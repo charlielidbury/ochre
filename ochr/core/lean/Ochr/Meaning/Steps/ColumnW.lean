@@ -123,10 +123,10 @@ theorem runDoms_ref (s : SState) (hd : K.D.paramDecls (scopeOf s) [.ref .nat] = 
     runDoms K ρ φ s [.ref .nat] = psW := by
   unfold runDoms; rw [bindsOf_ref K ρ φ s hd]; rfl
 
-theorem codOf_natW (s : SState) (bs : List PBind) : codOf K ρ φ s bs .nat = outW := by
+theorem codOf_natW (s : SState) (bs : List PBind) (rs : List Bool) : codOf K ρ φ s bs rs .nat = outW := by
   unfold codOf; simp only [ColumnI.runT_nat]; rfl
 
-theorem codOf_refK (s : SState) (bs : List PBind) : codOf K ρ φ s bs (.ref .nat) = outK := by
+theorem codOf_refK (s : SState) (bs : List PBind) (rs : List Bool) : codOf K ρ φ s bs rs (.ref .nat) = outK := by
   unfold codOf; simp only [ColumnI.runT_nat]; rfl
 
 end

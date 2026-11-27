@@ -109,6 +109,13 @@ theorem fixDecls_substAbs (hD : DecInvariantAbs K.D σ w) (sc : List DeclInfo) (
     K.D.fixDecls sc (Term.substAbsList σ w ds) (Term.substAbs σ w c) = K.D.fixDecls sc ds c := by
   simp only [Decisions.fixDecls, paramDecls_substAbs K σ w hD, teleDecls_substAbs K σ w hD, hD.2.2.2.2.2.1]
 
+/-- Filling keeps which domain terms are borrows (`extendBy`'s `rs`, docs/31 D210). -/
+theorem isRefTy_substAbsList : ∀ (ds : List Term), (Term.substAbsList σ w ds).map Term.isRefTy = ds.map Term.isRefTy
+  | [] => rfl
+  | d :: ds => by
+    have hd : (Term.substAbs σ w d).isRefTy = d.isRefTy := by cases d <;> rfl
+    simp only [Term.substAbsList, List.map_cons, hd, isRefTy_substAbsList ds]
+
 /-- Substituting for an unknown keeps which parameters are borrows: `&A` stays `&A`, and nothing else becomes one. -/
 theorem psOf_substAbs : ∀ (bs : List PBind) (ds : List Term), psOf bs (Term.substAbsList σ w ds) = psOf bs ds
   | [], [] => rfl
@@ -157,19 +164,19 @@ theorem substAbs_not_ref {c : Term} (h : ∀ U, c ≠ .ref U) : ∀ U, Term.subs
 
 theorem codOf_substAbs_of {c : Term} (hc : ∀ hint, run K ρ ψ hint (Term.substAbs σ w c) = run K ρ ψ hint c)
     (hU : ∀ U, c = .ref U → ∀ hint, run K ρ ψ hint (Term.substAbs σ w U) = run K ρ ψ hint U) (s : SState)
-    (bs : List PBind) :
-    codOf K ρ ψ s bs (Term.substAbs σ w c) = codOf K ρ ψ s bs c := by
+    (bs : List PBind) (rs : List Bool) :
+    codOf K ρ ψ s bs rs (Term.substAbs σ w c) = codOf K ρ ψ s bs rs c := by
   by_cases h : ∃ U, c = .ref U
   · obtain ⟨U, rfl⟩ := h
     simp only [Term.substAbs, codOf, hU U rfl]
   · have h' : ∀ U, c ≠ .ref U := fun U e => h ⟨U, e⟩
-    rw [codOf_data K ρ ψ (substAbs_not_ref σ w h') s bs, codOf_data K ρ ψ h' s bs]
+    rw [codOf_data K ρ ψ (substAbs_not_ref σ w h') s bs rs, codOf_data K ρ ψ h' s bs rs]
     simp only [hc]
 
 theorem fixCod_substAbs_of {c : Term} (hc : ∀ hint, run K ρ ψ hint (Term.substAbs σ w c) = run K ρ ψ hint c)
     (hU : ∀ U, c = .ref U → ∀ hint, run K ρ ψ hint (Term.substAbs σ w U) = run K ρ ψ hint U) (s : SState)
-    (bs : List PBind) :
-    fixCod K ρ ψ s bs (Term.substAbs σ w c) = fixCod K ρ ψ s bs c := by
+    (bs : List PBind) (rs : List Bool) :
+    fixCod K ρ ψ s bs rs (Term.substAbs σ w c) = fixCod K ρ ψ s bs rs c := by
   unfold fixCod; rw [codOf_substAbs_of K ρ ψ σ w hc hU]
 
 end SubstAbsSame2
@@ -452,7 +459,7 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
           = K.D.piSort sc (.pi hs ds c) := fun sc => hF.dec.2.2.1 sc (.pi hs ds c)
       funext s
       show runT K ρ ψ tl hint (.pi hs (Term.substAbsList σ w ds) (Term.substAbs σ w c)) s = _
-      rw [run_pi_def, run_pi_def, hps, hds, hbs, codOf_substAbs_of K ρ ψ σ w (hc false) hU]
+      rw [run_pi_def, run_pi_def, hps, hds, hbs, isRefTy_substAbsList, codOf_substAbs_of K ρ ψ σ w (hc false) hU]
     | fix self hs ds c dec body =>
       have hc := fun tl' => runT_substAbsSame hF tl' c
       have hbs : ∀ s, bindsOf K ρ ψ s (Term.substAbsList σ w ds) = bindsOf K ρ ψ s ds := fun s => by
@@ -477,7 +484,7 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
         fun sc => hF.dec.1 sc (.fix self hs ds c dec body)
       have hco : capOrder (.fix self hs (Term.substAbsList σ w ds) (Term.substAbs σ w c) dec (Term.substAbs σ w body))
           = capOrder (.fix self hs ds c dec body) := capOrder_substAbs σ w (.fix self hs ds c dec body)
-      rw [run_fix_def, run_fix_def, hfl, hps, hds, hbs, codOf_substAbs_of K ρ ψ σ w (hc false) hU, fixCod_substAbs_of K ρ ψ σ w (hc false) hU, hmv,
+      rw [run_fix_def, run_fix_def, hfl, hps, hds, hbs, isRefTy_substAbsList, codOf_substAbs_of K ρ ψ σ w (hc false) hU, fixCod_substAbs_of K ρ ψ σ w (hc false) hU, hmv,
         teleDecls_substAbs K σ w hF.dec, hF.dec.2.2.2.2.2.1, fixG_bodyEq K ρ ψ (hb true), hco]
     | prim n args =>
       have hallT : ∀ t ∈ args, ∀ tl' hint, runT K ρ ψ tl' hint (Term.substAbs σ w t) = runT K ρ ψ tl' hint t :=
@@ -566,11 +573,11 @@ theorem runParams_substAbsSame (hF : AbsFillOK K ρ ψ σ w) (d : IndDecl) :
     simp only [Term.substAbsList, runParams, runT_substAbsSame hF false a, runParams_substAbsSame hF d as]
 
 theorem runBinds_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (ds : List Term) (s : SState) (dcs : List DeclInfo)
-    (pre : List PBind), runBinds K ρ ψ s dcs pre (Term.substAbsList σ w ds) = runBinds K ρ ψ s dcs pre ds
-  | [], _, _, _ => rfl
-  | d :: ds, s, dcs, pre => by
+    (pre : List PBind) (rs : List Bool), runBinds K ρ ψ s dcs pre rs (Term.substAbsList σ w ds) = runBinds K ρ ψ s dcs pre rs ds
+  | [], _, _, _, _ => rfl
+  | d :: ds, s, dcs, pre, rs => by
     have hd := runT_substAbsSame hF false d
-    have hds := fun pre' => runBinds_substAbsSame hF ds s dcs pre'
+    have hds := fun pre' rs' => runBinds_substAbsSame hF ds s dcs pre' rs'
     cases d with
     | ref A =>
       have hA := runT_substAbsSame hF false A

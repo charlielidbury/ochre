@@ -214,10 +214,10 @@ def RetKindG (K : RunCtx) (st : MState) : Prop :=
     gd.fn? = some (.fix self hs ds c dec body) →
     ∀ (ρ : Assignment) (φ : Future) (s : SState) (piT : TyM) (args : List Sem) (o : BodyOut),
       DomMembers K.dm.read (runDoms K ρ φ s ds) args →
-      fixG K ρ φ (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
-        (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c) piT
+      fixG K ρ φ (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
+        (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c) piT
         s.nextLoan dec body args = some o →
-      o.retLabel.isSome = (codOf K ρ φ s (bindsOf K ρ φ s ds) c).isRef
+      o.retLabel.isSome = (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c).isRef
 
 /-- **The recursion's rank, an entry condition** (MIXED: a condition on the assignment against the checker's [Rec]
 stack). While the definition `n` is checked at the stage bound `b` (`K.cur = some (n, b)`), every [Rec] entry of the

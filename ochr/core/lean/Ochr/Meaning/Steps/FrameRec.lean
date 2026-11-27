@@ -77,10 +77,10 @@ def FixEqG (K : RunCtx) (st : MState) : Prop :=
     gd.fn? = some (.fix self hs ds c dec body) →
     ∀ (ρ : Assignment) (φ : Future) (s : SState) (args : List Sem),
       DomMembers K.dm.read (runDoms K ρ φ s ds) args →
-      let fb := (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
+      let fb := (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
       let l := K.D.piSort (scopeOf s) (.pi hs ds c)
       let ps := runDoms K ρ φ s ds
-      let out := codOf K ρ φ s (bindsOf K ρ φ s ds) c
+      let out := codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c
       let piT := piTyAt K.dm.read l ps out
       let G := fixG K ρ φ fb l s ps out piT s.nextLoan dec body
       G args = fixBodyAt K ρ φ fb s ps out piT s.nextLoan body (closureAt K.dm.read l φ ps out G) args

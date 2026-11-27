@@ -141,7 +141,7 @@ theorem bindsOf_valNat (s : SState) (hd : K.D.paramDecls (scopeOf s) [.val .tNat
   simp only [runBinds, mkBind, runT_valNat]
   rfl
 
-theorem codOf_valNat (s : SState) (bs : List PBind) : codOf K ρ φ s bs (.val .tNat) = outI := by
+theorem codOf_valNat (s : SState) (bs : List PBind) (rs : List Bool) : codOf K ρ φ s bs rs (.val .tNat) = outI := by
   unfold codOf; simp only [run, runT_valNat]; rfl
 
 theorem runDoms_valNat (s : SState) (hd : K.D.paramDecls (scopeOf s) [.val .tNat] = [.other]) :
@@ -151,7 +151,7 @@ theorem runDoms_valNat (s : SState) (hd : K.D.paramDecls (scopeOf s) [.val .tNat
 /-- The binders and codomain the `.fix` clause reads the block's signature at, from the empty state. -/
 noncomputable def fbA (K : RunCtx) (ρ : Assignment) (φ : Future) : List PBind × PBind :=
   (bindsOf K ρ φ (emptyState 0) [.val .tNat],
-    fixCod K ρ φ (emptyState 0) (bindsOf K ρ φ (emptyState 0) [.val .tNat]) (.val .tNat),
+    fixCod K ρ φ (emptyState 0) (bindsOf K ρ φ (emptyState 0) [.val .tNat]) ([.val .tNat].map Term.isRefTy) (.val .tNat),
     K.D.typeDecl (K.D.teleDecls (scopeOf (emptyState 0)) [.val .tNat]) (.val .tNat))
 
 /-- **The block's function** (stage 1 at rank 0: the block does not recurse). -/

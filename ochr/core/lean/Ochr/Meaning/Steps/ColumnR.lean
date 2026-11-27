@@ -371,7 +371,7 @@ noncomputable def K0R (dm : DataModel) (D : Decisions) (φ : Future) : RunCtx :=
 /-- The binders and codomain the `.fix` clause reads `R`'s signature at, from the empty state. -/
 noncomputable def fbR (dm : DataModel) (D : Decisions) (ρ : Assignment) (φ : Future) : List PBind × PBind :=
   (bindsOf (K0R dm D φ) ρ φ (emptyState 0) [.nat],
-    fixCod (K0R dm D φ) ρ φ (emptyState 0) (bindsOf (K0R dm D φ) ρ φ (emptyState 0) [.nat]) .nat,
+    fixCod (K0R dm D φ) ρ φ (emptyState 0) (bindsOf (K0R dm D φ) ρ φ (emptyState 0) [.nat]) ([.nat].map Term.isRefTy) .nat,
     (K0R dm D φ).D.typeDecl ((K0R dm D φ).D.teleDecls (scopeOf (emptyState 0)) [.nat]) .nat)
 
 /-- **The reference's stages of `R`'s closure** (`RunCongr.fixStage` under the `.fix` clause's context). -/

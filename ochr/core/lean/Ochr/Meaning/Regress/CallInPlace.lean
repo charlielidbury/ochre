@@ -36,14 +36,14 @@ def psInc : List PiDom := [⟨true, fun _ => TyM.nat⟩]
 def outInc : PiCod := ⟨false, fun _ => TyM.unit⟩
 
 theorem psOf_inc (s : SState) (dcs : List DeclInfo) :
-    psOf (runBinds (Kc dm) ρ φ s dcs [] [.ref .nat]) [.ref .nat] = psInc := rfl
+    psOf (runBinds (Kc dm) ρ φ s dcs [] [] [.ref .nat]) [.ref .nat] = psInc := rfl
 
-theorem codOf_inc (s : SState) (bs : List PBind) : codOf (Kc dm) ρ φ s bs .unit = outInc := rfl
+theorem codOf_inc (s : SState) (bs : List PBind) (rs : List Bool) : codOf (Kc dm) ρ φ s bs rs .unit = outInc := rfl
 
 /-- `Inc`'s closure's frame data, as the `.fix` clause reads it in the empty frame. -/
 noncomputable def fbInc : List PBind × (List Sem → TyS) × DeclInfo :=
   (bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat],
-    fixCod (Kc dm) ρ φ (stateOf 0 []) (bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) .unit,
+    fixCod (Kc dm) ρ φ (stateOf 0 []) (bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) ([.ref .nat].map Term.isRefTy) .unit,
     (Kc dm).D.typeDecl ((Kc dm).D.teleDecls [] [.ref .nat]) .unit)
 
 /-- `Inc`'s type: `Π(x : &Nat). Unit`'s code. -/
@@ -693,11 +693,11 @@ def id1Clo : Value := .clo [] id1T []
 /-- `Id1`'s codomain: a returned borrow of `Nat`. -/
 def outId1 : PiCod := ⟨true, fun _ => TyM.nat⟩
 
-theorem codOf_id1 (s : SState) (bs : List PBind) : codOf (Kc dm) ρ φ s bs (.ref .nat) = outId1 := rfl
+theorem codOf_id1 (s : SState) (bs : List PBind) (rs : List Bool) : codOf (Kc dm) ρ φ s bs rs (.ref .nat) = outId1 := rfl
 
 noncomputable def fbId1 : List PBind × (List Sem → TyS) × DeclInfo :=
   (bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat],
-    fixCod (Kc dm) ρ φ (stateOf 0 []) (bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) (.ref .nat),
+    fixCod (Kc dm) ρ φ (stateOf 0 []) (bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) ([.ref .nat].map Term.isRefTy) (.ref .nat),
     (Kc dm).D.typeDecl ((Kc dm).D.teleDecls [] [.ref .nat]) (.ref .nat))
 
 noncomputable def piId1 : TyM := piTyAt dm.read 1 psInc outId1

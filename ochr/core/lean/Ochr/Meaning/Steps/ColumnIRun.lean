@@ -152,7 +152,7 @@ theorem column_I_run (hE : EvalInv) (hS : SuccInv) (hI : InvSteps) (hV : VarNumA
       subst hx
       obtain ⟨o, ho, hr, hf⟩ := fixBodyAt_I (dm := dm) (D := D) (ρ := ρ) (φ := φ) hE hS hI hV hN hlow
         (bindsOf (KI dm D φ) ρ φ (emptyState 0) [.nat],
-          fixCod (KI dm D φ) ρ φ (emptyState 0) (bindsOf (KI dm D φ) ρ φ (emptyState 0) [.nat]) .nat,
+          fixCod (KI dm D φ) ρ φ (emptyState 0) (bindsOf (KI dm D φ) ρ φ (emptyState 0) [.nat]) ([.nat].map Term.isRefTy) .nat,
           (KI dm D φ).D.typeDecl ((KI dm D φ).D.teleDecls (scopeOf (emptyState 0)) [.nat]) .nat) h1 h2 hDI hk hm htd hD h m
       refine ⟨o, ho, ⟨?_, fun i d hi hd => ?_⟩, by rw [hf]; rfl⟩
       · rw [hr]; exact ⟨m + 1, rfl⟩

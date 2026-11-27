@@ -19,6 +19,11 @@ finding of docs/31 D205: the checker recognises the function under check by its 
 the closure VALUE with its capture refined; the model knows a function under check only as a global, by NAME (`K.cur`;
 `Binding.refTy` reads a marked binding at `C.global` of its name; `meanV` of a closure value is its real closure). For a
 local recursive function the model has no stage, so its own check's simulation cannot start from a good related state.
+RULED by the lead (2026-11-27, lead32's brief R-A; to be main's D136, ruled pending its landing): NO model change. A
+recursive function is a top-level definition; a local function (a `fix` formed inside a body) is not recursive, as in
+Lean's kernel, which has no local recursion (the elaborator lifts `let rec`). So `K.cur` stays a global's name, `meanV` of
+a closure stays the real closure, and nothing about local recursive functions is owed. `GoH` and its guard are accepted
+until D136 lands; then `GoH` is a `reject def` (docs/31 D205).
 -/
 
 namespace Ochr.Meaning.Steps.Form.Master
@@ -142,8 +147,8 @@ def RecDescG (K : RunCtx) (st : MState) : Prop :=
       (∀ as : List Sem, TX.paramAt? K.dm.read as = TY.paramAt? K.dm.read as) →
       (∀ (bs : List Res) (s' : SState), fixRank (some j) (bs.map (·.1)) < fixRank (some j) args →
         callOf K.dm.read (X, .plain TX) bs s' = callOf K.dm.read (Y, .plain TY) bs s') →
-      let fb := (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
-      fixBodyAt K ρ φ fb s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c) TX s.nextLoan body X args =
-        fixBodyAt K ρ φ fb s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c) TY s.nextLoan body Y args
+      let fb := (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
+      fixBodyAt K ρ φ fb s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c) TX s.nextLoan body X args =
+        fixBodyAt K ρ φ fb s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c) TY s.nextLoan body Y args
 
 end Ochr.Meaning.Steps.Form.Master
