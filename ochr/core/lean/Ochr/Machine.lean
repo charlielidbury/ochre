@@ -4479,7 +4479,8 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   let mut fills := #[]
   let mut kept : Array (Place × Nat) := #[]
   let mut selfs : List (Nat × Value) := []
-  -- every capture's argument, its domain, whether it takes it by `&`, and whether the text keeps it
+  -- every capture's argument, its domain, whether its declared type is a borrow (`&` taken, or a
+  -- borrow variable moved), and whether the text keeps it
   let mut takes : Array (Term × Value × Bool × Bool) := #[]
   for (q, mode) in capsS do
     let T ← placeType fuel' q
@@ -4505,18 +4506,21 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
         pure (Value.tRef T, Term.borrow q)
       -- D53: a place the block only reads is read in place, not consumed
       | _ => pure (T, Term.prim "inplace" [Term.place q])
+    -- the argument's declared reading, as a call's argument's (`declOf` of the term taken)
+    let ad := match mode with | 1 => DeclInfo.ref dq | 2 => dq | _ => .other
     match selfFn q, q with
     | some fn, .var o =>
       selfs := (o, fn) :: selfs
-      takes := takes.push (arg, dom, mode == 1, false)
+      takes := takes.push (arg, dom, ad matches .ref _, false)
     | _, _ =>
       rd := rd.push (if mode == 1 then (DeclInfo.ref dq, Value.tRef T) else (dq, T))
       pflags := pflags.push pflag
       hints := hints.push (Hint.mk ((← ppPlace q).replace "*" "" |>.replace "(" "" |>.replace ")" "" |>.replace "." "_"))
-      -- D80 (R3): a fill of a place declared `Unit` taken by `&` is `()`, read off the place
-      fills := fills.push (mode == 1 && dq == .unit)
+      -- D80 (R3): the fill of a place declared `Unit`, lent through a borrow the block takes, is
+      -- `()`, read off what it takes (`&q` with `q` declared `Unit`, or a borrow variable `&Unit`)
+      fills := fills.push (ad == .ref .unit)
       kept := kept.push (q, mode)
-      takes := takes.push (arg, dom, mode == 1, true)
+      takes := takes.push (arg, dom, ad matches .ref _, true)
   let capsL := kept.toList
   let n := capsL.length
   let mt := if split.isEmpty then mt else mt.selectArms (fun p => (split.find? (placeEq ·.1 p)).map (·.2)) 0
@@ -4556,8 +4560,8 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   -- kept (its value is the global the text names)
   let f1 ← topIdx
   let mut argTys : Array (Option Value) := #[]
-  for (a, dom, byRef, keep) in takes do
-    demand byRef
+  for (a, dom, isRef, keep) in takes do
+    demand isRef
     let (w, T) ← stmtArgIf fuel' allProof a (eval fuel' false a)
     if keep then
       pushTemp w (T <|> some dom) "closeBlock"
