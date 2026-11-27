@@ -590,6 +590,59 @@ theorem run_fix_def (tl : Bool) (hint : TyS) (self : Hint) (hs : List Hint) (ds 
   dsimp only
   rfl
 
+/-! ### The head call of a sealed program at a closure value (docs/31 D233, ruled)
+
+No closure is formed: the closure's function is asked at the call's arguments only (`cloPt`: the function at them, the
+trivial output elsewhere, typed at the codomain weakened off them), the body run as the `.fix` clause runs it, from the
+closure value's forming state (`cloForm`), its own binding the placeholder `⋆` with no type (ruling (alpha)). -/
+
+/-- The closure value's forming state (`meanV`'s `.clo` clause). -/
+noncomputable def cloForm (caps : List Value) (rd : List (DeclInfo × Value)) : SState :=
+  stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))
+
+/-- Its binders, body hint and codomain reading, as the `.fix` clause reads them there. -/
+noncomputable def cloFb (s₀ : SState) (ds : List Term) (c : Term) : List PBind × PBind :=
+  (bindsOf K ρ φ s₀ ds, fixCod K ρ φ s₀ (bindsOf K ρ φ s₀ ds) (ds.map Term.isRefTy) c,
+    K.D.typeDecl (K.D.teleDecls (scopeOf s₀) ds) c)
+
+/-- The rank that is `0` exactly at the arguments given. -/
+noncomputable def ptRank (a : List Sem) : List Sem → Nat := fun acc => if acc = a then 0 else 1
+
+/-- The closure's function: its body's run at the arguments, its own binding the placeholder. -/
+noncomputable def cloG (s₀ : SState) (ds : List Term) (c : Term) (body : Term) : List Sem → Option BodyOut :=
+  fixBodyAt K ρ φ (cloFb K ρ φ s₀ ds c) s₀ (runDoms K ρ φ s₀ ds)
+    (codOf K ρ φ s₀ (bindsOf K ρ φ s₀ ds) (ds.map Term.isRefTy) c) TyM.err s₀.nextLoan body .proof
+
+/-- The callee the head call applies at `a`: the closure of the function at `a` and the trivial output elsewhere. -/
+noncomputable def cloPt (s₀ : SState) (hs : List Hint) (ds : List Term) (c : Term) (body : Term) (a : List Sem) : Res :=
+  (closureAt K.dm.read (K.D.piSort (scopeOf s₀) (.pi hs ds c)) φ (runDoms K ρ φ s₀ ds)
+      (weakCod (K.D.piSort (scopeOf s₀) (.pi hs ds c)) (ptRank a) 1 (codOf K ρ φ s₀ (bindsOf K ρ φ s₀ ds) (ds.map Term.isRefTy) c))
+      (stageFn (K.D.piSort (scopeOf s₀) (.pi hs ds c)) (runDoms K ρ φ s₀ ds) (ptRank a) 1 (cloG K ρ φ s₀ ds c body)),
+    .plain (piTyAt K.dm.read (K.D.piSort (scopeOf s₀) (.pi hs ds c)) (runDoms K ρ φ s₀ ds)
+      (weakCod (K.D.piSort (scopeOf s₀) (.pi hs ds c)) (ptRank a) 1 (codOf K ρ φ s₀ (bindsOf K ρ φ s₀ ds) (ds.map Term.isRefTy) c))))
+
+/-- The type the arguments are run at: the closure's function type. -/
+noncomputable def cloTy (s₀ : SState) (hs : List Hint) (ds : List Term) (c : Term) : TyM :=
+  piTyAt K.dm.read (K.D.piSort (scopeOf s₀) (.pi hs ds c)) (runDoms K ρ φ s₀ ds)
+    (codOf K ρ φ s₀ (bindsOf K ρ φ s₀ ds) (ds.map Term.isRefTy) c)
+
+/-- **The clause, named.** -/
+theorem run_cloCall_def (tl : Bool) (hint : TyS) (caps : List Value) (self : Hint) (hs : List Hint) (ds : List Term)
+    (c : Term) (dec : Option Nat) (body : Term) (rd : List (DeclInfo × Value)) (args : List Term) :
+    runT K ρ φ tl hint (.call (.val (.clo caps (.fix self hs ds c dec body) rd)) args true) = fun s =>
+      SM.erasedIf (K.D.flags (scopeOf s) (.call (.val (.clo caps (.fix self hs ds c dec body) rd)) args true)) (fun s' =>
+        match runArgs K ρ φ (K.D.flags (scopeOf s) (.call (.val (.clo caps (.fix self hs ds c dec body) rd)) args true)).1
+            (cloTy K ρ φ (cloForm K ρ φ caps rd) hs ds c) [] args s' with
+        | some (as, s₁) =>
+          if CapsOk K.dm.read (capsVals K ρ φ caps) (capsTys K ρ φ rd) ∧
+              (cloPt K ρ φ (cloForm K ρ φ caps rd) hs ds c body (as.map (·.1))).1 ∈ₛ[K.dm.read]
+                (cloPt K ρ φ (cloForm K ρ φ caps rd) hs ds c body (as.map (·.1))).2.m ∧
+              BorrowArgsTyped K.dm.read (cloPt K ρ φ (cloForm K ρ φ caps rd) hs ds c body (as.map (·.1))) as s₁
+          then callOf K.dm.read (cloPt K ρ φ (cloForm K ρ φ caps rd) hs ds c body (as.map (·.1))) as s₁ else none
+        | none => none) s := by
+  rw [runT]
+  rfl
+
 end FixDefs
 
 /-! ## Forming the closure's frame: the cells are ordered at the start -/
@@ -1219,7 +1272,87 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
       apply SM.bind_congr (runParams_congrE hK d args 0 [] s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
       intro _ _ _; rfl
   | tl, .call f args hd, hint, s, L, hφ, ht, hi => by
-    rw [runT, runT]
+    rcases call_cases f hd with hsp | hold
+    · -- docs/31 D233: a sealed closure head; the closure's runs at the futures agreeing on its own loans. Taken apart by
+      -- `cases` on the head (not a substitution), so that the recursive calls below are on its parts
+      cases f
+      all_goals try (obtain ⟨_, _, _, _, _, _, _, _, h1, -⟩ := hsp; cases h1; done)
+      rename_i v
+      cases v
+      all_goals try (obtain ⟨_, _, _, _, _, _, _, _, h1, -⟩ := hsp; cases h1; done)
+      rename_i caps t rd
+      cases t
+      all_goals try (obtain ⟨_, _, _, _, _, _, _, _, h1, -⟩ := hsp; cases h1; done)
+      rename_i self hs ds c dec body
+      obtain ⟨_, _, _, _, _, _, _, _, -, rfl⟩ := hsp
+      have hv : ∀ l, (Value.clo caps (.fix self hs ds c dec body) rd).hasLoanM l = true → φ l = φ' l :=
+        fun l h => hφ l (ht l (by simp [Value.hasLoanM] at h; simp [Term.anyAtom, h]))
+      have hfs : cloForm K ρ φ caps rd = cloForm K ρ φ' caps rd := by
+        unfold cloForm
+        rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
+          capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])]
+      have hcv := capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])
+      have hct := capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])
+      have hi₀ : RInv (fun l => φ l = φ' l) (cloForm K ρ φ' caps rd) := rinv_stateOf _ _ _
+      have hta : ∀ l, Term.anyAtom (· == .loan l) (.fix self hs ds c dec body) = true → φ l = φ' l :=
+        fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])
+      have hbs : bindsOf K ρ φ (cloForm K ρ φ' caps rd) ds = bindsOf K ρ φ' (cloForm K ρ φ' caps rd) ds :=
+        runBinds_congrE hK _ _ (fun _ h => h) hi₀ _ ds [] [] (fun l h => hta l (by simp [Term.anyAtom, h]))
+      have hds : runDoms K ρ φ (cloForm K ρ φ' caps rd) ds = runDoms K ρ φ' (cloForm K ρ φ' caps rd) ds := by
+        unfold runDoms; rw [hbs]
+      have hc : ∀ bs rs acc, runT K ρ φ false (.plain .err) c (extendBy (cloForm K ρ φ' caps rd) bs rs acc) =
+          runT K ρ φ' false (.plain .err) c (extendBy (cloForm K ρ φ' caps rd) bs rs acc) :=
+        fun bs rs acc => runT_congrE hK false c _ _ _ (fun _ h => h) (fun l h => hta l (by simp [Term.anyAtom, h]))
+          (rinv_extendBy hi₀ bs rs acc)
+      have hout : ∀ bs rs, codOf K ρ φ (cloForm K ρ φ' caps rd) bs rs c = codOf K ρ φ' (cloForm K ρ φ' caps rd) bs rs c := by
+        intro bs rs
+        cases c with
+        | ref U =>
+          have hU : ∀ bs rs acc, runT K ρ φ false (.plain .err) U (extendBy (cloForm K ρ φ' caps rd) bs rs acc) =
+              runT K ρ φ' false (.plain .err) U (extendBy (cloForm K ρ φ' caps rd) bs rs acc) :=
+            fun bs rs acc => runT_congrE hK false U _ _ _ (fun _ h => h) (fun l h => hta l (by simp [Term.anyAtom, h]))
+              (rinv_extendBy hi₀ bs rs acc)
+          simp only [codOf, hU]
+        | _ => simp only [codOf, hc]
+      have hb : ∀ (hint : TyS) (s₂ : SState), RInv (fun l => φ l = φ' l) s₂ →
+          runT K ρ φ true hint body s₂ = runT K ρ φ' true hint body s₂ :=
+        fun hint s₂ hi₂ => runT_congrE hK true body hint s₂ _ (fun _ h => h) (fun l h => hta l (by simp [Term.anyAtom, h])) hi₂
+      have hfb : cloFb K ρ φ (cloForm K ρ φ' caps rd) ds c = cloFb K ρ φ' (cloForm K ρ φ' caps rd) ds c := by
+        unfold cloFb fixCod; rw [hbs, hout]
+      have hG : cloG K ρ φ (cloForm K ρ φ' caps rd) ds c body = cloG K ρ φ' (cloForm K ρ φ' caps rd) ds c body := by
+        unfold cloG; rw [hfb, hds, hbs, hout]
+        funext a
+        exact fixBodyAt_congr K ρ hK (fun _ h => h) hb hi₀ _ _ _ _ a
+      have hpt : ∀ a, cloPt K ρ φ (cloForm K ρ φ' caps rd) hs ds c body a = cloPt K ρ φ' (cloForm K ρ φ' caps rd) hs ds c body a := by
+        intro a
+        unfold cloPt
+        rw [hG, hds, hbs, hout]
+        congr 1
+        refine closureAt_congr K.dm.read (L := fun l => φ l = φ' l) (fun _ h => h) _ _ _ _ ?_
+        intro args o h
+        unfold stageFn at h
+        split at h
+        · exact fixBodyAt_finals K ρ hK hi₀ _ _ _ body _ args o h
+        · cases h
+          intro c' hc
+          obtain ⟨x, rfl⟩ := refFinals_const _ args c' hc
+          show match (codOf K ρ φ' (cloForm K ρ φ' caps rd) (bindsOf K ρ φ' (cloForm K ρ φ' caps rd) ds) (ds.map Term.isRefTy) c).isRef with
+            | false => FT (fun l => φ l = φ' l) (fun _ => x)
+            | true => ∀ k', some 0 = some k' → FT (fun y => (fun l => φ l = φ' l) y ∨ y = k') (fun _ => x)
+          cases (codOf K ρ φ' (cloForm K ρ φ' caps rd) (bindsOf K ρ φ' (cloForm K ρ φ' caps rd) ds) (ds.map Term.isRefTy) c).isRef
+          · exact FT.const _ _
+          · exact fun _ _ => FT.const _ _
+      have hty : cloTy K ρ φ (cloForm K ρ φ' caps rd) hs ds c = cloTy K ρ φ' (cloForm K ρ φ' caps rd) hs ds c := by
+        unfold cloTy; rw [hds, hbs, hout]
+      rw [run_cloCall_def, run_cloCall_def, hfs, hcv, hct]
+      dsimp only
+      refine SM.erasedIf_congr ?_
+      rw [hty, runArgs_congrE hK _ _ args [] s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi]
+      split
+      · rename_i as s₁ _
+        rw [hpt]
+      · rfl
+    rw [runT_call_old K ρ φ tl hint f args hd hold, runT_call_old K ρ φ' tl hint f args hd hold]
     dsimp only
     refine SM.erasedIf_congr ?_
     -- the head: a place in place, anything else by its run

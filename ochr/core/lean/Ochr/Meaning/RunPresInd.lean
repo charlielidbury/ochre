@@ -970,7 +970,24 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
           cases hl
       · cases h
   | tl, .call f args hd, hint, s, s', r, hi, h => by
-    rw [runT] at h
+    rcases call_cases f hd with ⟨caps, self, hs, ds, c, dec, body, rd, rfl, rfl⟩ | hold
+    · -- docs/31 D233: a sealed closure head: the arguments, then `callOf` (no head run)
+      rw [runT] at h
+      dsimp only at h
+      rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
+      rotate_left
+      · exact rinv_pure L hi hl
+      split at h
+      · rename_i as s₁ h3
+        obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK _ _ args [] s s₁ as hi h3
+        obtain ⟨-, h4⟩ := open Classical in ite_none_some h
+        unfold callOf at h4
+        split at h4 <;> first
+          | exact ⟨(callOfL_rinv L _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ hi₂ h4).2,
+              e₂.trans (callOfL_envLe _ _ _ _ h4), o₂.trans e₂ (callOfL_ordKeep _ _ _ _ hi₂ h4)⟩
+          | cases h4
+      · cases h
+    rw [runT_call_old K ρ φ tl hint f args hd hold] at h
     dsimp only at h
     rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
     rotate_left

@@ -116,7 +116,10 @@ theorem runT_hintM : ∀ (tl : Bool) (t : Term) (h h' : TyS), h.m = h'.m → run
     first | rfl | (rw [runT, runT]) | (rw [runT, runT]; rfl)
   | tl, .fix sf hs ds c dec b, h, h', _ => by
     first | rfl | (rw [runT, runT]) | (rw [runT, runT]; rfl)
-  | tl, .call f args hd, h, h', _ => rfl
+  | tl, .call f args hd, h, h', _ => by
+    rcases call_cases f hd with ⟨caps, self, hs, ds, c, dec, body, rd, rfl, rfl⟩ | hold
+    · rw [runT, runT]
+    · rw [runT_call_old K ρ φ tl _ f args hd hold, runT_call_old K ρ φ tl _ f args hd hold]
   | tl, .nat, h, h', _ => rfl
   | tl, .zero, h, h', _ => rfl
   | tl, .succ t, h, h', _ => rfl

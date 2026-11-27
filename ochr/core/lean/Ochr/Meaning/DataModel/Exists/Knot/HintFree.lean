@@ -66,8 +66,13 @@ theorem runT_hintFree (K : RunCtx) (ρ : Assignment) (φ : Future) (H H' : TyS) 
     split <;> simp_all
   | .place _, _ | .borrow _, _ | .assign _ _, _ | .letIn _ _ _, _ | .seq _ _, _ | .matchNat _ _ _, _
   | .matchInd _ _ _, _ | .tind _ _, _ | .const _, _ | .sort _, _ | .pi _ _ _, _ | .fix _ _ _ _ _ _, _
-  | .call _ _ _, _ | .nat, _ | .unit, _ | .zero, _ | .tt, _ | .succ _, _ | .eq _ _ _, _ | .cong _ _, _
+  | .nat, _ | .unit, _ | .zero, _ | .tt, _ | .succ _, _ | .eq _ _ _, _ | .cong _ _, _
   | .ref _, _ | .id _ _ _, _ | .ascribe _ _, _ => by
     rw [runT, runT] <;> simp only [tailHint_false]
+  -- the call clause reads no hint, at a sealed closure head (docs/31 D233) as elsewhere
+  | .call f args hd, _ => by
+    rcases call_cases f hd with ⟨caps, self, hs, ds, c, dec, body, rd, rfl, rfl⟩ | hold
+    · rw [runT, runT]
+    · rw [runT_call_old K ρ φ false H f args hd hold, runT_call_old K ρ φ false H' f args hd hold]
 
 end Ochr.Meaning.DataModel.Exists.Knot

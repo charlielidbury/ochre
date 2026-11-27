@@ -160,7 +160,60 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
       apply SM.bind_congr (runParams_congrA d args 0 [] s fun σ h => ha σ (by simp [Term.anyAtom, h]))
       intro _ _ _; rfl
   | tl, .call f args hd, hint, s, ha => by
-    rw [runT, runT]
+    rcases call_cases f hd with hsp | hold
+    · -- docs/31 D233: a sealed closure head, taken apart by `cases` so the recursive calls are on its parts
+      cases f
+      all_goals try (obtain ⟨_, _, _, _, _, _, _, _, h1, -⟩ := hsp; cases h1; done)
+      rename_i v
+      cases v
+      all_goals try (obtain ⟨_, _, _, _, _, _, _, _, h1, -⟩ := hsp; cases h1; done)
+      rename_i caps t rd
+      cases t
+      all_goals try (obtain ⟨_, _, _, _, _, _, _, _, h1, -⟩ := hsp; cases h1; done)
+      rename_i self hs ds c dec body
+      obtain ⟨_, _, _, _, _, _, _, _, -, rfl⟩ := hsp
+      have hcv : capsVals K ρ φ caps = capsVals (KA K Δ') ρ' φ caps :=
+        capsVals_congrA caps fun σ h => ha σ (by simp [Term.anyAtom, Value.anyAtom, h])
+      have hct : capsTys K ρ φ rd = capsTys (KA K Δ') ρ' φ rd :=
+        capsTys_congrA rd fun σ h => ha σ (by simp [Term.anyAtom, Value.anyAtom, h])
+      have hfs : cloForm K ρ φ caps rd = cloForm (KA K Δ') ρ' φ caps rd := by unfold cloForm; rw [hcv, hct]
+      have hbs : bindsOf K ρ φ (cloForm (KA K Δ') ρ' φ caps rd) ds = bindsOf (KA K Δ') ρ' φ (cloForm (KA K Δ') ρ' φ caps rd) ds :=
+        runBinds_congrA _ _ ds [] [] (fun σ h => ha σ (by simp [Term.anyAtom, Value.anyAtom, h]))
+      have hds : runDoms K ρ φ (cloForm (KA K Δ') ρ' φ caps rd) ds = runDoms (KA K Δ') ρ' φ (cloForm (KA K Δ') ρ' φ caps rd) ds := by
+        unfold runDoms; rw [hbs]
+      have hc : ∀ bs rs acc, runT K ρ φ false (.plain .err) c (extendBy (cloForm (KA K Δ') ρ' φ caps rd) bs rs acc) =
+          runT (KA K Δ') ρ' φ false (.plain .err) c (extendBy (cloForm (KA K Δ') ρ' φ caps rd) bs rs acc) :=
+        fun bs rs acc => runT_congrA false c _ _ fun σ h => ha σ (by simp [Term.anyAtom, Value.anyAtom, h])
+      have hb : ∀ (hint : TyS) (s₂ : SState), runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂ :=
+        fun hint s₂ => runT_congrA true body hint s₂ fun σ h => ha σ (by simp [Term.anyAtom, Value.anyAtom, h])
+      have hout : ∀ bs rs, codOf K ρ φ (cloForm (KA K Δ') ρ' φ caps rd) bs rs c = codOf (KA K Δ') ρ' φ (cloForm (KA K Δ') ρ' φ caps rd) bs rs c := by
+        intro bs rs
+        cases c with
+        | ref U =>
+          have hU : ∀ bs rs acc, runT K ρ φ false (.plain .err) U (extendBy (cloForm (KA K Δ') ρ' φ caps rd) bs rs acc) =
+              runT (KA K Δ') ρ' φ false (.plain .err) U (extendBy (cloForm (KA K Δ') ρ' φ caps rd) bs rs acc) :=
+            fun bs rs acc => runT_congrA false U _ _ fun σ h => ha σ (by simp [Term.anyAtom, Value.anyAtom, h])
+          simp only [codOf, hU]
+        | _ => simp only [codOf, hc]
+      have hfb : cloFb K ρ φ (cloForm (KA K Δ') ρ' φ caps rd) ds c = cloFb (KA K Δ') ρ' φ (cloForm (KA K Δ') ρ' φ caps rd) ds c := by
+        unfold cloFb fixCod; rw [hbs, hout]
+      have hG : cloG K ρ φ (cloForm (KA K Δ') ρ' φ caps rd) ds c body = cloG (KA K Δ') ρ' φ (cloForm (KA K Δ') ρ' φ caps rd) ds c body := by
+        unfold cloG; rw [hfb, hds, hbs, hout]
+        funext a
+        exact fixBodyAt_congrA K Δ' ρ ρ' φ hb _ _ _ _ _ _ a
+      have hpt : ∀ a, cloPt K ρ φ (cloForm (KA K Δ') ρ' φ caps rd) hs ds c body a =
+          cloPt (KA K Δ') ρ' φ (cloForm (KA K Δ') ρ' φ caps rd) hs ds c body a := by
+        intro a; unfold cloPt; rw [hG, hds, hbs, hout]
+      have hty : cloTy K ρ φ (cloForm (KA K Δ') ρ' φ caps rd) hs ds c = cloTy (KA K Δ') ρ' φ (cloForm (KA K Δ') ρ' φ caps rd) hs ds c := by
+        unfold cloTy; rw [hds, hbs, hout]
+      rw [run_cloCall_def, run_cloCall_def, hfs, hcv, hct]
+      dsimp only
+      refine SM.erasedIf_congr ?_
+      rw [hty, runArgs_congrA _ _ args [] s fun σ h => ha σ (by simp [Term.anyAtom, h])]
+      split
+      · rw [hpt]
+      · rfl
+    rw [runT_call_old K ρ φ tl hint f args hd hold, runT_call_old (KA K Δ') ρ' φ tl hint f args hd hold]
     dsimp only
     refine SM.erasedIf_congr ?_
     have hhead : SM.headOf f (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT K ρ φ false (.plain .err) f) s

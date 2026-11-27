@@ -1522,6 +1522,56 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- STRICT: the closure is a member of its function type (else it is `err`, `closureL_mem`)
     SM.strictS K.dm.read (fun s' => some ((closureOf g, .plain piT), s')) s'
     else none) s
+  | .call (.val (.clo caps (.fix self hs ds c dec body) rd)) args true => fun s =>
+    let fl := K.D.flags (scopeOf s) (.call (.val (.clo caps (.fix self hs ds c dec body) rd)) args true)
+    -- a statement call runs on a copy that is thrown away (E1; `Decisions.flags`, aligned), and
+    -- its result carries no label (m2-proofs' finding 6): `SM.stmtIf`, as every clause
+    -- a proof call is never applied: its value is `⋆` (P5; `Machine.callFn` at class 2), as
+    -- every proof's is (`SM.erasedIf`)
+    SM.erasedIf fl (fun s =>
+      -- docs/31 D233 (ruled): THE HEAD CALL OF A SEALED PROGRAM WHOSE HEAD IS A CLOSURE VALUE (a stuck block, or a
+      -- closed-off call of a closure) is read with no closure formed: the closure's function is asked AT THESE
+      -- ARGUMENTS ONLY. A block is checked only at its captured values (`Steps/StageBlockCE`: `NTr`'s block is partial
+      -- elsewhere; under the knot's stage contexts every block calling the definition is), so the strict closure of
+      -- the `.fix` clause, an element of its function type, is `err` there. The body runs as the `.fix` clause runs
+      -- it (`bodyAt`, from the closure's forming state), its OWN BINDING a placeholder (`⋆`, no type: ruling (alpha),
+      -- main's D139: a block never names itself), and the output is applied as `callOf` applies a closure's, through
+      -- the closure that is the function at these arguments and the trivial output elsewhere (`stageFn` at the rank
+      -- `0` exactly here, `weakCod`): strict at these arguments only. Where the closure value IS a member this is
+      -- the application of its function (the body ignores its own binding).
+      let s₀ := stateOf 0 (capsState (capsVals caps) (capsTys rd))
+      let bs := runBinds s₀ (K.D.paramDecls (scopeOf s₀) ds) [] [] ds
+      let ps := psOf bs ds
+      let out : PiCod := match c with
+        | .ref U => ⟨true, fun acc => match runT false (.plain TyM.err) U (extendBy s₀ bs (ds.map Term.isRefTy) acc) with
+          | some ((v, _), _) => v.asTy
+          | none => TyM.err⟩
+        | c => ⟨false, fun acc => match runT false (.plain TyM.err) c (extendBy s₀ bs (ds.map Term.isRefTy) acc) with
+          | some ((v, _), _) => v.asTy
+          | none => TyM.err⟩
+      let l := K.D.piSort (scopeOf s₀) (.pi hs ds c)
+      let cd := K.D.typeDecl (K.D.teleDecls (scopeOf s₀) ds) c
+      let g (args' : List Sem) : Option BodyOut :=
+        let s₁ := s₀.under.pushBind { ty := .plain TyM.err, val := fun _ => .proof, decl := .pi cd }
+        let (s₂, _, cells) := (args'.zip ps).foldl (paramPush bs) (s₁, [], [])
+        match runT true (.plain (out.cod args')) body s₂ with
+        | some ((r, R), s₃) =>
+          let keep : Option Nat := if out.isRef then R.label else none
+          if EndsOk K φ (s₃.liveLabels.filter fun l => l ≥ s₀.nextLoan ∧ some l ≠ keep) s₃ then
+            let s₄ := (s₃.liveLabels.filter fun l => l ≥ s₀.nextLoan ∧ some l ≠ keep).foldl SState.endLabel s₃
+            some ⟨r, cells.map fun c => s₄.valAt c, R.label⟩
+          else none
+        | none => none
+      match runArgs fl.1 (piTyAt K.dm.read l ps out) [] args s with
+      | some (as, s₁) =>
+        let rk : List Sem → Nat := fun acc => if acc = as.map (·.1) then 0 else 1
+        let fv : Res := (closureAt K.dm.read l φ ps (weakCod l rk 1 out) (stageFn l ps rk 1 g),
+          .plain (piTyAt K.dm.read l ps (weakCod l rk 1 out)))
+        -- STRICT: the captures at their recorded types; the function good at these arguments (its closure a
+        -- member); a borrow argument's label at its parameter's content type
+        if CapsOk K.dm.read (capsVals caps) (capsTys rd) ∧ fv.1 ∈ₛ[K.dm.read] fv.2.m ∧ BorrowArgsTyped K.dm.read fv as s₁
+        then callOf K.dm.read fv as s₁ else none
+      | none => none) s
   | .call f args hd => fun s =>
     let fl := K.D.flags (scopeOf s) (.call f args hd)
     -- a statement call runs on a copy that is thrown away (E1; `Decisions.flags`, aligned), and
@@ -1998,6 +2048,30 @@ induction on the value; every clause but the code-dependent ones is the same tex
 theorem meanV_eq_mean (hint : TyS) (v : Value) :
     Value.mean K.dm (codeMeaning K) K.Γ ρ φ hint v = meanV K ρ φ hint v :=
   meanV_eq_mean_aux K ρ φ hint v
+
+/-- **The call clause away from a sealed closure head** (docs/31 D233): every call but the head call of a sealed program
+whose head is a closure value runs as before (the head, the arguments, `callOf`). -/
+theorem runT_call_old (tl : Bool) (hint : TyS) (f : Term) (args : List Term) (hd : Bool)
+    (h : ∀ caps self hs ds c dec body rd, f = .val (.clo caps (.fix self hs ds c dec body) rd) → hd = false) :
+    runT K ρ φ tl hint (.call f args hd) = fun s => SM.erasedIf (K.D.flags (scopeOf s) (.call f args hd)) (do
+      let fv ← SM.headOf f (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT K ρ φ false (.plain TyM.err) f)
+      let as ← runArgs K ρ φ (K.D.flags (scopeOf s) (.call f args hd)).1 fv.2.m [] args
+      fun s => if BorrowArgsTyped K.dm.read fv as s then callOf K.dm.read fv as s else none) s := by
+  rw [runT]
+  all_goals first
+    | rfl
+    | (intro caps self hs ds c dec body rd hf hhd; have := h caps self hs ds c dec body rd hf; simp_all)
+
+/-- A call is the head call of a sealed program at a closure value, or the call clause runs as before. -/
+theorem call_cases (f : Term) (hd : Bool) :
+    (∃ caps self hs ds c dec body rd, f = .val (.clo caps (.fix self hs ds c dec body) rd) ∧ hd = true) ∨
+    (∀ caps self hs ds c dec body rd, f = .val (.clo caps (.fix self hs ds c dec body) rd) → hd = false) := by
+  by_cases h : ∃ caps self hs ds c dec body rd, f = .val (.clo caps (.fix self hs ds c dec body) rd) ∧ hd = true
+  · exact .inl h
+  · refine .inr fun caps self hs ds c dec body rd hf => ?_
+    cases hd
+    · rfl
+    · exact absurd ⟨caps, self, hs, ds, c, dec, body, rd, hf, rfl⟩ h
 
 end
 
