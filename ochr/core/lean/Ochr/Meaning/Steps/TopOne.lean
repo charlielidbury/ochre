@@ -663,4 +663,44 @@ theorem falseConst_one : FalseConstG q F := by
   rw [hf.2.2] at h
   cases h
 
+/-! ## `ResolveG` at `one`'s program: the resolution half -/
+
+/-- The item the `i`-th declaration resolves to. -/
+def itOf (i : Nat) : Item := match resAt i with
+  | .ok (.ok it) => it
+  | _ => default
+
+/-- The resolved items. -/
+def itemsQ : List Item := [itOf 0, itOf 1, itOf 2, itOf 3, itOf 4]
+
+theorem resAt_itOf (i : Nat) (h : ∃ it, resAt i = .ok (.ok it)) : resAt i = .ok (.ok (itOf i)) := by
+  obtain ⟨it, e⟩ := h
+  unfold itOf; rw [e]
+
+/-- **The program resolves** (PROVED, by the kernel's run of resolution): the half of `ResolveG` that is about
+resolution. -/
+theorem resolves_one : ResolvesTo pq F itemsQ := by
+  refine ⟨by rw [pq_length]; rfl, fun i d it hd hit => ⟨_, ?_, rfl⟩⟩
+  have hi : i < 5 := by rw [← pq_length]; exact (List.getElem?_eq_some_iff.1 hd).1
+  have hdd : d = pq.getD i default := by rw [List.getD_eq_getElem?_getD, hd]; rfl
+  subst hdd
+  obtain ⟨h0, h1, h2, h3⟩ := res_ind
+  have hex : ∃ it', resAt i = .ok (.ok it') := by
+    match i, hi with
+    | 0, _ => obtain ⟨d, e⟩ := ind_of h0; exact ⟨_, e⟩
+    | 1, _ => obtain ⟨d, e⟩ := ind_of h1; exact ⟨_, e⟩
+    | 2, _ => obtain ⟨d, e⟩ := ind_of h2; exact ⟨_, e⟩
+    | 3, _ => obtain ⟨d, e⟩ := ind_of h3; exact ⟨_, e⟩
+    | 4, _ => exact ⟨_, oneDef_of res_one⟩
+  have e := resAt_itOf i hex
+  have hit' : it = itOf i := by
+    match i, hi, hit with
+    | 0, _, h => injection h with h; exact h.symm
+    | 1, _, h => injection h with h; exact h.symm
+    | 2, _, h => injection h with h; exact h.symm
+    | 3, _, h => injection h with h; exact h.symm
+    | 4, _, h => injection h with h; exact h.symm
+  rw [hit']
+  exact e
+
 end Ochr.Meaning.Steps.Form.Top.One

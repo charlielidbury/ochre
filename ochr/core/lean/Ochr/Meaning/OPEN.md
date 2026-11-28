@@ -14,6 +14,14 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE ACCEPTANCE TEST AT `def one : Nat := 1` (lead45, 2026-11-28, `spine-lead45`; docs/31 D258)
+
+- PROVED at `one` (kernel-checked, `Steps/TopOne.lean`): `ConstCheckAt` (restated up to `LocsEq`), `ConstStartAt`, `ConstLeafAt`, `ConstMeanAt`, `GlobGrowG` (for a constant), `FalseConstG`, `ResolveG`'s resolution half. `FixG` vacuous there.
+- `ResolveG`'s per-item acceptance: unread at any program; blocked for computation by `firstLiveLoanOnPath`/`Value.updAt` (well-founded recursion, stuck in the kernel).
+- `one`'s membership with no step hypothesis: not derived; needs `EvalAt` at `S(Z)` (StepSucc assumes `SuccStrictG`, `SuccMeanG`, `SuccFlightG`, `SuccArgNoBorrowT`, unproved).
+- The brief's `S(Z)` = `succFn(Z)`: needs the closure-head call step (unstated) and `StepFix` at a λ (FALSE until D148).
+- `FixG`'s eight parts and `GlobGrowG` for a function: unread at any program (the test at `R` not begun).
+
 ## THE TOP'S LINKS ATTACKED; `SortsG` PROVED (lead44, 2026-11-28, `spine-lead44`; docs/31 D256, D257)
 
 - `Top.consistency_of_master` ASSUMES 5 facts: `hsteps` (FALSE as quantified at a junk `K.cur`, and at the top's own contexts through a state's [Rec] stack: false until R1 built and D147), `hdata` (the existence lane's), `ResolveG` (checker, read true; both halves `sorry`), `FalseConstG` (RESTATED: the recorded type has no member; read true), `hlinks` (at every model covering and faithful at every stage; RESTATED from every model).

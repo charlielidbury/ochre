@@ -37,13 +37,13 @@ theorem constLeafAt_old_forces_moved {dm : DataModel} {D : MState → Decisions}
 `checkDef` appends a constant's entry to Σ only after its body's check, so the state its body's run ends in (`w.st₂`,
 `grows_eval`: an evaluation keeps Σ) lacks the constant, while the state after the item (`st'`) has it. The checker's own
 decision on the constant's name differs between the two, so `DecTab (D st') w.st₂`, which lead43's `ConstStartAt`
-asserted, is false at every constant whose name is read as more than `.any`: at `def one : Nat := S(Z)` the reading is
+asserted, is false at every constant whose name is read as more than `.any`: at `def one : Nat := 1` (the core's `S(Z)`) the reading is
 `.any` before and `.other` after. Repaired: the constant's body is simulated at `P.ctx … w.st₂`
 (`ConstStartAt`, `ConstLeafAt`, `ConstMeanAt`). -/
 
 open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt)
 
-/-- Σ after `def one : Nat := S(Z)` from the empty Σ. -/
+/-- Σ after `def one : Nat := 1` (the core's `S(Z)`, `ProgSanity.oneDef`) from the empty Σ. -/
 def stOne : MState := outSt (checkItem (.defn ProgSanity.oneDef)) {} 100000
 
 #guard isOk (checkItem (.defn ProgSanity.oneDef)) {} 100000

@@ -46,7 +46,8 @@ end
 section
 variable (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (fuel : Nat)
 
-/-- **The context grows by the definition's meaning** (MIXED; unread as one fact). After an accepted definition, every
+/-- **The context grows by the definition's meaning** (MIXED; PROVED for the constant of `def one : Nat := 1`,
+`Top.One.globGrow_one`; for a function unread at any program). After an accepted definition, every
 global of the next stage meets `GlobalsOk`'s clauses at the context of every later check. Its parts: (i) the earlier
 globals' clauses carry from this stage's contexts to the next's (one more global, the decisions of a later state): the
 code runs alike there (the names an item mentions are the stage's, `NamesFact`; the decisions on a code are stable at
@@ -155,7 +156,8 @@ theorem itemStep
 end
 
 open Ochr.Consistency Ochr.Surface in
-/-- **The accepted program resolves, each item accepted from the Σ of the earlier ones** (CHECKER; read true: the content
+/-- **The accepted program resolves, each item accepted from the Σ of the earlier ones** (CHECKER; its resolution half
+PROVED at `def one : Nat := 1`, `Top.One.resolves_one`; the per-item acceptance unread at any program, docs/31 D258: the content
 of the old chain's `accepted_resolves`, `sorry` there; `checkProgram`'s first loop and `checkDefs`). -/
 def ResolveG (q : Program) (fuel : Nat) : Prop :=
   Accepted (Prelude.decls ++ q) fuel → ∃ items, ResolvesTo (Prelude.decls ++ q) fuel items ∧
@@ -163,7 +165,8 @@ def ResolveG (q : Program) (fuel : Nat) : Prop :=
       ItemAccepted fuel (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take i)) it
 
 open Ochr.Consistency Ochr.Surface in
-/-- **A closed definition of `False` is recorded at a type with no member** (MIXED; the old chain's `falseConst_ty`, `sorry`
+/-- **A closed definition of `False` is recorded at a type with no member** (MIXED; PROVED at `def one : Nat := 1`,
+vacuously, `Top.One.falseConst_one`; the old chain's `falseConst_ty`, `sorry`
 there and SUSPECT for lacking an acceptance and a coverage hypothesis, both added: the checker records the accepted
 parameterless `d` with its stored type the library's `False` (names distinct, `Check.declared`; the library in front);
 the model's `False` means the empty proposition, `Assembly.false_means_empty`, PROVED).

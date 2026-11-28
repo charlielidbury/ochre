@@ -62,7 +62,7 @@ def ConstCheckAt (P : ProgState) (d : Def) (st' : MState) (w : ConstWit) : Prop 
   (∃ g : GDef, st'.globals = P.globals ++ [g] ∧ g.name = d.name ∧ g.fn? = none) ∧
   ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot = w.goal
 
-/-- **The constant's start** (MIXED; read true by parts, unproved). At the state the body is evaluated from, under the
+/-- **The constant's start** (MIXED; PROVED at `def one : Nat := 1`, `Top.One.constG_one`; in general read true by parts). At the state the body is evaluated from, under the
 context of the item's check AT THE STATE THE BODY'S RUN ENDS IN (`w.st₂`, whose Σ is the stage's: the constant's own entry
 is appended only after its check), at every assignment and future: `Pre` (its `CtxS`: the declarations a prefix of the
 program's, the model covering and faithful, no global labelled, `GlobalsOk` from the invariant's `glob` at the stage's Σ,
@@ -74,7 +74,7 @@ holding no embedded value, unknown or hole (resolution, `NoHoles`); the decision
 **As lead43 stated it, FALSE at every accepted constant whose name the checker reads as more than `.any`** (docs/31 D256):
 it ran the body at `P.ctx … st'`, the decisions at the state AFTER the constant's entry is in Σ, and asked
 `DecTab (D st') w.st₂`; but at `w.st₂` the checker's `declOf (.const c)` finds no `c` and answers `.any`, while at `st'` it
-reads `c`'s stored type (`TopAttack`, guarded on `def one : Nat := S(Z)`: `.any` against `.other`). So the steps' own
+reads `c`'s stored type (`TopAttack`, guarded on `def one : Nat := 1`: `.any` against `.other`). So the steps' own
 hypothesis (E9) was unsatisfiable at the top's context of every such constant, and the top vacuous at every program
 holding one. -/
 def ConstStartAt (P : ProgState) (d : Def) (_st' : MState) (w : ConstWit) : Prop :=
@@ -84,7 +84,7 @@ def ConstStartAt (P : ProgState) (d : Def) (_st' : MState) (w : ConstWit) : Prop
     d.body.absBelow w.st₁.absTy.size ∧ HintBelow (some w.goal) w.st₁.absTy.size ∧ d.body.hasHolePrim = false ∧
     DecTab (D w.st₂) w.st₂
 
-/-- **The constant's leaf** (MIXED; read true by parts, unproved: conversion's soundness at a type (N3), [Return] giving a
+/-- **The constant's leaf** (MIXED; PROVED at `def one : Nat := 1`, `Top.One.constG_one`; in general read true by parts: conversion's soundness at a type (N3), [Return] giving a
 whole result, so its meaning is not `⊥`, the goal of a level-bounded program meaning a type that is not `err`, and the goal
 holding no unknown, so its meaning is the same under every assignment). The reference's result good, MEANING THE CHECKER'S
 VALUE (`OutL`'s meaning link), its type the checker's type there, the checker's type converting to the goal, [Return]
@@ -101,7 +101,7 @@ def ConstLeafAt (P : ProgState) (_d : Def) (_st' : MState) (w : ConstWit) : Prop
     StrAgree { P.ctx dm D Γ w.st₂ with Δ := Δ' } ρ' w.T r.2 → Strict.GoodRes dm.read r →
     r.1 ∈ₛ[dm.read] (globalTyS (fun _ => .err) (P.ctx dm D Γ w.st₂) w.goal).m
 
-/-- **The constant's meaning is the simulated run's** (MODEL; its parts: the counter's independence (RL,
+/-- **The constant's meaning is the simulated run's** (MODEL; PROVED at `def one : Nat := 1`, `Top.One.constG_one`; its parts: the counter's independence (RL,
 `run_counter_indep`, the shift from `w.st₁`'s label counter to `0`), the future's (the result holds no live label after
 [Return]), the assignment's (a closed body), the hint (`hintM` of the goal, not deferred, is `globalTyS`'s reading), the
 reference's state at the start being `emptyState` at the checker's counter, `•` at a proposition (`constMean`), and,

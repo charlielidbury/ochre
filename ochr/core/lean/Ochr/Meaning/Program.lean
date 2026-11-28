@@ -69,7 +69,7 @@ values, through `ProgState.codeMeaning`.
 
 ## Sanity (`ProgSanity`, without `sorry`)
 
-`def one : Nat := S(Z)` means `1` (`defMeaning_one`). The checker accepts it from empty Σ and
+`def one : Nat := 1` (the core's `S(Z)`; the surface reads `S(Z)` written as a call as a call of `succFn`, docs/31 D258) means `1` (`defMeaning_one`). The checker accepts it from empty Σ and
 stores it at type `Nat`: the kernel runs `checkItem`, in about a second (`one_accepted`). So the
 program `[one]` gives the global `one` the meaning `1` (`progMeaning_one`), and a later
 `.const "one"` reads that (`run_const_one`). A version after the library prelude is out of reach:
@@ -288,7 +288,8 @@ theorem progMeaning_inds (dm : DataModel) (D : MState → Decisions) (Γ : List 
 
 namespace ProgSanity
 
-/-- `def one : Nat := S(Z)`, as `resolveDecl` makes it. -/
+/-- `def one : Nat := 1`, as `resolveDecl` makes it: the core's `S(Z)`. NOT the surface's `def one : Nat := S(Z)`, whose
+body resolves to a call of the closure `succFn` at `Z` (docs/31 D258, `Steps/TopOne.resS_call`). -/
 def oneDef : Def := { name := "one", hs := [], doms := [], cod := .nat, body := .succ .zero }
 
 theorem run_const (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS) (n : String) (s : SState) :
@@ -344,7 +345,7 @@ theorem one_accepted :
   | fail => intro h; cases h
   | exhausted => intro h; cases h
 
-/-- The program `def one : Nat := S(Z)` records `one` with the meaning `1` at type `Nat`, whatever
+/-- The program `def one : Nat := 1` records `one` with the meaning `1` at type `Nat`, whatever
 the data model, decisions and assignment: the checker accepts it, so its meaning is recorded. -/
 theorem progMeaning_one (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (ρ : Assignment)
     (hD : ∀ st sc, ((D st).flags sc (.succ .zero)).2 = false) :
