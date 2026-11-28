@@ -14,6 +14,18 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE ACCEPTANCE TEST AT A RECURSIVE DEFINITION `R` (lead46, 2026-11-28, `spine-lead46`; docs/31 D259)
+
+| Statement | Class | Status |
+|---|---|---|
+| `FixStartAt` | mixed | was FALSE at every function with a data parameter (the check's context read every unknown's type as `err`); RESTATED (the start picks `Δa`; `ctxBΔ`); PROVED at `R` (`Top.RT.fixStart_R`) |
+| `FixCheckAt` | checker | PROVED at `R` (`R_check_inv`) but for its `KeepsTab` clause: `KeepsTabFixR` (whole-machine, machine lane, since D250) |
+| `FixFitsAt`, `FixPartsAt`, `FixClosedAt`, `FixFlagAt`, `BodyCongrAt` | mixed / model | PROVED at `R` |
+| `FixLeafAt` | mixed | PROVED at `R` outright from the column's computation of the body's run; its hypotheses UNUSED there (see the handoff's item 3) |
+| `GlobGrowG` (function) | mixed | PROVED at `R` (`globGrow_R`) but for `RetKindR` (model, read true: `R`'s function at an arbitrary forming state returns an unlabelled result) |
+| `hlinks` at `R`'s program | | `hlinks_R`: assumes `KeepsTabFixR`, `RetKindR` |
+| `FalseConstG`, `ResolveG` at `R` | | not written (vacuous / as at `one`) |
+
 ## THE ACCEPTANCE TEST AT `def one : Nat := 1` (lead45, 2026-11-28, `spine-lead45`; docs/31 D258)
 
 - PROVED at `one` (kernel-checked, `Steps/TopOne.lean`): `ConstCheckAt` (restated up to `LocsEq`), `ConstStartAt`, `ConstLeafAt`, `ConstMeanAt`, `GlobGrowG` (for a constant), `FalseConstG`, `ResolveG`'s resolution half. `FixG` vacuous there.
