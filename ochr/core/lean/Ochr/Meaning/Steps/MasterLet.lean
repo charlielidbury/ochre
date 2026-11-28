@@ -216,7 +216,8 @@ theorem letPush_old_breaks_fits {D : Decisions} {Γ : List IndDecl} {sc : List D
 checker's successful `dropTopBind` from a state meeting `Pre`, related to a good reference state, is matched by
 the reference's drop of its top binding (`LetDrop`), keeping the temporaries, only growing the tables, with
 `Pre` and `Rel` after; on the checker's side it keeps the mode and the frames and pops the top binding's
-reading. -/
+reading, and keeps the [Rec] stack (R1, lead47, docs/31 D284: read true, `dropTopBind` ends borrows and re-runs sealed
+programs, each re-run restoring the stack it saved). -/
 def LetDropG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (W st₃ : MState) (s₂ : SState) (n bh : Nat),
     0 < W.env.size → Pre K ρ W → Rel K ρ φ π W s₂ → Strict.SGood K.dm K.Γ φ s₂ →
@@ -224,7 +225,7 @@ def LetDropG : Prop :=
     ∃ s₃, LetDrop K φ s₂ s₃ ∧ topTemps st₃.env = topTemps W.env ∧
       (W.absTy.size ≤ st₃.absTy.size ∧ W.nextLoan ≤ st₃.nextLoan) ∧ Pre K ρ st₃ ∧ Rel K ρ φ π st₃ s₃ ∧
       ModeEq W st₃ ∧ st₃.env.size = W.env.size ∧
-      DecideScope.topReadings st₃ = (DecideScope.topReadings W).tail
+      DecideScope.topReadings st₃ = (DecideScope.topReadings W).tail ∧ st₃.recStack = W.recStack
 
 /-- **The embedded values' condition moves to an extension that agrees at the term's unknowns** (a fact about
 the model, NEW; at each embedded value by `runT_congrA`, whose run reads only the unknowns it holds). The
@@ -297,7 +298,7 @@ variable {K : RunCtx} {φ : Future}
 theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (hDr : LetDropG)
     (hVC : ValsCongrA) (hFT : EvalFitsT) (hc : Strict.FundCtx K) {ρ : Assignment} {m : Nat} {x : Hint} {u w : Term} (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.letIn x u w) (fun st => 0 < st.env.size) (· = true) := by
-  intro st st' typed hint v T? s π hne hty hm hctl htn htd hcd hp hr hS hv hab hhb hnh hfl _ hD bh h
+  intro st st' typed hint v T? s π hne hty hm hctl htn htd hcd hp hrt hr hS hv hab hhb hnh hfl _ hD bh h
   subst hty
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hdu,
     hkB, hmeB, htnB, hrw, hrd, hk₃, hme₃', hD₁, hD₂, hRA⟩ := Machine.letInvD m x u w hint st st' bh v T? K.D htn htd hD h
@@ -307,7 +308,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
   have hsz₀ : st₀.env.size = st.env.size := (ColumnC.size_of_erase hk₀.env).symm
   -- the step for `u`
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ true none v₀ T₀ s π (hm.of_modeEq hm₀) (fun _ => htn₀) (by omega) (.inl htd₀)
-    (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu (fun e => by cases e) hD₁ bh₁ hru
+    (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu (fun e => by cases e) hD₁ bh₁ hru
   rw [htn₀] at hOu
   obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, -, hwu⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
@@ -345,9 +346,12 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
     have hσ' : σ < st₀.absTy.size := by rw [← hk₀.absTy]; exact habw σ hσ
     obtain ⟨a, d⟩ := he₁.agree σ hσ'
     exact ⟨a.symm, d.symm⟩
+  have hrtB : RecTie { K with Δ := Δ₁ } ρ₁ stB :=
+    (hrt.of_kern hk₀).move (by rw [← hkB.recStack]; exact hK₁.stack) (by rw [← hkB.absTy]; exact he₁.abs)
+      fun σ hσ => (he₁.agree σ hσ).1
   have hOw := (ih m (by omega) Δ₁ ρ₁).1 w stB st₂ true none r T? _ π₁ (hm₁.of_modeEq hmeB)
     (fun _ => htnB.trans (hctl rfl)) (by omega) htdB'
-    hpB hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) (hintBelow_none _) hnhw (fun e => by cases e) hD₂ bh₂ hrw
+    hpB hrtB hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) (hintBelow_none _) hnhw (fun e => by cases e) hD₂ bh₂ hrw
   replace hOw := outK_of_outLK hOw
   rw [htnB] at hOw
   obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
@@ -358,7 +362,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
   have hsz₂ := hK₂.size
   have hne₂ : 0 < st₂.env.size := by omega
   -- the drop
-  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃, hme₃, hsz₃, htop₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
+  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃, hme₃, hsz₃, htop₃, hrs₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
     (by rw [size_withTempT]; exact hne₂) hp₂ hr₂ hS₂ hrd
   obtain rfl : v = r := popped_of_topTemps hne₂ htt hk₃
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
@@ -367,13 +371,16 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
   have hW : ModeEq st₂ (st₂.withTempT v T?) := ⟨rfl, rfl, rfl, rfl⟩
   have hkept : Kept st st' := by
     refine ⟨hm₀.trans (hK₁.mode.trans (hmeB.trans (hK₂.mode.trans
-      (hW.trans (hme₃.trans hme₃'))))), ?_, ?_⟩
+      (hW.trans (hme₃.trans hme₃'))))), ?_, ?_, ?_⟩
     · have e1 := ColumnC.size_of_erase hk₃.env
       rw [size_withTempT] at e1 hsz₃
       omega
     · rw [← topReadings_withTempT st' v T?, ← ColumnC.topReadings_kern hk₃, htop₃, topReadings_withTempT,
         hK₂.top, htopB]
       rfl
+    · show (st'.withTempT v T?).recStack = st.recStack
+      rw [← hk₃.recStack, hrs₃]; show st₂.recStack = st.recStack
+      rw [hK₂.stack, ← hkB.recStack, hK₁.stack, ← hk₀.recStack]
   refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃⟩, hkept⟩
   -- the reference's `let`
   -- a typed `let` is not in tail position (`hctl`): its tail runs with no hint on both sides (D156)
@@ -396,7 +403,7 @@ theorem stepLetIn_typed (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKind
           (K.D.declOf (DecideScope.topReadings st) (.letIn x u w)).isProof = false) (· = true) := by
   intro n ih Δ ρ x u w
   by_cases hn : n < 3
-  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
+  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.letIn x u w)

@@ -126,7 +126,7 @@ variable {K : RunCtx} {φ : Future}
 theorem seq_coreK (hST : SeqTailDecl K.D) (hDV : DropValueG) (hVC : ValsCongrA) (hc : Strict.FundCtx K)
     {ρ : Assignment} {m : Nat} {u w : Term} (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.seq u w) (fun st => 0 < st.env.size) (· = true) := by
-  intro st st' typed hint v T? s π hne hty hm hctl htn htd hcd hp hr hS hv hab hhb hnh hfl _ hD bh h
+  intro st st' typed hint v T? s π hne hty hm hctl htn htd hcd hp hrt hr hS hv hab hhb hnh hfl _ hD bh h
   subst hty
   obtain ⟨st₁, s₄, stW, v₀, T₀, bh₁, bh₃, bh₂, hru, hD₁, hdv, -, hkW, hmeW, htdW, htnW, hrw⟩ :=
     Machine.seqInvD m u w hint st st' bh v T? K.D hD h
@@ -135,7 +135,7 @@ theorem seq_coreK (hST : SeqTailDecl K.D) (hDV : DropValueG) (hVC : ValsCongrA) 
   have hnhu : u.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.1
   have hnhw : w.hasHolePrim = false := by simp [Term.hasHolePrim] at hnh; exact hnh.2
   -- the step for `u`, from the entry state itself
-  have hOu := (ih m (by omega) K.Δ ρ).1 u st st₁ true none v₀ T₀ s π hm (fun _ => htn) hne (.inl htd) hp hr hS
+  have hOu := (ih m (by omega) K.Δ ρ).1 u st st₁ true none v₀ T₀ s π hm (fun _ => htn) hne (.inl htd) hp hrt hr hS
     hv.1 habu (hintBelow_none _) hnhu (fun e => by cases e) hD₁ bh₁ hru
   replace hOu := outK_of_outLK hOu
   rw [htn] at hOu
@@ -160,7 +160,8 @@ theorem seq_coreK (hST : SeqTailDecl K.D) (hDV : DropValueG) (hVC : ValsCongrA) 
     exact ⟨a.symm, d.symm⟩
   have hOw := (ih m (by omega) Δ₁ ρ₁).1 w stW st' true none v T? (discardEnd ru.2 s₁) π₁
     (hm.of_modeEq hKW.mode) (fun _ => htnW.trans (hctl rfl)) (by rw [hKW.size]; exact hne) htdW'
-    (hP₄.of_kern hkW) (hR₄.of_kern hkW) hS₂ (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habW) (hintBelow_none _) hnhw
+    (hP₄.of_kern hkW) (hrt.move hKW.stack habW fun σ hσ => (he₁.agree σ hσ).1) (hR₄.of_kern hkW) hS₂
+    (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habW) (hintBelow_none _) hnhw
     (fun e => by cases e) hD bh₂ hrw
   replace hOw := outK_of_outLK hOw
   rw [htnW] at hOw
@@ -190,7 +191,7 @@ theorem stepSeq_typed (hST : SeqTailDecl K.D) (hDV : DropValueG) (hVC : ValsCong
           (K.D.declOf (DecideScope.topReadings st) (.seq u w)).isProof = false) (· = true) := by
   intro n ih Δ ρ u w
   by_cases hn : n < 3
-  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
+  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.seq u w)

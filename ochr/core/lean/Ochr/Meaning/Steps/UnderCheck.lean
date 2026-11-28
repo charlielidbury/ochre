@@ -31,23 +31,11 @@ namespace Ochr.Meaning.Steps.Form.Master
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
 
-/-- **The functions under check, as the context knows them** (MIXED entry condition; docs/31 D205). D135: `callFn`
-closes a call off at once when its head has the code of a function on the [Rec] stack. The context knows one such
-function, `K.cur`, by name. This clause ties the two for globals: a global is under check in the checker's state
-exactly when it is `K.cur`'s, so a call of any other global runs its body (the in-place branch) and a call of `K.cur`'s
-closes off. Closures on the stack have no counterpart in the context (the finding of D205). Principle 10 (recursion
-descends: every call the check makes is of an earlier definition, a value, or the definition itself) and principle 4
-(one code, two runs: what is under check is decided alike by the checker and the model).
-
-Since main's D136 (merged by lead34; docs/31 D218) the clause is ONE direction: a global on the [Rec] stack is
-`K.cur`'s. The stack holds the definition being checked only when it declares `by` (a function without `by` cannot name
-itself, D31, so nothing of it is ever closed off as under check); so at the check of a non-recursive global the stack is
-empty while `K.cur` names it, and the two-way clause was false there, which made every step that assumes it
-(`CallAcceptedG`, every call inside a non-recursive global's body) vacuous. The other direction, which the closed-off
-call of the function under check needs, is now that step's own hypothesis (`CallUnderCheckG`: the head is on the
-stack). -/
-def RecCurG (K : RunCtx) (st : MState) : Prop :=
-  ∀ h : String, st.recStack.any (·.fn == .gfn h) = true → K.cur.map (·.1) = some h
+-- `RecCurG` moved to `Steps/Master.lean` (lead47, R1, docs/31 D284): with the other direction, `RecRankG` and the
+-- counter clause it is the tie `RecTie`, an entry condition of `EvalAt` and `TailAt`. Its history (D205, D218): the
+-- clause was two-way, then one-way after main's D136 (a non-recursive global is not on the stack during its own check,
+-- so the two-way clause was false there); R1 makes it two-way again AS AN ENTRY CONDITION, which a non-recursive
+-- function's check meets once it runs with `K.cur = none` (main's D147/D148).
 
 /-- **The step for a call of the global under check** (MIXED; main's D135, ruling (C) of D200; Task 1 (a)). `CallFnG`'s
 statement at a head `g` with `K.cur = some (g, b)`, with `g` on the [Rec] stack (so `callFn` closes the call off at once; since D136 that is every call of `K.cur` the check makes, a non-recursive one making none, D31) and, at a

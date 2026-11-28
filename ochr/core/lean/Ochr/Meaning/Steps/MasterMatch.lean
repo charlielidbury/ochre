@@ -284,7 +284,7 @@ theorem matchArm_leaf (hJI : JoinContInv) (hJ : JoinContG) (hVC : ValsCongrA) (h
     (hv : (Term.matchNat p z u).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchNat p z u).absBelow st.absTy.size)
     (hnh : (Term.matchNat p z u).hasHolePrim = false)
     (heW : Ext K ρ π st stW ρW ΔW πW) (hKW : Kept st stW) (htnW : stW.tailNext = false) (htdW : stW.tailDecl = none)
-    (hgW : hintM { K with Δ := ΔW } ρW stW.goal = hintM K ρ st.goal)
+    (hgW : hintM { K with Δ := ΔW } ρW stW.goal = hintM K ρ st.goal) (hrt : RecTie K ρ st)
     (hpW : Pre { K with Δ := ΔW } ρW stW) (hrW : Rel { K with Δ := ΔW } ρW φ πW stW sA)
     (hjc : Runs (Ochr.joinCont m (.matchNat p z u) k) stW bj kc stJ)
     (hD₁ : DecTab K.D st₁) (harm : Runs (Ochr.checkTail m (if c = 0 then z else u) kc) stJ b₁ () st₁) :
@@ -308,7 +308,9 @@ theorem matchArm_leaf (hJI : JoinContInv) (hJ : JoinContG) (hVC : ValsCongrA) (h
     exact ⟨a.symm, d.symm⟩
   have hO := (ih m hmn ΔW ρW).2 (if c = 0 then z else u) stJ kc sA πW b₁ st₁
     (hm.of_modeEq (hKW.mode.trans hmJ)) (htnJ.trans htnW) (by rw [← ColumnC.size_of_erase hkJ.env]; exact hneW)
-    (htdJ.trans htdW) (hgrow hk) (hktab hkt) (hpW.of_kern hkJ) (hrW.of_kern hkJ) hSA (hVC K ΔW ρ ρW φ _ hagree hva)
+    (htdJ.trans htdW) (hgrow hk) (hktab hkt) (hpW.of_kern hkJ)
+    (hrt.move (by rw [← hkJ.recStack]; exact hKW.stack) (by rw [← hkJ.absTy]; exact heW.abs)
+      fun σ hσ => (heW.agree σ hσ).1) (hrW.of_kern hkJ) hSA (hVC K ΔW ρ ρW φ _ hagree hva)
     (absBelow_mono haba (by rw [← hkJ.absTy]; exact heW.abs)) hnha hD₁ harm
   obtain ⟨stl, v, T, ⟨bk, stk, hkr⟩, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hK₁⟩ := hO.1 harmfl
   -- the arm's reference run at the start's context and hint
@@ -343,8 +345,8 @@ theorem tStepMatchNat_data (hInv : TailMatchNatInv) (hJI : JoinContInv) (hMF : M
     (hc : Strict.FundCtx K) {n : Nat} (ih : IH K φ n) (ρ : Assignment) (p : Place) (z u : Term)
     (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState)
     (hm : ModeR st) (htn : st.tailNext = false) (hne : 0 < st.env.size) (htd : st.tailDecl = none)
-    (hk : ∀ v T, GrowsM (k v T)) (hkt : ∀ v T, KeepsTab (k v T)) (hp : Pre K ρ st) (hr : Rel K ρ φ π st s)
-    (hS : Strict.SGood K.dm K.Γ φ s)
+    (hk : ∀ v T, GrowsM (k v T)) (hkt : ∀ v T, KeepsTab (k v T)) (hp : Pre K ρ st) (hrt : RecTie K ρ st)
+    (hr : Rel K ρ φ π st s) (hS : Strict.SGood K.dm K.Γ φ s)
     (hv : (Term.matchNat p z u).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchNat p z u).absBelow st.absTy.size)
     (hnh : (Term.matchNat p z u).hasHolePrim = false) (hD : DecTab K.D st')
     (hrun : Runs (Ochr.checkTail n (.matchNat p z u) k) st bh () st')
@@ -382,7 +384,7 @@ theorem tStepMatchNat_data (hInv : TailMatchNatInv) (hJI : JoinContInv) (hMF : M
       · exact hZ h0
       · exact hSu w h1
     exact matchArm_leaf hJI hJ hVC hc ih (by omega) hfl (harmfl c) hTok htag hcn hm hne hk hkt hSA hv hab hnh heA hKA
-      (htnA.trans htn) (htdA.trans htd) hgA hpA hrA hjc hD₁ harm
+      (htnA.trans htn) (htdA.trans htd) hgA hrt hpA hrA hjc hD₁ harm
   · -- an unknown: the world of the constructor the assignment gives it
     obtain ⟨c, hcn, hc2⟩ := hAb σ hσ
     obtain ⟨stB, stW, stJ, st₁, kc, bw, bj, b₁, hbase, href, hDW, hjc, harm, hD₁⟩ := hworlds c hc2
@@ -390,7 +392,7 @@ theorem tStepMatchNat_data (hInv : TailMatchNatInv) (hJI : JoinContInv) (hMF : M
       hW { K with Δ := ΔA } ρA φ πA stA stB stW s sA p σ c m bw tg (ih.lower (by omega) ΔA) hneA hpA hrA hSA htag hσ hcn hbase hDW href
     exact matchArm_leaf hJI hJ hVC hc ih (by omega) hfl (harmfl c) hTok htag hcn hm hne hk hkt hSA hv hab hnh
       (heA.trans heW) (hKA.trans hKW) ((htnW.trans htnA).trans htn) ((htdW.trans htdA).trans htd) (hgW.trans hgA)
-      hpW hrW hjc hD₁ harm
+      hrt hpW hrW hjc hD₁ harm
   · -- a sealed scrutinee: generalised, then the match checked again at less fuel
     obtain ⟨ρG, ΔG, heG, hKG, htnG, htdG, hgG, hpG, hrG⟩ :=
       hG { K with Δ := ΔA } ρA φ πA stA stG sA p v σ m bg (ih.lower (by omega) ΔA) hneA hpA hrA hSA hcv hvs hDG hgen
@@ -400,7 +402,9 @@ theorem tStepMatchNat_data (hInv : TailMatchNatInv) (hJI : JoinContInv) (hMF : M
       exact ⟨a.symm, d.symm⟩
     have hO := (ih m (by omega) ΔG ρG).2 (.matchNat p z u) stG k sA πA b₁ st₁
       (hm.of_modeEq (hKA.trans hKG).mode) ((htnG.trans htnA).trans htn) (by rw [(hKA.trans hKG).size]; exact hne)
-      ((htdG.trans htdA).trans htd) hk hkt hpG hrG hSA (hVC K ΔG ρ ρG φ _ hagree hv) (absBelow_mono hab habG) hnh hD₁ hre
+      ((htdG.trans htdA).trans htd) hk hkt hpG
+      (hrt.move (hKA.trans hKG).stack habG fun σ hσ => ((heA.trans heG).agree σ hσ).1)
+      hrG hSA (hVC K ΔG ρ ρG φ _ hagree hv) (absBelow_mono hab habG) hnh hD₁ hre
     obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hK₁⟩ :=
       hO.1 (by rw [hsc]; exact hfl2)
     rw [hgG.trans hgA] at hx₁
@@ -498,7 +502,7 @@ theorem matchArm_leafE (hJI : JoinContInv) (hPJ : ProofJoinG K.D) (hPA : ProofAr
     (hv : (Term.matchNat p z u).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchNat p z u).absBelow st.absTy.size)
     (hnh : (Term.matchNat p z u).hasHolePrim = false)
     (heW : Ext K ρ π st stW ρW ΔW πW) (hKW : Kept st stW) (htnW : stW.tailNext = false) (htdW : stW.tailDecl = none)
-    (hgW : hintM { K with Δ := ΔW } ρW stW.goal = hintM K ρ st.goal)
+    (hgW : hintM { K with Δ := ΔW } ρW stW.goal = hintM K ρ st.goal) (hrt : RecTie K ρ st)
     (hpW : Pre { K with Δ := ΔW } ρW stW) (hrW : Rel { K with Δ := ΔW } ρW φ πW stW sA) (hDW : DecTab K.D stW)
     (hjc : Runs (Ochr.joinCont m (.matchNat p z u) k) stW bj kc stJ)
     (hD₁ : DecTab K.D st₁) (harm : Runs (Ochr.checkTail m (if c = 0 then z else u) kc) stJ b₁ () st₁) :
@@ -524,7 +528,9 @@ theorem matchArm_leafE (hJI : JoinContInv) (hPJ : ProofJoinG K.D) (hPA : ProofAr
     exact ⟨a.symm, d.symm⟩
   have hO := (ih m hmn ΔW ρW).2 (if c = 0 then z else u) stJ kc sA πW b₁ st₁
     (hm.of_modeEq (hKW.mode.trans hmJ)) (htnJ.trans htnW) (by rw [← ColumnC.size_of_erase hkJ.env]; exact hneW)
-    (htdJ.trans htdW) hk hkt (hpW.of_kern hkJ) (hrW.of_kern hkJ) hSA (hVC K ΔW ρ ρW φ _ hagree hva)
+    (htdJ.trans htdW) hk hkt (hpW.of_kern hkJ)
+    (hrt.move (by rw [← hkJ.recStack]; exact hKW.stack) (by rw [← hkJ.absTy]; exact heW.abs)
+      fun σ hσ => (heW.agree σ hσ).1) (hrW.of_kern hkJ) hSA (hVC K ΔW ρ ρW φ _ hagree hva)
     (absBelow_mono haba (by rw [← hkJ.absTy]; exact heW.abs)) hnha hD₁ harm
   obtain ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁⟩, hK₁⟩ := hO.2
   have hgJ : hintM { K with Δ := ΔW } ρW stJ.goal = hintM K ρ st.goal := by rw [← hkJ.goal]; exact hgW
@@ -550,8 +556,8 @@ theorem tStepMatchNat_proof (hInv : TailMatchNatInv) (hJI : JoinContInv) (hPJ : 
     {n : Nat} (ih : IH K φ n) (ρ : Assignment) (p : Place) (z u : Term)
     (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState)
     (hm : ModeR st) (htn : st.tailNext = false) (hne : 0 < st.env.size) (htd : st.tailDecl = none)
-    (hk : ∀ v T, GrowsM (k v T)) (hkt : ∀ v T, KeepsTab (k v T)) (hp : Pre K ρ st) (hr : Rel K ρ φ π st s)
-    (hS : Strict.SGood K.dm K.Γ φ s)
+    (hk : ∀ v T, GrowsM (k v T)) (hkt : ∀ v T, KeepsTab (k v T)) (hp : Pre K ρ st) (hrt : RecTie K ρ st)
+    (hr : Rel K ρ φ π st s) (hS : Strict.SGood K.dm K.Γ φ s)
     (hv : (Term.matchNat p z u).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchNat p z u).absBelow st.absTy.size)
     (hnh : (Term.matchNat p z u).hasHolePrim = false) (hD : DecTab K.D st')
     (hrun : Runs (Ochr.checkTail n (.matchNat p z u) k) st bh () st')
@@ -578,14 +584,14 @@ theorem tStepMatchNat_proof (hInv : TailMatchNatInv) (hJI : JoinContInv) (hPJ : 
       · exact hZ h0
       · exact hSu w h1
     exact matchArm_leafE hJI hPJ hPA hVC ih (by omega) hfl2 hr hTok htag hcn hsc hm hne hk hkt hSA hv hab hnh heA hKA
-      (htnA.trans htn) (htdA.trans htd) hgA hpA hrA hDA hjc hD₁ harm
+      (htnA.trans htn) (htdA.trans htd) hgA hrt hpA hrA hDA hjc hD₁ harm
   · obtain ⟨c, hcn, hc2⟩ := hAb σ hσ
     obtain ⟨stB, stW, stJ, st₁, kc, bw, bj, b₁, hbase, href, hDW, hjc, harm, hD₁⟩ := hworlds c hc2
     obtain ⟨ρW, ΔW, heW, hKW, htnW, htdW, hgW, hpW, hrW⟩ :=
       hW { K with Δ := ΔA } ρA φ πA stA stB stW s sA p σ c m bw tg (ih.lower (by omega) ΔA) hneA hpA hrA hSA htag hσ hcn hbase hDW href
     exact matchArm_leafE hJI hPJ hPA hVC ih (by omega) hfl2 hr hTok htag hcn hsc hm hne hk hkt hSA hv hab hnh
       (heA.trans heW) (hKA.trans hKW) ((htnW.trans htnA).trans htn) ((htdW.trans htdA).trans htd) (hgW.trans hgA)
-      hpW hrW hDW hjc hD₁ harm
+      hrt hpW hrW hDW hjc hD₁ harm
   · obtain ⟨ρG, ΔG, heG, hKG, htnG, htdG, hgG, hpG, hrG⟩ :=
       hG { K with Δ := ΔA } ρA φ πA stA stG sA p v σ m bg (ih.lower (by omega) ΔA) hneA hpA hrA hSA hcv hvs hDG hgen
     have habG : st.absTy.size ≤ stG.absTy.size := Nat.le_trans heA.abs heG.abs
@@ -594,7 +600,9 @@ theorem tStepMatchNat_proof (hInv : TailMatchNatInv) (hJI : JoinContInv) (hPJ : 
       exact ⟨a.symm, d.symm⟩
     have hO := (ih m (by omega) ΔG ρG).2 (.matchNat p z u) stG k sA πA b₁ st₁
       (hm.of_modeEq (hKA.trans hKG).mode) ((htnG.trans htnA).trans htn) (by rw [(hKA.trans hKG).size]; exact hne)
-      ((htdG.trans htdA).trans htd) hk hkt hpG hrG hSA (hVC K ΔG ρ ρG φ _ hagree hv) (absBelow_mono hab habG) hnh hD₁ hre
+      ((htdG.trans htdA).trans htd) hk hkt hpG
+      (hrt.move (hKA.trans hKG).stack habG fun σ hσ => ((heA.trans heG).agree σ hσ).1)
+      hrG hSA (hVC K ΔG ρ ρG φ _ hagree hv) (absBelow_mono hab habG) hnh hD₁ hre
     obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁⟩, hK₁⟩ := hO.2
     rw [hgG.trans hgA, ← runT_congrA K ΔG ρ ρG φ true _ _ sA hagree] at hx₁
     have hmap := hRe K ρ φ true (hintM K ρ st.goal) p z u s sA tg hTok htag
@@ -619,16 +627,16 @@ theorem tStepMatchNat_of {K : RunCtx} {φ : Future} (hInv : TailMatchNatInv) (hJ
     (hMF : MatchFlagsT K.D) (hPJ : ProofJoinG K.D) (hTag : MatchTagG) (hW : WorldRefineG) (hJ : JoinContG)
     (hG : GenTailG) (hRe : MatchReaccessM) (hRE : MatchReaccessE) (hPA : ProofArmM K) (hVC : ValsCongrA)
     (hc : Strict.FundCtx K) : TStepMatchNat K φ := by
-  intro n ih Δ ρ p z u st k s π bh st' hm htn hne htd hk hkt hp hr hS hv hab hnh hD hrun
+  intro n ih Δ ρ p z u st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun
   have ih' : IH { K with Δ := Δ } φ n := ih
   have hc' : Strict.FundCtx { K with Δ := Δ } := ⟨hc.globals, hc.sorts⟩
   refine ⟨fun h2 => tStepMatchNat_data (K := { K with Δ := Δ }) hInv hJI hMF hTag hW hJ hG hRe hVC hc' ih' ρ p z u st k s π bh st' hm htn hne htd
-    hk hkt hp hr hS hv hab hnh hD hrun h2, ?_⟩
+    hk hkt hp hrt hr hS hv hab hnh hD hrun h2, ?_⟩
   cases h2 : ({ K with Δ := Δ } : RunCtx).D.flags (scopeOf s) (.matchNat p z u) |>.2
   · exact (tStepMatchNat_data (K := { K with Δ := Δ }) hInv hJI hMF hTag hW hJ hG hRe hVC hc' ih' ρ p z u st k s π bh st' hm htn hne htd
-      hk hkt hp hr hS hv hab hnh hD hrun h2).toE
+      hk hkt hp hrt hr hS hv hab hnh hD hrun h2).toE
   · exact tStepMatchNat_proof (K := { K with Δ := Δ }) hInv hJI hPJ hTag hW hG hPA hRE hVC ih' ρ p z u st k s π bh st' hm htn hne htd
-      hk hkt hp hr hS hv hab hnh hD hrun h2
+      hk hkt hp hrt hr hS hv hab hnh hD hrun h2
 
 /-! ## A match on a known constructor, not at the end of a body (`StepMatchNat`'s known case): STATED, not proved
 

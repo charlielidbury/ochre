@@ -252,12 +252,13 @@ theorem Pre.labels {K : RunCtx} {ρ : Assignment} {st : MState} (hp : Pre K ρ s
 theorem Quiet.withTempT {st st' : MState} (h : Quiet st st') (v : Value) (T? : Option Value) :
     Quiet (st.withTempT v T?) (st'.withTempT v T?) :=
   ⟨by rw [erase_withTempT, erase_withTempT, h.env], h.globals, h.inds, h.refs, h.etaRefs, h.goal, h.neutrals,
-    h.liveScope, h.nextLoan, h.absSize, h.absTy⟩
+    h.liveScope, h.nextLoan, h.absSize, h.absTy, h.recStack⟩
 
 theorem Quiet.of_kern {a b c : MState} (h₁ : Kern a b) (h₂ : Quiet b c) : Quiet a c :=
   ⟨h₁.env.trans h₂.env, h₁.globals.trans h₂.globals, h₁.inds.trans h₂.inds, h₁.refs.trans h₂.refs,
     h₁.etaRefs.trans h₂.etaRefs, h₁.goal.trans h₂.goal, h₁.neutrals.trans h₂.neutrals, h₁.liveScope.trans h₂.liveScope,
-    h₁.nextLoan ▸ h₂.nextLoan, h₁.absTy ▸ h₂.absSize, fun σ hσ => by rw [h₂.absTy σ (h₁.absTy ▸ hσ), h₁.absTy]⟩
+    h₁.nextLoan ▸ h₂.nextLoan, h₁.absTy ▸ h₂.absSize, fun σ hσ => by rw [h₂.absTy σ (h₁.absTy ▸ hσ), h₁.absTy],
+    h₁.recStack.trans h₂.recStack⟩
 
 /-- A value counted in flight names at least what the state names. -/
 theorem refd_mono_withTempT {st : MState} (v : Value) (T? : Option Value) :

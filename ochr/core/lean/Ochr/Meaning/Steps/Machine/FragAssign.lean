@@ -293,7 +293,7 @@ theorem assignVarInv : AssignVarInv := by
       (fun m' b₀ s₁ _ ha => runs_accessPath_lentF hFE hposE ha) hpos' hv' (.inl hFE.c) htop' hap
   refine ⟨{ sE with env := Env.popTempE sE.env },
     ⟨henv, hq.globals, hq.inds, hq.refs, hq.etaRefs, hq.goal, hq.neutrals, hq.liveScope, hq.nextLoan, hq.absSize,
-      hq.absTy⟩,
+      hq.absTy, hq.recStack⟩,
     fun hT => ?_, fun hcase => ?_, fun hbv => ?_, fun f' j' m c hF => ?_⟩
   · have hsE : sE = st₁.withTempT v₀ T₀ := by
       cases T₀ with
@@ -470,7 +470,7 @@ theorem assignDerefInvF : AssignDerefInvF := by
     rw [erase_popTempE_congr hq.env.symm, withTempT_env, popTempE_pushTempTyE]
   refine ⟨{ sE with env := Env.popTempE sE.env },
     ⟨henv, hq.globals, hq.inds, hq.refs, hq.etaRefs, hq.goal, hq.neutrals, hq.liveScope, hq.nextLoan, hq.absSize,
-      hq.absTy⟩,
+      hq.absTy, hq.recStack⟩,
     fun hT => ?_, ⟨hme.headEval, hme.copying, hme.inPlace, hme.erased⟩, hn₂.pos, hn₂.bind,
     ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
   have hsE : sE = st₁.withTempT v₀ T₀ := by

@@ -69,7 +69,7 @@ def CallRanSimG (K : RunCtx) (φ : Future) : Prop :=
     (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
     K.cur.map (·.1) ≠ some g → stc.recStack.any (·.fn == .gfn g) = false → GlobalsOk K stc →
     stc.globals.find? (·.name == g) = some gd → gd.fn? = some (.fix self hs ds c dec body) → lG K hs ds c ≠ 0 →
-    body.frameFree = true →
+    body.frameFree = true → RecTie { K with Δ := Δ } ρ stc →
     ModeR stc → stc.tailNext = false → 0 < stc.env.size →
     CallPt { K with Δ := Δ } ρ φ π stc sc g ws tys (K.C.global g) asR →
     fT = (stc.globals.find? (·.name == g)).map (·.ty) →
@@ -182,7 +182,7 @@ def CallAcceptedFF (K : RunCtx) (φ : Future) : Prop :=
     (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
     K.cur.map (·.1) ≠ some g → stc.recStack.any (·.fn == .gfn g) = false → GlobalsOk K stc →
     stc.globals.find? (·.name == g) = some gd → gd.fn? = some (.fix self hs ds c dec body) → lG K hs ds c ≠ 0 →
-    body.frameFree = true →
+    body.frameFree = true → RecTie { K with Δ := Δ } ρ stc →
     ModeR stc → stc.tailNext = false → 0 < stc.env.size →
     CallPt { K with Δ := Δ } ρ φ π stc sc g ws tys (K.C.global g) asR →
     fT = (stc.globals.find? (·.name == g)).map (·.ty) →
@@ -202,9 +202,9 @@ theorem callAcceptedFF_of {K : RunCtx} {φ : Future} (hsim : CallRanSimG K φ) (
     (hGΔ : ∀ Δ st, GlobalsOk K st → GlobalsOk { K with Δ := Δ } st) :
     CallAcceptedFF K φ := by
   intro n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body hcur hns hG hfind hfn hl0
-    hff hm htn hsz hcp hfT hok hD hrun
+    hff hrt hm htn hsz hcp hfT hok hD hrun
   obtain ⟨hdisj, hkept⟩ := hsim n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body hcur
-    hns hG hfind hfn hl0 hff hm htn hsz hcp hfT hok hD hrun
+    hns hG hfind hfn hl0 hff hrt hm htn hsz hcp hfT hok hD hrun
   obtain ⟨hgood, hloc, hlw, hsites, hlive, hnd, hdom, hlab, hbt, hheld⟩ :=
     hpt Δ ρ π g ws tys stc sc asR gd self hs ds c dec body hfind hfn hcp
   have hrefCall : refCall { K with Δ := Δ } (K.C.global g) asR sc = callOf K.dm.read (K.C.global g) asR sc := by
@@ -230,11 +230,10 @@ theorem callAcceptedFF_of {K : RunCtx} {φ : Future} (hsim : CallRanSimG K φ) (
 
 /-! ## The step for a call of a global, composed (the brief's task 3; docs/31 D241) -/
 
-/-- **A call of the function under check happens only while it is on the [Rec] stack** (CHECKER; D31 with D136: a
-function without `by` cannot name itself, so no call of `K.cur`'s global is made at its check; with `by` its entry is on
-the stack while its body, nested functions and block arms are checked). The other direction of `RecCurG`. -/
-def CurOnStackG (K : RunCtx) : Prop :=
-  ∀ (stc : MState) (g : String), K.cur.map (·.1) = some g → stc.recStack.any (·.fn == .gfn g) = true
+-- `CurOnStackG` (every state's [Rec] stack holds `K.cur`'s global) is DELETED (lead47, R1, docs/31 D284): false whenever
+-- a function is under check (a state with an empty stack refutes it, D253 item 3), so the call step's derivation was
+-- vacuous there. Its one use, the in-place branch's "the callee is not under check", is the tie's `on` at the call
+-- point, an entry condition `EvalAt` carries (`RecTie`).
 
 /-- **A call's head `g` is a global with a `fix` code** (CHECKER: `CallPt.temps` holds `.gfn g`, which `evalCall` makes
 only for a global function, `lookupGlobal`'s `fn?`), and the call is unerased only where the callee's sort is not `Prop`
@@ -246,15 +245,14 @@ def GlobalFixG (K : RunCtx) (φ : Future) : Prop :=
     ∃ gd self hs ds c dec body, stc.globals.find? (·.name == g) = some gd ∧ gd.fn? = some (.fix self hs ds c dec body) ∧
       lG K hs ds c ≠ 0
 
-/-- **`CallFnG` with what it needs and lacks** (docs/31 D241): `CallFnG`'s statement with the two entry conditions
-the call consumes and `EvalAt` does not carry (`RecCurG` at the call point; `RecRankG` at a typed site, already
-`RecRankG`'s docstring's "`EvalAt` is to take it"), the context's `GlobalsOk`, and a callee that is under check or
+/-- **`CallFnG` with what it needs** (docs/31 D241; R1, D284): `CallFnG`'s statement (the tie `RecTie` at the call point,
+which `EvalAt` carries since R1 and `CallFnG` takes), the context's `GlobalsOk`, and a callee that is under check or
 whose body is frame-free (the frame property is proved for such bodies only, `runFrameI_frameFree`). -/
 def CallFnGW (K : RunCtx) (φ : Future) : Prop :=
   ∀ n, IH K φ (n + 1) → ∀ (Δ : Nat → TyS) (ρ : Assignment) (π : Nat → Nat) (g : String) (hd typed : Bool)
     (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (cf : CallFlags) (stc st₁ : MState)
     (sc : SState) (asR : List Res) (v : Value) (T? : Option Value) (bh : Nat),
-    RecCurG K stc → (typed = true → RecRankG K ρ stc) → GlobalsOk K stc →
+    RecTie { K with Δ := Δ } ρ stc → GlobalsOk K stc →
     (∀ gd self hs ds c dec body, stc.globals.find? (·.name == g) = some gd → gd.fn? = some (.fix self hs ds c dec body) →
       K.cur.map (·.1) ≠ some g → body.frameFree = true) →
     ModeR stc → stc.tailNext = false → 0 < stc.env.size →
@@ -265,21 +263,25 @@ def CallFnGW (K : RunCtx) (φ : Future) : Prop :=
     Runs (Ochr.callFn n typed fT ws.size tys hd none none cf.res cf.fills cf.want cf.defer none) stc bh (v, T?) st₁ →
     CallConcl K φ Δ ρ π stc st₁ (refCall { K with Δ := Δ } (K.C.global g) asR) sc v T? cf typed ∧ Kept stc st₁
 
-/-- **The step's call phase, composed** (docs/31 D241): from the step for a call of the function under check
-(`CallUnderCheckG`, D205), the in-place branch (`CallAcceptedFF`, assembled above), and the two checker facts that tell
-the branches apart (`CurOnStackG`, `GlobalFixG`). -/
+/-- **The step's call phase, composed** (docs/31 D241; R1, D284): from the step for a call of the function under check
+(`CallUnderCheckG`, D205), the in-place branch (`CallAcceptedFF`, assembled above), the checker fact that the head is a
+global with a `fix` code (`GlobalFixG`), and the tie at the call point, which tells the branches apart (`cur`: a global on
+the stack is `K.cur`'s; `on`: `K.cur`'s global is on the stack, the role `CurOnStackG` played, false as a fact about
+every state). -/
 theorem callFnGW_of {K : RunCtx} {φ : Future} (hU : CallUnderCheckG K φ) (hA : CallAcceptedFF K φ)
-    (hS : CurOnStackG K) (hF : GlobalFixG K φ) : CallFnGW K φ := by
-  intro n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh hrc hrr hG hff hm htn hsz hcp hfT hok hD hrun
+    (hF : GlobalFixG K φ) : CallFnGW K φ := by
+  intro n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh hrt hG hff hm htn hsz hcp hfT hok hD hrun
+  have hrc : RecCurG K stc := hrt.cur
+  have hrr : typed = true → RecRankG K ρ stc := fun _ => hrt.rank
   cases hst : stc.recStack.any (·.fn == .gfn g) with
   | true =>
     obtain ⟨⟨g', b⟩, hcur, hg'⟩ := Option.map_eq_some_iff.1 (hrc g hst)
     have hcur' : K.cur = some (g, b) := by rw [hcur]; simp only at hg'; rw [hg']
     exact hU n ih Δ ρ π g b hd typed fT ws tys cf stc st₁ sc asR v T? bh hcur' hst hrr hm htn hsz hcp hfT hok hD hrun
   | false =>
-    have hcur : K.cur.map (·.1) ≠ some g := fun e => by rw [hS stc g e] at hst; cases hst
+    have hcur : K.cur.map (·.1) ≠ some g := fun e => by rw [hrt.on g e] at hst; cases hst
     obtain ⟨gd, self, hs, ds, c, dec, body, hfind, hfn, hl0⟩ := hF Δ ρ π g ws tys stc sc asR hcp
     exact hA n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body hcur hst hG hfind hfn
-      hl0 (hff gd self hs ds c dec body hfind hfn hcur) hm htn hsz hcp hfT hok hD hrun
+      hl0 (hff gd self hs ds c dec body hfind hfn hcur) hrt hm htn hsz hcp hfT hok hD hrun
 
 end Ochr.Meaning.Steps.Form.Master

@@ -99,6 +99,8 @@ structure Quiet (st st' : MState) : Prop where
   nextLoan : st.nextLoan ≤ st'.nextLoan
   absSize : st.absTy.size ≤ st'.absTy.size
   absTy : ∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?
+  /-- The [Rec] stack (R1, lead47, docs/31 D284): a comparison's `restoreNames` restores it from the state saved. -/
+  recStack : st.recStack = st'.recStack
 
 /-- **`evalCore` of `S(u)`**: `u` evaluated with no hint from a state with the kernel and mode it was
 entered with and the one-shot flag clear; the value `S v₀` at `Nat`; in a typed run, `u`'s type as

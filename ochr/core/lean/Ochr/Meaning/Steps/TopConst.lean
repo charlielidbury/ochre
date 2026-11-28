@@ -46,7 +46,8 @@ structure ConstWit where
 
 /-- **The constant branch of `checkDef`, inverted** (CHECKER; read true against `Check.checkDef`; PROVED at the program
 `def one : Nat := 1`, `Top.One.one_check_inv`). The state the body is evaluated from (one frame, the plain mode, no
-reading handed down, Σ the stage's), the body's typed run at the goal, the conversion of its type to the goal
+reading handed down, Σ the stage's, the [Rec] stack empty: `checkDef`'s constant branch resets it, R1, docs/31 D284), the
+body's typed run at the goal, the conversion of its type to the goal
 (succeeding), [Return] (succeeding), and the entry stored: the constant's name, no `fix` code, the goal its type.
 
 **Restated (docs/31 D258)**: the conversion and [Return] run from a state equal to the one before them BUT FOR THE
@@ -56,6 +57,7 @@ them); as first stated they asked the runs from `w.st₂` and `w.st₃` exactly,
 writes the location table), not provable at one program. -/
 def ConstCheckAt (P : ProgState) (d : Def) (st' : MState) (w : ConstWit) : Prop :=
   ModeR w.st₁ ∧ w.st₁.tailNext = false ∧ 0 < w.st₁.env.size ∧ w.st₁.tailDecl = none ∧ w.st₁.globals = P.globals ∧
+  w.st₁.recStack = [] ∧
   Runs (Ochr.eval w.n true d.body (some w.goal)) w.st₁ w.bh (w.v, some w.T) w.st₂ ∧
   (∃ s f b, Machine.LocsEq w.st₂ s ∧ Runs (Ochr.conv f w.T w.goal) s b true w.st₃) ∧
   (∃ s f b, Machine.LocsEq w.st₃ s ∧ Runs (Ochr.bodyReturns f s!"{d.name} is defined as it" w.v w.goal [] "") s b () w.st₄) ∧
@@ -142,14 +144,14 @@ theorem const_member
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D Γ st') d
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
-  obtain ⟨w, ⟨hm, htn, hsz, htd, hgl, hev, -, -, -, hfind⟩, hst', hleaf, hmean⟩ :=
+  obtain ⟨w, ⟨hm, htn, hsz, htd, hgl, hrs, hev, -, -, -, hfind⟩, hst', hleaf, hmean⟩ :=
     hc P d st' hin hd hrun hP hfaith hcov hΓP
   have hfc : Strict.FundCtx (P.ctx dm D Γ w.st₂) := fundCtx_progCtx dm D Γ P w.st₂ hP.mem hP.lab hsorts
   obtain ⟨hpre, hrel, hsg, hvals, hab, hhb, hhole, hdt⟩ := hst' (fun _ => .err) noFuture
   have hall := hsteps (P.ctx dm D Γ w.st₂) noFuture (fun _ => ⟨hfc.globals, hfc.sorts⟩)
   obtain ⟨⟨ρ', Δ', π', r, s', -, hx, hmv, hstr, -, hpre', -, -, -⟩, -⟩ :=
     eval_all hall (fun _ => .err) w.n d.body w.st₁ w.st₂ true (some w.goal) w.v (some w.T) _ id hm (fun _ => htn) hsz
-      (Or.inl htd) hpre hrel hsg hvals hab hhb hhole (fun h => by cases h) hdt w.bh hev
+      (Or.inl htd) hpre (RecTie.nil rfl hrs) hrel hsg hvals hab hhb hhole (fun h => by cases h) hdt w.bh hev
   rw [htn] at hx
   have hgood := (Strict.fund_all hfc d.body hvals false _ _ s' r hsg hx).1
   have hmem := hleaf ρ' Δ' π' r hpre' hmv (hstr w.T rfl) hgood

@@ -108,15 +108,92 @@ structure Kept (a b : MState) : Prop where
   mode : ModeEq a b
   size : b.env.size = a.env.size
   top : DecideScope.topReadings b = DecideScope.topReadings a
+  /-- The [Rec] stack (R1, docs/31 D284): a run produces it and the next sub-run's entry condition `RecTie` reads it, so
+  the run CONCLUDES it kept. True of every successful run: only `checkFix` pushes an entry, and only at a top-level
+  definition's check; `recCheck` keeps a singleton `cands` or fails; `restoreKeep` and `exitWorld` restore the saved
+  stack; `sealedType?`'s `tests := false` is on its private copy. -/
+  stack : b.recStack = a.recStack
 
-theorem Kept.rfl' (a : MState) : Kept a a := ⟨ModeEq.rfl' a, rfl, rfl⟩
+theorem Kept.rfl' (a : MState) : Kept a a := ⟨ModeEq.rfl' a, rfl, rfl, rfl⟩
 
 theorem Kept.trans {a b c : MState} (h₁ : Kept a b) (h₂ : Kept b c) : Kept a c :=
-  ⟨h₁.mode.trans h₂.mode, h₂.size.trans h₁.size, h₂.top.trans h₁.top⟩
+  ⟨h₁.mode.trans h₂.mode, h₂.size.trans h₁.size, h₂.top.trans h₁.top, h₂.stack.trans h₁.stack⟩
 
 /-- Bookkeeping that keeps the kernel and the mode keeps what `Kept` asks. -/
 theorem Kept.of_kern {a b : MState} (hk : Kern a b) (hm : ModeEq a b) : Kept a b :=
-  ⟨hm, (ColumnC.size_of_erase hk.env).symm, (ColumnC.topReadings_kern hk).symm⟩
+  ⟨hm, (ColumnC.size_of_erase hk.env).symm, (ColumnC.topReadings_kern hk).symm, hk.recStack.symm⟩
+
+/-! ## R1: the [Rec] stack's tie to the function under check (docs/31 D284) -/
+
+/-- **The functions under check, as the context knows them** (MIXED; docs/31 D205, D218; moved from `UnderCheck` by
+lead47 for R1): a global on the checker's [Rec] stack is `K.cur`'s. `callFn` closes a call off at once when its head is
+on the stack (D135, `Machine.underCheck`), and the context knows the function under check only as `K.cur`. -/
+def RecCurG (K : RunCtx) (st : MState) : Prop :=
+  ∀ h : String, st.recStack.any (·.fn == .gfn h) = true → K.cur.map (·.1) = some h
+
+/-- **The recursion's rank** (MIXED; a condition on the assignment against the checker's [Rec] stack; moved from
+`MasterCall` by lead47 for R1). While the definition `n` is checked at the stage bound `b` (`K.cur = some (n, b)`), every
+[Rec] entry of the checker's state for it records, at each surviving decreasing position, an unknown whose value has
+rank at most `b`: a call of `n` the check tests against the entry then lands where the stage-`b` closure is the
+function, its decreasing argument a strict part of a value of rank at most `b`. -/
+def RecRankG (K : RunCtx) (ρ : Assignment) (st : MState) : Prop :=
+  ∀ (n : String) (b : Nat), K.cur = some (n, b) → ∀ ctx ∈ st.recStack, ctx.fn = .gfn n →
+    ∀ (j σ : Nat), j ∈ ctx.cands → ctx.entries[j]? = some (some σ) → semRank (ρ σ) ≤ b
+
+/-- **R1: the [Rec] stack is tied to the function under check** (the orchestrator's ruling R1, 2026-11-28; docs/31 D253
+item 3, D284): an ENTRY CONDITION of `EvalAt` and `TailAt`, not a fact about every state. The stack is empty exactly
+when `K.cur = none`, and otherwise holds `K.cur`'s global and nothing else (`glob`, `cur`, `on`: `RecCurG` both ways), at
+a rank the bound in `K.cur` speaks of (`rank`, D247's plan), its entries naming unknowns below the counter (`below`, so
+the rank moves along an extension). Without it `hsteps` was false as quantified: at a junk `K.cur` naming an earlier
+global with an empty stack the checker runs a call in place where the reference applies the junk closure, and at the
+top's own context of a recursive definition with its entry missing the checker runs the unchecked body in place where
+the reference applies the stage closure; both are excluded by `on`. Supplied at each item's start: a constant's check
+empties the stack (`K.cur = none`); a `by` function's check pushes its entry alone (`FixStartAt`). Passed through every
+step: within a check the stack never changes (`Kept.stack`, `Kern.recStack`). -/
+structure RecTie (K : RunCtx) (ρ : Assignment) (st : MState) : Prop where
+  glob : ∀ ctx ∈ st.recStack, ∃ g, ctx.fn = .gfn g
+  cur : RecCurG K st
+  on : ∀ g, K.cur.map (·.1) = some g → st.recStack.any (·.fn == .gfn g) = true
+  rank : RecRankG K ρ st
+  below : ∀ ctx ∈ st.recStack, ∀ (j σ : Nat), ctx.entries[j]? = some (some σ) → σ < st.absTy.size
+
+/-- **The tie moves to a later state of the same check**: the stack the same, the unknowns only grown, the assignment
+the same on the old ones; any `Δ` (no clause reads it). -/
+theorem RecTie.move {K : RunCtx} {ρ ρ' : Assignment} {Δ' : Nat → TyS} {st st' : MState} (h : RecTie K ρ st)
+    (hs : st'.recStack = st.recStack) (ha : st.absTy.size ≤ st'.absTy.size)
+    (hag : ∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) : RecTie { K with Δ := Δ' } ρ' st' where
+  glob := by rw [hs]; exact h.glob
+  cur := fun g hg => h.cur g (by rw [hs] at hg; exact hg)
+  on := fun g hg => by rw [hs]; exact h.on g hg
+  rank := fun n b hc ctx hctx hfn j σ hj he => by
+    rw [hs] at hctx
+    rw [hag σ (h.below ctx hctx j σ he)]
+    exact h.rank n b hc ctx hctx hfn j σ hj he
+  below := fun ctx hctx j σ he => by
+    rw [hs] at hctx; exact Nat.lt_of_lt_of_le (h.below ctx hctx j σ he) ha
+
+/-- The tie across bookkeeping (one kernel). -/
+theorem RecTie.of_kern {K : RunCtx} {ρ : Assignment} {st st' : MState} (h : RecTie K ρ st) (hk : Kern st st') :
+    RecTie K ρ st' :=
+  h.move (Δ' := K.Δ) hk.recStack.symm (by rw [hk.absTy]; exact Nat.le_refl _) fun _ _ => rfl
+
+/-- The tie across a sub-run: its extension and what it kept. -/
+theorem RecTie.of_ext {K : RunCtx} {ρ ρ' : Assignment} {Δ' : Nat → TyS} {π π' : Nat → Nat} {st st' : MState}
+    (h : RecTie K ρ st) (he : Ext K ρ π st st' ρ' Δ' π') (hs : st'.recStack = st.recStack) :
+    RecTie { K with Δ := Δ' } ρ' st' :=
+  h.move hs he.abs fun σ hσ => (he.agree σ hσ).1
+
+/-- The tie at an empty stack with no function under check (a constant's check). -/
+theorem RecTie.nil {K : RunCtx} {ρ : Assignment} {st : MState} (hc : K.cur = none) (hs : st.recStack = []) :
+    RecTie K ρ st where
+  glob := by rw [hs]; intro _ h; cases h
+  cur := fun g hg => by rw [hs] at hg; cases hg
+  on := fun g hg => by rw [hc] at hg; cases hg
+  rank := fun n b hcur => by rw [hc] at hcur; cases hcur
+  below := by rw [hs]; intro _ h; cases h
+
+/-- The tie gives the call phase's two entry conditions (`CallFnGW`): `RecCurG`, and `RecRankG` at every site. -/
+theorem RecTie.recCur {K : RunCtx} {ρ : Assignment} {st : MState} (h : RecTie K ρ st) : RecCurG K st := h.cur
 
 /-! ## The statements -/
 
@@ -208,15 +285,17 @@ theorem outLK_of_outK {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat →
 
 /-- **The evaluation step at fuel `n`, for one term**: from a state in the plain mode at any erased depth
 (`ModeR`) with a frame,
-whose handed-down reading, if any, is the table's reading of `t`, meeting `Pre`, related to a good reference
+whose handed-down reading, if any, is the table's reading of `t`, meeting `Pre` and the [Rec] stack's tie to the function
+under check (`RecTie`, R1, docs/31 D284: an ENTRY CONDITION, the orchestrator's ruling), related to a good reference
 state, the checker's successful run of `eval` makes the reference's run of `t` succeed (`Out`, with the deferred
-type a call records: `OutL`, D183), and the run keeps the mode, the frames and the top frame's readings (`Kept`). -/
+type a call records: `OutL`, D183), and the run keeps the mode, the frames, the top frame's readings and the [Rec] stack
+(`Kept`). -/
 def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
     ModeR st → (typed = true → st.tailNext = false) → 0 < st.env.size →
     (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
-    Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
+    Pre K ρ st → RecTie K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → HintBelow hint st.absTy.size → t.hasHolePrim = false →
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
@@ -296,14 +375,15 @@ extends the tables (`GrowsM`: so the table aligned at the run's end, after the c
 each leaf, `DecTab.back`; `checkFix`'s continuation and every one `checkTail` builds from it are machine
 code) and keeps the tables' invariant (`KeepsTab`, docs/31 D250: without it the step for a split is FALSE, since a later
 world inherits the counters the continuation left at an earlier world's leaf, `MatchRd.kCheck`), from a state in the plain
-mode at any erased depth with no reading handed down, for a term the strict run accepts the
+mode at any erased depth with no reading handed down, meeting `Pre` and the [Rec] stack's tie (`RecTie`, R1, docs/31
+D284), for a term the strict run accepts the
 embedded values of, holding the state's unknowns and no hole; the leaf keeps what `Kept` asks. At a term the table reads
 as a proof the leaf is asked the erased form only (`TailConcl`, docs/31 D248). -/
 def TailAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState),
     ModeR st → st.tailNext = false → 0 < st.env.size → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
     (∀ v T, KeepsTab (k v T)) →
-    Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
+    Pre K ρ st → RecTie K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     DecTab K.D st' →
     Runs (Ochr.checkTail n t k) st bh () st' →
@@ -327,7 +407,7 @@ def CoreSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
     P st → TY typed → ModeR st → (typed = true → st.curTail = false) → st.tailNext = false → st.tailDecl = none →
-    st.curDecl = some (K.D.declOf (DecideScope.topReadings st) t) → Pre K ρ st → Rel K ρ φ π st s →
+    st.curDecl = some (K.D.declOf (DecideScope.topReadings st) t) → Pre K ρ st → RecTie K ρ st → Rel K ρ φ π st s →
     Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → HintBelow hint st.absTy.size → t.hasHolePrim = false →
     K.D.flags (scopeOf s) t = (false, false) →
@@ -343,7 +423,7 @@ def EvalSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     (π : Nat → Nat),
     P st → TY typed → ModeR st → (typed = true → st.tailNext = false) →
     (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
-    Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
+    Pre K ρ st → RecTie K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → HintBelow hint st.absTy.size → t.hasHolePrim = false →
     K.D.flags (scopeOf s) t = (false, false) →
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
@@ -377,11 +457,11 @@ theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInv
     (hany : ∀ st, P st → K.D.declOf (DecideScope.topReadings st) t ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) t).isProof = false) (hc : CoreSimK K ρ φ n t P TY) :
     EvalSimK K ρ φ (n + 2) t P TY := by
-  intro st st' typed hint v T? s π hPs hty hm htl htd hp hr hS hv hab hhb hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π hPs hty hm htl htd hp hrt hr hS hv hab hhb hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, h₀, hk₁, hm₁, hdf₀⟩ :=
     hE n typed t hint st st' bh v T? K.D hm hD ht hcall (hany st hPs).1 (hany st hPs).2 htd h
   obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hdf₀.1 hPs) hty (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ hcd₀ (hp.of_kern hk₀)
-    (hr.of_kern hk₀) hS hv
+    (hrt.of_kern hk₀) (hr.of_kern hk₀) hS hv
     (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl (by rw [hct]; exact hok)
     (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'

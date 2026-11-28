@@ -195,10 +195,11 @@ theorem runs_isPropV_nat {f : Nat} {st st' : MState} {b : Nat} {p : Bool} (h : R
   | zero => unfold isPropV at h; simp only [Machine.runs_exhausted_iff] at h
   | succ f => unfold isPropV at h; exact runs_pure_inv h
 
-/-- The state `one`'s body is evaluated from: one empty frame, Σ the library's (no global), the [Rec] records as the
-goal's evaluation left them. -/
+/-- The state `one`'s body is evaluated from: one empty frame, Σ the library's (no global), the [Rec] stack empty (the
+constant branch resets it, and the goal's evaluation at an empty stack keeps it: `Machine.runs_evalType_nat_nil`), the
+next mark as the goal's evaluation left it. -/
 def stB (I : List IndDecl) (s : MState) : MState :=
-  { ({ globals := [], inds := I } : MState) with env := #[{}], recStack := s.recStack, nextRecUid := s.nextRecUid }
+  { ({ globals := [], inds := I } : MState) with env := #[{}], recStack := [], nextRecUid := s.nextRecUid }
 
 set_option maxHeartbeats 8000000 in
 /-- **`one`'s check, inverted** (PROVED): from any declarations `I` and the empty Σ, an accepted `def one : Nat := 1`
@@ -507,7 +508,7 @@ theorem constG_one (dm : DataModel) {items : List Item} (hr : ResolvesTo pq F it
   obtain ⟨r, s₂, s₀, s₃, s₃', s₄, n, bh, at', ad, hev, hg2, hi2, hl0, ⟨fc, bc, hcv⟩, hl3, ⟨fb, bb, hbr⟩, hst'⟩ :=
     one_check_inv hrun
   refine ⟨⟨n, stB P.inds r, s₂, s₃, s₄, bh, .tNat, .succ .zero, .tNat⟩, ?_, ?_, ?_, ?_⟩
-  · refine ⟨⟨rfl, rfl, rfl⟩, rfl, by show 0 < 1; omega, rfl, hPg.symm, hev, ⟨s₀, fc, bc, hl0, hcv⟩,
+  · refine ⟨⟨rfl, rfl, rfl⟩, rfl, by show 0 < 1; omega, rfl, hPg.symm, rfl, hev, ⟨s₀, fc, bc, hl0, hcv⟩,
       ⟨s₃', fb, bb, hl3, hbr⟩, ⟨_, by rw [hst', hPg]; rfl, rfl, rfl⟩, by rw [hst']; rfl⟩
   · intro ρ φ
     have hf : DeclsFaithful (P.ctx dm (chainDecisions F) (indsOf {} F items) s₂) P.inds :=

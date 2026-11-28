@@ -179,6 +179,9 @@ structure CallEntry (K : RunCtx) (φ : Future) (Δ : Nat → TyS) (ρ : Assignme
   hole : body.hasHolePrim = false
   hform : BodyHint body (.tPi [] (.pi hs ds c) []) ws stP hint
   hintBelow : HintBelow hint stc.absTy.size
+  /-- The [Rec] stack is the call point's (R1, lead47, docs/31 D284: the front's private copies restore it, and the push
+  of the callee's frame does not touch it; read true). -/
+  stack : stP.recStack = stc.recStack
 
 /-- **The exit data fits the front** (what `CallEnterG` concludes of `exitM`'s data): a label is reserved exactly at a
 borrow codomain, and it is the reference's `callPre`'s fresh label under the renaming. -/
@@ -414,7 +417,7 @@ theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex :
     (hGΔ : ∀ Δ st, GlobalsOk K st → GlobalsOk { K with Δ := Δ } st) :
     CallRanSimG K φ := by
   intro n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body hcur hns hG hfind hfn hl0
-    hff hm htn hsz hcp hfT hok hD hrun
+    hff hrt hm htn hsz hcp hfT hok hD hrun
   rcases hen n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body hcur hns hG hfind hfn
       hl0 hff hm htn hsz hcp hfT hok hD hrun with ⟨hcl, hkept⟩ |
     ⟨m, stP, stE, hint, ρ₁, Δ₁, π₁, v₀, T₀, b, b', e, hmn, hE, hbody, hexit, hfits⟩
@@ -452,7 +455,8 @@ theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex :
   obtain ⟨hnv, -⟩ := noVal_parts hE.noVal
   obtain ⟨⟨ρ₂, Δ₂, π₂, r, s₂, hext₂, hx, hmean, -, hlab₂, hpre₂, hrel₂, -, -⟩, hkept⟩ :=
     (ih m hmn Δ₁ ρ₁).1 body stP stE false hint v₀ T₀ (refStart { K with Δ := Δ } ρ φ g ds c asR sc) π₁
-      hE.mode (fun h => by cases h) hE.size (Or.inl hE.decl) hE.pre hE.rel hSG
+      hE.mode (fun h => by cases h) hE.size (Or.inl hE.decl) hE.pre
+      (hrt.move hE.stack hE.ext.abs fun σ hσ => (hE.ext.agree σ hσ).1) hE.rel hSG
       (acceptedGlobalG_of hG g gd self hs ds c dec body hfind hcur hfn Δ₁ ρ₁ φ).2.2.2
       (fun σ hσ => by rw [noAbs_of_noVal hnv σ] at hσ; cases hσ)
       (hE.hintBelow.mono hE.ext.abs) hE.hole
@@ -468,11 +472,11 @@ theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex :
 /-! ## The step for a call of a global, as one list -/
 
 /-- **The call phase of a call of a global, from its whole list of facts** (docs/31 D247; the brief's task 3's list):
-`CallFnGW` (the call phase with the two entry conditions `EvalAt` does not yet carry, `RecCurG` and `RecRankG`, and a
-frame-free callee body) from `CallUnderCheckG`, `CurOnStackG`, `GlobalFixG`, `OccursLiveG`, the in-place call's
+`CallFnGW` (the call phase with the tie `RecTie` at the call point, which `EvalAt` carries since R1, and a frame-free
+callee body) from `CallUnderCheckG`, `GlobalFixG`, `OccursLiveG`, the in-place call's
 `CallEnterG`, `CallExitG`, the three hint facts, `CallOfOkG`, and C1's `CallPtLocalG`, `AcceptedGlobalG`, `CallPopG`,
 `FundCtx`, `FixEqG`, `GlobalsOk` across `Δ`. -/
-theorem callFnGW_of_facts {K : RunCtx} {φ : Future} (hU : CallUnderCheckG K φ) (hS : CurOnStackG K) (hF : GlobalFixG K φ)
+theorem callFnGW_of_facts {K : RunCtx} {φ : Future} (hU : CallUnderCheckG K φ) (hF : GlobalFixG K φ)
     (hocc : OccursLiveG K) (hen : CallEnterG K φ) (hex : CallExitG K φ)
     (hhn : HintNoneG K φ) (hhd : HintDeferredG K φ) (hhc : HintComputedG K φ) (hco : CallOfOkG K φ)
     (hpt : CallPtLocalG K φ)
@@ -481,6 +485,6 @@ theorem callFnGW_of_facts {K : RunCtx} {φ : Future} (hU : CallUnderCheckG K φ)
     CallFnGW K φ :=
   callFnGW_of hU
     (callAcceptedFF_of (callRanSimG_of hen hex hhn hhd hhc hco hpt hpop hfc hGΔ) hpt hocc hpop hfc hGΔ)
-    hS hF
+    hF
 
 end Ochr.Meaning.Steps.Form.Master

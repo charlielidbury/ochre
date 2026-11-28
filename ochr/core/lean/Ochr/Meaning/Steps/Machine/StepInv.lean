@@ -25,7 +25,7 @@ theorem runs_wanted_inv {st st' : MState} {b : Nat} {w : Bool} (h : Runs wanted 
   exact runs_pure_inv h
 
 theorem Quiet.refl (st : MState) : Quiet st st :=
-  ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, Nat.le_refl _, Nat.le_refl _, fun _ _ => rfl⟩
+  ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, Nat.le_refl _, Nat.le_refl _, fun _ _ => rfl, rfl⟩
 
 theorem grows_conv (n : Nat) (v w : Value) : GrowsM (Ochr.conv n v w) :=
   growsM_of_growsIn fun _ => (machineGrows n).conv v w
@@ -44,7 +44,7 @@ theorem quiet_conv {n : Nat} {v w : Value} {st st' : MState} {b : Nat} {r : Bool
     unfold restoreNames at h₂
     rw [runs_modify_bind] at h₂
     obtain ⟨-, rfl⟩ := runs_pure_inv h₂
-    refine ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, hg.nextLoan, ?_, ?_⟩
+    refine ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, hg.nextLoan, ?_, ?_, rfl⟩
     · simp
     · intro σ hσ
       simp only [Array.getElem?_append_left hσ]

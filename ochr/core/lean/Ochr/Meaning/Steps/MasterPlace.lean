@@ -226,7 +226,7 @@ def CoreSimKT (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) 
     (π : Nat → Nat),
     P st → st.typing = typed → ModeR st → (typed = true → st.curTail = false) → st.tailNext = false →
     st.tailDecl = none →
-    st.curDecl = some (K.D.declOf (DecideScope.topReadings st) t) → Pre K ρ st → Rel K ρ φ π st s →
+    st.curDecl = some (K.D.declOf (DecideScope.topReadings st) t) → Pre K ρ st → RecTie K ρ st → Rel K ρ φ π st s →
     Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → HintBelow hint st.absTy.size → t.hasHolePrim = false →
     K.D.flags (scopeOf s) t = (false, false) →
@@ -242,11 +242,11 @@ theorem eval_of_coreKT {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalIn
     (hany : ∀ st, P st → K.D.declOf (DecideScope.topReadings st) t ≠ .any ∧
       (K.D.declOf (DecideScope.topReadings st) t).isProof = false) (hc : CoreSimKT K ρ φ n t P) :
     EvalSimK K ρ φ (n + 2) t P := by
-  intro st st' typed hint v T? s π hPs _ hm htl htd hp hr hS hv hab hhb hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π hPs _ hm htl htd hp hrt hr hS hv hab hhb hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, hty₀, h₀, hk₁, hm₁⟩ :=
     hE n typed t hint st st' bh v T? K.D hm hD ht hcall (hany st hPs).1 (hany st hPs).2 htd h
   obtain ⟨hc', hkp⟩ := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty₀ (hm.of_modeEq hm₀)
-    (fun e => hct.trans (htl e)) htn htd₀ hcd₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv
+    (fun e => hct.trans (htl e)) htn htd₀ hcd₀ (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS hv
     (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl (by rw [hct]; exact hok)
     (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'
@@ -320,7 +320,7 @@ theorem place_coreT (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD) (hBW :
     (hRO : ReadOutG)
     {ρ : Assignment} {m : Nat} {p : Place} (hdir : p.Direct) :
     CoreSimKT K ρ φ (m + 1) (.place p) (fun st => 0 < st.env.size) := by
-  intro st st' typed hint v T? s π hne hty hm _ _ _ _ hp hr hS _ _ _ _ hfl hok hD bh h
+  intro st st' typed hint v T? s π hne hty hm _ _ _ _ hp _ hr hS _ _ _ _ hfl hok hD bh h
   obtain ⟨n, st₁, b₁, b₂, rfl, hT, hR⟩ := hPI m typed p hint st st' bh v T? hdir h
   obtain ⟨hTs, ρ₁, Δ₁, π₁, he₁, hK₁, hty₁, hp₁, hr₁, hb₁, hag₁⟩ :=
     hPT K ρ φ π st st₁ s p (n + 1) b₁ typed st.wantHere T? hm hne hp hr hS hT
@@ -350,7 +350,7 @@ theorem stepPlace_direct (hET : EvalInvDT) (hPI : PlaceInvD) (hPT : PlaceTypeG) 
           (K.D.declOf (DecideScope.topReadings st) (.place p)).isProof = false) := by
   intro n _ Δ ρ p hdir
   by_cases hn : n < 3
-  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
+  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   exact eval_of_coreKT (K := { K with Δ := Δ }) hET

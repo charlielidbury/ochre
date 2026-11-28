@@ -113,7 +113,7 @@ end TailGuards
 context and future. ASSUMES 1 fact about the checker, `TailOtherInv`; the model fact it uses,
 `runT_tl_indep`, is proved. -/
 theorem tStepOther (hT : TailOtherInv) (K : RunCtx) (φ : Future) : TStepOther K φ := by
-  intro n ih Δ ρ t ht st k s π bh st' hm htn hne htd hk _ hp hr hS hv hab hnh hD hrun
+  intro n ih Δ ρ t ht st k s π bh st' hm htn hne htd hk _ hp hrt hr hS hv hab hnh hD hrun
   obtain ⟨m, st₀, st₁, st₂, v, T, b₁, b₂, hmn, hk₀, hme₀, htd₀, htn₀, hg₀, hev, hkr, hst₂⟩ :=
     hT n t k st st' bh ht hrun
   -- the run's end is the continuation's but for the editor's fields, which no table reads
@@ -127,7 +127,7 @@ theorem tStepOther (hT : TailOtherInv) (K : RunCtx) (φ : Future) : TStepOther K
     exact hp.inv.2.2.2.2.1.1 σ (MState.Refd.goal G hG hσ)
   have hO := (ih m (by omega) Δ ρ).1 t st₀ st₁ true st.goal v (some T) s π (hm.of_modeEq hme₀)
     (fun _ => htn₀.trans htn) (by rw [← ColumnC.size_of_erase hk₀.env]; exact hne)
-    (Or.inl (htd₀.trans htd)) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv hab₀ hgb hnh (fun e => by cases e) hD₁ b₁ hev
+    (Or.inl (htd₀.trans htd)) (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS hv hab₀ hgb hnh (fun e => by cases e) hD₁ b₁ hev
   refine TailConcl.of_K ⟨st₁, v, T, ⟨b₂, st₂, hkr⟩, ?_, (Kept.of_kern hk₀ hme₀).trans hO.2⟩
   rw [runT_tl_indep t ht true st₀.tailNext]
   exact Out.of_kern hk₀ (Kern.rfl' _) hO.1.out

@@ -595,6 +595,54 @@ theorem pd_self {D : Decisions} {st : MState} (hd : DecTab D st) : D.placeDecl C
   rw [hd.placeDecl 100 ColumnP.RI (.var 1) _ 1000 _ (runs_out (ColumnR.Aux.pdRun (.var 1)) _ 1000 (Aux.ok_pd_1 st)),
     Aux.val_pd_1]
 
+/-- **The tie at `R`'s generic state** (R1, lead47, docs/31 D284): the [Rec] stack is `R`'s entry alone (`checkFix`'s push
+at an empty stack), `K.cur = ("R", b)`, and the entry's unknown `σ0` is sent to `m ≤ b`. -/
+theorem recTie_B {dm : DataModel} {Γ : List IndDecl} (P : ProgState) (st : MState) (ρ : Assignment) (φ : Future)
+    (b : Nat) (Δa : Nat → TyS)
+    (I : List IndDecl) (u m : Nat) (hm : m < b + 1) :
+    RecTie (KB (dm := dm) (Γ := Γ) P st ρ φ b Δa) (ρAt ρ m) (st0R I u) where
+  glob := by
+    intro ctx hctx
+    simp only [st0R, List.mem_singleton] at hctx
+    subst hctx
+    exact ⟨"R", rfl⟩
+  cur := by
+    intro h hh
+    simp [st0R, rcR, BEq.beq, Value.beq] at hh
+    subst hh
+    rfl
+  on := by
+    intro g hg
+    have hg' : g = "R" := by
+      have e : (KB (dm := dm) (Γ := Γ) P st ρ φ b Δa).cur.map (·.1) = some "R" := rfl
+      rw [e] at hg; exact (Option.some.inj hg).symm
+    subst hg'
+    simp [st0R, rcR, BEq.beq, Value.beq]
+  rank := by
+    intro n b' hc ctx hctx _ j σ hj he
+    have e : (KB (dm := dm) (Γ := Γ) P st ρ φ b Δa).cur = some ("R", b) := rfl
+    rw [e] at hc
+    obtain ⟨-, rfl⟩ := Prod.mk.inj (Option.some.inj hc)
+    simp only [st0R, List.mem_singleton] at hctx
+    subst hctx
+    simp only [rcR, List.mem_singleton] at hj
+    subst hj
+    simp [rcR] at he
+    subst he
+    show semHeight (ρAt ρ m 0) ≤ b
+    simp [ρAt, semHeight, Sem.asNat_el0]
+    omega
+  below := by
+    intro ctx hctx j σ he
+    simp only [st0R, List.mem_singleton] at hctx
+    subst hctx
+    rcases j with _ | j
+    · simp [rcR] at he
+      subst he
+      show 0 < (st0R I u).absTy.size
+      simp [st0R, stR]
+    · simp [rcR] at he
+
 /-- **`FixStartAt` at `R`** (PROVED at every witness whose generic state is `st0R` of the stage's declarations and whose
 end state's tables grow to the item's end state; the inversion of `R`'s check gives such a witness, `TopRCheck`). At each
 bound `b` and number `m < b + 1`: the assignment `σ0 ↦ m`, `Δa = ΔP`; `Pre` (`pre_B`), the start relation (`rel_B`),
@@ -612,10 +660,13 @@ theorem fixStart_R {dm : DataModel} {Γ : List IndDecl} {items : List Item} (hr 
   obtain ⟨m, rfl⟩ := domMembers_one ha
   have hgb := goodBelow_of_B P st' hd ρ φ b hIH
   have hρ : ∃ k, ρAt ρ m 0 = .el0 Nat k := ⟨m, by simp [ρAt]⟩
-  refine ⟨ρAt ρ m, ColumnP.ΔP, id, ?_, ?_, ?_, ?_, ?_, rfl, ?_, ?_⟩
+  refine ⟨ρAt ρ m, ColumnP.ΔP, id, ?_, ?_, ?_, ?_, ?_, ?_, rfl, ?_, ?_⟩
   · rw [hw0]
     exact pre_B P st' hd hpd1 ρ φ b hgb hPm hΓP hcov (hfaith st' hi' (by rw [hPg]; exact List.nil_prefix))
       (stage_declNok hr hin) u (ρAt ρ m) hρ
+  · rw [hw0]
+    exact recTie_B P st' ρ φ b ColumnP.ΔP P.inds u m
+      (by simpa [fixRank, defR, semRank, semHeight, Sem.asNat_el0] using hlt)
   · show Rel (KB (dm := dm) (Γ := Γ) P st' ρ φ b ColumnP.ΔP) (ρAt ρ m) φ id w.st₀
       (startAt (KS dm Γ P st') ρ φ [⟨"n"⟩] [.nat] .nat (some 0) bodyR b [.el0 Nat m])
     rw [hw0, startAt_B P st' hd ρ φ b ColumnP.ΔP P.inds u m]

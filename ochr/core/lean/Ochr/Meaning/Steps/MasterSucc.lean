@@ -213,7 +213,7 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hN
     (hc : Strict.FundCtx K)
     {ρ : Assignment} {m : Nat} {u : Term} (ih : IH K φ (m + 3)) :
     CoreSimK K ρ φ (m + 1) (.succ u) (fun st => 0 < st.env.size) := by
-  intro st st' typed hint v T? s π hne _ hm hctl htn htd hcd hp hr hS hv hab hhb hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π hne _ hm hctl htn htd hcd hp hrt hr hS hv hab hhb hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, hme, hDb, hty⟩ :=
     Machine.succInvD m typed u hint st st' bh v T? htn htd h
   have hsz₀ : st₀.env.size = st.env.size := (ColumnC.size_of_erase hk₀.env).symm
@@ -232,7 +232,7 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hN
     | none => rw [e] at hs; simp at hs
     | some _ => rfl
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ typed none v₀ T₀ s π (hm.of_modeEq hm₀) (fun _ => htn₀)
-    (by omega) (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS (by simpa [Term.valsOk] using hv) hab' (hintBelow_none _) hnh' hokU
+    (by omega) (.inl htd₀) (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS (by simpa [Term.valsOk] using hv) hab' (hintBelow_none _) hnh' hokU
     (hDb K.D hD) bh₁ hu₀
   replace hOu := outK_of_outLK hOu
   rw [htn₀] at hOu
@@ -281,9 +281,10 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hN
     rw [hSM { K with Δ := Δ₁ } ρ₁ (fun l => φ (π₁ l)) r.2 v₀ (by rw [hmean]; exact hmem), hmean]
   obtain ⟨hpF, hrF⟩ := hSF { K with Δ := Δ₁ } ρ₁ φ π₁ m typed st₁ st' v₀ T₀ s₁ hnb hp₁ hr₁ hS₁ hq hty
   have hkept : Kept st st' := by
-    refine ⟨hm₀.trans (hK₁.mode.trans hme), ?_, ?_⟩
+    refine ⟨hm₀.trans (hK₁.mode.trans hme), ?_, ?_, ?_⟩
     · rw [← ColumnC.size_of_erase hq.env, hK₁.size, hsz₀]
     · rw [← ColumnC.topReadings_of_erase hq.env, hK₁.top, ColumnC.topReadings_kern hk₀.symm]
+    · rw [← hq.recStack, hK₁.stack, ← hk₀.recStack]
   refine ⟨⟨ρ₁, Δ₁, π₁, (r.1.succ, .plain TyM.nat), s₁, ⟨?_, ?_, ?_, ?_⟩, hrun, hmv, fun T hT => ?_,
     by rw [heldLabel_succ]; rfl, hpF, hrF⟩, hkept⟩
   · rw [hk₀.absTy]; exact Nat.le_trans he₁.abs hq.absSize
@@ -306,7 +307,7 @@ theorem stepSucc (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hNT 
           (K.D.declOf (DecideScope.topReadings st) (.succ u)).isProof = false) := by
   intro n ih Δ ρ u
   by_cases hn : n < 3
-  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
+  · intro st st' typed hint v T? s π _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ bh h
     exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
   have hc' : CoreSimK { K with Δ := Δ } ρ φ (m + 1) (.succ u)

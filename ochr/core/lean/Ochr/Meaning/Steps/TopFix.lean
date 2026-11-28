@@ -120,7 +120,10 @@ noncomputable abbrev ctxBΔ (P : ProgState) (d : Def) (st' : MState) (ρ : Assig
 `b + 1`, given the induction hypothesis, there is an assignment of the generic state's unknowns (each parameter's its
 argument) AND a reading `Δa` of their types under which: `Pre` at the generic state in `K_b` with `Δa` (its `GlobalsOk`:
 the stage's globals from the invariant, the definition's own `memBelow` at `b` from the induction hypothesis, its
-`codeValFree` from resolution; `RecCurG` both ways once `EvalAt` carries it, false until main's D147); the generic state
+`codeValFree` from resolution); the [Rec] stack tied to the definition under check (`RecTie`, R1, docs/31 D284: its
+entry alone, at the parameter's unknown, whose value has rank at most `b`; FALSE at a function WITHOUT `by` until main's
+D147/D148 are merged and the top's non-recursive route checks such a function with `K.cur = none`: `ctxB` names every
+function `K.cur` while a check without `by` pushes nothing, D136); the generic state
 related to the closure's frame at `a` (`startAt`: cells, its own binding, the parameters; docs/31 D126) and that frame
 good; the body holding no embedded value, unknown or hole; the table aligned at the run's end; and the checker's goal read
 under the assignment as the closure's body hint at `a` (the codomain at `a`, (M1)).
@@ -134,7 +137,7 @@ def FixStartAt (P : ProgState) (d : Def) (st' : MState) (w : FixWit) : Prop :=
     GoodBelowB (P.ctx dm D Γ st') ρ φ d b →
     DomMembers dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) a → fixRank d.dec a < b + 1 →
     ∃ (ρa : Assignment) (Δa : Nat → TyS) (π : Nat → Nat),
-      Pre (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀ ∧
+      Pre (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀ ∧ RecTie (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀ ∧
       Rel (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ π w.st₀
         (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) ∧
       Strict.SGood dm Γ φ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) ∧
@@ -349,13 +352,13 @@ theorem knot_step
         OutGood' dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod) a o := by
   intro a ha hlt
   obtain ⟨hm, htn, hsz, htd, -, hrt, hgr, hkt, -, -⟩ := hck
-  obtain ⟨ρa, Δa, π, hpre, hrel, hsg, hvals, hab, hhole, hdt, hhint⟩ := hstart ρ φ b a hIH ha hlt
+  obtain ⟨ρa, Δa, π, hpre, htie, hrel, hsg, hvals, hab, hhole, hdt, hhint⟩ := hstart ρ φ b a hIH ha hlt
   have hGmem := stageClo_mem (P.ctx dm D Γ st') ρ φ d b (hfits ρ φ) hIH
   have hfc0 : Strict.FundCtx (ctxB dm D Γ P d st' ρ φ b) :=
     fundCtx_ctxAt dm Γ P (D st') d.name b _ hP.mem hP.lab (.inl hGmem) rfl hsorts
   have hfc : Strict.FundCtx (ctxBΔ dm D Γ P d st' ρ φ b Δa) := ⟨hfc0.globals, hfc0.sorts⟩
   have hall := hsteps (ctxBΔ dm D Γ P d st' ρ φ b Δa) φ (fun _ => ⟨hfc.globals, hfc.sorts⟩)
-  have hT := tail_all hall ρa w.n d.body w.st₀ (fixCont w.n d.name) _ π w.bh w.st₁ hm htn hsz htd hgr hkt hpre hrel hsg
+  have hT := tail_all hall ρa w.n d.body w.st₀ (fixCont w.n d.name) _ π w.bh w.st₁ hm htn hsz htd hgr hkt hpre htie hrel hsg
     hvals hab hhole hdt hrt
   have heq := (congrArg (fun h => runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true h d.body
       (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)) hhint).trans

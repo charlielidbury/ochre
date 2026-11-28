@@ -102,7 +102,7 @@ theorem stageOk_defn
       (d.doms ≠ [] → ∀ ρ φ, FnGoodAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body) := by
     by_cases hd : d.doms = []
     · obtain ⟨w, hck, hst, hlf, hmn⟩ := hL.const P d st' hin hd hr hP hfaith hcov hΓP
-      obtain ⟨g, hg, hgn, -⟩ := hck.2.2.2.2.2.2.2.2.1
+      obtain ⟨g, hg, hgn, -⟩ := hck.2.2.2.2.2.2.2.2.2.1
       refine ⟨const_member hsteps hsorts items hL.const P d st' hin hd hP hfaith hcov hΓP hr, ⟨g, by rw [hg]; simp, hgn⟩,
         fun h => absurd hd h⟩
     · obtain ⟨w, hck, hfit, hst, hcg, hlf, hpa, hcl, hfl⟩ := hL.func P d st' hin hd hr hP hfaith hcov hΓP
@@ -188,8 +188,10 @@ def FalseConstG (q : Program) (fuel : Nat) : Prop :=
 open Ochr.Consistency Ochr.Surface in
 /-- **CONSISTENCY FROM `master`** (assembled in Lean; the project's statement in `consistencyBounded`'s form: no accepted,
 hole-free, level-bounded program has a closed definition of `False`). ASSUMES:
-* the 32 step statements at every context meeting the fundamental lemma's condition (`hsteps`; FALSE until main's D147
-  and `EvalAt`/`TailAt` carrying `RecCurG` both ways, at a context with a function under check, D253 item 3);
+* the 32 step statements at every context meeting the fundamental lemma's condition (`hsteps`; as quantified it was FALSE
+  while `EvalAt`/`TailAt` took no tie between the [Rec] stack and the function under check, D253 item 3; since R1 is
+  built, docs/31 D284, D285, each statement takes the tie `RecTie` at its start and the two refutations on record are
+  excluded; most steps unproved);
 * the data model's theorem's facts (`hdata`, `DataFacts`; `Assembly.exists_dataModel` itself PROVED from them);
 * the checker's resolution (`ResolveG`) and the recorded `False` constant (`FalseConstG`);
 * the per-item links (`TopLinks`), at every data model covering the declarations and faithful at every stage (restated

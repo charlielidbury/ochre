@@ -88,7 +88,8 @@ def CallHeadArgsG (K : RunCtx) (φ : Future) : Prop :=
     (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat) (bh : Nat),
     ModeR st → (typed = true → st.curTail = false) → st.tailNext = false → st.tailDecl = none →
-    Pre { K with Δ := Δ } ρ st → Rel { K with Δ := Δ } ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
+    Pre { K with Δ := Δ } ρ st → RecTie { K with Δ := Δ } ρ st → Rel { K with Δ := Δ } ρ φ π st s →
+    Strict.SGood K.dm K.Γ φ s →
     (Term.call (.const g) as hd).valsOk (Strict.ValsP { K with Δ := Δ } ρ φ) →
     (Term.call (.const g) as hd).absBelow st.absTy.size → HintBelow hint st.absTy.size →
     (Term.call (.const g) as hd).hasHolePrim = false →
@@ -109,13 +110,15 @@ def CallHeadArgsG (K : RunCtx) (φ : Future) : Prop :=
 simulated by `refCall` (the borrow arguments' strict test and the callee's meaning applied): `OutL`'s content at the
 call (`Out`, the deferred type a `let` reads, the promised type) and `Kept`. Its induction hypothesis is at the fuel
 `callFn` runs at plus one (the body runs in place two levels down, `runBody` → `runBodyCore` → `eval`). For an untyped
-run, the reference's call succeeds (`hok`, which an untyped `EvalAt`'s entry condition gives through `runArgs`). Proved
+run, the reference's call succeeds (`hok`, which an untyped `EvalAt`'s entry condition gives through `runArgs`). At the
+call point it takes the [Rec] stack's tie (`RecTie`, R1, docs/31 D284), which `EvalAt` carries to there (`Kept.stack`):
+it tells a call of the function under check (closed off at once) from a call of an accepted global (run in place). Proved
 from its three branches by `CallFnGFrom`. -/
 def CallFnG (K : RunCtx) (φ : Future) : Prop :=
   ∀ n, IH K φ (n + 1) → ∀ (Δ : Nat → TyS) (ρ : Assignment) (π : Nat → Nat) (g : String) (hd typed : Bool)
     (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (cf : CallFlags) (stc st₁ : MState)
     (sc : SState) (asR : List Res) (v : Value) (T? : Option Value) (bh : Nat),
-    ModeR stc → stc.tailNext = false → 0 < stc.env.size →
+    RecTie { K with Δ := Δ } ρ stc → ModeR stc → stc.tailNext = false → 0 < stc.env.size →
     CallPt { K with Δ := Δ } ρ φ π stc sc g ws tys (K.C.global g) asR →
     fT = (stc.globals.find? (·.name == g)).map (·.ty) →
     (typed = false → (refCall { K with Δ := Δ } (K.C.global g) asR sc).isSome) →
@@ -138,7 +141,7 @@ def EvalAtIf (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     (π : Nat → Nat),
     Q s → ModeR st → (typed = true → st.tailNext = false) → 0 < st.env.size →
     (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
-    Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
+    Pre K ρ st → RecTie K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → HintBelow hint st.absTy.size → t.hasHolePrim = false →
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
@@ -199,16 +202,8 @@ borrow arguments ended, `⋆`). The first branch is where the context is consume
 
 -- `RetKindG` moved to `Steps/Statements.lean` (lead43, docs/31 D253): a clause of `GlobalsOk`.
 
-/-- **The recursion's rank, an entry condition** (MIXED: a condition on the assignment against the checker's [Rec]
-stack). While the definition `n` is checked at the stage bound `b` (`K.cur = some (n, b)`), every [Rec] entry of the
-checker's state for it records, at each surviving decreasing position, an unknown whose value has rank at most `b`. The
-column `R` took it as the entry condition "the argument is at most the stage"; here it is on the state, because a call
-of `n` inside the run (typed, or untyped in an in-place run of `n`'s own body) lands where the stage-`b` closure is the
-function only if its decreasing argument has rank below `b`, which a [Rec] check against the entry gives. It is not in
-`Pre` (`Pre` reads the kernel, which has no [Rec] stack): `EvalAt` is to take it, and every step to carry it. -/
-def RecRankG (K : RunCtx) (ρ : Assignment) (st : MState) : Prop :=
-  ∀ (n : String) (b : Nat), K.cur = some (n, b) → ∀ ctx ∈ st.recStack, ctx.fn = .gfn n →
-    ∀ (j σ : Nat), j ∈ ctx.cands → ctx.entries[j]? = some (some σ) → semRank (ρ σ) ≤ b
+-- `RecRankG` moved to `Steps/Master.lean` (lead47, R1, docs/31 D284): a clause of the tie `RecTie`, which `EvalAt` and
+-- `TailAt` take and every step carries (D247's plan).
 
 /-! ## The composition, at the class of states the other steps use -/
 
@@ -237,7 +232,7 @@ theorem stepCallG_unerased {K : RunCtx} {φ : Future} (hE : EvalInvDCall) (hH : 
       EvalSimK { K with Δ := Δ } ρ φ n (.call (.const g) as hd)
         (fun st => 0 < st.env.size ∧
           (K.D.declOf (DecideScope.topReadings st) (.call (.const g) as hd)).isProof = false) := by
-  intro n ih Δ ρ g as hd st st' typed hint v T? s π hP _ hm htl htd hp hr hS hv hab hhb hnh hfl hok hD bh h
+  intro n ih Δ ρ g as hd st st' typed hint v T? s π hP _ hm htl htd hp hrt hr hS hv hab hhb hnh hfl hok hD bh h
   by_cases hn : n < 3
   · exact absurd h (Machine.evalLow n typed _ hint st st' bh _ hn (fun w e => by cases e))
   obtain ⟨m, rfl⟩ : ∃ m, n = m + 1 + 2 := ⟨n - 3, by omega⟩
@@ -247,7 +242,7 @@ theorem stepCallG_unerased {K : RunCtx} {φ : Future} (hE : EvalInvDCall) (hH : 
   obtain ⟨m', stc, st₂, fT, ws, tys, cf, bh'', hlt, -, -, hkc, htnc, hfT, hlen, hrun, hk₂, hm₂,
       ρc, Δc, πc, asR, sc, hext, hargs, hpt⟩ :=
     hH (m + 1) (ih.mono (by omega)) Δ ρ g as hd st₀ st₁ typed hint v T? s π bh'
-      (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv
+      (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS hv
       (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl hD₁ h₀
   have hrunT : ∀ tl h', runT { K with Δ := Δ } ρ φ tl h' (.call (.const g) as hd) s =
       refCall { K with Δ := Δc } (K.C.global g) asR sc := by
@@ -262,6 +257,7 @@ theorem stepCallG_unerased {K : RunCtx} {φ : Future} (hE : EvalInvDCall) (hH : 
     intro e; rw [← hrunT st.tailNext (hintM { K with Δ := Δ } ρ hint)]; exact hok e
   obtain ⟨⟨ρ', Δ', π', r, s', hext', hx, hm', ha, hl, hp', hr', -, -⟩, hkept⟩ :=
     hF m' (ih.mono (by omega)) Δc ρc πc g hd typed fT ws tys cf stc st₂ sc asR v T? bh''
+      ((hrt.of_kern hk₀).move hkc.stack hext.abs fun σ hσ => (hext.agree σ hσ).1)
       ((hm.of_modeEq hm₀).of_modeEq hkc.mode) htnc hsz hpt hfT hok' hD₂
       (by rw [← hlen]; exact hrun)
   have hO : Out { K with Δ := Δ } ρ φ π st₀ st₂ s
