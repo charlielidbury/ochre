@@ -872,6 +872,16 @@ def readsHint (fuel : Nat) (tail typeRead : Bool) (t : Term) : M Bool := do
   | _ => pure false
 termination_by structural fuel
 
+/-- Does a call hand its argument `a` the parameter's type as a hint? At a constructor, an embedded
+value, `rewrite`, `rewriteR` and a hole; in an untyped run only where the run reads it (D124,
+`readsHint`; `byRef`: the parameter is a borrow, whose argument's type is read at [Close]). D150: the
+one decision for a call's arguments (`evalCall`) and for `S`'s (`evalCore`'s `.succ`), so `S(a)` types
+`a` as a call of a function `Nat → Nat` does. -/
+def argTakesHint (fuel : Nat) (typed byRef : Bool) (a : Term) : M Bool := do
+  if !(a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _) then return false
+  if typed then return true
+  readsHint fuel false byRef a
+
 /-- D124: the declared codomain of `piTy` at `ws`, not yet evaluated: a hint `forceHint` evaluates
 where it is read. A sealed program whose head is no call, so nothing but `forceHint` reads it. -/
 def hintLater (piTy : Value) (ws : Array Value) : Value :=
@@ -2705,7 +2715,10 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .zero => pure (.zero, ty .tNat)
   | .tt => pure (.unit, ty .tUnit)
   | .succ u =>
-    let (v, T) ← eval fuel' typed u
+    -- D150: `S(a)` types `a` as a call of a function `Nat → Nat` types its argument: handed `Nat`
+    -- exactly where a call hands an argument its parameter's type (`argTakesHint`, shared)
+    let hint ← if ← argTakesHint fuel' typed false u then pure (some Value.tNat) else pure none
+    let (v, T) ← eval fuel' typed u hint
     if typed then expectTy fuel' "the argument of S" T .tNat
     pure (.succ v, ty .tNat)
   | .eq A a b => inStatement do
@@ -3169,9 +3182,7 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
     -- v2.0: a constructor argument's parameters may come from the parameter's type
     -- D124: the untyped run hands it exactly where the typed check does (it used to hand it where
     -- the argument needed its context, D89, whether or not typing handed it)
-    let hint ← if (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _)
-        && (typed || (← readsHint fuel' false (ad matches .ref _) a))
-      then argHint fuel' fv fT ws0 else pure none
+    let hint ← if ← argTakesHint fuel' typed (ad matches .ref _) a then argHint fuel' fv fT ws0 else pure none
     -- D82: a borrow argument's type is a cell's if the call closes off ([Close]); an argument is a
     -- borrow exactly when its declared type is (D48)
     demand (ad matches .ref _)

@@ -560,6 +560,12 @@ def resolveF (fuel : Nat) (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     match ← resolveF fuel' ctx false p with
     | t@(.place _) => return .prim "clone" [t]
     | _ => throw "clone takes a place: clone(p)"
+  | .call (.ident "S") [a] =>
+    -- D150: `S(a)` is the constructor applied, as the juxtaposition `S a` is; it was the call of the
+    -- closure `succFn` (the bare name `S`, a function value, still resolves to it)
+    if (lookup ctx "S").isSome then
+      return .call (← resolveF fuel' ctx false (.ident "S")) [← resolveF fuel' ctx false a] false
+    return .succ (← resolveF fuel' ctx false a)
   | .call (.ident c) as =>
     let tb ← read
     if (lookup ctx c).isNone && tb.types.contains c then

@@ -274,3 +274,108 @@ ochr FieldScrutinee uses Nats {
   ("PdE", "[D81] *r.1: field h of VP is a proof and *r is data, and `.1` takes a field of its parent's class: name it with a match, `let MkVP(…) = *r`"),
   ("PdL", "[D81] *r.1: field h of VP is a proof and *r is data, and `.1` takes a field of its parent's class: name it with a match, `let MkVP(…) = *r`"),
   ("PdM", "[Match] on (*r).h, which was moved out")]
+
+/-! ## `S(a)` is the constructor applied (D150)
+
+The juxtaposition `S a` was the constructor applied (`.succ a`) and the call form `S(a)` the call
+of the closure `fix _ (n : Nat) : Nat := S(n)`, which the bare name `S` (a function value) still
+is. Since D150 `S(a)` is the constructor applied too, and it types its argument as a call of a
+function `Nat → Nat` types its argument: handed `Nat` exactly where a call hands an argument its
+parameter's type (a constructor, an embedded value, `rewrite`, a hole), by the one decision both
+make (`argTakesHint`). Each form below beside the same with the bare `S` let-bound and called (`…F`)
+or with a global `Nat → Nat` (`…G`): every verdict is as before D150; the messages of a wrong
+argument are the constructor's ("the argument of S"), located at the argument. -/
+
+#guard_msgs (drop warning) in
+ochr SuccApplied uses Nats {
+  inductive BB := TT | FF
+  inductive Op (A : Type) := No | So(v : A)
+  def Id1 (n : Nat) : Nat := n
+  def Ap1 (f : Π(k : Nat). Nat) (a : Nat) : Nat := f(a)
+  def TF (n : Nat) : Type := match n { Z => Unit, S(m) => Nat, }
+  -- a place, at the end of a body; moved, then read; cloned
+  def P1 (n : Nat) : Nat := S(n)
+  def P1F (n : Nat) : Nat := (let f = S; f(n))
+  def P1Run : Eq(Nat, P1(2), 3) := refl
+  reject def P2 (n : Nat) : Nat := (let m = S(n); n)
+  reject def P2F (n : Nat) : Nat := (let f = S; let m = f(n); n)
+  def P2c (n : Nat) : Nat := (let m = S(clone(n)); n)
+  -- a borrow's content: moved out, cloned, written
+  reject def B1 (x : &Nat) : Nat := S(*x)
+  reject def B1F (x : &Nat) : Nat := (let f = S; f(*x))
+  def B2 (x : &Nat) : Nat := S(clone(*x))
+  def B3 (x : &Nat) : Unit := (*x := S(clone(*x)))
+  def B3Run : Eq(Nat, (let c = 4; B3(&c); c), 5) := refl
+  def B3F (x : &Nat) : Unit := (let f = S; *x := f(clone(*x)))
+  -- a call; a non-number; no and two arguments (the bare `S`, a closure, called)
+  def C1 (n : Nat) : Nat := S(Id1(n))
+  reject def T1 : Nat := S(TT)
+  reject def T1F : Nat := (let f = S; f(TT))
+  reject def T2 : Nat := S()
+  reject def T3 : Nat := S(1, 2)
+  reject def T4 (h : ⊤) : Nat := S(clone(h))
+  -- a hole: handed `Nat`, as a call's argument is its parameter's type; at the end, under a
+  -- `let`, nested; a run that reaches it is stuck
+  def H1 (n : Nat) : Nat := S(?)
+  def H1G (n : Nat) : Nat := Id1(?)
+  def H1F (n : Nat) : Nat := (let f = S; f(?))
+  def H2 (n : Nat) : Nat := (let m = S(?); m)
+  def H2G (n : Nat) : Nat := (let m = Id1(?); m)
+  def H3 (n : Nat) : Nat := S(S(?))
+  def H3G (n : Nat) : Nat := Id1(Id1(?))
+  reject def H1Run : Eq(Nat, H1(0), 1) := refl
+  reject def H1GRun : Eq(Nat, H1G(0), 0) := refl
+  -- `rewrite`: its goal is the parameter's type, here not a proposition
+  reject def R1 (a : Nat) (b : Nat) (h : Eq(Nat, a, b)) (n : Nat) : Nat := S(rewrite h in n)
+  reject def R1G (a : Nat) (b : Nat) (h : Eq(Nat, a, b)) (n : Nat) : Nat := Id1(rewrite h in n)
+  -- a constructor whose parameters are not written: `Nat` gives none
+  reject def O1 : Nat := S(No)
+  reject def O1G : Nat := Id1(No)
+  reject def O2 : Nat := S(So(1))
+  reject def O2G : Nat := Id1(So(1))
+  reject def O3 : Nat := S(No[Nat])
+  -- in a type: an equation, a type function's argument, a codomain
+  def Ty1 (n : Nat) : Eq(Nat, S(n), S(clone(n))) := refl
+  def Ty2 (n : Nat) (x : TF(S(n))) : Nat := x
+  def Ty3 (n : Nat) : TF(S(n)) := 0
+  def Ty4 : Eq(Nat, S(S(Z)), 2) := refl
+  def Ty5 (n : Nat) : Eq(Nat, S(n), Ap1(S, clone(n))) := refl
+  -- a match on `S(a)`; an arm returning `S` of its pattern variable
+  def M1 (n : Nat) : Nat := match S(n) { Z => 0, S(m) => m, }
+  def M2 (n : Nat) : Nat := match n { Z => 0, S(m) => S(m), }
+  def M2Run : Eq(Nat, M2(3), 3) := refl
+  -- under `Id` and `Eq`, as `cong`'s function
+  def I1 (x : &Nat) : Id(Unit, (*x := S(clone(*x))), (*x := S(clone(*x)))) := refl
+  def I2 (x : &Nat) : Id(Unit, (*x := S(clone(*x))), (let f = S; *x := f(clone(*x)))) := refl
+  def E1 (a : Nat) (b : Nat) (h : Eq(Nat, a, b)) : Eq(Nat, S(a), S(b)) := cong(λ(k : Nat) : Nat => S(k), h)
+  def E2 (a : Nat) (b : Nat) (h : Eq(Nat, a, b)) : Eq(Nat, S(a), S(b)) := cong(S, h)
+  -- an untyped run: a called body, a sealed re-run
+  def U1 (n : Nat) : Nat := match n { Z => S(Z), S(m) => S(Id1(S(m))), }
+  def U1Run : Eq(Nat, U1(2), 3) := refl
+  def U2 (n : Nat) : Nat := (let r = U1(clone(n)); match n { Z => (let e : Eq(Nat, r, 1) = refl; r), S(m) => r, })
+  def U3 (n : Nat) : Eq(Nat, U1(S(n)), S(S(n))) := refl
+  -- a local named `S` is called
+  def L1 (f : Π(k : Nat). Nat) (n : Nat) : Nat := (let S = f; S(n))
+  def L1Run : Eq(Nat, L1(λ(k : Nat) : Nat => k, 5), 5) := refl
+  -- recursion through `S`
+  def Rc (n : Nat) : Nat by n := match n { Z => Z, S(m) => S(Rc(m)), }
+  def RcRun : Eq(Nat, Rc(3), 3) := refl
+}
+
+#guard (run "SuccApplied" SuccApplied).rejectedWith [
+  ("P2", "[Read] n was moved out or its borrow ended (reading ⊥)"),
+  ("P2F", "[Read] n was moved out or its borrow ended (reading ⊥)"),
+  ("B1", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("B1F", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("T1", "the argument of S has type BB, expected Nat"),
+  ("T1F", "argument 1 (n) has type BB, expected Nat"),
+  ("T2", "arity: 1 parameters, 0 arguments"), ("T3", "arity: 1 parameters, 2 arguments"),
+  ("T4", "the argument of S has type ⊤, expected Nat"),
+  ("H1Run", "the body of H1Run has type ⊤, but the goal is Eq(Nat, ⌈H1(0)⌉, 1)"),
+  ("H1GRun", "the body of H1GRun has type ⊤, but the goal is Eq(Nat, ⌈H1G(0)⌉, 0)"),
+  ("R1", "rewrite: the goal Nat is not a proposition"), ("R1G", "rewrite: the goal Nat is not a proposition"),
+  ("O1", "cannot infer the parameter A of No: write it, No[…](…), or annotate, (No(…) : Op(…))"),
+  ("O1G", "cannot infer the parameter A of No: write it, No[…](…), or annotate, (No(…) : Op(…))"),
+  ("O2", "the argument of S has type Op(Nat), expected Nat"),
+  ("O2G", "argument 1 (n) has type Op(Nat), expected Nat"),
+  ("O3", "the argument of S has type Op(Nat), expected Nat")]
