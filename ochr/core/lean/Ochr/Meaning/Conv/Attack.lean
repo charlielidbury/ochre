@@ -1,4 +1,5 @@
 import Ochr.Meaning.Conv.Probe
+import Ochr.Meaning.WF
 
 /-!
 # Attacks on conversion, on the real checker (conv1, 2026-11-28)
@@ -90,3 +91,58 @@ ochr ConvAtkEq uses Nats, Fixtures {
 #guard (run "ConvAtkEq" ConvAtkEq).rejectedWith [
   ("K1", "the body of K1 has type ⊤, but the goal is Eq(Unit, σ2, σ1)"),
   ("K3", "the body of K3 has type ⊤, but the goal is False")]
+
+/-! **`mkEqM`'s state** (`FieldTysKept`, `RefineEq.Reach`): at the hole of `TAt`, with `p` the
+unknown `σ0` of the one-constructor `E2`, [Eq-inj] computes the field type `Tag(match σ0 {…})` in a
+typed private run, which refines `σ0 := MkE2(σ3)` in place (D93); the record survives (D37) and names
+an unknown made inside (the old attempt's `GrowthProbe`). Checked here on today's checker: the
+computed proposition is as the old attempt found, and the state after is reached from the one before
+(Ω's values, the goal, the refinements and the comparison stack as they were; the table of unknowns
+one longer; the counters not lowered): the content of `Reach`, at the one case where `mkEqM` keeps
+something. -/
+
+#guard_msgs (drop warning) in
+ochr ConvGrowAt uses Nats {
+  inductive E2 : Type := MkE2(k : Nat)
+  inductive Tag (n : Nat) := MkTag(x : Nat)
+  inductive W (p : E2) := MkW(t : Tag((match p { MkE2(k) => k })))
+  def TAt (p : E2) (x : Nat) (y : Nat) : Nat := ?
+}
+
+namespace Ochr.Meaning.Conv.GrowAtk
+open Ochr
+
+def stT : MState :=
+  let r := Ochr.Test.runWith (some Prelude) "ConvGrowAt" ConvGrowAt { recordStates := true } (located := true)
+  match r.rows.find? (·.name == "TAt") with
+  | some row => (row.trace.toList.filterMap fun
+      | .state _ false _ st => some st | _ => none).getLast?.getD default
+  | none => default
+
+/-- `x` from `stT` returns `a` and leaves a state `Reach`-related to `stT` with `k` more unknowns. -/
+def reachKeeps {α : Type} [BEq α] (x : M α) (a : α) (k : Nat) : Bool :=
+  match (runMachine x stT 1000000).1 with
+  | .ok b st' => b == a && Env.values st'.env == Env.values stT.env && st'.goal == stT.goal &&
+      st'.refs == stT.refs && st'.convStack == stT.convStack &&
+      st'.absTy.size == stT.absTy.size + k && (st'.absTy.extract 0 stT.absTy.size) == stT.absTy &&
+      stT.nextLoan ≤ st'.nextLoan && stT.nextAbs ≤ st'.nextAbs
+  | _ => false
+
+def tagv (n : Value) : Value := .ind "Tag" 0 ⟨"MkTag"⟩ [] [n]
+
+#guard stT.absTy.size == 3
+#guard reachKeeps (Ochr.mkEqM 100000 (.tInd "W" [.abs 0]) (.ind "W" 0 ⟨"MkW"⟩ [] [tagv (.abs 1)])
+  (.ind "W" 0 ⟨"MkW"⟩ [] [tagv (.abs 2)])) (.tEq .tNat (.abs 1) (.abs 2)) 1
+#guard reachKeeps (Ochr.mkEqM 100000 (.tInd "W" [.abs 0]) (.ind "W" 0 ⟨"MkW"⟩ [] [.abs 1])
+  (.ind "W" 0 ⟨"MkW"⟩ [] [.abs 2])) (.tEq (.tInd "Tag" [.abs 3]) (.abs 1) (.abs 2)) 1
+-- the η-record on the OLD unknown survives (it pins the new one), as the old attempt found
+#guard match (runMachine (Ochr.mkEqM 100000 (.tInd "W" [.abs 0]) (.ind "W" 0 ⟨"MkW"⟩ [] [.abs 1])
+  (.ind "W" 0 ⟨"MkW"⟩ [] [.abs 2])) stT 1000000).1 with
+  | .ok _ st' => st'.etaRefs.length == 1 && stT.etaRefs.length == 0
+  | _ => false
+-- a comparison keeps nothing but names (D103): the same field types compared, no record left
+#guard match (runMachine (Ochr.conv 100000 (.tInd "W" [.abs 0]) (.tInd "W" [.abs 0])) stT 1000000).1 with
+  | .ok b st' => b && st'.etaRefs.length == 0 && Env.values st'.env == Env.values stT.env
+  | _ => false
+
+end Ochr.Meaning.Conv.GrowAtk
