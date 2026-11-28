@@ -341,6 +341,7 @@ import Ochr.Meaning.Steps.CallStepGuards
 import Ochr.Meaning.Steps.RecDescR
 import Ochr.Meaning.Steps.CallRanSim
 import Ochr.Meaning.Steps.CallRanAttack
+import Ochr.Meaning.Steps.KnotR
 import Ochr.Meaning.Steps.StageBlockCE
 import Ochr.Meaning.Steps.RecDescAttack
 import Ochr.Meaning.Steps.FixEqDesc
