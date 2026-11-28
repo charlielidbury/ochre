@@ -27,18 +27,39 @@ longer assumes the clause. (Before, this file stated the strengthened forms `Out
 
 /-! ## The named facts the leaf uses -/
 
-/-- **[Return] at the leaf** (MIXED; READ TRUE, unproved): `fixCont`'s first action, `wholeReturned v`, succeeds only at a
-value holding no `⊥` (checker, `Machine.wholeReturned`), and a value holding no `⊥` never means `⊥` (model: `meanV` gives
-`.moved` only at `.bot`). -/
-def LeafReturnG : Prop :=
+/-- **[Return] at the leaf, as first stated** (lead47): FALSE (lead48, docs/31 D291). It asked the leaf's value not to mean
+`⊥` at EVERY assignment; at a leaf returning an unknown (`def Id1 (n : Nat) : Nat := n`: the leaf is `σ0`, `fixCont`
+succeeds there, `LeafAttack`'s guard) an assignment sending `σ0` to `.moved` makes it mean `⊥` (`leafReturnG_old_false`).
+Its one consumer reads it at the leaf's own assignment, which meets `Pre`; restated so (`LeafReturnG`). -/
+def LeafReturnG_old : Prop :=
   ∀ (n : Nat) (name : String) (v T : Value) (stl stk : MState) (bk : Nat),
     Runs (fixCont n name v T) stl bk () stk →
     ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS), meanV K ρ φ h v ≠ .moved
 
+/-- The first form is false wherever `fixCont` succeeds at a leaf whose value is an unknown. -/
+theorem leafReturnG_old_false {n : Nat} {name : String} {σ : Nat} {T : Value} {stl stk : MState} {bk : Nat}
+    (hk : Runs (fixCont n name (.abs σ) T) stl bk () stk) (K : RunCtx) (φ : Future) (h : TyS) :
+    ¬ LeafReturnG_old := fun hR =>
+  hR n name (.abs σ) T stl stk bk hk K (fun _ => .moved) φ h (by rw [Ochr.Meaning.Attack.meanV_abs])
+
+/-- **[Return] at the leaf** (MIXED; READ TRUE, unproved; RESTATED by lead48, docs/31 D291: at an assignment meeting the
+leaf's state, as `LeafConvG` is): the leaf's value means no `⊥`. Its parts: the value is whole (checker: `wholeReturned`
+tests a returned borrow's content; a data value in flight is whole, every read of a place requiring its content whole,
+[Read], and a constructor's or a call's result being built from whole parts); a whole value means no `⊥` at an assignment
+that meets the state (model: `meanV` gives `.moved` at `.bot`, and at an unknown its assignment's value, a member of its
+type by `TypedAssignment`). -/
+def LeafReturnG : Prop :=
+  ∀ (n : Nat) (name : String) (v T : Value) (stl stk : MState) (bk : Nat),
+    Runs (fixCont n name v T) stl bk () stk →
+    ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS), Pre K ρ (stl.withTempT v (some T)) →
+      meanV K ρ φ h v ≠ .moved
+
 /-- **The leaf's type against the goal** (MIXED; READ TRUE, unproved): `fixCont` compares the leaf's type `T` with the
 goal it reads after `bodyReturns`, the pop and `popTemp`, which is the leaf's (checker: none of them writes `goal`), and
 `conv` answers "equal"; N3 (`Conv.ConvTypeStmt`, the conversion lane's: a type checked against a type means the same at
-every assignment meeting the state) makes the two types' meanings equal at the leaf's assignment. -/
+every assignment meeting the state) makes the two types' meanings equal at the leaf's assignment. DERIVED (lead48, docs/31
+D291, `Steps/TopLeafConv.leafConvG_of`) from the checker's part (`LeafGoalPopG`, read true, attacked), N3's hypotheses
+(`N3Hyps`, the conversion lane's) and N3's side conditions (`LeafSideG`). -/
 def LeafConvG : Prop :=
   ∀ (n : Nat) (name : String) (v T : Value) (stl stk : MState) (bk : Nat),
     Runs (fixCont n name v T) stl bk () stk →
@@ -143,7 +164,7 @@ theorem fixLeafG_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
   have hmem : r.1 ∈ₛ[dm.read] (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).cod a := by
     rcases hgood with h | h | ⟨he, -⟩
     · rw [← hty]; exact h
-    · exact absurd (hmv.trans h) (hRet _ _ v T stl stk bk hk _ ρ' _ r.2)
+    · exact absurd (hmv.trans h) (hRet _ _ v T stl stk bk hk _ ρ' _ r.2 hpl)
     · exact absurd (hty ▸ he) hcod
   have hcells : ∀ s₀ : SState, ((a.zip (psG (P.ctx dm D Γ st') ρ φ d.doms)).foldl
       (fixStep (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod)) (s₀, [], [])).2.2 = [] := fun s₀ =>
@@ -340,7 +361,7 @@ theorem fixLeafG_ofRef (hRet : LeafReturnG) (hConv : LeafConvG)
   have hmem : r.1 ∈ₛ[dm.read] (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).cod a := by
     rcases hgood with h | h | ⟨he, -⟩
     · rw [← hty]; exact h
-    · exact absurd (hmv.trans h) (hRet _ _ v T stl stk bk hk _ ρ' _ r.2)
+    · exact absurd (hmv.trans h) (hRet _ _ v T stl stk bk hk _ ρ' _ r.2 hpl)
     · exact absurd (hty ▸ he) hcod
   obtain ⟨hends, hfin⟩ := hPop ρ ρa Δa φ b a v T stl stk bk ρ' Δ' π' s' ha hk hpl hrl hsg
   rw [stG_succ]
