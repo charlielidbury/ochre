@@ -274,15 +274,35 @@ theorem TailConcl.of_K {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat �
     TailConcl K ρ φ π st s t x k :=
   ⟨fun _ => h, h.toE⟩
 
+/-- **The tables' invariant** (docs/31 D250): the counter of unknowns is their number, every unknown's stored type names
+only typed unknowns, and an unknown whose frozen reading is a sort has that sort as its type (`WF6`'s fourth and second
+clauses, `ShapeFacts.readingsSorted`; `TabInv.of_pre`). What a split's later world inherits from the state an earlier
+world ENDED in, the continuation's run at its leaf included: `exitWorld` keeps the counters, the new unknowns' types and
+the frozen readings from there, so this is what the later world's `Pre` needs of that state. -/
+def TabInv (st : MState) : Prop :=
+  st.absTy.size = st.nextAbs ∧ (∀ T ∈ st.absTy.toList, ∀ σ, T.hasAbs σ → σ < st.absTy.size) ∧ ReadingsSorted st
+
+/-- **A computation keeps the tables' invariant** (docs/31 D250): every successful run from a state meeting `TabInv` ends
+in one. Machine code does (`freshAbs` grows the counter and the types together; `restoreKeep` and `exitWorld` keep a
+copy's or a world's counter with its whole list of types). -/
+def KeepsTab {α : Type} (x : M α) : Prop := ∀ st b a st', Runs x st b a st' → TabInv st → TabInv st'
+
+/-- `Pre` gives the tables' invariant. -/
+theorem TabInv.of_pre {K : RunCtx} {ρ : Assignment} {st : MState} (hp : Pre K ρ st) : TabInv st :=
+  ⟨hp.inv.2.2.2.2.1.2.2.2.1, hp.inv.2.2.2.2.1.2.1, hp.inv.2.2.2.2.2.2.2.2.2.2.2.2.1.readingsSorted⟩
+
 /-- **The tail step at fuel `n`, for one term**: `Form.TailSim` for `t` with every continuation that only
 extends the tables (`GrowsM`: so the table aligned at the run's end, after the continuation, is aligned at
 each leaf, `DecTab.back`; `checkFix`'s continuation and every one `checkTail` builds from it are machine
-code), from a state in the plain mode at any erased depth with no reading handed down, for a term the strict run accepts the
+code) and keeps the tables' invariant (`KeepsTab`, docs/31 D250: without it the step for a split is FALSE, since a later
+world inherits the counters the continuation left at an earlier world's leaf, `MatchRd.kCheck`), from a state in the plain
+mode at any erased depth with no reading handed down, for a term the strict run accepts the
 embedded values of, holding the state's unknowns and no hole; the leaf keeps what `Kept` asks. At a term the table reads
 as a proof the leaf is asked the erased form only (`TailConcl`, docs/31 D248). -/
 def TailAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState),
     ModeR st → st.tailNext = false → 0 < st.env.size → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
+    (∀ v T, KeepsTab (k v T)) →
     Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     DecTab K.D st' →

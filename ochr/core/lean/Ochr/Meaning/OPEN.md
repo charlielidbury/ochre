@@ -14,6 +14,12 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE SPLIT'S UNREAD FACTS READ; `TailAt` ASKS `KeepsTab` (lead42, 2026-11-28, `spine-lead42`; docs/31 D250 on)
+
+- `TailAt`: RESTATED (D250, sent): every continuation also keeps the tables' invariant (`KeepsTab`, `TabInv`); as stated before, `TStepMatchNat` was FALSE at a continuation that raises the counter of unknowns (`MatchRd.kCheck`). OWED where continuations are built: `JoinContInv`'s new clause; the `let`'s continuation (`TStepLetIn`); `checkFix`'s (`StepFix`).
+- `TStepMatchNat`: PROVED (`tStepMatchNat_of`) from the 12 facts as restated: `TailMatchNatInv` (C, restated: located mode, the later world's base; read TRUE), `JoinContInv` (C, + `KeepsTab`; read true), `MatchFlagsT`, `ProofJoinG` (T, read true), `MatchTagG`, `GenTailG` (X, read, not refuted, given the IH), `WorldRefineG`, `JoinContG` (X, FALSE as first stated, restated, read TRUE given the IH), `MatchReaccessM`, `MatchReaccessE`, `ProofArmM`, `ValsCongrA` (M, read TRUE).
+- INCOMPLETENESS of the checker (sent): a match on a field place at the end of a body is rejected, under a `let` accepted (`MatchRd.TB`/`TB2`, `TBi`/`TBi2`).
+
 ## THE MATCH: `TailAt` RESTATED (D248); THE SPLIT AT THE END OF A BODY (lead41, 2026-11-28, `spine-lead41`; docs/31 D248, D249)
 
 - `TailAt` as first stated: FALSE (kernel-checked in its two halves, composed by reading) at a tail-shaped term the table reads as a proof (`MatchAtk.L9`, `P10`). RULED (P1), BUILT: `TailConcl` (erased form `TailOutE` always; `TailOutK` where not a proof).
