@@ -1,6 +1,7 @@
 import Ochr.Meaning.Steps.MasterTail
 import Ochr.Meaning.Steps.MasterLet
 import Ochr.Meaning.Steps.MatchAttack
+import Ochr.Meaning.HintM
 
 /-!
 # The general match step (lead41, 2026-11-28; docs/31 D248 on)
@@ -358,5 +359,252 @@ theorem tStepMatchNat_data (hInv : TailMatchNatInv) (hJI : JoinContInv) (hMF : M
     exact hx₁
 
 end
+
+/-! ## The split at the end of a body, for a match the table reads as a proof (the erased form, D248's ruling (P1)) -/
+
+/-- **The join of a match read as a proof is empty** (table and checker, NEW; probed: `MatchAtk.L11`): its arms are
+statements, which move nothing outside their copies (`Decide.jdMoves`), so the table's join list is empty, and the
+checker's `joinCont`, at a state whose aligned table reads the match as a proof, returns the continuation itself. -/
+def ProofJoinG : Prop :=
+  ∀ (D : Decisions),
+    (∀ (sc : List DeclInfo) (entry : List Place) (p : Place) (z u : Term),
+      (D.flags sc (.matchNat p z u)).2 = true → D.joinMoves sc entry (.matchNat p z u) = []) ∧
+    ∀ (m : Nat) (p : Place) (z u : Term) (k kc : Value → Value → M Unit) (stW stJ : MState) (bj : Nat),
+      DecTab D stJ → (D.flags (DecideScope.topReadings stW) (.matchNat p z u)).2 = true →
+      Runs (Ochr.joinCont m (.matchNat p z u) k) stW bj kc stJ → kc = k
+
+/-- **An arm of a match read as a proof runs to a proof** (a fact about the model, NEW): a successful reference run of
+an arm returns the proof token, at a type meaning the true proposition, and leaves the state it started from. Read: an
+arm the table reads as a proof runs under `SM.erasedIf` (exactly `(•, prop True)`, the state restored); a proof constant
+means `•` at its type, which (I) makes true (`propext`), and reads nothing; an arm read `.any` (a match with no arms)
+has no successful run. -/
+def ProofArmM : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (p : Place) (z u : Term) (s' s₁ : SState) (c : Nat)
+    (r : Res),
+    (K.D.flags (scopeOf s') (.matchNat p z u)).2 = true →
+    runT K ρ φ true hint (if c = 0 then z else u) s' = some (r, s₁) → r.1 = .proof ∧ r.2.m = TyM.prop True ∧ s₁ = s'
+
+/-- **The reference's match from the state after its own tag access gives the same result** (model, NEW; read true:
+the access is idempotent; an erased match restores the state it started from, so only the results agree). -/
+def MatchReaccessE : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (hint : TyS) (p : Place) (z u : Term) (s sA : SState)
+    (tg : Sem),
+    TagOk K φ p s → tagOf K φ p natTag s = some (tg, sA) →
+    (runT K ρ φ tl hint (.matchNat p z u) sA).map Prod.fst = (runT K ρ φ tl hint (.matchNat p z u) s).map Prod.fst
+
+/-- **The reference's match on a number in tail position, where the table reads it as a proof**: the tag's access, the
+arm, the empty join, under `SM.erasedIf` (the proof token at `prop True`, the state the match started from). -/
+theorem runT_matchNat_tailProof {K : RunCtx} {ρ : Assignment} {φ : Future} (hint : TyS) (p : Place) (z u : Term)
+    {s sA s₁ : SState} {tg : Sem} {r : Res} {c : Nat}
+    (hfl2 : (K.D.flags (scopeOf s) (.matchNat p z u)).2 = true)
+    (hT : TagOk K φ p s) (htag : tagOf K φ p natTag s = some (tg, sA)) (hc : tg.asNat = some c)
+    (harm : runT K ρ φ true hint (if c = 0 then z else u) sA = some (r, s₁)) (hr1 : r.1 = .proof)
+    (hj : K.D.joinMoves (scopeOf s₁) (movedPlaces φ sA) (.matchNat p z u) = []) :
+    runT K ρ φ true hint (.matchNat p z u) s = some ((.proof, .plain (TyM.prop True)), s) := by
+  have hme : optCheck (MatchEntryOk K φ (!true) (.matchNat p z u) sA) = some ⟨⟩ := by
+    unfold optCheck; rw [if_pos]; intro e; cases e
+  have hent : matchEntry K φ (!true) (.matchNat p z u) sA = (sA, fun _ s₂ => s₂) := rfl
+  have hjo : optCheck (JoinDropOk K φ (movedPlaces φ sA) (.matchNat p z u) s₁) = some ⟨⟩ := by
+    unfold optCheck; rw [if_pos]; unfold JoinDropOk; rw [hj]; trivial
+  obtain ⟨r1, r2⟩ := r
+  simp only at hr1
+  subst hr1
+  rw [runT]
+  simp only [SM.erasedIf, hfl2, if_true]
+  rw [SM.guarded_of hT, htag]
+  simp only [bind, Option.bind, hent, hc, tailHint_true]
+  rw [hme]
+  rcases c with _ | c
+  · simp only [if_true] at harm
+    simp only [harm]; rw [hjo]
+  · simp only [Nat.add_one_ne_zero, if_false] at harm
+    simp only [harm]; rw [hjo]
+
+section
+variable {K : RunCtx} {φ : Future}
+
+/-- **One world's arm, to the match's leaf, for a match read as a proof** (the erased form): the join is empty, so the
+checker's continuation is the given one, and the arm's leaf is the match's; the reference's match succeeds as the
+erased run of its arm. -/
+theorem matchArm_leafE (hJI : JoinContInv) (hPJ : ProofJoinG) (hPA : ProofArmM) (hVC : ValsCongrA)
+    {n m : Nat} (ih : IH K φ n) (hmn : m < n) {ρ : Assignment} {π : Nat → Nat} {st stW stJ st₁ : MState}
+    {s sA : SState} {p : Place} {z u : Term} {k kc : Value → Value → M Unit} {tg : Sem} {c bj b₁ : Nat}
+    {ρW : Assignment} {ΔW : Nat → TyS} {πW : Nat → Nat}
+    (hfl2 : (K.D.flags (scopeOf s) (.matchNat p z u)).2 = true) (hr : Rel K ρ φ π st s)
+    (hTok : TagOk K φ p s) (htag : tagOf K φ p natTag s = some (tg, sA)) (hcn : tg.asNat = some c)
+    (hsc : scopeOf sA = scopeOf s)
+    (hm : ModeR st) (hne : 0 < st.env.size) (hk : ∀ v T, GrowsM (k v T)) (hSA : Strict.SGood K.dm K.Γ φ sA)
+    (hv : (Term.matchNat p z u).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchNat p z u).absBelow st.absTy.size)
+    (hnh : (Term.matchNat p z u).hasHolePrim = false)
+    (heW : Ext K ρ π st stW ρW ΔW πW) (hKW : Kept st stW) (htnW : stW.tailNext = false) (htdW : stW.tailDecl = none)
+    (hgW : hintM { K with Δ := ΔW } ρW stW.goal = hintM K ρ st.goal)
+    (hpW : Pre { K with Δ := ΔW } ρW stW) (hrW : Rel { K with Δ := ΔW } ρW φ πW stW sA) (hDW : DecTab K.D stW)
+    (hjc : Runs (Ochr.joinCont m (.matchNat p z u) k) stW bj kc stJ)
+    (hD₁ : DecTab K.D st₁) (harm : Runs (Ochr.checkTail m (if c = 0 then z else u) kc) stJ b₁ () st₁) :
+    TailOutE K ρ φ π st s (runT K ρ φ true (hintM K ρ st.goal) (.matchNat p z u)) k := by
+  obtain ⟨hkJ, hmJ, htnJ, htdJ, -, -⟩ := hJI m _ k kc stW stJ bj hjc
+  have hkc : kc = k := (hPJ K.D).2 m p z u k kc stW stJ bj (DecTab.of_kern hkJ hDW)
+    (by rw [hKW.top, ← scopeOf_rel hr]; exact hfl2) hjc
+  subst hkc
+  have hneW : 0 < stW.env.size := by rw [hKW.size]; exact hne
+  have hva : (if c = 0 then z else u).valsOk (Strict.ValsP K ρ φ) := by
+    split
+    · exact hv.1
+    · exact hv.2
+  have haba : (if c = 0 then z else u).absBelow st.absTy.size := fun σ hσ => hab σ (by
+    split at hσ <;> simp [Term.anyAtom, hσ])
+  have hnha : (if c = 0 then z else u).hasHolePrim = false := by
+    simp only [Term.hasHolePrim, Bool.or_eq_false_iff] at hnh
+    split
+    · exact hnh.1
+    · exact hnh.2
+  have hagree : ∀ σ, (if c = 0 then z else u).anyAtom (· == .abs σ) = true → AgreeA K ΔW ρ ρW σ := fun σ hσ => by
+    obtain ⟨a, d⟩ := heW.agree σ (haba σ hσ)
+    exact ⟨a.symm, d.symm⟩
+  have hO := (ih m hmn ΔW ρW).2 (if c = 0 then z else u) stJ kc sA πW b₁ st₁
+    (hm.of_modeEq (hKW.mode.trans hmJ)) (htnJ.trans htnW) (by rw [← ColumnC.size_of_erase hkJ.env]; exact hneW)
+    (htdJ.trans htdW) hk (hpW.of_kern hkJ) (hrW.of_kern hkJ) hSA (hVC K ΔW ρ ρW φ _ hagree hva)
+    (absBelow_mono haba (by rw [← hkJ.absTy]; exact heW.abs)) hnha hD₁ harm
+  obtain ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁⟩, hK₁⟩ := hO.2
+  have hgJ : hintM { K with Δ := ΔW } ρW stJ.goal = hintM K ρ st.goal := by rw [← hkJ.goal]; exact hgW
+  rw [hgJ] at hx₁
+  have hx₁' : runT K ρ φ true (hintM K ρ st.goal) (if c = 0 then z else u) sA = some (r, s₁) := by
+    rw [runT_congrA K ΔW ρ ρW φ true _ _ sA hagree]; exact hx₁
+  obtain ⟨hr1, hr2, hs₁⟩ := hPA K ρ φ _ p z u sA s₁ c r (by rw [hsc]; exact hfl2) hx₁'
+  refine ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, (.proof, .plain (TyM.prop True)), s,
+    heW.trans (he₁.congr hkJ.absTy hkJ.nextLoan rfl rfl), ?_, ?_, ?_, hp₁⟩, (hKW.trans (Kept.of_kern hkJ hmJ)).trans hK₁⟩
+  · exact runT_matchNat_tailProof _ p z u hfl2 hTok htag hcn hx₁' hr1
+      ((hPJ K.D).1 _ _ p z u (by rw [hs₁, hsc]; exact hfl2))
+  · show meanV _ _ _ (.plain (TyM.prop True)) v = .proof
+    rw [Ochr.Meaning.meanV_hintM _ _ _ v (.plain (TyM.prop True)) r.2 hr2.symm, hm₁, hr1]
+  · exact ha₁.trans hr2
+
+/-- **The split at the end of a body, for a match on a number the table reads as a proof, in general** (the erased
+form `TailOutE`, D248's ruling (P1); a lemma's body: `AddMZero`, `AddZH`): from the induction hypothesis, at EVERY
+assignment, as for data (`tStepMatchNat_data`) with the join empty and no relation at the leaf. ASSUMES 9 facts:
+`TailMatchNatInv`, `JoinContInv` (checker), `ProofJoinG` (table and checker), `MatchTagG`, `WorldRefineG`, `GenTailG`
+(mixed), `ProofArmM`, `MatchReaccessE`, `ValsCongrA` (model). -/
+theorem tStepMatchNat_proof (hInv : TailMatchNatInv) (hJI : JoinContInv) (hPJ : ProofJoinG) (hTag : MatchTagG)
+    (hW : WorldRefineG) (hG : GenTailG) (hPA : ProofArmM) (hRe : MatchReaccessE) (hVC : ValsCongrA)
+    {n : Nat} (ih : IH K φ n) (ρ : Assignment) (p : Place) (z u : Term)
+    (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState)
+    (hm : ModeR st) (htn : st.tailNext = false) (hne : 0 < st.env.size) (htd : st.tailDecl = none)
+    (hk : ∀ v T, GrowsM (k v T)) (hp : Pre K ρ st) (hr : Rel K ρ φ π st s) (hS : Strict.SGood K.dm K.Γ φ s)
+    (hv : (Term.matchNat p z u).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchNat p z u).absBelow st.absTy.size)
+    (hnh : (Term.matchNat p z u).hasHolePrim = false) (hD : DecTab K.D st')
+    (hrun : Runs (Ochr.checkTail n (.matchNat p z u) k) st bh () st')
+    (hfl2 : (K.D.flags (scopeOf s) (.matchNat p z u)).2 = true) :
+    TailOutE K ρ φ π st s (runT K ρ φ true (hintM K ρ st.goal) (.matchNat p z u)) k := by
+  obtain ⟨m, stA, bA, hmn, hacc, hDA, hcases⟩ := hInv n p z u k st st' bh K.D hD hrun
+  obtain ⟨hTok, tg, sA, ρA, ΔA, πA, htag, heA, hKA, htnA, htdA, hgA, hpA, hrA, hZ, hSu, hAb⟩ :=
+    hTag K ρ φ π st stA s p m bA hm hne hp hr hS hDA hacc
+  have hSA : Strict.SGood K.dm K.Γ φ sA := Strict.sgood_tagOf hS hTok htag
+  have hsc : scopeOf sA = scopeOf s := by rw [scopeOf_rel hr, scopeOf_rel hrA, hKA.top]
+  have hneA : 0 < stA.env.size := by rw [hKA.size]; exact hne
+  rcases hcases with ⟨c, hcon, kc, stJ, st₁, bj, b₁, hjc, harm, hD₁⟩ | ⟨σ, hσ, hworlds⟩ |
+      ⟨v, σ, stG, st₁, bg, b₁, hvs, hcv, hgen, hDG, hre, hD₁⟩
+  · have hcn : tg.asNat = some c := by
+      rcases hcon with ⟨h0, rfl⟩ | ⟨⟨w, h1⟩, rfl⟩
+      · exact hZ h0
+      · exact hSu w h1
+    exact matchArm_leafE hJI hPJ hPA hVC ih (by omega) hfl2 hr hTok htag hcn hsc hm hne hk hSA hv hab hnh heA hKA
+      (htnA.trans htn) (htdA.trans htd) hgA hpA hrA hDA hjc hD₁ harm
+  · obtain ⟨c, hcn, hc2⟩ := hAb σ hσ
+    obtain ⟨stB, stW, stJ, st₁, kc, bw, bj, b₁, hbase, href, hDW, hjc, harm, hD₁⟩ := hworlds c hc2
+    obtain ⟨ρW, ΔW, heW, hKW, htnW, htdW, hgW, hpW, hrW⟩ :=
+      hW { K with Δ := ΔA } ρA φ πA stA stB stW s sA p σ c m bw tg hneA hpA hrA hSA htag hσ hcn hbase hDW href
+    exact matchArm_leafE hJI hPJ hPA hVC ih (by omega) hfl2 hr hTok htag hcn hsc hm hne hk hSA hv hab hnh
+      (heA.trans heW) (hKA.trans hKW) ((htnW.trans htnA).trans htn) ((htdW.trans htdA).trans htd) (hgW.trans hgA)
+      hpW hrW hDW hjc hD₁ harm
+  · obtain ⟨ρG, ΔG, heG, hKG, htnG, htdG, hgG, hpG, hrG⟩ :=
+      hG { K with Δ := ΔA } ρA φ πA stA stG sA p v σ m bg hneA hpA hrA hSA hcv hvs hDG hgen
+    have habG : st.absTy.size ≤ stG.absTy.size := Nat.le_trans heA.abs heG.abs
+    have hagree : ∀ σ', (Term.matchNat p z u).anyAtom (· == .abs σ') = true → AgreeA K ΔG ρ ρG σ' := fun σ' hσ' => by
+      obtain ⟨a, d⟩ := (heA.trans heG).agree σ' (hab σ' hσ')
+      exact ⟨a.symm, d.symm⟩
+    have hO := (ih m (by omega) ΔG ρG).2 (.matchNat p z u) stG k sA πA b₁ st₁
+      (hm.of_modeEq (hKA.trans hKG).mode) ((htnG.trans htnA).trans htn) (by rw [(hKA.trans hKG).size]; exact hne)
+      ((htdG.trans htdA).trans htd) hk hpG hrG hSA (hVC K ΔG ρ ρG φ _ hagree hv) (absBelow_mono hab habG) hnh hD₁ hre
+    obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁⟩, hK₁⟩ := hO.2
+    rw [hgG.trans hgA, ← runT_congrA K ΔG ρ ρG φ true _ _ sA hagree] at hx₁
+    have hmap := hRe K ρ φ true (hintM K ρ st.goal) p z u s sA tg hTok htag
+    rw [hx₁] at hmap
+    obtain ⟨⟨r', s'⟩, hx', hr'⟩ := Option.map_eq_some_iff.mp hmap.symm
+    simp only at hr'
+    subst hr'
+    exact ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s', (heA.trans heG).trans he₁, hx', hm₁, ha₁, hp₁⟩,
+      (hKA.trans hKG).trans hK₁⟩
+
+end
+
+/-! ## The step `TStepMatchNat`, assembled -/
+
+/-- **`TStepMatchNat` in general** (a match on a number at the end of a body: the paper's [Tail-split], [Tail-gen],
+[Tail-match]; docs/18's principle "worlds are exclusive" and case 4): the full form where the table does not read the
+match as a proof (`tStepMatchNat_data`), the erased form where it does (`tStepMatchNat_proof`; D248's ruling (P1)).
+ASSUMES 12 facts: `TailMatchNatInv`, `JoinContInv` (checker); `MatchFlagsT`, `ProofJoinG` (table; the latter also
+the checker's `joinCont`); `MatchTagG`, `WorldRefineG`, `JoinContG`, `GenTailG` (mixed); `MatchReaccessM`,
+`MatchReaccessE`, `ProofArmM`, `ValsCongrA` (model); and `Strict.FundCtx K`. -/
+theorem tStepMatchNat_of {K : RunCtx} {φ : Future} (hInv : TailMatchNatInv) (hJI : JoinContInv)
+    (hMF : MatchFlagsT K.D) (hPJ : ProofJoinG) (hTag : MatchTagG) (hW : WorldRefineG) (hJ : JoinContG)
+    (hG : GenTailG) (hRe : MatchReaccessM) (hRE : MatchReaccessE) (hPA : ProofArmM) (hVC : ValsCongrA)
+    (hc : Strict.FundCtx K) : TStepMatchNat K φ := by
+  intro n ih Δ ρ p z u st k s π bh st' hm htn hne htd hk hp hr hS hv hab hnh hD hrun
+  have ih' : IH { K with Δ := Δ } φ n := ih
+  have hc' : Strict.FundCtx { K with Δ := Δ } := ⟨hc.globals, hc.sorts⟩
+  refine ⟨fun h2 => tStepMatchNat_data (K := { K with Δ := Δ }) hInv hJI hMF hTag hW hJ hG hRe hVC hc' ih' ρ p z u st k s π bh st' hm htn hne htd
+    hk hp hr hS hv hab hnh hD hrun h2, ?_⟩
+  cases h2 : ({ K with Δ := Δ } : RunCtx).D.flags (scopeOf s) (.matchNat p z u) |>.2
+  · exact (tStepMatchNat_data (K := { K with Δ := Δ }) hInv hJI hMF hTag hW hJ hG hRe hVC hc' ih' ρ p z u st k s π bh st' hm htn hne htd
+      hk hp hr hS hv hab hnh hD hrun h2).toE
+  · exact tStepMatchNat_proof (K := { K with Δ := Δ }) hInv hJI hPJ hTag hW hG hPA hRE hVC ih' ρ p z u st k s π bh st' hm htn hne htd
+      hk hp hr hS hv hab hnh hD hrun h2
+
+/-! ## The facts attacked on the real checker (`MatchAtk`'s programs) -/
+
+namespace MatchGuards
+
+open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt outVal)
+
+/-- A continuation that succeeds exactly where the top frame's bindings `is` all hold `⊥`. -/
+def kBots (is : List Nat) : Value → Value → M Unit := fun _ _ => do
+  let st ← get
+  if is.all fun i => st.env[st.env.size - 1]!.binds[i]!.val == .bot then pure () else err "k"
+
+/-- A continuation that succeeds exactly where the top frame's binding `i` holds `v`. -/
+def kHolds (i : Nat) (v : Value) : Value → Value → M Unit := fun _ _ => do
+  let st ← get
+  if st.env[st.env.size - 1]!.binds[i]!.val == v then pure () else err "k"
+
+-- `A1 (x y n : Nat) : Nat := match n { Z => x, S(m) => y }`: a split at the end of the body (`n ↦ σ`); in EACH world
+-- the join drops what the other arm moves (`JoinContG`, `joinCont` around the continuation): at every leaf both `x`
+-- and `y` hold `⊥` (the arm's own read moved one, the join the other); the scrutinee is left whole
+#guard (Ochr.Meaning.Steps.MatchAtk.bodyOf "A1").pp [] == "match #0 { Z => #2, S _ => #1 }"
+#guard (Ochr.Meaning.Steps.MatchAtk.entryOf "A1" 3).any fun st => isOk (Ochr.checkTail 1000 (Ochr.Meaning.Steps.MatchAtk.bodyOf "A1") (kBots [1, 2])) st 100000
+#guard (Ochr.Meaning.Steps.MatchAtk.entryOf "A1" 3).any fun st => !isOk (Ochr.checkTail 1000 (Ochr.Meaning.Steps.MatchAtk.bodyOf "A1") (kBots [3])) st 100000
+-- `TailMatchNatInv`'s access: after it the scrutinee holds the unknown, and the static join is `[x, y]`
+def accA1 : M Value := do
+  Ochr.natScrutinee 100 (.var 0); Ochr.accessPath 100 (.var 0); Ochr.accessNeutralHead 100 (.var 0)
+  Ochr.matchContent (.var 0)
+#guard (Ochr.Meaning.Steps.MatchAtk.entryOf "A1" 3).any fun st => outVal accA1 st 100000 == .abs 2
+#guard (Ochr.Meaning.Steps.MatchAtk.entryOf "A1" 3).any fun st =>
+  (outVal (Ochr.staticJoin 100 (Ochr.Meaning.Steps.MatchAtk.bodyOf "A1")) st 100000).1.length == 2
+-- `A6`: in world `S` the hypothesis `h : Eq(Nat, S(σ'), Z)` is `False` and `match h {}` has no leaf: a continuation that
+-- needs `n ↦ Z` succeeds, so no leaf of world `S` ran it (the assignments selecting it are excluded by goodness: the
+-- reference's `h` would be a proof of a false proposition)
+#guard (Ochr.Meaning.Steps.MatchAtk.entryOf "A6" 2).any fun st => isOk (Ochr.checkTail 1000 (Ochr.Meaning.Steps.MatchAtk.bodyOf "A6") (kHolds 1 .zero)) st 100000
+-- `A12`: a sealed scrutinee (`b ↦ ⌈IsZ(σ0)⌉`) is generalised (`GenTailG`), then split
+#guard (Ochr.Meaning.Steps.MatchAtk.bodyOf "A12").pp [] == "let b = IsZ(#0); match b { false => 1, true => 2 }"
+-- (at each leaf, after the `let`'s drop: the generalisation's record and the world's refinement of its unknown)
+#guard (Ochr.Meaning.Steps.MatchAtk.entryOf "A12" 1).any fun st =>
+  isOk (Ochr.checkTail 1000 (Ochr.Meaning.Steps.MatchAtk.bodyOf "A12") (fun _ _ => do
+    let st ← get
+    if st.neutrals.length == 1 && st.refs.any (fun r => st.neutrals.any (·.2 == r.1)) then pure () else err "k")) st 100000
+-- `A14`: the `S` arm moves `n.0` and refills it, so the join leaves `n` whole in world `S` (net of refills) and drops
+-- nothing the arm does not move: at every leaf `y` holds `⊥` and `n` does not
+#guard (Ochr.Meaning.Steps.MatchAtk.entryOf "A14" 2).any fun st => isOk (Ochr.checkTail 1000 (Ochr.Meaning.Steps.MatchAtk.bodyOf "A14") (kBots [2])) st 100000
+#guard (Ochr.Meaning.Steps.MatchAtk.entryOf "A14" 2).any fun st => !isOk (Ochr.checkTail 1000 (Ochr.Meaning.Steps.MatchAtk.bodyOf "A14") (kBots [1])) st 100000
+
+end MatchGuards
 
 end Ochr.Meaning.Steps.Form.Master
