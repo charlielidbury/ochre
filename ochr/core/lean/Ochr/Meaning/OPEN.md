@@ -14,6 +14,14 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE INDUCTION THROUGH A CALL; THE DEFERRED HINT; THE KNOT AT `R` (lead40, 2026-11-28, `spine-lead40`; docs/31 D243 to D247)
+
+- `hintM` reads D124's deferred hint as the deferred codomain (D243, RULED and BUILT); `paramTy_congrA` PROVED.
+- `CallRanSimG` (now for a frame-free body): PROVED from the IH and 12 facts (`callRanSimG_of`): `CallEnterG` (OPEN, mixed: front + push, or the closed-off half; checker side guarded), `CallExitG` (OPEN, mixed: pop + tail), `HintNoneG` (OPEN, model, read true), `HintDeferredG` (OPEN, model, read true), `HintComputedG` (OPEN, mixed: C2 at the codomain), `CallOfOkG` (OPEN, model, read true), and C1's (`CallPtLocalG`, `AcceptedGlobalG`, `CallPopG`, `FundCtx`, `FixEqG`, `GlobalsOk`).
+- `CallFnGW`: PROVED from one list (`callFnGW_of_facts`, D247). `EvalAt` carrying `RecCurG`/`RecRankG`: NOT BUILT (D247's plan).
+- MODEL CHANGE (D245): the call in place is typed at the codomain at the arguments. `CallPopG`: OPEN (read true; D245's list of what remains).
+- `FixEqG` at `R`: PROVED in the general vocabulary from the aligned table alone (`KnotR.fixEqAt_R`, D246).
+
 ## THE START OF A CALL IN PLACE; THE STEP FOR A CALL COMPOSED (lead39, 2026-11-28, `spine-lead39`; docs/31 D240, D241)
 
 - `CallStartInvG`, `CallStartG`: PROVED (`Steps/CallStartInv`). RESTATED first: `BorrowArgsTyped` replaced by `ArgsHeld` (the borrow arguments' records at the binders' types); as first stated FALSE (by reading) at a `Prop`-sorted function. Owed where consumed: `ArgsHeld` from `BorrowArgsTyped` by a round trip of codes under `PiCallable` (not stated).
