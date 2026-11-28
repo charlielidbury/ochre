@@ -517,12 +517,12 @@ theorem borrowArgsTyped_ty {fv fv' : Res} (h : fv.2.m = fv'.2.m) {args : List Re
   rw [← h]; exact hb
 
 /-- **C1, a call in place, for a frame-free body** (assembled; assumes `CallStartG`, `CallPopG`, and the context's fixpoint
-clause `FixEqG`): at a call of an accepted global whose body is in the fragment the frame property is proved on, the call
+clause, `GlobalsOk.fixEq` since docs/31 D253): at a call of an accepted global whose body is in the fragment the frame property is proved on, the call
 run in place and `callOf` of the global's meaning agree. The frame property used is `runFrameI_frameFree`, proved. The
 global's meaning is its closure at its forming state (`hselfV`, `hselfT`: what `GlobalsOk.fn` and the `.fix` clause give
 where the global is a member, `hmem`). -/
 theorem callInPlace_of (hst : CallStartG K ρ φ) (hpop : CallPopG K ρ φ) (hc : Strict.FundCtx K) (st : MState)
-    (hfix : FixEqG K st) (hG : GlobalsOk K st) (g : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term)
+    (hG : GlobalsOk K st) (g : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term)
     (c : Term) (dec : Option Nat) (body : Term) (hfind : st.globals.find? (·.name == g) = some gd)
     (hcur : K.cur.map (·.1) ≠ some g) (hfn : gd.fn? = some (.fix self hs ds c dec body))
     (hv : body.valsOk (Strict.ValsP K ρ φ)) (hf : body.frameFree = true) (args : List Res) (s : SState)
@@ -539,7 +539,7 @@ theorem callInPlace_of (hst : CallStartG K ρ φ) (hpop : CallPopG K ρ φ) (hc 
     InPlaceAgree φ (runCallRef K ρ φ (K.C.global g) [] (.fix self hs ds c dec body) [] args s)
       (callOf K.dm.read (K.C.global g) args s) := by
   -- the fixpoint equation at the global's forming state, at the arguments
-  have he := hfix g gd self hs ds c dec body hfind hcur hfn ρ φ (args.map fun a : Res => a.1)
+  have he := hG.fixEq g gd self hs ds c dec body hfind hcur hfn ρ φ (args.map fun a : Res => a.1)
     (hdom : DomMembers K.dm.read (runDoms K ρ φ formG ds) (args.map fun a : Res => a.1))
   -- the start, then the frame property at the body (`body_agree`)
   have hmem' : selfG K ρ φ hs ds c dec body ∈ₛ[K.dm.read] piTG K ρ φ hs ds c := by rw [← hselfV, ← hselfT]; exact hmem

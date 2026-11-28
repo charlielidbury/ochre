@@ -107,6 +107,67 @@ def AcceptedGlobalG (K : RunCtx) (st : MState) : Prop :=
       (K.C.global g).2.m = piTG { K with Δ := Δ } ρ φ hs ds c ∧
       (K.C.global g).1 ∈ₛ[K.dm.read] (K.C.global g).2.m ∧ body.valsOk (Strict.ValsP { K with Δ := Δ } ρ φ)
 
+mutual
+/-- **A value-free term meets `valsOk` at every predicate** (`Term.valFree` mirrors `Term.valsOk`). -/
+theorem valsOk_of_valFree (P : Value → Prop) : ∀ (t : Term), t.valFree = true → t.valsOk P
+  | .val _, h => by simp [Term.valFree] at h
+  | .assign _ t, h | .succ t, h | .ref t, h => by
+    simp only [Term.valFree] at h; simp only [Term.valsOk]; exact valsOk_of_valFree P t h
+  | .letIn _ t u, h | .seq t u, h | .cong t u, h | .ascribe t u, h => by
+    simp only [Term.valFree, Bool.and_eq_true] at h; simp only [Term.valsOk]
+    exact ⟨valsOk_of_valFree P t h.1, valsOk_of_valFree P u h.2⟩
+  | .matchNat _ z u, h => by
+    simp only [Term.valFree, Bool.and_eq_true] at h; simp only [Term.valsOk]
+    exact ⟨valsOk_of_valFree P z h.1, valsOk_of_valFree P u h.2⟩
+  | .pi _ ds c, h => by
+    simp only [Term.valFree, Bool.and_eq_true] at h; simp only [Term.valsOk]
+    exact ⟨valsOkList_of_valFree P ds h.1, valsOk_of_valFree P c h.2⟩
+  | .fix _ _ ds c _ b, h => by
+    simp only [Term.valFree, Bool.and_eq_true] at h; simp only [Term.valsOk]
+    exact ⟨valsOkList_of_valFree P ds h.1.1, valsOk_of_valFree P c h.1.2, valsOk_of_valFree P b h.2⟩
+  | .call f as _, h => by
+    simp only [Term.valFree, Bool.and_eq_true] at h; simp only [Term.valsOk]
+    exact ⟨valsOk_of_valFree P f h.1, valsOkList_of_valFree P as h.2⟩
+  | .eq a b c, h | .id a b c, h => by
+    simp only [Term.valFree, Bool.and_eq_true] at h; simp only [Term.valsOk]
+    exact ⟨valsOk_of_valFree P a h.1.1, valsOk_of_valFree P b h.1.2, valsOk_of_valFree P c h.2⟩
+  | .prim _ as, h | .tind _ as, h => by
+    simp only [Term.valFree] at h; simp only [Term.valsOk]; exact valsOkList_of_valFree P as h
+  | .ctor _ _ _ ps as, h => by
+    simp only [Term.valFree, Bool.and_eq_true] at h; simp only [Term.valsOk]
+    exact ⟨valsOkList_of_valFree P ps h.1, valsOkList_of_valFree P as h.2⟩
+  | .matchInd _ _ arms, h => by
+    simp only [Term.valFree] at h; simp only [Term.valsOk]; exact valsOkArms_of_valFree P arms h
+  | .place _, _ | .borrow _, _ | .const _, _ | .sort _, _ | .nat, _ | .zero, _ | .unit, _ | .tt, _ => by
+    simp [Term.valsOk]
+termination_by structural t => t
+
+theorem valsOkList_of_valFree (P : Value → Prop) : ∀ (ts : List Term), Term.valFreeList ts = true → Term.valsOkList P ts
+  | [], _ => by simp [Term.valsOkList]
+  | t :: ts, h => by
+    simp only [Term.valFreeList, Bool.and_eq_true] at h; simp only [Term.valsOkList]
+    exact ⟨valsOk_of_valFree P t h.1, valsOkList_of_valFree P ts h.2⟩
+termination_by structural ts => ts
+
+theorem valsOkArms_of_valFree (P : Value → Prop) :
+    ∀ (arms : List (Hint × Term)), Term.valFreeArms arms = true → Term.valsOkArms P arms
+  | [], _ => by simp [Term.valsOkArms]
+  | (_, t) :: ts, h => by
+    simp only [Term.valFreeArms, Bool.and_eq_true] at h; simp only [Term.valsOkArms]
+    exact ⟨valsOk_of_valFree P t h.1, valsOkArms_of_valFree P ts h.2⟩
+termination_by structural arms => arms
+end
+
+/-- **`AcceptedGlobalG` at the call point, from `GlobalsOk` there** (docs/31 D253): its meaning part is
+`GlobalsOk.accepted`, its last conjunct (the body's embedded values good) holds because the code holds none
+(`GlobalsOk.codeValFree`). Replaces the every-state hypothesis `∀ st, AcceptedGlobalG K st`, FALSE at every context. -/
+theorem acceptedGlobalG_of {K : RunCtx} {st : MState} (h : GlobalsOk K st) : AcceptedGlobalG K st := by
+  intro g gd self hs ds c dec body hf hcur hfn Δ ρ φ
+  obtain ⟨h1, h2, h3⟩ := h.accepted g gd self hs ds c dec body hf hcur hfn Δ ρ φ
+  have hvf := h.codeValFree g gd _ hf hfn
+  simp only [Term.valFree, Bool.and_eq_true] at hvf
+  exact ⟨h1, h2, h3, valsOk_of_valFree _ body hvf.2⟩
+
 /-- **Every label occurring in a checker state after a call is live** (CHECKER; (WF2) outside a sealed program's run). -/
 def OccursLiveG (K : RunCtx) : Prop :=
   ∀ (Δ : Nat → TyS) (ρ : Assignment) (st : MState), Pre { K with Δ := Δ } ρ st →
@@ -136,9 +197,9 @@ model's C1 (`callInPlace_of`, its start PROVED, `callStartG`), which assumes the
 `FixEqG`. The run in place and `callOf` agree (C1), so the relation the checker's state has with the run in place's
 result transfers to `callOf`'s, which is `refCall`'s once its strict test passes (`BorrowArgsTyped`). -/
 theorem callAcceptedFF_of {K : RunCtx} {φ : Future} (hsim : CallRanSimG K φ) (hpt : CallPtLocalG K φ)
-    (hocc : OccursLiveG K) (hacc : ∀ st, AcceptedGlobalG K st)
+    (hocc : OccursLiveG K)
     (hpop : ∀ Δ ρ, CallPopG { K with Δ := Δ } ρ φ) (hfc : ∀ Δ, Strict.FundCtx { K with Δ := Δ })
-    (hfix : ∀ Δ st, FixEqG { K with Δ := Δ } st) (hGΔ : ∀ Δ st, GlobalsOk K st → GlobalsOk { K with Δ := Δ } st) :
+    (hGΔ : ∀ Δ st, GlobalsOk K st → GlobalsOk { K with Δ := Δ } st) :
     CallAcceptedFF K φ := by
   intro n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body hcur hns hG hfind hfn hl0
     hff hm htn hsz hcp hfT hok hD hrun
@@ -150,8 +211,8 @@ theorem callAcceptedFF_of {K : RunCtx} {φ : Future} (hsim : CallRanSimG K φ) (
     unfold refCall; exact if_pos hbt
   refine ⟨?_, hkept⟩
   rcases hdisj with ⟨ρ', Δ', π', r, s', hext, hx, hmean, hstr, hlabel, hpre, hrel, hdefer, hmiss⟩ | hcl
-  · obtain ⟨hselfV, hselfT, hmem, hv⟩ := hacc stc g gd self hs ds c dec body hfind hcur hfn Δ ρ φ
-    have hIP := callInPlace_of { K with Δ := Δ } ρ φ (callStartG _ ρ φ) (hpop Δ ρ) (hfc Δ) stc (hfix Δ stc)
+  · obtain ⟨hselfV, hselfT, hmem, hv⟩ := acceptedGlobalG_of hG g gd self hs ds c dec body hfind hcur hfn Δ ρ φ
+    have hIP := callInPlace_of { K with Δ := Δ } ρ φ (callStartG _ ρ φ) (hpop Δ ρ) (hfc Δ) stc
       (hGΔ Δ stc hG) g gd self hs ds c dec body hfind hcur hfn hv hff asR sc hselfV hselfT hmem hgood hloc hlw hsites
       hlive hnd hdom hlab hbt hheld
     rw [hx] at hIP

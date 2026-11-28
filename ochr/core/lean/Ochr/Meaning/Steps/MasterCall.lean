@@ -197,27 +197,7 @@ borrow arguments ended, `⋆`). The first branch is where the context is consume
   and deleted (lead31; docs/31 D204).
 -/
 
-/-- **(R3) A callee's result is labelled exactly where its codomain is written `&`** (MODEL; a clause of the context,
-to be established when each definition is accepted, through the relation, from its typed check at unknown parameters:
-the checker's leaf value is a borrow exactly when the reference's result is labelled (`Out`'s label clause, both
-directions), a borrow only at a type `&A` (`OutL`'s kind clause, R3), the leaf type converts to the goal, and the goal
-is `&` exactly when the codomain is written `&` (`refTopOk`)). For every earlier global with a `fix`, at every
-assignment, future and forming state, the closure's function (`fixG`, what `run_fix_def` forms and `GlobalsOk.fn`
-names) at member arguments returns a body output whose result label is present exactly when the codomain is a borrow
-type (`codOf`'s `isRef`: the codomain term is `&U`). Both directions are consumed: at a data codomain `callOf`'s result
-carries no label, so the checker's in-place value must not be a borrow (machine12's `gb (r : &Nat) : Nat := r`, which the
-checker never accepted and the context admitted); at a borrow codomain `callOf`'s result always carries a fresh label,
-and `callFn` relabels the body's value into it only if it is a borrow. -/
-def RetKindG (K : RunCtx) (st : MState) : Prop :=
-  ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
-    st.globals.find? (·.name == n) = some gd → K.cur.map (·.1) ≠ some n →
-    gd.fn? = some (.fix self hs ds c dec body) →
-    ∀ (ρ : Assignment) (φ : Future) (s : SState) (piT : TyM) (args : List Sem) (o : BodyOut),
-      DomMembers K.dm.read (runDoms K ρ φ s ds) args →
-      fixG K ρ φ (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
-        (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c) piT
-        s.nextLoan dec body args = some o →
-      o.retLabel.isSome = (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c).isRef
+-- `RetKindG` moved to `Steps/Statements.lean` (lead43, docs/31 D253): a clause of `GlobalsOk`.
 
 /-- **The recursion's rank, an entry condition** (MIXED: a condition on the assignment against the checker's [Rec]
 stack). While the definition `n` is checked at the stage bound `b` (`K.cur = some (n, b)`), every [Rec] entry of the

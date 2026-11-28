@@ -636,6 +636,12 @@ theorem ctxS_R (Δ : Nat → TyS) (hGl : G.2.label = none) (hMB : ∀ Δ, MemBel
     const := fun n g hf hn => by rw [hg] at hf; rw [(find_gR hf).2] at hn; cases hn
     fn := fun n g t hf _ hc => by rw [hg] at hf; exact absurd (by rw [(find_gR hf).1]; rfl) hc
     mem := fun n g hf hc => by rw [hg] at hf; exact absurd (by rw [(find_gR hf).1]; rfl) hc
+    fixEq := fun n _ _ _ _ _ _ _ hf hc _ => by rw [hg] at hf; exact absurd (by rw [(find_gR hf).1]; rfl) hc
+    accepted := fun n _ _ _ _ _ _ _ hf hc _ => by rw [hg] at hf; exact absurd (by rw [(find_gR hf).1]; rfl) hc
+    retKind := fun n _ _ _ _ _ _ _ hf hc _ => by rw [hg] at hf; exact absurd (by rw [(find_gR hf).1]; rfl) hc
+    codeValFree := fun n g t hf ht => by
+      rw [hg] at hf; obtain ⟨-, rfl⟩ := find_gR hf
+      simp only [gR, Option.some.injEq] at ht; subst ht; rfl
     memBelow := fun n g b' hf hcur => by
       rw [hg] at hf
       obtain ⟨rfl, rfl⟩ := find_gR hf

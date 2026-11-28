@@ -189,14 +189,15 @@ theorem callsLevel0_piTyAt (dmR : DataModel) (v : Sem) (T : TyS) (R : DataRead) 
 
 /-! ## Step 1: the stage invariant -/
 
-/-- **A stage's type of each global** is `err`, or the meaning (`globalTyS`) of a stored type value
-that is `.bot` or the stored type of the first global of that name in the stage's globals. -/
+/-- **A stage's type of each global** is `err` (a global whose run is undefined) or `True` (a name that is no global,
+`ProgState.dfltGlobal`, docs/31 D253), or the meaning (`globalTyS`) of a stored type value that is `.bot` or the stored
+type of the first global of that name in the stage's globals. -/
 def TyInv (ρ : Assignment) (P : ProgState) : Prop :=
-  ∀ f, P.globalTy f = .plain TyM.err ∨
+  ∀ f, (P.globalTy f = .plain TyM.err ∨ P.globalTy f = .plain (TyM.prop True)) ∨
     ∃ (K : RunCtx) (V : Value), P.globalTy f = globalTyS ρ K V ∧
       (V = .bot ∨ (P.globals.find? (·.name == f)).map (·.ty) = some V)
 
-theorem tyInv_empty (ρ : Assignment) : TyInv ρ {} := fun _ => .inl rfl
+theorem tyInv_empty (ρ : Assignment) : TyInv ρ {} := fun _ => .inl (.inr rfl)
 
 /-- A definition's meaning carries the meaning of its stored type. -/
 theorem defMeaning_ty (ρ : Assignment) (K : RunCtx) (d : Def) (T : Value) :
@@ -239,7 +240,7 @@ theorem tyInv_step (dm : DataModel) (D : MState → Decisions) (Γ : List IndDec
       obtain ⟨-, g, hg⟩ := hD d rfl
       have hpre : P.globals <+: st'.globals := by rw [hg]; exact List.prefix_append _ _
       intro f
-      show ProgState.globalTy { globals := st'.globals, inds := st'.inds, means := P.means ++ _ } f = _ ∨ _
+      show (ProgState.globalTy { globals := st'.globals, inds := st'.inds, means := P.means ++ _ } f = _ ∨ _) ∨ _
       unfold ProgState.globalTy
       rw [List.find?_append]
       cases e : P.means.find? (·.1 == f) with
@@ -247,7 +248,7 @@ theorem tyInv_step (dm : DataModel) (D : MState → Decisions) (Γ : List IndDec
         have hx : P.globalTy f = x.2.2 := by unfold ProgState.globalTy; rw [e]
         simp only [Option.some_or]
         rcases h f with h | ⟨K, V, h1, h2⟩
-        · exact .inl (hx.symm.trans h)
+        · exact .inl (h.imp (hx.symm.trans ·) (hx.symm.trans ·))
         · refine .inr ⟨K, V, hx.symm.trans h1, ?_⟩
           rcases h2 with h2 | h2
           · exact .inl h2
@@ -259,14 +260,14 @@ theorem tyInv_step (dm : DataModel) (D : MState → Decisions) (Γ : List IndDec
           simp only [beq_self_eq_true, ite_true]
           rcases defMeaning_ty ρ (P.ctx dm D Γ st') d (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)
             with h1 | h1
-          · exact .inl h1
+          · exact .inl (.inl h1)
           · refine .inr ⟨_, _, h1, ?_⟩
             cases e' : (st'.globals.find? (·.name == d.name)).map (·.ty) with
             | none => exact .inl rfl
             | some V => exact .inr rfl
         · have : (d.name == f) = false := by simpa using hn
           simp only [this]
-          exact .inl rfl
+          exact .inl (.inr rfl)
   · exact h
 
 /-- **Every stage keeps the invariant.** -/
@@ -292,8 +293,10 @@ theorem callsLevel0_of_tyInv (ρ : Assignment) (P : ProgState) (hP : TyInv ρ P)
     FieldLevel.callsLevel0_of_not_t2 dmR _ fun B c h => by
       change T.m = _ at h; rw [hT] at h; cases h
   show FieldLevel.CallsLevel0 dmR (P.globalMean f, P.globalTy f)
-  rcases hP f with h | ⟨K, V, h1, h2⟩
+  rcases hP f with (h | h) | ⟨K, V, h1, h2⟩
   · exact herr _ (by rw [h]; rfl)
+  · exact FieldLevel.callsLevel0_of_not_t2 dmR _ fun B c hc => by
+      change (P.globalTy f).m = _ at hc; rw [h] at hc; cases hc
   · rw [h1]
     rcases h2 with rfl | h2
     · exact herr _ (globalTyS_bot ρ K)

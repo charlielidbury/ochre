@@ -35,7 +35,9 @@ theorem ctxS_stCw (hcov : ∀ d ∈ Γ, dm.covers d) : CtxS (KCw dm D Γ) stC wh
   faithful := fun _ h => absurd h List.not_mem_nil
   noLabel := fun _ => rfl
   globals := ⟨fun _ _ h => by simp [stC] at h, fun _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h,
-    fun _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h⟩
+    fun _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h,
+    fun _ _ _ _ _ _ _ _ h => by simp [stC] at h, fun _ _ _ _ _ _ _ _ h => by simp [stC] at h,
+    fun _ _ _ _ _ _ _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h⟩
 
 theorem asg_stCw : Asg (KCw dm D Γ) ρ stC := by
   refine ⟨⟨?_, ?_, ?_, ?_⟩, ?_, ?_, ?_⟩

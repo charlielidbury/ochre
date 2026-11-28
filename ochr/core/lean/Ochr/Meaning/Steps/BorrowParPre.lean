@@ -222,6 +222,12 @@ theorem ctxS_stW : CtxS (KB "W" outW dm D φ) stW where
     const := fun n g hf hn => by rw [(find_gW hf).2] at hn; cases hn
     fn := fun n g t hf _ hc => absurd (by rw [(find_gW hf).1]; rfl) hc
     mem := fun n g hf hc => absurd (by rw [(find_gW hf).1]; rfl) hc
+    fixEq := fun n _ _ _ _ _ _ _ hf hc _ => by exact absurd (by rw [(find_gW hf).1]; rfl) hc
+    accepted := fun n _ _ _ _ _ _ _ hf hc _ => by exact absurd (by rw [(find_gW hf).1]; rfl) hc
+    retKind := fun n _ _ _ _ _ _ _ hf hc _ => by exact absurd (by rw [(find_gW hf).1]; rfl) hc
+    codeValFree := fun n g t hf ht => by
+      obtain ⟨-, rfl⟩ := find_gW hf
+      simp only [gW, Option.some.injEq] at ht; subst ht; rfl
     memBelow := fun n g b hf hcur => by
       obtain ⟨rfl, rfl⟩ := find_gW hf
       simp only [KB, Option.some.injEq, Prod.mk.injEq, true_and] at hcur

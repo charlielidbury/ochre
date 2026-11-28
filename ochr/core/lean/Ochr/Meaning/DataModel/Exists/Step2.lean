@@ -1014,12 +1014,20 @@ theorem evTGood_err : EvTGood (.err, .plain TyM.err) := by
   unfold tfType
   rfl
 
+/-- The meaning of a name that is no global (`ProgState.dfltGlobal`, `•` at `True`, docs/31 D253) does not run either. -/
+theorem evTGood_dflt : EvTGood ProgState.dfltGlobal := by
+  intro k _
+  right
+  unfold tfType
+  rfl
+
 /-- **The existence statement's conclusion at step 2's program state**, under the checker's
-decisions, at the state whose `EvT` has no recorded meaning. At the state the checker reaches (its
-`EvT` the program meaning's), `dataFaithful` gives the same from `EvTGood` of that meaning. -/
+decisions, at the state whose `EvT` has no recorded meaning (it means `ProgState.dfltGlobal`, docs/31 D253; it meant
+`err` before). At the state the checker reaches (its `EvT` the program meaning's), `dataFaithful` gives the same from
+`EvTGood` of that meaning. -/
 theorem instance_data (fuel : Nat) :
     ∃ dm : DataModel, step2State.Covered dm ∧ Assembly.DataFaithful dm (chainDecisions fuel) step2Decls step2State :=
-  ⟨dmS (.err, .plain TyM.err), fun _ _ => trivial, dataFaithful _ _ rfl rfl evTGood_err⟩
+  ⟨dmS ProgState.dfltGlobal, fun _ _ => trivial, dataFaithful _ _ rfl rfl evTGood_dflt⟩
 
 /-! ## A meaning of `EvT` that runs: the field `x` of `TF` exercised -/
 

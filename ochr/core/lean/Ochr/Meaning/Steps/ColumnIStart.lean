@@ -240,6 +240,12 @@ theorem ctxS_stI : CtxS (KI dm D φ) stI where
     const := fun n g hf hn => by rw [(find_gI hf).2] at hn; cases hn
     fn := fun n g t hf _ hc => absurd (by rw [(find_gI hf).1]; rfl) hc
     mem := fun n g hf hc => absurd (by rw [(find_gI hf).1]; rfl) hc
+    fixEq := fun n _ _ _ _ _ _ _ hf hc _ => by exact absurd (by rw [(find_gI hf).1]; rfl) hc
+    accepted := fun n _ _ _ _ _ _ _ hf hc _ => by exact absurd (by rw [(find_gI hf).1]; rfl) hc
+    retKind := fun n _ _ _ _ _ _ _ hf hc _ => by exact absurd (by rw [(find_gI hf).1]; rfl) hc
+    codeValFree := fun n g t hf ht => by
+      obtain ⟨-, rfl⟩ := find_gI hf
+      simp only [gI, Option.some.injEq] at ht; subst ht; rfl
     memBelow := fun n g b hf hcur => by
       obtain ⟨rfl, rfl⟩ := find_gI hf
       simp only [KI, Option.some.injEq, Prod.mk.injEq, true_and] at hcur

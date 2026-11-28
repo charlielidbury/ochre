@@ -48,33 +48,9 @@ namespace Ochr.Meaning.Steps.Form
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps
 
-section GlobalFix
-variable (K : RunCtx) (ρ : Assignment) (φ : Future)
+-- `formG`, `fbG`, `psG`, `outG`, `lG`, `piTG`, `GG`, `selfG` moved to `Steps/Statements.lean` (lead43, docs/31 D253:
+-- `GlobalsOk` carries the globals' fixpoint equation, which reads them).
 
-/-- A global's forming state: `meanV` reads `.clo [] t []` by the `.fix` clause from it (`GlobalsOk.fn`). -/
-def formG : SState := stateOf 0 []
-
-/-- The closure's binders, body hint and codomain reading at a global's code (`run_fix_def`'s `fb`, at `formG`). -/
-noncomputable def fbG (ds : List Term) (c : Term) : List PBind × (List Sem → TyS) × DeclInfo :=
-  (bindsOf K ρ φ formG ds, fixCod K ρ φ formG (bindsOf K ρ φ formG ds) (ds.map Term.isRefTy) c,
-    K.D.typeDecl (K.D.teleDecls (scopeOf formG) ds) c)
-
-/-- Its domains and codomain. -/
-noncomputable def psG (ds : List Term) : List PiDom := runDoms K ρ φ formG ds
-noncomputable def outG (ds : List Term) (c : Term) : PiCod :=
-  codOf K ρ φ formG (bindsOf K ρ φ formG ds) (ds.map Term.isRefTy) c
-
-/-- The declared sort, the function type, the closure's function (`fixG`, from the counter `0`) and the global's meaning
-(its closure), all at `formG`. -/
-noncomputable def lG (hs : List Hint) (ds : List Term) (c : Term) : Nat := K.D.piSort (scopeOf formG) (.pi hs ds c)
-noncomputable def piTG (hs : List Hint) (ds : List Term) (c : Term) : TyM :=
-  piTyAt K.dm.read (lG K hs ds c) (psG K ρ φ ds) (outG K ρ φ ds c)
-noncomputable def GG (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) : List Sem → Option BodyOut :=
-  fixG K ρ φ (fbG K ρ φ ds c) (lG K hs ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) (piTG K ρ φ hs ds c) 0 dec body
-noncomputable def selfG (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) : Sem :=
-  closureAt K.dm.read (lG K hs ds c) φ (psG K ρ φ ds) (outG K ρ φ ds c) (GG K ρ φ hs ds c dec body)
-
-end GlobalFix
 
 /-- **The frame property at EQUAL selves** (docs/31 D202): `RunFrameS` over `FrameRel` itself (the function's own
 binding the same on both sides, as everywhere else in the frame), so with no "the body does not read `self`"
@@ -92,21 +68,7 @@ def RunFrame : Prop :=
     ks.length ≤ (s'.env.headD {}).binds.length →
     FrameAgree σ s₀ ks (runT K ρ φ tl hint t s) (runT K ρ φ tl hint t s')
 
-/-- **The fixpoint equation of an accepted global** (MODEL; docs/31 D202, restated by D232). For every global `n` of the
-checker's state other than the one being checked, with a `fix` code, at every assignment and future, at member arguments:
-the global's function (`GG`, the `.fix` clause's `fixG` at the global's forming state `formG`: stage `rank + 1`) equals one
-run of the body with `self` the global's own closure at its true function type. Stated at `formG` only (D232: a global is
-formed there and nowhere else; at another state the body's variables are not its own, and the right side's closure is `err`
-wherever the function is not good everywhere). Since D232 a THEOREM, not an assumed clause: `FixEqDesc.fixEqG_of`, from
-the descent clause `RecDescG` and the knot's goodness `FnGoodG`. -/
-def FixEqG (K : RunCtx) (st : MState) : Prop :=
-  ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
-    st.globals.find? (·.name == n) = some gd → K.cur.map (·.1) ≠ some n →
-    gd.fn? = some (.fix self hs ds c dec body) →
-    ∀ (ρ : Assignment) (φ : Future) (args : List Sem), DomMembers K.dm.read (psG K ρ φ ds) args →
-      GG K ρ φ hs ds c dec body args =
-        fixBodyAt K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) (piTG K ρ φ hs ds c) 0 body
-          (selfG K ρ φ hs ds c dec body) args
+-- `FixEqG` moved to `Steps/Statements.lean` (lead43, docs/31 D253): a clause of `GlobalsOk`.
 
 /-- **An accepted global's function is good, its type fits its sort** (MODEL; a clause of the context, docs/31 D232): at
 every assignment and future, the function type of the global's code at its forming state fits its declared sort

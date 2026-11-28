@@ -100,20 +100,27 @@ structure ProgState : Type 3 where
 
 namespace ProgState
 
+/-- **What a name that is no global means** (docs/31 D253, ruled by the orchestrator, 2026-11-28): a proof of `True`,
+a good result with no label. No accepted code names such a name (main's D118, `NamesFact`), so the choice is read only by
+the fundamental lemma's context condition (`Strict.FundCtx.globals`, asked at EVERY name, since the reference's `.const n`
+returns `K.C.global n` for any `n`). It was `err` at `err`, which is no good result, so `FundCtx` was FALSE at every
+context the program meaning builds (`Top.not_fundCtx_of_absent_old`, the regression against the old reading). -/
+def dfltGlobal : Sem × TyS := (.proof, .plain (TyM.prop True))
+
 /-- The meaning of the global `n`: the first accepted definition named `n`, as the checker's
 `lookupGlobal` finds the first `GDef` named `n` (an accepted program has distinct names,
-`Check.declared`); `err` for a name that is not a global. -/
+`Check.declared`); `•` (`dfltGlobal`) for a name that is not a global. -/
 def globalMean (P : ProgState) (n : String) : Sem :=
   match P.means.find? (·.1 == n) with
   | some (_, s, _) => s
-  | none => .err
+  | none => dfltGlobal.1
 
 /-- The type of the global `n` as the run knows it, with its Π-shape (`run`'s `.const` reads it,
-through `CodeMeaning.global`). -/
+through `CodeMeaning.global`); `True` (`dfltGlobal`) for a name that is not a global. -/
 def globalTy (P : ProgState) (n : String) : TyS :=
   match P.means.find? (·.1 == n) with
   | some (_, _, T) => T
-  | none => .plain .err
+  | none => dfltGlobal.2
 
 /-- The code meaning a later item's run reads: each global's meaning and type. `run` reads only
 `CodeMeaning.global` of its context (`.const`, and `meanV`'s and `.val`'s `.gfn`): it gives the

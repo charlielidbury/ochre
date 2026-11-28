@@ -186,6 +186,130 @@ def MemBelow (K : RunCtx) (G : Sem × TyS) (g : GDef) (b : Nat) : Prop :=
     ∀ args, DomMembers K.dm.read ds args → decRank K g args < b →
       ∃ o, fn args = some o ∧ OutGood' K.dm.read ds out args o
 
+/-! ## The globals' own clauses, which `GlobalsOk` carries (moved here by lead43, docs/31 D253)
+
+The step for a call of a global consumed three clauses about the callee, the fixpoint equation (`FixEqG`), its meaning
+being its own closure (`AcceptedMeanG`) and the label kind of its result (`RetKindG`), and they were asked at EVERY
+checker state (`∀ st, FixEqG K st`, `∀ st, AcceptedGlobalG K st`), which is false at every context: a state may hold
+any code under a global's name (`Regress/EveryStateCE.lean`'s two counterexamples, one line each in D253). Ruled
+(2026-11-28): they are clauses of `GlobalsOk`, asked of the state's own globals but the one under check (`K.cur`),
+and read only `st.globals` and `K`, so every run keeps them as it keeps the rest (`GlobalsOk.of_globals`). They were
+defined in `FrameRec`, `MasterCall`, `CallStep`, downstream of `GlobalsOk`; the definitions are moved here unchanged. -/
+
+mutual
+/-- **The term holds no embedded value** (no `.val` node; a resolved program's code is such: the resolver builds none).
+Mirrors `Term.valsOk`, so a value-free term meets `valsOk` at every predicate (`CallStep.valsOk_of_valFree`). -/
+def _root_.Ochr.Term.valFree : Term → Bool
+  | .val _ => false
+  | .assign _ t | .succ t | .ref t => t.valFree
+  | .letIn _ t u | .seq t u | .cong t u | .ascribe t u => t.valFree && u.valFree
+  | .matchNat _ z s => z.valFree && s.valFree
+  | .pi _ ds c => Term.valFreeList ds && c.valFree
+  | .fix _ _ ds c _ b => Term.valFreeList ds && c.valFree && b.valFree
+  | .call f as _ => f.valFree && Term.valFreeList as
+  | .eq a b c | .id a b c => a.valFree && b.valFree && c.valFree
+  | .prim _ as | .tind _ as => Term.valFreeList as
+  | .ctor _ _ _ ps as => Term.valFreeList ps && Term.valFreeList as
+  | .matchInd _ _ arms => Term.valFreeArms arms
+  | _ => true
+termination_by structural t => t
+
+def _root_.Ochr.Term.valFreeList : List Term → Bool
+  | [] => true
+  | t :: ts => t.valFree && Term.valFreeList ts
+termination_by structural ts => ts
+
+def _root_.Ochr.Term.valFreeArms : List (Hint × Term) → Bool
+  | [] => true
+  | (_, t) :: ts => t.valFree && Term.valFreeArms ts
+termination_by structural ts => ts
+end
+
+namespace Form
+
+section GlobalFix
+
+/-- A global's forming state: `meanV` reads `.clo [] t []` by the `.fix` clause from it (`GlobalsOk.fn`). -/
+def formG : SState := stateOf 0 []
+
+/-- The closure's binders, body hint and codomain reading at a global's code (`run_fix_def`'s `fb`, at `formG`). -/
+noncomputable def fbG (ds : List Term) (c : Term) : List PBind × (List Sem → TyS) × DeclInfo :=
+  (bindsOf K ρ φ formG ds, fixCod K ρ φ formG (bindsOf K ρ φ formG ds) (ds.map Term.isRefTy) c,
+    K.D.typeDecl (K.D.teleDecls (scopeOf formG) ds) c)
+
+/-- Its domains and codomain. -/
+noncomputable def psG (ds : List Term) : List PiDom := runDoms K ρ φ formG ds
+noncomputable def outG (ds : List Term) (c : Term) : PiCod :=
+  codOf K ρ φ formG (bindsOf K ρ φ formG ds) (ds.map Term.isRefTy) c
+
+/-- The declared sort, the function type, the closure's function (`fixG`, from the counter `0`) and the global's meaning
+(its closure), all at `formG`. -/
+noncomputable def lG (hs : List Hint) (ds : List Term) (c : Term) : Nat := K.D.piSort (scopeOf formG) (.pi hs ds c)
+noncomputable def piTG (hs : List Hint) (ds : List Term) (c : Term) : TyM :=
+  piTyAt K.dm.read (lG K hs ds c) (psG K ρ φ ds) (outG K ρ φ ds c)
+noncomputable def GG (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) : List Sem → Option BodyOut :=
+  fixG K ρ φ (fbG K ρ φ ds c) (lG K hs ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) (piTG K ρ φ hs ds c) 0 dec body
+noncomputable def selfG (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) : Sem :=
+  closureAt K.dm.read (lG K hs ds c) φ (psG K ρ φ ds) (outG K ρ φ ds c) (GG K ρ φ hs ds c dec body)
+
+end GlobalFix
+
+/-- **The fixpoint equation of an accepted global** (MODEL; docs/31 D202, restated by D232). For every global `n` of the
+checker's state other than the one being checked, with a `fix` code, at every assignment and future, at member arguments:
+the global's function (`GG`, the `.fix` clause's `fixG` at the global's forming state `formG`: stage `rank + 1`) equals one
+run of the body with `self` the global's own closure at its true function type. Stated at `formG` only (D232: a global is
+formed there and nowhere else; at another state the body's variables are not its own, and the right side's closure is `err`
+wherever the function is not good everywhere). Since D232 a THEOREM, not an assumed clause: `FixEqDesc.fixEqG_of`, from
+the descent clause `RecDescG` and the knot's goodness `FnGoodG`. -/
+def FixEqG (K : RunCtx) (st : MState) : Prop :=
+  ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
+    st.globals.find? (·.name == n) = some gd → K.cur.map (·.1) ≠ some n →
+    gd.fn? = some (.fix self hs ds c dec body) →
+    ∀ (ρ : Assignment) (φ : Future) (args : List Sem), DomMembers K.dm.read (psG K ρ φ ds) args →
+      GG K ρ φ hs ds c dec body args =
+        fixBodyAt K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) (piTG K ρ φ hs ds c) 0 body
+          (selfG K ρ φ hs ds c dec body) args
+
+namespace Master
+
+/-- **(R3) A callee's result is labelled exactly where its codomain is written `&`** (MODEL; a clause of the context,
+to be established when each definition is accepted, through the relation, from its typed check at unknown parameters:
+the checker's leaf value is a borrow exactly when the reference's result is labelled (`Out`'s label clause, both
+directions), a borrow only at a type `&A` (`OutL`'s kind clause, R3), the leaf type converts to the goal, and the goal
+is `&` exactly when the codomain is written `&` (`refTopOk`)). For every earlier global with a `fix`, at every
+assignment, future and forming state, the closure's function (`fixG`, what `run_fix_def` forms and `GlobalsOk.fn`
+names) at member arguments returns a body output whose result label is present exactly when the codomain is a borrow
+type (`codOf`'s `isRef`: the codomain term is `&U`). Both directions are consumed: at a data codomain `callOf`'s result
+carries no label, so the checker's in-place value must not be a borrow (machine12's `gb (r : &Nat) : Nat := r`, which the
+checker never accepted and the context admitted); at a borrow codomain `callOf`'s result always carries a fresh label,
+and `callFn` relabels the body's value into it only if it is a borrow. -/
+def RetKindG (K : RunCtx) (st : MState) : Prop :=
+  ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
+    st.globals.find? (·.name == n) = some gd → K.cur.map (·.1) ≠ some n →
+    gd.fn? = some (.fix self hs ds c dec body) →
+    ∀ (ρ : Assignment) (φ : Future) (s : SState) (piT : TyM) (args : List Sem) (o : BodyOut),
+      DomMembers K.dm.read (runDoms K ρ φ s ds) args →
+      fixG K ρ φ (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c)
+        (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c) piT
+        s.nextLoan dec body args = some o →
+      o.retLabel.isSome = (codOf K ρ φ s (bindsOf K ρ φ s ds) (ds.map Term.isRefTy) c).isRef
+
+/-- **An accepted global means its own closure at its forming state** (MODEL; a clause of `GlobalsOk`, docs/31 D253):
+`CallStep.AcceptedGlobalG` but its last conjunct (the body's embedded values good), which follows from the code holding
+none (`GlobalsOk.codeValFree`, `CallStep.acceptedGlobalG_of`). Asked of every global with a `fix` code but the one under
+check. -/
+def AcceptedMeanG (K : RunCtx) (st : MState) : Prop :=
+  ∀ (g : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
+    st.globals.find? (·.name == g) = some gd → K.cur.map (·.1) ≠ some g → gd.fn? = some (.fix self hs ds c dec body) →
+    ∀ (Δ : Nat → TyS) (ρ : Assignment) (φ : Future),
+      (K.C.global g).1 = selfG { K with Δ := Δ } ρ φ hs ds c dec body ∧
+      (K.C.global g).2.m = piTG { K with Δ := Δ } ρ φ hs ds c ∧
+      (K.C.global g).1 ∈ₛ[K.dm.read] (K.C.global g).2.m
+
+end Master
+
+end Form
+
 /-- `K.C.global` is Σ: each global of the state has its stored type, a constant means its stored
 value read at that type (`⋆` at a proposition, as `evalCore`'s `.const` reads it), a function means
 the closure of its `fix` term formed in the empty frame, whose run gives the stored type's code,
@@ -211,12 +335,25 @@ structure GlobalsOk (K : RunCtx) (st : MState) : Prop where
     (K.C.global n).1 ∈ₛ[K.dm.read] (K.C.global n).2.m
   /-- the definition being checked (docs/31 D73): only membership below the bound -/
   memBelow : ∀ n g b, st.globals.find? (·.name == n) = some g → K.cur = some (n, b) → MemBelow K (K.C.global n) g b
+  /-- every global with a `fix` code but the one under check satisfies its fixpoint equation (docs/31 D253) -/
+  fixEq : Form.FixEqG K st
+  /-- every global with a `fix` code but the one under check means its own closure, a member (docs/31 D253) -/
+  accepted : Form.Master.AcceptedMeanG K st
+  /-- every global with a `fix` code but the one under check returns a labelled result exactly at a borrow codomain
+  (R3; docs/31 D253) -/
+  retKind : Form.Master.RetKindG K st
+  /-- every global's code holds no embedded value (docs/31 D253; the resolver builds none) -/
+  codeValFree : ∀ n g t, st.globals.find? (·.name == n) = some g → g.fn? = some t → t.valFree = true
 
 /-- `GlobalsOk` reads the globals only. -/
 theorem GlobalsOk.of_globals {K : RunCtx} {st st' : MState} (h : GlobalsOk K st) (hg : st'.globals = st.globals) :
     GlobalsOk K st' :=
   ⟨fun n g hf => h.ty n g (hg ▸ hf), fun n g hf => h.const n g (hg ▸ hf), fun n g t hf => h.fn n g t (hg ▸ hf),
-    fun n g hf => h.mem n g (hg ▸ hf), fun n g b hf => h.memBelow n g b (hg ▸ hf)⟩
+    fun n g hf => h.mem n g (hg ▸ hf), fun n g b hf => h.memBelow n g b (hg ▸ hf),
+    fun n gd self hs ds c dec body hf => h.fixEq n gd self hs ds c dec body (hg ▸ hf),
+    fun g gd self hs ds c dec body hf => h.accepted g gd self hs ds c dec body (hg ▸ hf),
+    fun n gd self hs ds c dec body hf => h.retKind n gd self hs ds c dec body (hg ▸ hf),
+    fun n g t hf => h.codeValFree n g t (hg ▸ hf)⟩
 
 /-- The run context knows the types of the unknowns the state names: `K.Δ` is `deltaOf` at every
 referenced unknown (`MState.Refd`). Elsewhere `K.Δ` is free, so a step that names new unknowns

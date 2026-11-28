@@ -409,9 +409,9 @@ body's simulation; the decision table at the body's end from the call's end (`ex
 `grows_exitM`); the pop and the tail are `CallExitG`. -/
 theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex : CallExitG K φ)
     (hhn : HintNoneG K φ) (hhd : HintDeferredG K φ) (hhc : HintComputedG K φ) (hco : CallOfOkG K φ)
-    (hpt : CallPtLocalG K φ) (hacc : ∀ st, AcceptedGlobalG K st)
+    (hpt : CallPtLocalG K φ)
     (hpop : ∀ Δ ρ, CallPopG { K with Δ := Δ } ρ φ) (hfc : ∀ Δ, Strict.FundCtx { K with Δ := Δ })
-    (hfix : ∀ Δ st, FixEqG { K with Δ := Δ } st) (hGΔ : ∀ Δ st, GlobalsOk K st → GlobalsOk { K with Δ := Δ } st) :
+    (hGΔ : ∀ Δ st, GlobalsOk K st → GlobalsOk { K with Δ := Δ } st) :
     CallRanSimG K φ := by
   intro n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body hcur hns hG hfind hfn hl0
     hff hm htn hsz hcp hfT hok hD hrun
@@ -422,8 +422,8 @@ theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex :
   -- C1's data at the call point
   obtain ⟨hgood, hloc, hlw, hsites, hlive, hnd, hdom, hlab, hbt, hheld⟩ :=
     hpt Δ ρ π g ws tys stc sc asR gd self hs ds c dec body hfind hfn hcp
-  obtain ⟨hselfV, hselfT, hmem, hv⟩ := hacc stc g gd self hs ds c dec body hfind hcur hfn Δ ρ φ
-  have hIP := callInPlace_of { K with Δ := Δ } ρ φ (callStartG _ ρ φ) (hpop Δ ρ) (hfc Δ) stc (hfix Δ stc)
+  obtain ⟨hselfV, hselfT, hmem, hv⟩ := acceptedGlobalG_of hG g gd self hs ds c dec body hfind hcur hfn Δ ρ φ
+  have hIP := callInPlace_of { K with Δ := Δ } ρ φ (callStartG _ ρ φ) (hpop Δ ρ) (hfc Δ) stc
     (hGΔ Δ stc hG) g gd self hs ds c dec body hfind hcur hfn hv hff asR sc hselfV hselfT hmem hgood hloc hlw hsites
     hlive hnd hdom hlab hbt hheld
   -- (E4): `callOf` succeeds, so the call in place does (C1), so the body's run in place does
@@ -453,7 +453,7 @@ theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex :
   obtain ⟨⟨ρ₂, Δ₂, π₂, r, s₂, hext₂, hx, hmean, -, hlab₂, hpre₂, hrel₂, -, -⟩, hkept⟩ :=
     (ih m hmn Δ₁ ρ₁).1 body stP stE false hint v₀ T₀ (refStart { K with Δ := Δ } ρ φ g ds c asR sc) π₁
       hE.mode (fun h => by cases h) hE.size (Or.inl hE.decl) hE.pre hE.rel hSG
-      (hacc stc g gd self hs ds c dec body hfind hcur hfn Δ₁ ρ₁ φ).2.2.2
+      (acceptedGlobalG_of hG g gd self hs ds c dec body hfind hcur hfn Δ₁ ρ₁ φ).2.2.2
       (fun σ hσ => by rw [noAbs_of_noVal hnv σ] at hσ; cases hσ)
       (hE.hintBelow.mono hE.ext.abs) hE.hole
       (fun _ => by rw [hE.tail, hH]; exact hbR)
@@ -475,12 +475,12 @@ frame-free callee body) from `CallUnderCheckG`, `CurOnStackG`, `GlobalFixG`, `Oc
 theorem callFnGW_of_facts {K : RunCtx} {φ : Future} (hU : CallUnderCheckG K φ) (hS : CurOnStackG K) (hF : GlobalFixG K φ)
     (hocc : OccursLiveG K) (hen : CallEnterG K φ) (hex : CallExitG K φ)
     (hhn : HintNoneG K φ) (hhd : HintDeferredG K φ) (hhc : HintComputedG K φ) (hco : CallOfOkG K φ)
-    (hpt : CallPtLocalG K φ) (hacc : ∀ st, AcceptedGlobalG K st)
+    (hpt : CallPtLocalG K φ)
     (hpop : ∀ Δ ρ, CallPopG { K with Δ := Δ } ρ φ) (hfc : ∀ Δ, Strict.FundCtx { K with Δ := Δ })
-    (hfix : ∀ Δ st, FixEqG { K with Δ := Δ } st) (hGΔ : ∀ Δ st, GlobalsOk K st → GlobalsOk { K with Δ := Δ } st) :
+    (hGΔ : ∀ Δ st, GlobalsOk K st → GlobalsOk { K with Δ := Δ } st) :
     CallFnGW K φ :=
   callFnGW_of hU
-    (callAcceptedFF_of (callRanSimG_of hen hex hhn hhd hhc hco hpt hacc hpop hfc hfix hGΔ) hpt hocc hacc hpop hfc hfix hGΔ)
+    (callAcceptedFF_of (callRanSimG_of hen hex hhn hhd hhc hco hpt hpop hfc hGΔ) hpt hocc hpop hfc hGΔ)
     hS hF
 
 end Ochr.Meaning.Steps.Form.Master

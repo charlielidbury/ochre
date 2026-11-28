@@ -85,7 +85,9 @@ theorem ctxS_stC : CtxS (KC dm D) stC where
   faithful := fun _ h => absurd h List.not_mem_nil
   noLabel := fun _ => rfl
   globals := ⟨fun _ _ h => by simp [stC] at h, fun _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h,
-    fun _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h⟩
+    fun _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h,
+    fun _ _ _ _ _ _ _ _ h => by simp [stC] at h, fun _ _ _ _ _ _ _ _ h => by simp [stC] at h,
+    fun _ _ _ _ _ _ _ _ h => by simp [stC] at h, fun _ _ _ h => by simp [stC] at h⟩
 
 /-- At every declaration list (the one-list ruling, docs/31 D174: the context's list is the whole
 program's; `stC` holds no value, so no clause reads it). -/
