@@ -3289,6 +3289,14 @@ Repairs: (alpha) THE CHECKER: a block's re-run binds no closure as its own bindi
 
 **Verdict: land it** (from the proof's side). Every one of the four faults is gone with no new unproved lemma; the alternative (the closure-style clause) owed two unproved lemmas, a checker change and still read a suspended term as a function.
 
+### D237. A λ that calls the function under check captures it at its declared type: D232's obstruction with no block, on main and on the experiment alike; repair by the same principle (thirty-eighth lead, 2026-11-28; `spine-exp-block`; the lead's task 3; NOT BUILT, a checker change)
+
+**The instance** (`Steps/LamCaptureAttack.lean`, guards; all accepted): `CL0 (m n : Nat) : Nat by n := let g = (λ(j : Nat) : Nat => match n { Z => Z, S k => CL0(j, clone(k)) }); ?` (and `CL0r`, returning `g(m)`; checker14's `CL`, whose λ is formed only at `n = S k`). At the hole `g ↦ fix _ (j : Nat) : Nat := match κ2 { Z => 0, S _ => κ1(j, clone(κ2.0)) } where κ1 = CL0, κ2 = σ1`: the closure CAPTURES the function under check, the global, recorded at reading `.pi .other` and the declared type `Π(m : Nat) (n : Nat). Nat`; the capture moves `CL0`'s own binding and `n` (K1).
+
+**The same obstruction as `MB0r`'s, with no block.** Under the knot's `K_b` the global means its stage closure at the WEAKENED type; the model reads the checker's closure value strictly (`meanV`'s `.clo`: `CapsOk`, each capture a member of its recorded type); at bound `0` the stage closure is no member of the declared type (`StageBlock.capsOk_stage0`, from `stage0_not_mem`, kernel-checked), so `g` means `err`, while the reference's direct run forms the λ from its own state (the binding at the weakened type) and gets a member (at `n = 0` its function is `0` everywhere). The relation fails at `g`, and for `CL0r` at its leaf. The link from the recorded type value's meaning to `piTyAt _ 1 psMB natOut` is by reading.
+
+**Repair, by the same principle** (a function under check occurs only as the head of a call): a closure formed in the body of a function under check names it in its code by its GLOBAL and does not keep it as a capture (the capture still TAKEN as K1 says, the binding moved on every path, as `exp-block-text` does for a block). Then the model's `.clo` clause never asks the stage closure's membership; the call in the λ's body applies the global's meaning along its own type at arguments of rank below the bound. Changes: such closures' code and capture lists (printing; comparing two closures of the definition under check), no move changes, no verdict change expected. A checker change, main and the experiment alike.
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass

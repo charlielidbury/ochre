@@ -349,6 +349,7 @@ import Ochr.Meaning.Steps.Machine.BorrowRead
 import Ochr.Meaning.Steps.Machine.JoinLocal
 import Ochr.Meaning.Steps.BlockTextNTr
 import Ochr.Meaning.Steps.BlockTextTest
+import Ochr.Meaning.Steps.LamCaptureAttack
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
