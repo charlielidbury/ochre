@@ -7,6 +7,7 @@ import Ochr.Meaning.DecisionsFF
 import Ochr.Meaning.DataModel.Exists.Assembly
 import Ochr.Meaning.Steps.Machine.NoVal
 import Ochr.Meaning.Steps.Machine.RepLocal
+import Ochr.Meaning.Steps.Machine.CapsLocal
 
 /-!
 # Milestone 4: the assembly of `consistencyBounded` (docs/18 Corollaries 15 and 16)
@@ -415,7 +416,7 @@ checker, kept as an assumption of the construction, not a hypothesis here: the c
 decides that two applications of a type former to different arguments are different (a record
 keeps what field types read of the parameters, not the parameters; docs/34 §8, §13).
 
-**Assumes four facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17, §18.19 state each exactly), and
+**Assumes three facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17, §18.19 state each exactly), and
 that `items` is the resolution of a program (`hres`), from which `NoValFact` is PROVED
 (`noValFact_of_resolvesTo`):
 * `VaryValFact` (about the checker; read true since main's D128, not derived; main's D140 decides its
@@ -423,9 +424,9 @@ that `items` is the resolution of a program (`hres`), from which `NoValFact` is 
   reads a varying value parameter;
 * `NamesFact` (about the checker and resolution; read true for resolved items): the names an accepted
   item's code mentions are the stage's;
-* `DecCaps` at every state (an obligation on the decisions: `DecLocal`'s `caps` part, the [Entry]
-  captures rooted at the term's free variables; read true). `DecLocal`'s other three parts are PROVED
-  at the chain's decisions (`inv`, `rep`: exists12; `join`: machine11) and supplied here;
+* frame locality's obligation on the decisions, `DecLocal`, is PROVED at the chain's decisions and
+  supplied here (`inv`, `rep`: exists12; `join`: machine11; `caps`, the [Entry] captures rooted at the
+  term's free variables: exists13, since main's capture sort);
 * `DecStable` (an obligation on the decisions, at the states the checker reaches on the program).
 `ItemFacts` (what an accepted item does to the declarations and the globals, the stored entry passing
 `Knot.IndChecks`) is proved (`Assembly.itemFacts`, exists12). `FieldHeads` (a parameter or a global
@@ -442,7 +443,7 @@ theorem exists_dataModel (p : Program) (items : List Item) (fuel : Nat) (hres : 
   DataModel.Exists.Assembly.exists_dataModel_facts (chainDecisions fuel) fuel items
     (noValFact_of_resolvesTo p fuel items hres)
     (fun st => ⟨Steps.Machine.decLocal_inv_chain fuel st, Steps.Machine.decLocal_join_chain fuel st,
-      Steps.Machine.decLocal_rep_chain fuel st⟩) hF
+      Steps.Machine.decLocal_rep_chain fuel st, Steps.Machine.decLocal_caps_chain fuel st⟩) hF
 
 /-- (leaf, checker) **Every stage's declarations are a prefix of the whole program's** (docs/31 D174):
 along accepted items Σ's inductive declarations only grow at the end (a definition adds none; a
