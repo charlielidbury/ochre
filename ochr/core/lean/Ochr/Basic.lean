@@ -668,4 +668,111 @@ def Term.refsOk (t : Term) : Bool := t.refsOkAt false
 in allowed positions. -/
 def Term.refTopOk (t : Term) : Bool := t.refsOkAt true
 
+/-! ### An insertion sort the proofs can unfold
+
+The checker orders captures (a closure's free variables, a stuck block's captures) with this sort,
+not with `Array.qsort`: Lean's core states no lemma about `qsort` and keeps its recursion private,
+so no proof outside the core can say anything about its result (the consistency proof's `DecCaps`
+was blocked by that alone). This one is structurally recursive on a list, and its two lemmas are
+the ones a proof needs: the result is a permutation of the input (`sortBy_perm`), and it is
+sorted (`sortBy_sorted`). -/
+
+/-- `x` inserted into a list sorted by `lt`, before the first element it does not come after. -/
+def insertBy {α : Type} (lt : α → α → Bool) (x : α) : List α → List α
+  | [] => [x]
+  | y :: ys => if lt y x then y :: insertBy lt x ys else x :: y :: ys
+
+/-- Insertion sort by `lt`, structurally recursive on the list. Elements neither of which comes
+before the other keep their order in the input. -/
+def sortBy {α : Type} (lt : α → α → Bool) : List α → List α
+  | [] => []
+  | x :: xs => insertBy lt x (sortBy lt xs)
+
+theorem insertBy_perm {α : Type} (lt : α → α → Bool) (x : α) :
+    ∀ l : List α, (insertBy lt x l).Perm (x :: l)
+  | [] => List.Perm.refl _
+  | y :: ys => by
+    unfold insertBy
+    split
+    · exact ((insertBy_perm lt x ys).cons y).trans (List.Perm.swap x y ys)
+    · exact List.Perm.refl _
+
+/-- The sort is a permutation of its input. -/
+theorem sortBy_perm {α : Type} (lt : α → α → Bool) : ∀ l : List α, (sortBy lt l).Perm l
+  | [] => List.Perm.refl _
+  | x :: xs => (insertBy_perm lt x (sortBy lt xs)).trans ((sortBy_perm lt xs).cons x)
+
+theorem insertBy_sorted {α : Type} (lt : α → α → Bool)
+    (asymm : ∀ a b, lt a b = true → lt b a = false)
+    (ntrans : ∀ a b c, lt a b = false → lt b c = false → lt a c = false) (x : α) :
+    ∀ l : List α, l.Pairwise (fun a b => lt b a = false) →
+      (insertBy lt x l).Pairwise (fun a b => lt b a = false)
+  | [], _ => List.pairwise_singleton _ _
+  | y :: ys, hl => by
+    rw [List.pairwise_cons] at hl
+    obtain ⟨hy, hys⟩ := hl
+    unfold insertBy
+    split
+    · next h =>
+      refine List.Pairwise.cons ?_ (insertBy_sorted lt asymm ntrans x ys hys)
+      intro z hz
+      rcases List.mem_cons.mp ((insertBy_perm lt x ys).mem_iff.mp hz) with rfl | hz
+      · exact asymm _ _ h
+      · exact hy z hz
+    · next h =>
+      have h : lt y x = false := by simpa using h
+      refine List.Pairwise.cons ?_ (List.Pairwise.cons hy hys)
+      intro z hz
+      rcases List.mem_cons.mp hz with rfl | hz
+      · exact h
+      · exact ntrans _ _ _ (hy z hz) h
+
+/-- The sort is sorted by `lt`: no element comes before an earlier one, for a comparison that is
+asymmetric and whose negation is transitive (a strict weak order). -/
+theorem sortBy_sorted {α : Type} (lt : α → α → Bool)
+    (asymm : ∀ a b, lt a b = true → lt b a = false)
+    (ntrans : ∀ a b c, lt a b = false → lt b c = false → lt a c = false) :
+    ∀ l : List α, (sortBy lt l).Pairwise (fun a b => lt b a = false)
+  | [] => List.Pairwise.nil
+  | x :: xs => insertBy_sorted lt asymm ntrans x _ (sortBy_sorted lt asymm ntrans xs)
+
+/-- The strict lexicographic order on lists of numbers, a proper prefix first. -/
+def natsLt : List Nat → List Nat → Bool
+  | [], [] => false
+  | [], _ :: _ => true
+  | _ :: _, [] => false
+  | a :: as, b :: bs => a < b || (a == b && natsLt as bs)
+
+theorem natsLt_asymm : ∀ a b : List Nat, natsLt a b = true → natsLt b a = false
+  | [], [], h => by simp [natsLt] at h
+  | [], _ :: _, _ => rfl
+  | _ :: _, [], h => by simp [natsLt] at h
+  | a :: as, b :: bs, h => by
+    simp only [natsLt, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true, beq_iff_eq] at h ⊢
+    rcases h with h | ⟨rfl, h⟩
+    · simp; omega
+    · have := natsLt_asymm as bs h; simp [this]
+
+theorem natsLt_ntrans : ∀ a b c : List Nat, natsLt a b = false → natsLt b c = false → natsLt a c = false
+  | a, _, [], _, _ => by cases a <;> rfl
+  | [], [], _ :: _, _, h => h
+  | [], _ :: _, _ :: _, h, _ => by simp [natsLt] at h
+  | _ :: _, [], _ :: _, _, h => by simp [natsLt] at h
+  | a :: as, b :: bs, c :: cs, h1, h2 => by
+    simp only [natsLt, Bool.or_eq_false_iff, decide_eq_false_iff_not, Bool.and_eq_false_iff, beq_eq_false_iff_ne, ne_eq] at h1 h2 ⊢
+    obtain ⟨h1a, h1b⟩ := h1
+    obtain ⟨h2a, h2b⟩ := h2
+    refine ⟨by omega, ?_⟩
+    by_cases hac : a = c
+    · subst hac
+      have hab : a = b := by omega
+      subst hab
+      right
+      rcases h1b with h | h
+      · exact absurd rfl h
+      rcases h2b with h' | h'
+      · exact absurd rfl h'
+      exact natsLt_ntrans as bs cs h h'
+    · left; exact hac
+
 end Ochr

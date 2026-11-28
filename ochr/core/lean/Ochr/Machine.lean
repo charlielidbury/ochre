@@ -1963,7 +1963,7 @@ good on smaller arguments", which is not a member of its declared type, so it ca
 not held as a value at that type. -/
 def capture (fuel : Nat) (t : Term) : M (List Value × Term × List (DeclInfo × Value) × List Nat) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let fvs := (t.freeVars.toArray.qsort (· > ·)).toList   -- oldest binding first
+  let fvs := sortBy (fun a b => decide (a > b)) t.freeVars   -- oldest binding first (no duplicates)
   let mut vals := #[]
   let mut rd := #[]
   let mut kept : Array Nat := #[]          -- the variables kept as captures, oldest first
@@ -4135,7 +4135,7 @@ def blockEntry (fuel : Nat) (mt : Term) : M (Array (Place × Nat)) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let (_, st) ← staticJoin fuel' mt
   let (caps, _, _) ← blockCaptures fuel' mt st
-  let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
+  let capsS := blockCapOrder caps
   entryAccess fuel' capsS
   pure capsS
 termination_by structural fuel
@@ -4339,8 +4339,8 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   -- instance agree on which borrows are live inside the arms too, with no exception
   let (_, st) ← staticJoin fuel' mt
   let (caps, split, moved) ← blockCaptures fuel' mt st
-  -- order the captures by frame position (oldest binding first), then by path
-  let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
+  -- order the captures by frame position (oldest binding first), then by length, then by path
+  let capsS := blockCapOrder caps
   entryAccess fuel' capsS
   -- D93: a captured field of an unknown of a one-constructor type is a place once the unknown is
   -- refined in place, here, after the entry (which has ended any borrow over a fill on its path)
