@@ -238,11 +238,16 @@ theorem retKindR : RetKindR := by
     obtain ⟨-, h⟩ := h
     injection h with h
     subst h
-    obtain ⟨q, hres, hty⟩ := varPos_tyAt_push2 s.under _ _ (by simp [SState.under])
-    have hl := runT_bodyR_label hres (congrArg TyS.m hty) (fun fv as s₀ s₁ r₀ hfv hc =>
-      callOf_piTyAt_data K.dm.read _ _ _ rfl hfv hc) hrun
-    simp only at hl ⊢
-    rw [hl]; rfl
+    -- main's D142: the run itself, or (an erased function) the run's result label-free at the start's state
+    obtain ⟨rr, ss, hrun₀, hcase⟩ := SM.bodyRun_some hrun
+    rcases hcase with ⟨-, hr, -⟩ | ⟨-, -, hr⟩
+    · subst hr
+      obtain ⟨q, hres, hty⟩ := varPos_tyAt_push2 s.under _ _ (by simp [SState.under])
+      have hl := runT_bodyR_label hres (congrArg TyS.m hty) (fun fv as s₀ s₁ r₀ hfv hc =>
+        callOf_piTyAt_data K.dm.read _ _ _ rfl hfv hc) hrun₀
+      simp only at hl ⊢
+      rw [hl]; rfl
+    · rw [(Prod.mk.inj hr).2]; rfl
   · cases h
 
 /-- **The links of the top at `R`'s program, from ONE fact** (`hlinks_R` with `RetKindR` proved): `KeepsTabFixR`

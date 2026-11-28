@@ -134,6 +134,7 @@ cell, so no final. -/
 theorem fixLeafG_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
     (P : ProgState) (d : Def) (st' : MState) (w : FixWit) (hst : w.start = none)
     (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem)
+    (her : fnErasedD (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.2 = false)
     (hnoref : ∀ p ∈ psG (P.ctx dm D Γ st') ρ φ d.doms, p.isRef = false)
     (hdata : (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).isRef = false)
     (hpre : Pre (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀)
@@ -180,6 +181,7 @@ theorem fixLeafG_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
   obtain ⟨s₂, acc, cells⟩ := F
   simp only at hs₂ hc₂
   subst hc₂
+  rw [her, SM.bodyRun_false]     -- main's D142: a data function's body is not run as a statement
   rw [← hs₂, hx]
   simp only [hdata, Bool.false_eq_true, if_false]
   have hends := (hPop w.n d.name v T stl stk bk (hst ▸ hk) { ctxBΔ dm D Γ P d st' ρ φ b Δa with Δ := Δ' } (P.ctx dm D Γ st') ρ' φ π'
@@ -235,6 +237,7 @@ what `knot_step` holds there (`FixStartAt`'s hint, the run being the stage's, th
 theorem fixLeafG_D (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
     (P : ProgState) (st' : MState) (w : FixWit) (hst : w.start = none) (hT0 : (D st').typeDecl [] .nat = .other)
     (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem)
+    (her : fnErasedD (fbG (P.ctx dm D Γ st') ρ φ defD.doms defD.cod).2.2 = false)
     (hpre : Pre (ctxBΔ dm D Γ P defD st' ρ φ b Δa) ρa w.st₀)
     (hfl : ((ctxBΔ dm D Γ P defD st' ρ φ b Δa).D.flags
       (scopeOf (startAt (P.ctx dm D Γ st') ρ φ defD.hs defD.doms defD.cod defD.dec defD.body b a)) defD.body).2 = false)
@@ -259,7 +262,7 @@ theorem fixLeafG_D (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
       show (D st').paramDecls [] [.nat] = [.other]
       simp [Decisions.paramDecls, Decisions.teleDecls, hT0])
   have hout : outG (P.ctx dm D Γ st') ρ φ defD.doms defD.cod = ColumnI.outI := ColumnI.codOf_nat _ ρ φ formG _ _
-  refine fixLeafG_of hRet hConv hPop P defD st' w hst ρ ρa Δa φ π b a (by rw [hps]; intro p hp; simp [ColumnI.psI] at hp; subst hp; rfl)
+  refine fixLeafG_of hRet hConv hPop P defD st' w hst ρ ρa Δa φ π b a her (by rw [hps]; intro p hp; simp [ColumnI.psI] at hp; subst hp; rfl)
     (by rw [hout]; rfl) hpre hfl hT hhint heq hfund (by
       rw [hout]; intro h; injection h with h1; exact PEmpty.elim (cast h1 (0 : Nat)))
 
@@ -271,6 +274,7 @@ computing `psG`, `outG`), the table reads its body as data at every start (TABLE
 is not `err` (MODEL). -/
 theorem fixLeafAt_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
     (P : ProgState) (d : Def) (st' : MState) (w : FixWit) (hst : w.start = none)
+    (her : ∀ ρ φ, fnErasedD (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.2 = false)
     (hnoref : ∀ ρ φ, ∀ p ∈ psG (P.ctx dm D Γ st') ρ φ d.doms, p.isRef = false)
     (hdata : ∀ ρ φ, (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).isRef = false)
     (hfl : ∀ ρ φ b Δa a, ((ctxBΔ dm D Γ P d st' ρ φ b Δa).D.flags
@@ -279,18 +283,19 @@ theorem fixLeafAt_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
       (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).cod a ≠ TyM.err) :
     FixLeafAt dm D Γ P d st' w := by
   intro ρ ρa Δa φ π b a ha _ hpre _ hhint hT heq hfund
-  exact fixLeafG_of hRet hConv hPop P d st' w hst ρ ρa Δa φ π b a (hnoref ρ φ) (hdata ρ φ) hpre (hfl ρ φ b Δa a) hT hhint
+  exact fixLeafG_of hRet hConv hPop P d st' w hst ρ ρa Δa φ π b a (her ρ φ) (hnoref ρ φ) (hdata ρ φ) hpre (hfl ρ φ b Δa a) hT hhint
     heq hfund (hcod ρ φ a ha)
 
 /-- **The link `FixLeafAt` at `D`** (PROVED from `LeafReturnG`, `LeafConvG`, `LeafPopG` and two TABLE facts at `D`'s
 code, each read true: the type `Nat` read as data, `D`'s body read as data at every start; docs/31 D290). -/
 theorem fixLeafAt_D (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
     (P : ProgState) (st' : MState) (w : FixWit) (hst : w.start = none) (hT0 : (D st').typeDecl [] .nat = .other)
+    (her : ∀ ρ φ, fnErasedD (fbG (P.ctx dm D Γ st') ρ φ defD.doms defD.cod).2.2 = false)
     (hfl : ∀ ρ φ b Δa a, ((ctxBΔ dm D Γ P defD st' ρ φ b Δa).D.flags
       (scopeOf (startAt (P.ctx dm D Γ st') ρ φ defD.hs defD.doms defD.cod defD.dec defD.body b a)) defD.body).2 = false) :
     FixLeafAt dm D Γ P defD st' w := by
   intro ρ ρa Δa φ π b a _ _ hpre _ hhint hT heq hfund
-  exact fixLeafG_D hRet hConv hPop P st' w hst hT0 ρ ρa Δa φ π b a hpre (hfl ρ φ b Δa a) hT hhint heq hfund
+  exact fixLeafG_D hRet hConv hPop P st' w hst hT0 ρ ρa Δa φ π b a (her ρ φ) hpre (hfl ρ φ b Δa a) hT hhint heq hfund
 
 
 /-! ## A function with borrow parameters: the pop leaves members in the cells (`Z0`) -/
@@ -333,6 +338,7 @@ PROVED from `TailAt`'s conclusion and named facts): `fixLeafG_of` with the pop's
 theorem fixLeafG_ofRef (hRet : LeafReturnG) (hConv : LeafConvG)
     (P : ProgState) (d : Def) (st' : MState) (w : FixWit) (hPop : LeafPopAt dm D Γ P d st' w)
     (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem)
+    (her : fnErasedD (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.2 = false)
     (ha : DomMembers dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) a)
     (hdata : (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).isRef = false)
     (hfl : ((ctxBΔ dm D Γ P d st' ρ φ b Δa).D.flags
@@ -381,6 +387,7 @@ theorem fixLeafG_ofRef (hRet : LeafReturnG) (hConv : LeafConvG)
     exact zip_filter_isRef_length a _ ha.1
   rw [hSF] at hfin
   simp only at hfin
+  rw [her, SM.bodyRun_false]     -- main's D142: a data function's body is not run as a statement
   rw [← hs₂, hx]
   simp only [hdata, Bool.false_eq_true, if_false]
   have hkeep : (if (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).isRef = true then r.2.label else none) = none := by
@@ -423,6 +430,7 @@ the TABLE fact that `Z0`'s body at its start is read as data; and what `knot_ste
 theorem fixLeafG_Z0 (hRet : LeafReturnG) (hConv : LeafConvG) (P : ProgState) (st' : MState) (w : FixWit)
     (hPop : LeafPopAt dm D Γ P defZ0 st' w)
     (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem)
+    (her : fnErasedD (fbG (P.ctx dm D Γ st') ρ φ defZ0.doms defZ0.cod).2.2 = false)
     (ha : DomMembers dm.read (psG (P.ctx dm D Γ st') ρ φ defZ0.doms) a)
     (hfl : ((ctxBΔ dm D Γ P defZ0 st' ρ φ b Δa).D.flags
       (scopeOf (startAt (P.ctx dm D Γ st') ρ φ defZ0.hs defZ0.doms defZ0.cod defZ0.dec defZ0.body b a)) defZ0.body).2 = false)
@@ -446,19 +454,20 @@ theorem fixLeafG_Z0 (hRet : LeafReturnG) (hConv : LeafConvG) (P : ProgState) (st
     unfold outG
     simp only [defZ0, codOf]
     rw [run, runT]; rfl
-  refine fixLeafG_ofRef hRet hConv P defZ0 st' w hPop ρ ρa Δa φ π b a ha rfl hfl hT hhint heq hfund ?_
+  refine fixLeafG_ofRef hRet hConv P defZ0 st' w hPop ρ ρa Δa φ π b a her ha rfl hfl hT hhint heq hfund ?_
   rw [hcod]; intro h; injection h with h1; exact PEmpty.elim (cast h1 ())
 
 /-- **The link `FixLeafAt` at `Z0`** (a borrow parameter; PROVED from `LeafReturnG`, `LeafConvG`, `LeafPopAt` at `Z0`, and
 the TABLE fact that `Z0`'s body is read as data at every start; docs/31 D290). -/
 theorem fixLeafAt_Z0 (hRet : LeafReturnG) (hConv : LeafConvG) (P : ProgState) (st' : MState) (w : FixWit)
     (hPop : LeafPopAt dm D Γ P defZ0 st' w)
+    (her : ∀ ρ φ, fnErasedD (fbG (P.ctx dm D Γ st') ρ φ defZ0.doms defZ0.cod).2.2 = false)
     (hfl : ∀ ρ φ b Δa a, ((ctxBΔ dm D Γ P defZ0 st' ρ φ b Δa).D.flags
       (scopeOf (startAt (P.ctx dm D Γ st') ρ φ defZ0.hs defZ0.doms defZ0.cod defZ0.dec defZ0.body b a)) defZ0.body).2 =
         false) :
     FixLeafAt dm D Γ P defZ0 st' w := by
   intro ρ ρa Δa φ π b a ha _ _ _ hhint hT heq hfund
-  exact fixLeafG_Z0 hRet hConv P st' w hPop ρ ρa Δa φ π b a ha (hfl ρ φ b Δa a) hT hhint heq hfund
+  exact fixLeafG_Z0 hRet hConv P st' w hPop ρ ρa Δa φ π b a (her ρ φ) ha (hfl ρ φ b Δa a) hT hhint heq hfund
 
 end
 

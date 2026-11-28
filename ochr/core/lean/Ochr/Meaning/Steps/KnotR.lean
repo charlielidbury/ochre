@@ -143,6 +143,7 @@ theorem fixBodyAt_RK (K : RunCtx) (hd : ParDecR K.D) (ρ : Assignment)
   dsimp only
   rw [hst]
   dsimp only
+  rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: `R` returns data
   cases a with
   | zero =>
     rw [hZ rfl]
@@ -184,6 +185,7 @@ theorem fixBodyAt_R_anyK (K : RunCtx) (hd : ParDecR K.D) (ρ : Assignment)
     dsimp only
     rw [hst]
     dsimp only
+    rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: `R` returns data
     rw [hZ rfl]
     dsimp only
     rw [hl _ hl0]
@@ -198,6 +200,7 @@ theorem fixBodyAt_R_anyK (K : RunCtx) (hd : ParDecR K.D) (ρ : Assignment)
     dsimp only
     rw [hst]
     dsimp only
+    rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: `R` returns data
     rw [hS a _ rfl (hc _)]
     dsimp only
     rw [hl _ (by unfold setN0; rw [Strict.liveLabels_setAt]; exact hl0)]

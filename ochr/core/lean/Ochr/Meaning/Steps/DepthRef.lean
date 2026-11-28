@@ -207,6 +207,7 @@ theorem gCap_run (h : RefCap b a s) (hd : ParDecCap K.D (scopeOf s)) (m : Nat) :
   dsimp only
   rw [hst]
   dsimp only
+  rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: the closure returns data
   rw [hrd]
   dsimp only
   rw [hl]
@@ -599,11 +600,13 @@ theorem fix_typeFn (hX : Hint) (t : Term) (hd : ParDecDef K.D (.fix hX [⟨"n"�
       dsimp only
       rw [hst]
       dsimp only
+      -- main's D142: `t` returns types, so its body runs as a statement and the pop sees the start's state
+      rw [show fb.2.2 = .sort 1 from h2, fnErasedD_sort]
+      simp only [SM.bodyRun, SM.stmtIf, ↓reduceIte]
       rw [hbody b a true _ hb]
-      dsimp only
-      rw [hl]
+      simp only [Option.map_some]
+      rw [show (sX b a).liveLabels = [] from liveLabels_noShape (refCap_start b a).shape]
       simp [ColumnI.endsOk_nil]
-      rfl
     · rcases i with _ | i
       · simp [psI] at hi; subst hi; cases hd'
       · simp [psI] at hi

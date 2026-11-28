@@ -159,7 +159,7 @@ theorem column_W_run (ρ : Assignment) (hDW : DecTab D stW) (tl : Bool) (hint' :
       ∈ₛ[dm.read] piTyAt dm.read 1 psW outW := by
     unfold fixClo
     rw [hty, hsort, runDoms_ref _ ρ φ _ hpd, codOf_natW]
-    exact closure_mem_W (K := KB "W" outW dm D φ) _ h1 _ (by rw [h2]; exact hflb)
+    exact closure_mem_W (K := KB "W" outW dm D φ) _ h1 (by simp [h2]) _ (by rw [h2]; exact hflb)
   refine ⟨_, ?_, hmem⟩
   unfold fixW
   rw [run_fix_of_mem tl hint' ⟨"W"⟩ [⟨"r"⟩] [.ref .nat] .nat none bodyW (emptyState 0) hfl

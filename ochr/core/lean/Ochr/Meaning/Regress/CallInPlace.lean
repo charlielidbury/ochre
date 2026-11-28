@@ -208,6 +208,8 @@ theorem gInc_eval (a : Nat) :
   dsimp only
   rw [frame_inc]
   dsimp only
+  -- main's D142: a data function's body is not run as a statement
+  rw [show fnErasedD (fbInc dm ρ φ).2.2 = false from rfl, SM.bodyRun_false]
   rw [runBody_inc]
   dsimp only
   rw [liveLabels_SB]
@@ -859,6 +861,8 @@ theorem gId1_eval (a : Nat) :
   dsimp only
   rw [frame_id1]
   dsimp only
+  -- main's D142: a data function's body is not run as a statement
+  rw [show fnErasedD (fbId1 dm ρ φ).2.2 = false from rfl, SM.bodyRun_false]
   obtain ⟨T, hT, hl, hTm⟩ := runBody_id1 dm ρ φ (selfId1 dm ρ φ) (dInc dm) a ((fbId1 dm ρ φ).2.1 [.el0 Nat a]) true
   rw [hT]
   dsimp only

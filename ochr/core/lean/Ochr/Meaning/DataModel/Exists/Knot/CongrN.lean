@@ -195,7 +195,7 @@ theorem fixBodyAt_congrN {body : Term} {fb : List PBind × PBind}
   generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
-  rw [hb]
+  rw [SM.bodyRun_congr (hb _ s₂)]
   rfl
 
 theorem fixStage_congrN {body : Term} {fb : List PBind × PBind}

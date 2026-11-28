@@ -355,6 +355,7 @@ theorem fixBodyAt_P (hSp : SplitPInv) (ρ : Assignment) (fb : List PBind × PBin
   dsimp only
   rw [start_P (dm := dm) (D := D) (φ := φ) ρ fb h1 h2 a]
   dsimp only
+  rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: `P` returns data
   rw [runT_bodyP (KP dm D φ ΔP) ρ (ρAt ρ a) (fb.2.1 [.el0 Nat a]) (fb.2.1 [.el0 Nat a]), hr]
   dsimp only
   rw [hl]

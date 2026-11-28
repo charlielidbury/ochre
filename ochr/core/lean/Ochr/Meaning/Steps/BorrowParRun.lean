@@ -147,6 +147,7 @@ theorem liveLabels_SBK (sb : SBinding) (d : DeclInfo) (a : Sem) : (SBK sb d a).l
 /-- **`W`'s body inside the `.fix` clause** (stage 1, rank 0), at a number `m`: the result `m`, the cell's final `m` (the
 pop ends label `0`, whose strict test reads `r ↦ m`, a `Nat`), no returned label. Formed in the empty state. -/
 theorem fixBodyAt_W (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun _ => .plain TyM.nat, d)])
+    (her : fnErasedD fb.2.2 = false)
     (piT : TyM) (selfM : Sem) (hfl : K.D.flags [d, .pi fb.2.2] bodyW = (false, false)) (m : Nat) :
     fixBodyAt K ρ φ fb (emptyState 0) psW outW piT 0 bodyW selfM [.el0 Nat m]
       = some ⟨.el0 Nat m, [fun _ => .el0 Nat m], none⟩ := by
@@ -162,6 +163,7 @@ theorem fixBodyAt_W (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun
     simp [fixStep, h1, SState.freshLoan, SState.under, emptyState, SState.pushBind, SState.topIdx]
   rw [hF]
   dsimp only
+  rw [her, SM.bodyRun_false]     -- main's D142: `W` returns data
   rw [runT_bodyW K ρ φ _ d hfl m true _]
   dsimp only
   have hk : ((SBW { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } d (.el0 Nat m)).liveLabels.filter
@@ -183,6 +185,7 @@ theorem fixBodyAt_W (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun
 (kept: the codomain is a borrow), and the cell's final the future at `0`, the content the caller leaves in the returned
 borrow when it ends it. -/
 theorem fixBodyAt_K (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun _ => .plain TyM.nat, d)])
+    (her : fnErasedD fb.2.2 = false)
     (piT : TyM) (selfM : Sem) (hfl : K.D.flags [d, .pi fb.2.2] bodyK = (false, false))
     (hcp : K.D.copy (K.D.placeDecl [d, .pi fb.2.2] (.var 0)) = false) (m : Nat) :
     fixBodyAt K ρ φ fb (emptyState 0) psW outK piT 0 bodyK selfM [.el0 Nat m]
@@ -199,6 +202,7 @@ theorem fixBodyAt_K (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun
     simp [fixStep, h1, SState.freshLoan, SState.under, emptyState, SState.pushBind, SState.topIdx]
   rw [hF]
   dsimp only
+  rw [her, SM.bodyRun_false]     -- main's D142: `K` returns a borrow, data
   rw [runT_bodyK K ρ φ _ d hfl hcp m true _]
   dsimp only
   have hk : ((SBK { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } d (.el0 Nat m)).liveLabels.filter
@@ -218,7 +222,8 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 /-- **`W`'s closure is a member of `Π(r : &Nat). Nat`** (`Witness.fixClo_mem_nonrec`), at every `fb` reading the
 parameter at `Nat` and decisions that classify `clone(*r)` as neither a statement nor a proof: at each number the body
 returns it, and the cell's one final is that number at every future (`OutGood`). No assumed fact. -/
-theorem closure_mem_W (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun _ => .plain TyM.nat, d)]) (piT : TyM)
+theorem closure_mem_W (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun _ => .plain TyM.nat, d)])
+    (her : fnErasedD fb.2.2 = false) (piT : TyM)
     (hfl : K.D.flags [d, .pi fb.2.2] bodyW = (false, false)) :
     closureAt K.dm.read 1 φ psW outW (fixG K ρ φ fb 1 (emptyState 0) psW outW piT 0 none bodyW)
       ∈ₛ[K.dm.read] piTyAt K.dm.read 1 psW outW := by
@@ -229,7 +234,7 @@ theorem closure_mem_W (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(f
   | [x], _ =>
     obtain ⟨m, hx⟩ := hargs 0 x _ rfl rfl
     subst hx
-    refine ⟨_, fixBodyAt_W K ρ φ fb h1 _ _ hfl m, ⟨⟨m, rfl⟩, fun i d' hi hd => ?_⟩, rfl⟩
+    refine ⟨_, fixBodyAt_W K ρ φ fb h1 her _ _ hfl m, ⟨⟨m, rfl⟩, fun i d' hi hd => ?_⟩, rfl⟩
     rcases i with _ | i
     · simp [psW] at hi; subst hi
       exact ⟨fun _ => .el0 Nat m, rfl, fun _ _ => ⟨m, rfl⟩⟩
@@ -285,6 +290,7 @@ copied: at each number the body returns it under label `0`, and the cell's final
 returned borrow (`outGood_K`, `retGood_K`). No assumed fact. It replaces `closure_ref_hyp_false_K`, which showed the
 closure lemma's hypothesis false under the old clause. -/
 theorem closure_mem_K (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun _ => .plain TyM.nat, d)])
+    (her : fnErasedD fb.2.2 = false)
     (piT : TyM) (hfl : K.D.flags [d, .pi fb.2.2] bodyK = (false, false))
     (hcp : K.D.copy (K.D.placeDecl [d, .pi fb.2.2] (.var 0)) = false) :
     closureAt K.dm.read 1 φ psW outK (fixG K ρ φ fb 1 (emptyState 0) psW outK piT 0 none bodyK)
@@ -296,7 +302,7 @@ theorem closure_mem_K (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(f
   | [x], _ =>
     obtain ⟨m, hx⟩ := hargs 0 x _ rfl rfl
     subst hx
-    exact ⟨oK m, fixBodyAt_K K ρ φ fb h1 _ _ hfl hcp m, outGood_K _ m, retGood_K _ m, rfl⟩
+    exact ⟨oK m, fixBodyAt_K K ρ φ fb h1 her _ _ hfl hcp m, outGood_K _ m, retGood_K _ m, rfl⟩
 
 end
 

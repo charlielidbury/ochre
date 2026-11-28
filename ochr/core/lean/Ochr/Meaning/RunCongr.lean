@@ -538,7 +538,8 @@ noncomputable def fixBodyAt (s : SState) (ps : List PiDom) (out : PiCod) (piT : 
     (selfM : Sem) (args : List Sem) : Option BodyOut :=
   let s₁ := s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }
   let (s₂, _, cells) := (args.zip ps).foldl (fixStep fb) (s₁, [], [])
-  match runT K ρ φ true (fb.2.1 args) body s₂ with
+  -- main's D142: an erased function's body is a statement, its pop seeing the start's state (`SM.bodyRun`)
+  match SM.bodyRun (fnErasedD fb.2.2) (runT K ρ φ true (fb.2.1 args) body) s₂ with
   | some ((r, R), s₃) =>
     let keep : Option Nat := if out.isRef then R.label else none
     if EndsOk K φ (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ keep) s₃ then
@@ -915,12 +916,16 @@ theorem fixBodyAt_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none
   generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F at hF ⊢
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
-  rw [hb _ s₂ hF.1]
-  cases hr : runT K ρ φ' true (fb.2.1 args) body s₂ with
+  rw [SM.bodyRun_congr (hb _ s₂ hF.1)]
+  cases hr : SM.bodyRun (fnErasedD fb.2.2) (runT K ρ φ' true (fb.2.1 args) body) s₂ with
   | none => rfl
   | some y =>
     obtain ⟨⟨r, R⟩, s₃⟩ := y
-    have hi₃ := (runT_rinv K ρ φ' L hK true body _ s₂ s₃ (r, R) hF.1 hr).1
+    -- main's D142: the pop's state is the run's, or the start's for an erased function
+    have hi₃ : RInv L s₃ := by
+      obtain ⟨r₀, s₀, hx, (⟨-, -, rfl⟩ | ⟨-, rfl, -⟩)⟩ := SM.bodyRun_some hr
+      · exact (runT_rinv K ρ φ' L hK true body _ s₂ _ _ hF.1 hx).1
+      · exact hF.1
     dsimp only
     rw [propext (endsOk_congr K hφ _ hi₃)]
 
@@ -951,7 +956,12 @@ theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState
     obtain ⟨-, h⟩ := ite_none_some h
     simp only [Option.some.injEq] at h
     subst h
-    obtain ⟨hi₃, -, e₃, o₃⟩ := runT_rinv K ρ φ L hK true body _ s₂ s₃ (r, R) hi₂ hrun
+    -- main's D142: the pop's state is the run's, or the start's for an erased function
+    obtain ⟨hi₃, e₃, o₃⟩ : RInv L s₃ ∧ EnvLe s₂ s₃ ∧ OrdKeep L s₂ s₃ := by
+      obtain ⟨r₀, s₀, hx, (⟨-, -, rfl⟩ | ⟨-, rfl, -⟩)⟩ := SM.bodyRun_some hrun
+      · obtain ⟨hi₃, -, e₃, o₃⟩ := runT_rinv K ρ φ L hK true body _ s₂ _ _ hi₂ hx
+        exact ⟨hi₃, e₃, o₃⟩
+      · exact ⟨hi₂, EnvLe.refl _, OrdKeep.refl _⟩
     have hcell := finals_of_pop hi₃ e₃ o₃ hst₂ hcells (if out.isRef then R.label else none)
     obtain ⟨b, cod⟩ := out
     cases b

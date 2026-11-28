@@ -189,6 +189,7 @@ theorem gA_run (hd : ParDecQ K.D) (a : Nat) : gA K ρ φ [.el0 Nat a] = some ⟨
   dsimp only
   rw [hst]
   dsimp only
+  rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: `Q` returns data
   rw [ColumnP.runT_bodyP K ρ (fun _ => .el0 Nat a) ((fbA K ρ φ).2.1 [.el0 Nat a]) ((fbA K ρ φ).2.1 [.el0 Nat a])]
   cases a with
   | zero =>

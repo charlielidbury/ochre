@@ -561,23 +561,36 @@ theorem fixBodyAt_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → 
   have cb := hb (fb.2.1 args) X₂ (Qup Q) (βup β) (βup β') hA₂ hVb hRF
   have cb0 := hb (fb.2.1 args) X₂ (Qup Q) (βup β) (βup β) hA₂.self hVb hRF
   unfold Comm qmap at cb
-  rw [cb]
-  cases h3 : runT K ρ φ true (fb.2.1 args) body X₂ with
-  | none => rfl
-  | some r =>
-    obtain ⟨⟨r, R⟩, X₃⟩ := r
-    obtain ⟨-, -, e₃, -⟩ := runT_rinv K ρ φ _ hK true body _ X₂ X₃ (r, R) hRF h3
-    have hA₃ := hA₂.next e₃ (fix_of_comm cb0 hA₂.twin.fix h3)
-    have hP := hA₃.twin.pre'
-    have hfin : ∀ (S : SState), cells₂.map (fun c => (qset (Qup Q) (βup β') S).valAt c) = cells₂.map (fun c => S.valAt c) := by
-      intro S
-      refine List.map_congr_left fun c hc => ?_
-      rcases hcells c hc with h | ⟨j, rfl⟩
-      · cases h
-      · exact qset_valAt_not S (by simp [Qup, Pos.down?])
-    simp only [Option.map_some, qset_nextLoan, hco, qset_liveLabels hP.shape, fun ls => endsOk_qset K φ ls hP,
-      qset_foldl_endLabel hP.temp hP.const _ _ hP.shape, hfin]
-    split <;> rename_i hE <;> simp only [hE, if_true, if_false, not_false_eq_true]
+  have hfin : ∀ (S : SState), cells₂.map (fun c => (qset (Qup Q) (βup β') S).valAt c) = cells₂.map (fun c => S.valAt c) := by
+    intro S
+    refine List.map_congr_left fun c hc => ?_
+    rcases hcells c hc with h | ⟨j, rfl⟩
+    · cases h
+    · exact qset_valAt_not S (by simp [Qup, Pos.down?])
+  -- main's D142: an erased function's body runs on a copy, its pop at the start state
+  cases hEr : fnErasedD fb.2.2
+  · simp only [SM.bodyRun]
+    rw [cb]
+    cases h3 : runT K ρ φ true (fb.2.1 args) body X₂ with
+    | none => rfl
+    | some r =>
+      obtain ⟨⟨r, R⟩, X₃⟩ := r
+      obtain ⟨-, -, e₃, -⟩ := runT_rinv K ρ φ _ hK true body _ X₂ X₃ (r, R) hRF h3
+      have hA₃ := hA₂.next e₃ (fix_of_comm cb0 hA₂.twin.fix h3)
+      have hP := hA₃.twin.pre'
+      simp only [Option.map_some, qset_nextLoan, hco, qset_liveLabels hP.shape, fun ls => endsOk_qset K φ ls hP,
+        qset_foldl_endLabel hP.temp hP.const _ _ hP.shape, hfin]
+      split <;> rename_i hE <;> simp only [hE, if_true, if_false, not_false_eq_true]
+  · simp only [SM.bodyRun, SM.stmtIf, ↓reduceIte]
+    rw [cb]
+    cases h3 : runT K ρ φ true (fb.2.1 args) body X₂ with
+    | none => rfl
+    | some r =>
+      obtain ⟨⟨r, R⟩, X₃⟩ := r
+      have hP := hA₂.twin.pre'
+      simp only [Option.map_some, qset_nextLoan, hco, qset_liveLabels hP.shape, fun ls => endsOk_qset K φ ls hP,
+        qset_foldl_endLabel hP.temp hP.const _ _ hP.shape, hfin]
+      try (split <;> rename_i hE <;> simp only [hE, if_true, if_false, not_false_eq_true])
 
 /-- **The frame a later domain or the codomain is read in, across the transform** (docs/31 D210): `extendBy` is the
 forming state under a fresh bottom frame with the parameters bound as [Def] binds them (`paramPush`, a borrow

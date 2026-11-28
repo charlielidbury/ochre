@@ -347,6 +347,7 @@ theorem fixBodyAt_R (hd : ParDecR D) {Δ₀ : Nat → TyS} {G₀ : Sem × TyS} {
   dsimp only
   rw [hst]
   dsimp only
+  rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: a data function
   cases a with
   | zero =>
     rw [hZ rfl]

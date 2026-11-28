@@ -103,6 +103,7 @@ theorem fixBodyAt_I (hE : EvalInv) (hS : SuccInv) (hI : InvSteps) (hV : VarNumAI
   dsimp only
   rw [start_I (dm := dm) (D := D) (ρ := ρ) (φ := φ) fb h1 h2 a]
   dsimp only
+  rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: `I` returns data
   rw [runT_bodyI (KI dm D φ) φ ρ (ρAt ρ a) true st.tailNext (fb.2.1 [.el0 Nat a])
     (hintM (KI dm D φ) (ρAt ρ a) hint), hr]
   dsimp only

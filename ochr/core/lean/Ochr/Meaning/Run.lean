@@ -94,6 +94,53 @@ noncomputable def SM.erasedIf (fl : Bool × Bool) (x : SM (Sem × TyS)) : SM (Se
     | none => none
   else SM.stmtIf fl.1 x s
 
+/-- **Main's D142: a function whose calls are erased** (its class "returns types" or "returns proofs", `Decide.fnClass`),
+read from its codomain's declared reading `cd` (`Decide.typeDecl` of the codomain in the parameters' scope, what `self`
+is bound at): a sort (since D143 a codomain reading as a sort is written as one) or a proposition. The checker's
+`fnClass` also answers "other" at an embedded codomain (`.val B`, a stuck block's function, whose class is given at its
+call); the reading answers by `B`'s reading there, so the two may differ only at a block returning types or proofs,
+whose calls are statements or not run, where restoring the state changes nothing a caller sees. -/
+def fnErasedD (cd : DeclInfo) : Bool := cd.isProof || (cd matches .sort _)
+
+/-- **Main's D142: the body run of a function whose calls are erased is a statement**: run on a copy, the frame's pop
+seeing the state the body started from (`SM.stmtIf true`), as the checker's `popBody` puts the environment back before
+the pop. "The state" on the reference's side is the whole `SState` at the body's start: the frames (the cells, the
+captures, `self`, the parameters), the labels' records and the label counter; the result is the run's, label-free. -/
+def SM.bodyRun (er : Bool) (x : SM (Sem × TyS)) : SM (Sem × TyS) := match er with
+  | false => x
+  | true => SM.stmtIf true x
+
+theorem SM.bodyRun_false (x : SM (Sem × TyS)) : SM.bodyRun false x = x := rfl
+
+@[simp] theorem fnErasedD_other : fnErasedD .other = false := rfl
+@[simp] theorem fnErasedD_ind (n : String) (as : List DeclInfo) : fnErasedD (.ind n as) = false := rfl
+@[simp] theorem fnErasedD_unit : fnErasedD .unit = false := rfl
+@[simp] theorem fnErasedD_ref (d : DeclInfo) : fnErasedD (.ref d) = false := rfl
+@[simp] theorem fnErasedD_sort (l : Nat) : fnErasedD (.sort l) = true := rfl
+
+/-- An erased body's run, taken apart: the run itself, or (erased) the run's result label-free at the start's state. -/
+theorem SM.bodyRun_some {er : Bool} {x : SM (Sem × TyS)} {s s' : SState} {r : Sem × TyS}
+    (h : SM.bodyRun er x s = some (r, s')) :
+    ∃ r₀ s₀, x s = some (r₀, s₀) ∧
+      ((er = false ∧ r = r₀ ∧ s' = s₀) ∨ (er = true ∧ s' = s ∧ r = (r₀.1, { r₀.2 with label := none }))) := by
+  cases er with
+  | false => exact ⟨r, s', h, .inl ⟨rfl, rfl, rfl⟩⟩
+  | true =>
+    simp only [SM.bodyRun, SM.stmtIf, ↓reduceIte] at h
+    cases hx : x s with
+    | none => rw [hx] at h; cases h
+    | some rs =>
+      rw [hx] at h
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨rs.1, rs.2, rfl, .inr ⟨rfl, rfl, rfl⟩⟩
+
+theorem SM.bodyRun_congr {er : Bool} {x x' : SM (Sem × TyS)} {s : SState} (h : x s = x' s) :
+    SM.bodyRun er x s = SM.bodyRun er x' s := by
+  cases er
+  · exact h
+  · exact SM.stmtIf_congr h
+
 theorem SM.erasedIf_congr {fl : Bool × Bool} {x x' : SM (Sem × TyS)} {s : SState} (h : x s = x' s) :
     SM.erasedIf fl x s = SM.erasedIf fl x' s := by
   simp only [SM.erasedIf, SM.stmtIf, h]
@@ -1477,7 +1524,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       -- fresh label with a cell of frame 0 (`paramPush`: docs/31 D126, D138; the same step reads a later domain and the
       -- codomain, `extendBy`, D210)
       let (s₂, _, cells) := (args.zip ps).foldl (paramPush bs) (s₁, [], [])
-      match runT true (cod args) body s₂ with
+      -- main's D142: an erased function's body is a statement, its pop seeing the start's state (`SM.bodyRun`)
+      match SM.bodyRun (fnErasedD cd) (runT true (cod args) body) s₂ with
       | some ((r, R), s₃) =>
         -- the frame pop ends the borrows the body made and the parameters' (their cells then
         -- read the holders' contents), except the returned borrow's, whose holder is the

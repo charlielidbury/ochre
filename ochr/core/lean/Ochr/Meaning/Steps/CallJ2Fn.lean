@@ -113,6 +113,7 @@ theorem fixBodyAt_J2 (hd : DecTab D FrameJ2.Guards.stJ2) (K : RunCtx) (hKD : K.D
   dsimp only
   rw [hst]
   dsimp only
+  rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: a data function
   rw [hrun]
   dsimp only
   rw [hl]

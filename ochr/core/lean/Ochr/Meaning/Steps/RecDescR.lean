@@ -50,6 +50,7 @@ theorem fixBodyAt_R_any (hd : ParDecR D) {Δ₀ : Nat → TyS} {G₀ : Sem × Ty
   dsimp only
   rw [hst]
   dsimp only
+  rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: `R` returns data
   rw [hS a _ rfl (hc _)]
   dsimp only
   rw [hl _ (by unfold setN0; rw [Strict.liveLabels_setAt]; exact hl0)]
