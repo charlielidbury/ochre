@@ -19,11 +19,12 @@ one-constructor match refined in place, D45's match on a proof by its type) in t
 * `MatchIndFlagsT`, `ProofJoinIndG` (T), `ProofArmIndM` (M at the instance): the number case's at a data match;
 * `ProofMatchTailG` (X): the match on a PROOF at the end of a body (D45, D229/D231's witness step), one fact.
 
-**False as stated for every term** (D252): `checkTailAt` builds a split's worlds by `zip`, so a constructor with no arm
-gets no world (`MatchRead`'s `ArmsP`-shaped probe in docs/31 D252), where the reference has no run; the resolver never
-makes such a match. The step is therefore derived at matches whose arms cover their type's constructors (`ArmsCover`), a
-hypothesis of the step only (`TStepMatchIndW`); `TStepMatchInd` itself is false until the checker checks it or `TailAt`
-asks it (ruling asked).
+**Was false as stated for every term** (D252): `checkTailAt` built a split's worlds by `zip`, so a constructor with no
+arm got no world (`MatchRead`'s `ArmsP`-shaped probe in docs/31 D252), where the reference has no run; the resolver never
+makes such a match. The step was derived at matches whose arms cover their type's constructors (`ArmsCover`, a hypothesis
+of the step). Since main's D146 the core checks one arm per constructor (`ctorArms`), so the covering is a consequence of
+the checker's run (`TailMatchIndInv`'s split branch concludes it) and the hypothesis is DELETED (lead49): the step is
+`TStepMatchInd` itself (`tStepMatchInd_of`).
 -/
 
 open Ochr.Test
@@ -49,14 +50,12 @@ namespace Ochr.Meaning.Steps.Form.Master
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
 
-/-- The arms of a match on `ty` cover its constructors, one each (the resolver's invariant: "(surface) match on Tri: no
-arm for TC"; its arms are ordered by constructor). -/
-def ArmsCover (Γ : List IndDecl) (ty : String) (arms : List (Hint × Term)) : Prop :=
-  ∀ d, Γ.find? (·.name == ty) = some d → arms.length = d.ctors.length
+/-- **The step at the end of a body at a match on a data type whose scrutinee has a positional projection** (MIXED;
+NEW at main's D145, UNREAD; lead49): as `TailProjNatG`, the checker's one-arm match on the parent (`projStep`) against the
+reference's direct read of the field's tag. -/
+def TailProjIndG (K : RunCtx) (φ : Future) : Prop :=
+  ∀ n, IH K φ n → ∀ Δ ρ p ty arms, ¬ p.Direct → TailAt { K with Δ := Δ } ρ φ n (.matchInd p ty arms)
 
-/-- **`TStepMatchInd` at matches whose arms cover their type's constructors.** -/
-def TStepMatchIndW (K : RunCtx) (φ : Future) : Prop :=
-  ∀ n, IH K φ n → ∀ Δ ρ p ty arms, ArmsCover K.Γ ty arms → TailAt { K with Δ := Δ } ρ φ n (.matchInd p ty arms)
 
 /-! ## The reference's match on a data type in tail position, unfolded -/
 
@@ -112,11 +111,14 @@ the constructors of a `Prop` declaration, or it has none; `ProofMatchTailG`), or
   the fields fresh, each at its type from the parameters and the earlier fields), the join's continuation, the arm;
 * a sealed program or an inert loan: generalised and the match checked again.
 As `TailMatchNatInv`: from a state `st₀` with `st`'s kernel, mode, tail flags and goal (the editor's located mode), a later
-world's base from a grown state keeping `TabInv`. -/
+world's base from a grown state keeping `TabInv`.
+RESTATED at main's D145 (lead49), as `TailMatchNatInv`: at a DIRECT scrutinee, where `checkTailAt`'s new first step,
+`projIn`, finds no field step; a projected scrutinee is now named by the one-arm match on its parent first (`projStep`),
+the class of the named fact `TailProjIndG`. -/
 def TailMatchIndInv : Prop :=
   ∀ (n : Nat) (p : Place) (ty : String) (arms : List (Hint × Term)) (k : Value → Value → M Unit) (st st' : MState)
     (bh : Nat) (D : Decisions),
-    TabInv st → (∀ v T, GrowsM (k v T)) → (∀ v T, KeepsTab (k v T)) →
+    p.Direct → TabInv st → (∀ v T, GrowsM (k v T)) → (∀ v T, KeepsTab (k v T)) →
     DecTab D st' → Runs (Ochr.checkTail n (.matchInd p ty arms) k) st bh () st' →
     (∃ b, Runs (Ochr.byTypeMatch ty arms) st b true st) ∨
     ∃ (m : Nat) (st₀ stA : MState) (bA : Nat) (d : IndDecl), m + 2 ≤ n ∧ Kern st st₀ ∧ ModeEq st st₀ ∧
@@ -135,7 +137,7 @@ def TailMatchIndInv : Prop :=
           ckContent stA.env p = some (.abs σ) ∧ Runs (Ochr.scrutType m p ty) stA bS (d, ps) stS ∧ DecTab D stS ∧
           ((d.ctors.length = 1 ∧ ∃ (r : Value) (stE st₁ : MState) (bE b₁ : Nat), Runs (Ochr.etaInPlace m σ d ps) stS bE r stE ∧
               DecTab D stE ∧ Runs (Ochr.checkTail m (.matchInd p ty arms) k) stE b₁ () st₁ ∧ DecTab D st₁) ∨
-           (d.ctors.length ≠ 1 ∧ ∀ c x a, c < d.ctors.length → arms[c]? = some (x, a) →
+           (d.ctors.length ≠ 1 ∧ arms.length = d.ctors.length ∧ ∀ c x a, c < d.ctors.length → arms[c]? = some (x, a) →
               ∃ (stB stW stJ st₁ : MState) (r : Value) (kc : Value → Value → M Unit) (bw bj b₁ : Nat),
                 WorldBase stS stB ∧
                 Runs (do let r ← Ochr.ctorRefinement m d ps c; Ochr.refine m σ r; pure r) stB bw r stW ∧ DecTab D stW ∧
@@ -440,13 +442,13 @@ section
 variable {K : RunCtx} {φ : Future}
 
 /-- **The split at the end of a body on a data type, the match not read as a proof and not on a proof** (the full form,
-`TailOutK`), at a match whose arms cover its type's constructors. ASSUMES `TailMatchIndInv`, `JoinContInv` (checker),
+`TailOutK`), at a direct scrutinee (the arms' covering of the constructors from the run, main's D146). ASSUMES `TailMatchIndInv`, `JoinContInv` (checker),
 `MatchIndFlagsT` (table), `MatchIndTagG`, `ScrutTypeG`, `WorldRefineIndG`, `EtaTailG`, `JoinContG`, `GenTailG` (mixed),
 `ValsCongrA` (model, proved), `Strict.FundCtx K`. -/
 theorem tStepMatchInd_data (hInv : TailMatchIndInv) (hJI : JoinContInv) (hMF : MatchIndFlagsT K.D)
     (hTag : MatchIndTagG) (hST : ScrutTypeG) (hW : WorldRefineIndG) (hE : EtaTailG) (hJ : JoinContG) (hG : GenTailG)
     (hVC : ValsCongrA) (hc : Strict.FundCtx K) {n : Nat} (ih : IH K φ n) (ρ : Assignment) (p : Place) (ty : String)
-    (arms : List (Hint × Term)) (hcov : ArmsCover K.Γ ty arms)
+    (arms : List (Hint × Term))
     (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState)
     (hm : ModeR st) (htn : st.tailNext = false) (hne : 0 < st.env.size) (htd : st.tailDecl = none)
     (hk : ∀ v T, GrowsM (k v T)) (hkt : ∀ v T, KeepsTab (k v T)) (hp : Pre K ρ st) (hrt : RecTie K ρ st)
@@ -455,7 +457,7 @@ theorem tStepMatchInd_data (hInv : TailMatchIndInv) (hJI : JoinContInv) (hMF : M
     (hv : (Term.matchInd p ty arms).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchInd p ty arms).absBelow st.absTy.size)
     (hnh : (Term.matchInd p ty arms).hasHolePrim = false) (hD : DecTab K.D st')
     (hrun : Runs (Ochr.checkTail n (.matchInd p ty arms) k) st bh () st')
-    (hdat : ¬ ∃ b, Runs (Ochr.byTypeMatch ty arms) st b true st)
+    (hdat : ¬ ∃ b, Runs (Ochr.byTypeMatch ty arms) st b true st) (hdir : p.Direct)
     (hfl2 : (K.D.flags (scopeOf s) (.matchInd p ty arms)).2 = false) :
     TailOutK K ρ φ π st s (runT K ρ φ true (hintM K ρ st.goal) (.matchInd p ty arms)) k := by
   have hfl : K.D.flags (scopeOf s) (.matchInd p ty arms) = (false, false) := by
@@ -463,7 +465,7 @@ theorem tStepMatchInd_data (hInv : TailMatchIndInv) (hJI : JoinContInv) (hMF : M
     rw [hfl2] at h1
     exact Prod.ext h1 hfl2
   obtain ⟨m, st₀, stA, bA, d, hmn, hk₀, hme₀, htn₀, htd₀, hfind, hsort, hacc, hDA, hcases⟩ :=
-    (hInv n p ty arms k st st' bh K.D (TabInv.of_pre hp) hk hkt hD hrun).resolve_left hdat
+    (hInv n p ty arms k st st' bh K.D hdir (TabInv.of_pre hp) hk hkt hD hrun).resolve_left hdat
   obtain ⟨hTok, tg, sA, ρA, ΔA, πA, htag, heA₀, hKA₀, htnA₀, htdA₀, hgA₀, hpA, hrA, hnp, cT, hcT, hcTlt, hcTk⟩ :=
     hTag K ρ φ π st₀ stA s p ty d m bA (fun m' hm' => ih m' (by omega)) (hm.of_modeEq hme₀)
       (by rw [← ColumnC.size_of_erase hk₀.env]; exact hne) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hDA
@@ -506,7 +508,7 @@ theorem tStepMatchInd_data (hInv : TailMatchIndInv) (hJI : JoinContInv) (hMF : M
       hST { K with Δ := ΔA } ρA φ πA stA stS sA p ty (d, ps) m bS (ih.lower (by omega) ΔA) hneA hpA hrA hSA hDS hscr
     have hσS : ckContent stS.env p = some (.abs σ) := by rw [henv]; exact hσ
     have hneS : 0 < stS.env.size := by rw [hKS.size]; exact hneA
-    rcases hcase with ⟨hlen, r, stE, st₁, bE, b₁, heta, hDE, hre, hD₁⟩ | ⟨hlen, hworlds⟩
+    rcases hcase with ⟨hlen, r, stE, st₁, bE, b₁, heta, hDE, hre, hD₁⟩ | ⟨hlen, hlenA, hworlds⟩
     · -- one constructor: refined in place, then the match again
       obtain ⟨ρE, ΔE, heE, hKE, htnE, htdE, hgE, hpE, hrE⟩ :=
         hE { K with Δ := ΔS } ρS φ πA stS stE sA p d ps r σ m bE (ih.lower (by omega) ΔS) hneS hpS hrS hSA hσS hlen hDE
@@ -528,7 +530,6 @@ theorem tStepMatchInd_data (hInv : TailMatchIndInv) (hJI : JoinContInv) (hMF : M
       rw [← matchIndReaccessM hfl hTok htag, runT_congrA K ΔE ρ ρE φ true _ _ sA hagree]
       exact hx₁
     · -- several constructors: the world of the assignment's constructor
-      have hlenA : arms.length = d.ctors.length := hcov d hΓ
       have hcA : cT < arms.length := by rw [hlenA]; exact hcTlt
       have hget : arms[cT]? = some (arms[cT].1, arms[cT].2) := by rw [List.getElem?_eq_getElem hcA]
       obtain ⟨hva, haba, hnha, harmfl⟩ := harm_ok cT _ _ hget
@@ -616,13 +617,13 @@ theorem indArm_leafE (hPJ : ProofJoinIndG K.D) (hPA : ProofArmIndM K) (hVC : Val
   · exact ha₁.trans hr2
 
 /-- **The split at the end of a body on a data type the table reads as a proof** (the erased form, `TailOutE`; a lemma's
-body), at a match whose arms cover its type's constructors. ASSUMES `TailMatchIndInv`, `JoinContInv` (checker),
+body), at a direct scrutinee (the arms' covering from the run, main's D146). ASSUMES `TailMatchIndInv`, `JoinContInv` (checker),
 `ProofJoinIndG` (table and checker), `MatchIndTagG`, `ScrutTypeG`, `WorldRefineIndG`, `EtaTailG`, `GenTailG` (mixed),
 `ProofArmIndM` (model at the instance), `ValsCongrA` (proved). -/
 theorem tStepMatchInd_proofRead (hInv : TailMatchIndInv) (hJI : JoinContInv) (hPJ : ProofJoinIndG K.D)
     (hTag : MatchIndTagG) (hST : ScrutTypeG) (hW : WorldRefineIndG) (hE : EtaTailG) (hG : GenTailG)
     (hPA : ProofArmIndM K) (hVC : ValsCongrA) {n : Nat} (ih : IH K φ n) (ρ : Assignment) (p : Place) (ty : String)
-    (arms : List (Hint × Term)) (hcov : ArmsCover K.Γ ty arms)
+    (arms : List (Hint × Term))
     (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState)
     (hm : ModeR st) (htn : st.tailNext = false) (hne : 0 < st.env.size) (htd : st.tailDecl = none)
     (hk : ∀ v T, GrowsM (k v T)) (hkt : ∀ v T, KeepsTab (k v T)) (hp : Pre K ρ st) (hrt : RecTie K ρ st)
@@ -631,11 +632,11 @@ theorem tStepMatchInd_proofRead (hInv : TailMatchIndInv) (hJI : JoinContInv) (hP
     (hv : (Term.matchInd p ty arms).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchInd p ty arms).absBelow st.absTy.size)
     (hnh : (Term.matchInd p ty arms).hasHolePrim = false) (hD : DecTab K.D st')
     (hrun : Runs (Ochr.checkTail n (.matchInd p ty arms) k) st bh () st')
-    (hdat : ¬ ∃ b, Runs (Ochr.byTypeMatch ty arms) st b true st)
+    (hdat : ¬ ∃ b, Runs (Ochr.byTypeMatch ty arms) st b true st) (hdir : p.Direct)
     (hfl2 : (K.D.flags (scopeOf s) (.matchInd p ty arms)).2 = true) :
     TailOutE K ρ φ π st s (runT K ρ φ true (hintM K ρ st.goal) (.matchInd p ty arms)) k := by
   obtain ⟨m, st₀, stA, bA, d, hmn, hk₀, hme₀, htn₀, htd₀, hfind, hsort, hacc, hDA, hcases⟩ :=
-    (hInv n p ty arms k st st' bh K.D (TabInv.of_pre hp) hk hkt hD hrun).resolve_left hdat
+    (hInv n p ty arms k st st' bh K.D hdir (TabInv.of_pre hp) hk hkt hD hrun).resolve_left hdat
   obtain ⟨hTok, tg, sA, ρA, ΔA, πA, htag, heA₀, hKA₀, htnA₀, htdA₀, hgA₀, hpA, hrA, hnp, cT, hcT, hcTlt, hcTk⟩ :=
     hTag K ρ φ π st₀ stA s p ty d m bA (fun m' hm' => ih m' (by omega)) (hm.of_modeEq hme₀)
       (by rw [← ColumnC.size_of_erase hk₀.env]; exact hne) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hDA
@@ -682,7 +683,7 @@ theorem tStepMatchInd_proofRead (hInv : TailMatchIndInv) (hJI : JoinContInv) (hP
       hST { K with Δ := ΔA } ρA φ πA stA stS sA p ty (d, ps) m bS (ih.lower (by omega) ΔA) hneA hpA hrA hSA hDS hscr
     have hσS : ckContent stS.env p = some (.abs σ) := by rw [henv]; exact hσ
     have hneS : 0 < stS.env.size := by rw [hKS.size]; exact hneA
-    rcases hcase with ⟨hlen, r, stE, st₁, bE, b₁, heta, hDE, hre, hD₁⟩ | ⟨hlen, hworlds⟩
+    rcases hcase with ⟨hlen, r, stE, st₁, bE, b₁, heta, hDE, hre, hD₁⟩ | ⟨hlen, hlenA, hworlds⟩
     · obtain ⟨ρE, ΔE, heE, hKE, htnE, htdE, hgE, hpE, hrE⟩ :=
         hE { K with Δ := ΔS } ρS φ πA stS stE sA p d ps r σ m bE (ih.lower (by omega) ΔS) hneS hpS hrS hSA hσS hlen hDE
           heta
@@ -705,8 +706,7 @@ theorem tStepMatchInd_proofRead (hInv : TailMatchIndInv) (hJI : JoinContInv) (hP
       subst hr'
       exact ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r'', s'', he.trans he₁, hx', hm₁, ha₁, hp₁,
         hg₁.trans ((hgE.trans hgS).trans hgA)⟩, hK'.trans hK₁⟩
-    · have hlenA : arms.length = d.ctors.length := hcov d hΓ
-      have hcA : cT < arms.length := by rw [hlenA]; exact hcTlt
+    · have hcA : cT < arms.length := by rw [hlenA]; exact hcTlt
       have hget : arms[cT]? = some (arms[cT].1, arms[cT].2) := by rw [List.getElem?_eq_getElem hcA]
       obtain ⟨hva, haba, hnha⟩ := harm_ok cT _ _ hget
       obtain ⟨stB, stW, stJ, st₁, r, kc, bw, bj, b₁, hbase, href, hDW, hjc, harm, hD₁⟩ :=
@@ -743,31 +743,34 @@ end
 
 /-! ## The step, assembled -/
 
-/-- **`TStepMatchInd` at matches whose arms cover their type's constructors, in general** (the paper's [Tail-split],
+/-- **`TStepMatchInd` in general** (since main's D146 the arms' covering of the constructors is the run's, lead49; the paper's [Tail-split],
 [Tail-gen], [Tail-match] at a data type, [Tail-prop]; docs/18's principle "worlds are exclusive" and case 4): the match on
 a proof by `ProofMatchTailG`; otherwise the full form where the table does not read the match as a proof
-(`tStepMatchInd_data`) and the erased form where it does (`tStepMatchInd_proofRead`). ASSUMES 12 facts:
+(`tStepMatchInd_data`) and the erased form where it does (`tStepMatchInd_proofRead`); a scrutinee with a positional
+projection by `TailProjIndG` (NEW at main's D145). ASSUMES 13 facts:
 `TailMatchIndInv`, `JoinContInv` (checker); `MatchIndFlagsT`, `ProofJoinIndG` (table); `MatchIndTagG`, `ScrutTypeG`,
-`WorldRefineIndG`, `EtaTailG`, `JoinContG`, `GenTailG`, `ProofMatchTailG` (mixed); `ProofArmIndM` (model at the
+`WorldRefineIndG`, `EtaTailG`, `JoinContG`, `GenTailG`, `ProofMatchTailG`, `TailProjIndG` (mixed); `ProofArmIndM` (model at the
 instance); and `Strict.FundCtx K`. Model facts used and proved: `ValsCongrA`, the match again after its tag
 (`matchIndReaccessM`, `matchIndReaccessE`). -/
-theorem tStepMatchIndW_of {K : RunCtx} {φ : Future} (hInv : TailMatchIndInv) (hJI : JoinContInv)
+theorem tStepMatchInd_of {K : RunCtx} {φ : Future} (hInv : TailMatchIndInv) (hJI : JoinContInv)
     (hMF : MatchIndFlagsT K.D) (hPJ : ProofJoinIndG K.D) (hTag : MatchIndTagG) (hST : ScrutTypeG)
     (hW : WorldRefineIndG) (hE : EtaTailG) (hJ : JoinContG) (hG : GenTailG) (hPA : ProofArmIndM K)
-    (hPM : ProofMatchTailG K φ) (hc : Strict.FundCtx K) : TStepMatchIndW K φ := by
-  intro n ih Δ ρ p ty arms hcov st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun
+    (hPM : ProofMatchTailG K φ) (hPj : TailProjIndG K φ) (hc : Strict.FundCtx K) : TStepMatchInd K φ := by
+  intro n ih Δ ρ p ty arms
+  refine (Classical.em p.Direct).elim (fun hdir => ?_) (fun hdir => hPj n ih Δ ρ p ty arms hdir)
+  intro st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun
   have ih' : IH { K with Δ := Δ } φ n := ih
   have hc' : Strict.FundCtx { K with Δ := Δ } := ⟨hc.globals, hc.sorts⟩
   by_cases hb : ∃ b, Runs (Ochr.byTypeMatch ty arms) st b true st
   · obtain ⟨b, hb⟩ := hb
     exact hPM n ih Δ ρ p ty arms st k s π bh st' b hb hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun
   · refine ⟨fun h2 => tStepMatchInd_data (K := { K with Δ := Δ }) hInv hJI hMF hTag hST hW hE hJ hG valsCongrA hc' ih'
-      ρ p ty arms hcov st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun hb h2, ?_⟩
+      ρ p ty arms st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun hb hdir h2, ?_⟩
     cases h2 : ({ K with Δ := Δ } : RunCtx).D.flags (scopeOf s) (.matchInd p ty arms) |>.2
     · exact (tStepMatchInd_data (K := { K with Δ := Δ }) hInv hJI hMF hTag hST hW hE hJ hG valsCongrA hc' ih'
-        ρ p ty arms hcov st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun hb h2).toE
+        ρ p ty arms st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun hb hdir h2).toE
     · exact tStepMatchInd_proofRead (K := { K with Δ := Δ }) hInv hJI hPJ hTag hST hW hE hG hPA valsCongrA ih'
-        ρ p ty arms hcov st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun hb h2
+        ρ p ty arms st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun hb hdir h2
 
 namespace MatchIndGuards
 

@@ -18,8 +18,9 @@ statement that conversion, the least relation, does not reach (an incompleteness
   writes before the stuck call (`W12`, false: rejected);
 - bodies that return a closure capturing the argument against one that does not (`C12`, false);
 - bodies that differ only in an erased statement's writes (`E12`, true: accepted; the statement runs
-  on its copy); a type-returning body that writes (`Ty12`: the write is observed, rejected; its calls
-  are erased, so the two never differ at a call: an incompleteness, fail-safe).
+  on its copy); a type-returning body that writes (`Ty12`: true, accepted since main's D142: an erased
+  function's body leaves no effect behind its pop, so the write is not observed; before D142 it was
+  observed and rejected, an incompleteness, fail-safe).
 
 **Equality at other types** (`mkEqM`; (H5) to (H8)):
 - `Eq` at a borrow type is not formed (`&` only at the top of a declared type, D48);
@@ -61,7 +62,8 @@ ochr ConvAtkFn uses Nats, Fixtures {
   def E12 : Eq(Π(x : &Nat). Unit, E1, E2) := refl
   def Ty1 (x : &Nat) : Type := (*x := Z; Nat)
   def Ty2 (x : &Nat) : Type := Nat
-  reject def Ty12 : Eq(Π(x : &Nat). Type, Ty1, Ty2) := refl
+  -- flipped by D142 (an erased function's body leaves no effect behind its pop): was `reject def`
+  def Ty12 : Eq(Π(x : &Nat). Type, Ty1, Ty2) := refl
 }
 
 ochr ConvAtkEq uses Nats, Fixtures {
@@ -85,8 +87,7 @@ ochr ConvAtkEq uses Nats, Fixtures {
   ("P12", "the body of P12 has type ⊤, but the goal is Eq(Π(x : &Nat). &Nat, P1, P2)"),
   ("S12", "the body of S12 has type ⊤, but the goal is Eq(Π(x : &Nat) (n : Nat). Unit, S1, S2)"),
   ("W12", "the body of W12 has type ⊤, but the goal is Eq(Π(x : &Nat) (n : Nat). Unit, W1, W2)"),
-  ("C12", "the body of C12 has type ⊤, but the goal is Eq(Π(n : Nat). Π(m : Nat). Nat, C1, C2)"),
-  ("Ty12", "the body of Ty12 has type ⊤, but the goal is Eq(Π(x : &Nat). Type, Ty1, Ty2)")]
+  ("C12", "the body of C12 has type ⊤, but the goal is Eq(Π(n : Nat). Π(m : Nat). Nat, C1, C2)")]
 
 #guard (run "ConvAtkEq" ConvAtkEq).rejectedWith [
   ("K1", "the body of K1 has type ⊤, but the goal is Eq(Unit, σ2, σ1)"),

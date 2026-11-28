@@ -65,11 +65,12 @@ def modeOk (f : String) (st : MState) : Bool :=
   -- since main's D136 a function without `by` has no [Rec] context
   st.recStack.isEmpty && f == f
 
--- the recorded binding of itself is marked (main's D136 as amended, docs/31 D218), as the kernel has it
+-- flipped by D147/D148: the recorded start is the kernel with the slot `()`, unmarked, and the function not in Σ
+-- (`to148`); it was the kernel itself, the slot marked (main's D136 as amended, docs/31 D218)
 #guard (recordedStart DataProbeWrap "Wrap").any fun st =>
-  st.env[1]!.binds[0]!.recUid == some 0 && kernEqI st stWrap && modeOk "Wrap" st
+  st.env[1]!.binds[0]!.recUid.isNone && kernEqI st (ParGuards.to148 stWrap "Wrap") && modeOk "Wrap" st
 #guard (recordedStart DataProbeUnbox "Unbox").any fun st =>
-  st.env[1]!.binds[0]!.recUid == some 0 && kernEqI st stUnbox && modeOk "Unbox" st
+  st.env[1]!.binds[0]!.recUid.isNone && kernEqI st (ParGuards.to148 stUnbox "Unbox") && modeOk "Unbox" st
 
 /-- The full start states. -/
 def stWrapF : MState :=

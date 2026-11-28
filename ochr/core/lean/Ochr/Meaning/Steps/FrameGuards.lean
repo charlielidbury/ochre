@@ -11,13 +11,14 @@ checker does and not against a description of it. `Steps/ParGuards.lean` has the
 parameter (`I`, `P`). Here:
 
 - `Sb (r : &Nat) : Unit` (a borrow parameter): frame 0 is the cell `r° ↦ loan 0` at the CONTENT type
-  `Nat`; frame 1 is `Sb ↦ .gfn Sb` at the declared Π-type, marked (D78), then `r ↦ borrow 0 σ0` at
-  `&Nat`; the counter is past the label.
+  `Nat`; frame 1 is the own-name slot, `()` at `Unit`, unmarked (main's D148: `Sb` has no `by`; before it
+  `Sb ↦ .gfn Sb` at the declared Π-type, marked), then `r ↦ borrow 0 σ0` at `&Nat`; the counter is past the
+  label.
 - `Rc (n : Nat) : Nat by n` (recursive): the frames of a global with one parameter, `[{}, {Rc, n}]`;
   only the [Rec] context differs (the candidate `0`).
 - `Lc`'s λ `λ(x : Nat) : Nat => clone(n)` (a capture): frame 0 empty; frame 1 is the capture
-  `κ ↦ σ0` at `Nat` (flagged a capture), the λ's binding of itself `_ ↦ .clo [σ0] …` (marked with
-  its own [Rec] context), then `x ↦ σ1`. The enclosing body's frames are GONE: `checkFix` starts the
+  `κ ↦ σ0` at `Nat` (flagged a capture), the λ's own-name slot `()` at `Unit`, unmarked (main's D148;
+  before it `_ ↦ .clo [σ0] …`, marked), then `x ↦ σ1`. The enclosing body's frames are GONE: `checkFix` starts the
   λ's body from a fresh environment (`env := #[{}]`), and the λ's body is the closed term (`capture`
   renumbers the free variables to the captures).
 - `Bc (n : Nat) (r : &Nat) : Nat` and its λ `λ(x : Nat) (q : &Nat) : Nat => clone(n)` (a borrow
@@ -87,7 +88,8 @@ def borOk (b : Binding) (x : String) (l : Nat) (c T : Value) : Bool :=
 #guard (entryAt FrameProbeB "Sb" [1, 2]).any fun st =>
   noTemps st && st.env.size == 2 &&
   bindOk st.env[0]!.binds[0]! "r°" (.loan 0) .tNat .other none &&
-  selfOk st "Sb" (.pi .unit) &&
+  -- flipped by D148: the slot is `()` (it was `selfOk st "Sb" (.pi .unit)`)
+  ParGuards.unitSlotOk st.env[1]!.binds[0]! &&
   borOk st.env[1]!.binds[1]! "r" 0 (.abs 0) .tNat &&
   st.nextLoan == 1 && st.nextAbs == 1 && st.absTy == #[.tNat] && st.goal == some .tUnit
 -- and it is the body's first entry: the states recorded before it are the parameter types', in the
@@ -109,7 +111,8 @@ def borOk (b : Binding) (x : String) (l : Nat) (c T : Value) : Bool :=
 #guard (entryAt FrameProbeC "Lc" [0, 3]).any fun st =>
   noTemps st && st.env.size == 2 &&
   capOk st.env[1]!.binds[0]! (.abs 0) .tNat &&
-  lamSelfOk st.env[1]!.binds[1]! [.abs 0] 1 &&
+  -- flipped by D148: the λ's slot is `()` (it was `lamSelfOk st.env[1]!.binds[1]! [.abs 0] 1`)
+  ParGuards.unitSlotOk st.env[1]!.binds[1]! &&
   bindOk st.env[1]!.binds[2]! "x" (.abs 1) .tNat .other none &&
   st.nextLoan == 0 && st.nextAbs == 2 && st.goal == some .tNat &&
   -- since main's D136 neither `Lc` nor its λ (no `by`) has a [Rec] context (it was two)
@@ -120,7 +123,8 @@ def borOk (b : Binding) (x : String) (l : Nat) (c T : Value) : Bool :=
 #guard (entryAt FrameProbeBC "Bc" [1, 3]).any fun st =>
   noTemps st && st.env.size == 2 &&
   bindOk st.env[0]!.binds[0]! "r°" (.loan 0) .tNat .other none &&
-  selfOk st "Bc" (.pi .other) &&
+  -- flipped by D148: the slot is `()` (it was `selfOk st "Bc" (.pi .other)`)
+  ParGuards.unitSlotOk st.env[1]!.binds[0]! &&
   bindOk st.env[1]!.binds[1]! "n" (.abs 0) .tNat .other none &&
   borOk st.env[1]!.binds[2]! "r" 0 (.abs 1) .tNat &&
   st.nextLoan == 1 && st.nextAbs == 2
@@ -128,7 +132,8 @@ def borOk (b : Binding) (x : String) (l : Nat) (c T : Value) : Bool :=
   noTemps st && st.env.size == 2 &&
   bindOk st.env[0]!.binds[0]! "q°" (.loan 1) .tNat .other none &&
   capOk st.env[1]!.binds[0]! (.abs 0) .tNat &&
-  lamSelfOk st.env[1]!.binds[1]! [.abs 0] 1 &&
+  -- flipped by D148: the λ's slot is `()` (it was `lamSelfOk st.env[1]!.binds[1]! [.abs 0] 1`)
+  ParGuards.unitSlotOk st.env[1]!.binds[1]! &&
   bindOk st.env[1]!.binds[2]! "x" (.abs 2) .tNat .other none &&
   borOk st.env[1]!.binds[3]! "q" 1 (.abs 3) .tNat &&
   st.nextLoan == 2 && st.nextAbs == 4

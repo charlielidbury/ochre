@@ -1161,3 +1161,149 @@ def clVerdict (body : Term) : String :=
 #guard clVerdict (.letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ (.succ (.place (.var 0))) (.place (.var 1)))) != ""
 
 end Ochr.Examples.CloneCore
+
+/-! ## A definition during its own check (D147)
+
+A function definition without `by` enters Σ once its check has succeeded, as a constant does; one
+with `by` is in Σ during its check, since its body calls it. A source program cannot tell the two
+apart: without `by` the name is out of scope in the body (D31: `NSelf`, `NSelfL`), it cannot occur
+in its own type (`NTy`, `NTyP`), and `split` names a global by its written name, which D118 checks
+before the definition is added either way (`NSp`, `RSp`). The rows below are every other route by
+which a definition's check could reach the definition by its name or its global: a λ formed in the
+body, called, passed to an earlier higher-order global, nested in a λ; a stuck block; a call of an
+earlier global that mentions it in no way; the erased classes (a type function and a lemma, with a
+λ); a recursive definition, a λ and a block inside it; closures called inside a recursive global
+and inside closures; a sealed program's re-run of a closure and of a global; comparisons of
+function values; a rejected definition, absent from Σ (`UseBad`). Each verdict and message is as it
+was before D147; the change is pinned on the states inside a check (`Units.lean`, `InSigma`). -/
+
+ochr InOwnCheck uses Nats {
+  inductive Bx (A : Type) := MkBx(x : A)
+  def Ap1 (f : Π(j : Nat). Nat) (a : Nat) : Nat := f(a)
+  def Id1 (n : Nat) : Nat := n
+  -- a body that forms a λ, called and passed to an earlier higher-order global; a λ in a λ
+  def NL1 (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => S(j)); g(n))
+  def NL1Runs : Eq(Nat, NL1(2), 3) := refl
+  def NHo (n : Nat) : Nat := Ap1(λ(j : Nat) : Nat => S(j), n)
+  def NHoRuns : Eq(Nat, NHo(2), 3) := refl
+  def NLL (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => (let h = (λ(k : Nat) : Nat => S(k)); h(j))); g(n))
+  def NLLRuns : Eq(Nat, NLL(2), 3) := refl
+  -- a stuck block (a match on the parameter, not at the end)
+  def NB (n : Nat) : Nat := (let r = match n { Z => 0, S(m) => m, }; r)
+  def NBRuns : Eq(Nat, NB(3), 2) := refl
+  def NBEq (n : Nat) : Eq(Nat, NB(n), NB(n)) := refl
+  -- a call of an earlier global that mentions it in no way
+  def NE (n : Nat) : Nat := Id1(Id1(n))
+  def NERuns : Eq(Nat, NE(2), 2) := refl
+  -- its own name in its body without `by` (D31), and in its type
+  reject def NSelf (n : Nat) : Nat := NSelf(n)
+  reject def NSelfL (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => NSelfL(j)); g(n))
+  reject def NTy (n : Nat) : Eq(Nat, NTy(n), n) := refl
+  reject def NTyP (n : Eq(Nat, NTyP(0), 0)) : Nat := 0
+  -- `split` naming the definition itself, with and without `by`
+  reject def NSp (n : Nat) : Eq(Nat, n, n) := split NSp in refl
+  reject def RSp (n : Nat) : Eq(Nat, n, n) by n := split RSp in refl
+  -- a rejected definition is absent from Σ
+  reject def Bad (n : Nat) : Nat := Eq(Nat, n, n)
+  reject def UseBad (n : Nat) : Nat := Bad(n)
+  -- the erased classes: a type function and a lemma, directly and through a λ, used after
+  def TF (n : Nat) : Type := match n { Z => Nat, S(m) => Unit, }
+  def UseTF : TF(0) := 3
+  def Lm (n : Nat) : Eq(Nat, n, n) := refl
+  def UseLm : Eq(Nat, 2, 2) := Lm(2)
+  def TFL (n : Nat) : Type := (let g = (λ(j : Nat) : Type => match j { Z => Nat, S(m) => Unit, }); g(n))
+  def UseTFL : TFL(0) := 3
+  def LmL (n : Nat) : Eq(Nat, n, n) := (let g = (λ(j : Nat) : Eq(Nat, j, j) => refl); g(n))
+  def PL (n : Nat) : Eq(Nat, n, n) := (let g = (λ(j : Nat) : Eq(Nat, j, j) => refl); g(n))
+  def TL (n : Nat) : Nat := (let g = (λ(j : Nat) : Type => Nat); let x : g(n) = 0; x)
+  -- a recursive definition, in Σ during its check; a λ calling it (D139); a stuck block of it
+  def R (n : Nat) : Nat by n := match n { Z => 0, S(m) => S(R(m)), }
+  def RRuns : Eq(Nat, R(3), 3) := refl
+  def RL (m : Nat) (n : Nat) : Nat by n := (let g = (λ(j : Nat) : Nat => match n { Z => Z, S(k) => RL(j, clone(k)), }); g(m))
+  def RLRuns : Eq(Nat, RL(3, 2), 0) := refl
+  def RB (n : Nat) : Nat by n := (let r = match n { Z => 0, S(m) => RB(m), }; r)
+  def RBRuns : Eq(Nat, RB(3), 0) := refl
+  -- a closure called inside a recursive global, and inside a closure inside one
+  def RC (n : Nat) : Nat by n := match n { Z => 0, S(m) => (let g = (λ(j : Nat) : Nat => S(j)); g(RC(m))), }
+  def RCRuns : Eq(Nat, RC(3), 3) := refl
+  def RCC (n : Nat) : Nat by n := match n { Z => 0, S(m) => (let g = (λ(j : Nat) : Nat => (let h = (λ(k : Nat) : Nat => S(k)); h(j))); g(RCC(m))), }
+  def RCCRuns : Eq(Nat, RCC(3), 3) := refl
+  -- a non-recursive global called inside a recursive one, and inside a closure
+  def RN (n : Nat) : Nat by n := match n { Z => 0, S(m) => NL1(RN(m)), }
+  def RNRuns : Eq(Nat, RN(2), 2) := refl
+  def CN (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => NL1(j)); g(n))
+  def CNRuns : Eq(Nat, CN(2), 3) := refl
+  -- a sealed program's re-run (stuck at the generic call, re-run after the split) of a closure
+  -- and of a non-recursive global
+  def SRL (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => match j { Z => 0, S(k) => 1, }); let r = g(clone(n)); match n { Z => (let e : Eq(Nat, r, 0) = refl; r), S(m) => (let e : Eq(Nat, r, 1) = refl; r), })
+  def SRLRuns : Eq(Nat, SRL(0), 0) := refl
+  def Sw (j : Nat) : Nat := match j { Z => 0, S(k) => 1, }
+  def SRG (n : Nat) : Nat := (let r = Sw(clone(n)); match n { Z => (let e : Eq(Nat, r, 0) = refl; r), S(m) => (let e : Eq(Nat, r, 1) = refl; r), })
+  -- comparisons of function values: two λs by Eq and by Id, a λ and a global
+  def CV1 : Eq(Π(j : Nat). Nat, λ(j : Nat) : Nat => S(j), λ(j : Nat) : Nat => S(j)) := refl
+  def CV2 (n : Nat) : Eq(Π(j : Nat). Nat, λ(j : Nat) : Nat => Id1(j), Id1) := refl
+  def CV3 (n : Nat) : Id(Π(j : Nat). Nat, λ(j : Nat) : Nat => S(j), λ(j : Nat) : Nat => S(j)) := refl
+  -- a λ over a borrow parameter's content
+  def CapB (x : &Nat) : Nat := (let g = (λ(j : Nat) : Nat => S(j)); g(clone(*x)))
+}
+
+#guard (run "InOwnCheck" InOwnCheck).rejectedWith [
+  ("NSelf", "NSelf is not in scope in its own body: it declares no decreasing parameter (`by x`), so it is not recursive (D31)"),
+  ("NSelfL", "NSelfL is not in scope in its own body: it declares no decreasing parameter (`by x`), so it is not recursive (D31)"),
+  ("NTy", "NTy occurs in its own type"), ("NTyP", "NTyP occurs in its own type"),
+  ("NSp", "unknown constant NSp"), ("RSp", "unknown constant RSp"),
+  ("Bad", "the body of Bad has type Prop, but the goal is Nat"), ("UseBad", "unknown constant Bad")]
+
+/-! ## A function's own-name slot holds it only when it has `by` (D148)
+
+A body runs in the frame `[captures, own-name slot, parameters]`. Since D148 the slot holds the
+function itself only for a definition that declares `by` (its body calls it); for every other
+function, a top-level definition without `by`, a λ, a named local function or a stuck block's
+function, it holds `()` at `Unit`, unnamed and unmarked, in the check of the body and at every call.
+Nothing in a checked body can read it (D31), so no verdict depends on it; the rows below are every
+reader of a frame's first binding or of a recursion mark the hunt found, each with a λ, a named local
+function and a non-recursive global: stuck blocks inside them, captured data, a λ returned and
+called, closures under `Id` and `Eq`, a closure's sealed call generalised, higher-order calls of
+λs inside a recursive global and a λ calling it (D139), a block of a recursive global with a λ, a
+named local function called, passed, compared and in the erased classes. Every verdict and message
+is as before D148; the slot itself is pinned on states and on hand-built bodies (`Units.lean`,
+`SelfMarks`). -/
+
+ochr OwnSlot uses Nats {
+  inductive Bx (A : Type) := MkBx(x : A)
+  def Ap1 (f : Π(j : Nat). Nat) (a : Nat) : Nat := f(a)
+  -- stuck blocks inside a λ and inside a named local function, in a non-recursive global
+  def BL1 (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => (let r = match j { Z => 0, S(k) => k, }; r)); g(n))
+  def BL1Runs : Eq(Nat, BL1(3), 2) := refl
+  def BG1 (n : Nat) : Nat := (fix go (j : Nat) : Nat := (let r = match j { Z => 0, S(k) => k, }; r))(n)
+  def BG1Runs : Eq(Nat, BG1(3), 2) := refl
+  -- a λ capturing data (read by clone), called twice
+  def CapD (b : Bx(Nat)) : Nat := (let g = (λ(u : Unit) : Nat => match b { MkBx(x) => clone(x) }); let a = g(()); g(()))
+  def CapDRuns : Eq(Nat, CapD(MkBx(4)), 4) := refl
+  -- a λ returned from a function, then called
+  def RetL (n : Nat) : (Π(j : Nat). Nat) := λ(j : Nat) : Nat => S(j)
+  def UseRetL : Eq(Nat, (let f = RetL(0); f(2)), 3) := refl
+  def RetC (n : Nat) : (Π(j : Nat). Nat) := λ(j : Nat) : Nat => match n { Z => j, S(k) => S(j), }
+  def UseRetC : Eq(Nat, (let f = RetC(1); f(2)), 3) := refl
+  -- closures under an `Id` observation, and in an equation's side
+  def IdL (x : &Nat) : Id(Nat, (let g = (λ(j : Nat) : Nat => S(j)); g(clone(*x))), S(clone(*x))) := refl
+  def EqL (n : Nat) : Eq(Nat, (let g = (λ(j : Nat) : Nat => S(j)); g(n)), S(n)) := refl
+  -- a closure's sealed call generalised by a match on its result
+  def GRN (m : Nat) : Nat := (let g = (λ(j : Nat) : Nat => match j { Z => 1, S(q) => 0, }); let r = g(clone(m)); match r { Z => Z, S(q) => Z, })
+  def GRG (m : Nat) : Nat := (let g = (fix go (j : Nat) : Nat := match j { Z => 1, S(q) => 0, }); let r = g(clone(m)); match r { Z => Z, S(q) => Z, })
+  -- a higher-order call of a λ inside a recursive global, and the global's λ calling it (D139)
+  def RH (n : Nat) : Nat by n := match n { Z => 0, S(m) => Ap1(λ(j : Nat) : Nat => S(j), RH(m)), }
+  def RHRuns : Eq(Nat, RH(3), 3) := refl
+  def RLH (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => Ap1(λ(j : Nat) : Nat => RLH(j, clone(k)), m), }
+  def RLHRuns : Eq(Nat, RLH(3, 2), 0) := refl
+  -- a stuck block of a recursive global, with a λ calling it inside
+  def RBL (m : Nat) (n : Nat) : Nat by n := (let r = match n { Z => Z, S(k) => (let c = clone(k); let g = (λ(j : Nat) : Nat => RBL(j, clone(c))); g(clone(m))), }; r)
+  def RBLRuns : Eq(Nat, RBL(3, 2), 0) := refl
+  -- a named local function: called, passed, compared, in the erased classes
+  def NG (n : Nat) : Nat := (fix go (y : Nat) : Nat := S(y))(n)
+  def NGRuns : Eq(Nat, NG(2), 3) := refl
+  def NGHo (n : Nat) : Nat := Ap1(fix go (y : Nat) : Nat := S(y), n)
+  def NGEq : Eq(Π(j : Nat). Nat, fix go (y : Nat) : Nat := S(y), λ(y : Nat) : Nat => S(y)) := refl
+  def NGT (n : Nat) : Nat := (let x : (fix go (y : Nat) : Type := Nat)(n) = 0; x)
+  def NGP (n : Nat) : Eq(Nat, n, n) := (fix go (y : Nat) : Eq(Nat, y, y) := refl)(n)
+}

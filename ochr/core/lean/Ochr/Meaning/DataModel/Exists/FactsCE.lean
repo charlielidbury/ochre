@@ -244,15 +244,17 @@ def dVS : IndDecl :=
   { name := "VS", params := [(⟨"A"⟩, .sort 1), (⟨"B"⟩, .seq (.place (.var 0)) (.prim "hole" []))],
     ctors := [("MkVS", [("y", .tind "Box" [.place (.var 0)])])] }
 
-/-- The checker's verdict on `VS` after `Box`: rejected, by the evaluation of `B`'s type (`?: the type expected
-here is not known`), after D55, D128, D118, D133 and D140 have passed. Natively. -/
+/-- The checker's verdict on `VS` after `Box`: rejected, since main's D141 by the parameter check from syntax (`B`'s
+type reads "any"), before anything runs; before D141 by the evaluation of `B`'s type (`?: the type expected here is
+not known`), after D55, D128, D118, D133 and D140 had passed. Natively. -/
 def vsVerdict : String :=
   match (runMachine (checkItem (.ind dVS)) { inds := [dBoxV] } 3000).1 with
   | .ok () _ => "accepted"
   | .fail (.error m _) => m
   | _ => "other"
 
-#guard (vsVerdict.splitOn "the type expected here is not known").length > 1
+-- flipped by D141: the rejection is D141's (it was the evaluation's, "the type expected here is not known")
+#guard (vsVerdict.splitOn "[D141] the parameter B of VS").length > 1
 
 /-- The entry the checker would store for `VS`: `A` nestable, `B` not. -/
 theorem vs_nestable : nestableSet (nestTableOf [dBoxV]) (sortTableOf [dBoxV] dVS) dVS = [true, false] := by

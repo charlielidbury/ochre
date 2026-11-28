@@ -59,6 +59,11 @@ theorem step_popFrame (ih : MachineGrows tb nf) :
     GrowsIn tb (Ochr.popFrame ((nf + 1))) := by
   unfold Ochr.popFrame; grows_go ih
 
+theorem step_popBody (ih : MachineGrows tb nf) :
+    ∀ (start : Option Env) (v : Value) (T : Option Value) (site : String), GrowsIn tb (Ochr.popBody ((nf + 1)) start v T site) := by
+  intro start v T site
+  unfold Ochr.popBody; grows_go ih
+
 theorem step_placeTypeQ (ih : MachineGrows tb nf) :
     ∀ (p : Place), GrowsIn tb (Ochr.placeType? ((nf + 1)) p) := by
   intro p
@@ -80,9 +85,14 @@ theorem step_projIn (ih : MachineGrows tb nf) :
   unfold Ochr.projIn; grows_go ih
 
 theorem step_projMatch (ih : MachineGrows tb nf) :
-    ∀ (q : Place) (i : Nat) (k : Place → Term), GrowsIn tb (Ochr.projMatch ((nf + 1)) q i k) := by
-  intro q i k
+    ∀ (q : Place) (i : Nat), GrowsIn tb (Ochr.projMatch ((nf + 1)) q i) := by
+  intro q i
   unfold Ochr.projMatch; grows_go ih
+
+theorem step_projStep (ih : MachineGrows tb nf) :
+    ∀ (s : Place × Nat × (Place → Place)), GrowsIn tb (Ochr.projStep ((nf + 1)) s) := by
+  intro s
+  unfold Ochr.projStep; grows_go ih
 
 theorem step_depFieldType (ih : MachineGrows tb nf) :
     ∀ (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place) (declared : Bool), GrowsIn tb (Ochr.depFieldType ((nf + 1)) d ps g q declared) := by

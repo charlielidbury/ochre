@@ -21,9 +21,11 @@ structure Binding where
   decl : DeclInfo := .other   -- what its declared type says (the erasure pre-pass)
   cap : Bool := false         -- a closure's captured value (D53 (e): its body may not move it out)
   /-- D78 [Rec]: this binding names a function whose body is being checked: the fresh mark its
-  check took (`checkFix`), its frame's `RecCtx.uid` when it declares `by`. Every function's binding
-  of itself is marked, recursive or not (D136's amendment: the consistency proof's relation reads
-  the mark to find the function in its body's frame). Set on the function's binding of itself, and on a closure's
+  check took (`checkFix`), its frame's `RecCtx.uid`. Only a function that declares `by` has a
+  binding of itself holding it, and so a mark (D148: any other function's slot holds `()`, unmarked;
+  D136's amendment had marked every function's). The checker reads the mark through the [Rec]
+  entry; the consistency proof's relation reads it to find the function in its body's frame. Set
+  on the function's binding of itself, and on a closure's
   capture of such a binding, so a recursive call is recognised by the name it is made
   through (syntax), never by comparing function values, which a refinement, an [End] or
   a re-normalisation inside a capture can change (§6.3: which calls recurse is read from

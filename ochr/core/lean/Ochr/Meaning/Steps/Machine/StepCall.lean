@@ -83,8 +83,8 @@ theorem step_runBody (ih : MachineGrows tb nf) :
   unfold Ochr.runBody; grows_go ih
 
 theorem step_runBodyCore (ih : MachineGrows tb nf) :
-    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term), GrowsIn tb (Ochr.runBodyCore ((nf + 1)) fv cs t rd ws B self hs ds c body) := by
-  intro fv cs t rd ws B self hs ds c body
+    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term), GrowsIn tb (Ochr.runBodyCore ((nf + 1)) fv cs t rd ws B self hs ds c dec body) := by
+  intro fv cs t rd ws B self hs ds c dec body
   unfold Ochr.runBodyCore; grows_go ih
 
 set_option maxHeartbeats 16000000 in

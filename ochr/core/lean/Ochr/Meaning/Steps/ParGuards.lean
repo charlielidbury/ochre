@@ -14,11 +14,13 @@ Numerals (`1`, `Term.ofNat`) are the surface's direct `S`.
 
 **The body's start state** (`checkFix`'s generic state, recorded by the checker itself at the body's
 entry, `Config.recordStates`, for the surface `P` and for a surface function with `I`'s signature):
-frame 0 empty; frame 1 holding the function's binding of itself `f ↦ .gfn f` at `Π(n : Nat). Nat`,
-read `.pi .other`, MARKED (`recUid = some 0`), then `n ↦ σ0` at `Nat` read `.other`; `absTy = [Nat]`,
-`nextAbs = 1`, no loan, the goal `Nat`, typed, no refinement; Σ the function's own global, as `checkDef`
-pushed it. It does not depend on the body (two bodies below), and its kernel is `ColumnI.stI`, where
-`Pre`, `Rel` and `SGood` are proved (`Steps/ColumnIStart.lean`).
+frame 0 empty; frame 1 holding the function's own-name slot, then `n ↦ σ0` at `Nat` read `.other`;
+`absTy = [Nat]`, `nextAbs = 1`, no loan, the goal `Nat`, typed, no refinement. Since main's D147 and D148 the
+slot is `()` at `Unit`, unmarked, and Σ does not hold the function during its check (`kernelOk148`); before
+them the slot held `f ↦ .gfn f` at `Π(n : Nat). Nat`, read `.pi .other`, MARKED (`recUid = some 0`), and Σ held
+the function's own global (`kernelOk`), which is still the hand-built kernel `ColumnI.stI`, where `Pre`, `Rel`
+and `SGood` are proved (`Steps/ColumnIStart.lean`), until the model's half of R-dec re-proves it (lead49).
+It does not depend on the body (two bodies below).
 -/
 
 open Ochr.Test
@@ -91,6 +93,37 @@ def kernelOk (f : String) (body : Term) (st : MState) : Bool :=
   st.refs.isEmpty && st.etaRefs.isEmpty && st.neutrals.isEmpty && !st.liveScope &&
   st.absDecl.size == 1 && declIs st.absDecl[0]! .other
 
+/-- The own-name slot of a function without `by` since main's D148 (`pushSelf`): `()` at `Unit`, unnamed (`_`),
+read `.unit`, unmarked. -/
+def unitSlotOk (b : Binding) : Bool :=
+  b.hint.name == "_" && b.val == .unit && b.ty == some .tUnit && b.decl.beq .unit && !b.proof && b.recUid.isNone &&
+    !b.cap && b.lazyTy.isNone
+
+/-- The own-name slot as `pushSelf` pushes it for a function without `by` (main's D148). -/
+def unitSlot : Binding := { hint := ⟨"_"⟩, ty := some .tUnit, val := .unit, decl := .unit }
+
+/-- A hand-built start kernel of a function `f` without `by`, made before main's D147/D148 (the slot at position
+`i` of frame 1 holding the function, Σ holding `f`), as the checker starts it since them: the slot `()`
+(`unitSlot`), and `f` not in Σ. For the guards that compare the checker's recorded start with a column's kernel,
+until the model's half of R-dec re-makes the kernels (lead49). -/
+def to148 (k : MState) (f : String) (i : Nat := 0) : MState :=
+  { k with env := k.env.set! 1 { k.env[1]! with binds := k.env[1]!.binds.set! i unitSlot },
+           globals := k.globals.filter (·.name != f) }
+
+/-- The checker's start state of a function without `by` since main's D147 and D148: `kernelOk`'s, except that the
+own-name slot is `()` (`unitSlotOk`) and Σ does not hold the function (it enters Σ after its check, as a constant
+does; here no item precedes it, so Σ is empty). The hand-built kernel `ColumnI.stI` is still the state before them
+(the slot holding the global, marked; Σ holding it) until the model's half of R-dec re-proves the column (lead49). -/
+def kernelOk148 (st : MState) : Bool :=
+  st.env.size == 2 && st.env[0]!.binds.isEmpty && st.env[0]!.temps.isEmpty && st.env[1]!.temps.isEmpty &&
+  st.env[1]!.binds.size == 2 &&
+  unitSlotOk st.env[1]!.binds[0]! &&
+  bindOk st.env[1]!.binds[1]! "n" (.abs 0) .tNat .other none &&
+  st.globals.isEmpty && st.inds.isEmpty &&
+  st.absTy == #[.tNat] && st.nextAbs == 1 && st.nextLoan == 0 && st.goal == some .tNat &&
+  st.refs.isEmpty && st.etaRefs.isEmpty && st.neutrals.isEmpty && !st.liveScope &&
+  st.absDecl.size == 1 && declIs st.absDecl[0]! .other
+
 /-- ... and on the mode the run starts in: typed, not in tail position, no reading handed down, no
 private copy, the function's mark taken (`nextRecUid` one past it), no [Rec] context (no `by`). -/
 def modeOk (f : String) (st : MState) : Bool :=
@@ -100,9 +133,11 @@ def modeOk (f : String) (st : MState) : Bool :=
   -- amendment the function's check still takes a mark, so `nextRecUid` is one past it
   st.recStack.isEmpty && f == f
 
--- the first recorded state of each function is its body's entry: the same for every body
-#guard (entries ParProbeP "Pp").head?.any fun st => kernelOk "Pp" bodyP st && modeOk "Pp" st
-#guard (entries ParProbeI "Ip").head?.any fun st => kernelOk "Ip" (.call succFn [.place (.var 0)] false) st && modeOk "Ip" st
+-- the first recorded state of each function is its body's entry: the same for every body. Flipped by D147/D148: the
+-- slot is `()` and Σ empty (it was `kernelOk`: the slot holding the global, marked, and Σ holding it)
+#guard (entries ParProbeP "Pp").head?.any fun st => kernelOk148 st && modeOk "Pp" st
+#guard (entries ParProbeI "Ip").head?.any fun st => kernelOk148 st && modeOk "Ip" st
+#guard (entries ParProbeP "Pp").head?.any fun st => !kernelOk "Pp" bodyP st
 
 /-- The full start state of `I`'s body: the kernel `ColumnI.stI` in the mode `checkFix` starts it in. -/
 def stI : MState :=

@@ -39,11 +39,13 @@ namespace Guards
 
 open Ochr.Meaning.Steps.Form.ParGuards (bindOk)
 
-/-- The recorded callee state agrees with `stCJ2` on its kernel. -/
+/-- The recorded callee state agrees with `stCJ2` on its kernel, but for the own-name slot: since main's D148 the
+checker's callee slot is `()` (`I` has no `by`; flipped: it was `I` at its Π-type, `stCJ2`'s, which the model's half
+of R-dec re-makes, lead49). -/
 def calleeKernOk (st : MState) : Bool :=
   st.env.size == 2 && st.env[0]!.binds.size == 1 && bindOk st.env[0]!.binds[0]! "x" .bot .tNat .other none &&
   st.env[0]!.temps.isEmpty && st.env[1]!.temps.isEmpty && st.env[1]!.binds.size == 2 &&
-  bindOk st.env[1]!.binds[0]! "I" (.gfn "I") piNat (.pi .other) none &&
+  ParGuards.unitSlotOk st.env[1]!.binds[0]! &&
   (let b := st.env[1]!.binds[1]!
    b.hint.name == "n" && b.val == .succ .zero && b.ty.isNone && ParGuards.declIs b.decl .other && !b.proof &&
      b.recUid.isNone && !b.cap && b.lazyTy.any fun (P, ws, i) => P == piNat && ws == [.succ .zero] && i == 0) &&

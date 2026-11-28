@@ -91,15 +91,69 @@ theorem runs_checkDef_names {d : Def} {st st' : MState} {b : Nat} (h : Runs (che
       refine ⟨_, by rw [hg₁₄.globals, hT.globals], rfl, fun hne => ?_⟩
       rw [he] at hne; cases hne
   · rw [if_neg he] at h
+    -- main's D147: the global is appended before the check with `by`, after it without (in each branch of the model
+    -- flag, which the `do` block's continuation is copied into)
     by_cases hi : d.implBy.isSome = true
-    · rw [if_pos hi, runs_pure_bind', runs_modify_bind] at h
-      have hT := Runs.grows (growsM_of_growsIn fun G => by grows_goI) h
-      exact ⟨_, by rw [hT.globals]; show s₄.globals ++ _ = _; rw [h₀.globals], rfl, fun _ => rfl⟩
+    · rw [if_pos hi, runs_pure_bind'] at h
+      have h₅ : TablesGrow s₁ s₄ := h₀
+      clear h₀
+      by_cases hds : d.dec.isSome = true
+      · rw [if_pos hds, runs_modify_bind] at h
+        have hn : ¬ d.dec.isNone = true := by
+            intro hn'; cases e : d.dec with | none => (rw [e] at hds; cases hds) | some _ => (rw [e] at hn'; cases hn')
+        simp only [hn, Bool.false_eq_true, if_false, if_true, ↓reduceIte] at h
+        have hT := Runs.grows (growsM_of_growsIn fun G => by grows_goI) h
+        exact ⟨_, by rw [hT.globals]; show s₄.globals ++ _ = _; rw [h₅.globals], rfl, fun _ => rfl⟩
+      · rw [if_neg hds] at h
+        have hn : d.dec.isNone = true := by
+            cases e : d.dec with | none => rfl | some _ => (rw [e] at hds; exact absurd rfl hds)
+        simp only [hn, Bool.false_eq_true, if_false, if_true, ↓reduceIte] at h
+        obtain ⟨_, s₆, b₆, hg₆, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+        obtain ⟨_, s₇, b₇, hg₇, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+        obtain ⟨_, s₈, b₈, hg₈, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+        obtain ⟨_, s₉, b₉, hg₉, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+        have hst := runs_modify_inv h
+        subst hst
+        exact ⟨_, by show s₉.globals ++ _ = _; rw [((((h₅.trans hg₆).trans hg₇).trans hg₈).trans hg₉).globals], rfl, fun _ => rfl⟩
     · rw [if_neg hi] at h
-      obtain ⟨_, s₅, b₅, hg₅, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
-      rw [runs_modify_bind] at h
-      have hT := Runs.grows (growsM_of_growsIn fun G => by grows_goI) h
-      exact ⟨_, by rw [hT.globals]; show s₅.globals ++ _ = _; rw [hg₅.globals, h₀.globals], rfl, fun _ => rfl⟩
+      obtain ⟨model, s₅, b₅, hg₅, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+      have h₅ : TablesGrow s₁ s₅ := h₀.trans hg₅
+      clear hg₅ h₀
+      cases model
+      · by_cases hds : d.dec.isSome = true
+        · rw [if_pos hds, runs_modify_bind] at h
+          have hn : ¬ d.dec.isNone = true := by
+            intro hn'; cases e : d.dec with | none => (rw [e] at hds; cases hds) | some _ => (rw [e] at hn'; cases hn')
+          simp only [hn, Bool.false_eq_true, if_false, if_true, ↓reduceIte] at h
+          have hT := Runs.grows (growsM_of_growsIn fun G => by grows_goI) h
+          exact ⟨_, by rw [hT.globals]; show s₅.globals ++ _ = _; rw [h₅.globals], rfl, fun _ => rfl⟩
+        · rw [if_neg hds] at h
+          have hn : d.dec.isNone = true := by
+            cases e : d.dec with | none => rfl | some _ => (rw [e] at hds; exact absurd rfl hds)
+          simp only [hn, Bool.false_eq_true, if_false, if_true, ↓reduceIte] at h
+          obtain ⟨_, s₆, b₆, hg₆, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+          obtain ⟨_, s₇, b₇, hg₇, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+          have hst := runs_modify_inv h
+          subst hst
+          exact ⟨_, by show s₇.globals ++ _ = _; rw [((h₅.trans hg₆).trans hg₇).globals], rfl, fun _ => rfl⟩
+      · by_cases hds : d.dec.isSome = true
+        · rw [if_pos hds, runs_modify_bind] at h
+          have hn : ¬ d.dec.isNone = true := by
+            intro hn'; cases e : d.dec with | none => (rw [e] at hds; cases hds) | some _ => (rw [e] at hn'; cases hn')
+          simp only [hn, Bool.false_eq_true, if_false, if_true, ↓reduceIte] at h
+          have hT := Runs.grows (growsM_of_growsIn fun G => by grows_goI) h
+          exact ⟨_, by rw [hT.globals]; show s₅.globals ++ _ = _; rw [h₅.globals], rfl, fun _ => rfl⟩
+        · rw [if_neg hds] at h
+          have hn : d.dec.isNone = true := by
+            cases e : d.dec with | none => rfl | some _ => (rw [e] at hds; exact absurd rfl hds)
+          simp only [hn, Bool.false_eq_true, if_false, if_true, ↓reduceIte] at h
+          obtain ⟨_, s₆, b₆, hg₆, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+          obtain ⟨_, s₇, b₇, hg₇, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+          obtain ⟨_, s₈, b₈, hg₈, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+          obtain ⟨_, s₉, b₉, hg₉, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+          have hst := runs_modify_inv h
+          subst hst
+          exact ⟨_, by show s₉.globals ++ _ = _; rw [((((h₅.trans hg₆).trans hg₇).trans hg₈).trans hg₉).globals], rfl, fun _ => rfl⟩
 
 set_option maxHeartbeats 8000000 in
 /-- **An accepted inductive declaration's names** (exists13): D118's two checks passed, at the declarations

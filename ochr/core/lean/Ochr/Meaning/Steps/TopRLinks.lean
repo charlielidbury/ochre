@@ -18,7 +18,7 @@ open Ochr.Meaning.Steps.Form.ColumnR
 /-- **`checkFix`'s continuation keeps the tables' invariant** (MACHINE; the clause of `FixCheckAt` that `TailAt` asks of
 every continuation, `KeepsTab`; a whole-machine fact, owed by the machine lane since docs/31 D250: `fixCont` runs [Return],
 the frame's pop and the conversion, which reach the whole machine). At `R`'s name. -/
-def KeepsTabFixR : Prop := ∀ (n : Nat) (v T : Value), KeepsTab (fixCont n "R" v T)
+def KeepsTabFixR : Prop := ∀ (n : Nat) (v T : Value), KeepsTab (fixCont n "R" none v T)
 
 /-- **`FixG` at `R`'s program** (PROVED but for `KeepsTabFixR`): the witness of `R`'s check inverted (`R_check_inv`), and
 the eight links: `FixCheckAt` (the inversion), `FixFitsAt`, `FixStartAt` (`fixStart_R`), `BodyCongrAt`, `FixLeafAt`,
@@ -31,9 +31,9 @@ theorem fixG_R (hkt : KeepsTabFixR) (dm : DataModel) {items : List Item} (hr : R
   rw [hPg] at hrun'
   obtain ⟨n, bh, u, st₁, hct, hgr, hg', hi'⟩ := R_check_inv hrun'
   have hg2 : st'.globals = gE false :: [] := hg'
-  refine ⟨⟨n, st0R P.inds u, st₁, bh, false⟩, ?_, fixFits_R P st' hg2, ?_, bodyCongr_R _ P st',
+  refine ⟨⟨n, st0R P.inds u, st₁, bh, false, none⟩, ?_, fixFits_R P st' hg2, ?_, bodyCongr_R _ P st',
     fixLeaf_R P st' hg2 _, fixParts_R P st' hg2, fixClosed_R, fixFlag_R P st' hg2⟩
-  · refine ⟨⟨rfl, rfl, rfl⟩, rfl, (by show 0 < 2; omega), rfl, by rw [hPg]; rfl, hct, fun v T => grows_fixCont n "R" v T,
+  · refine ⟨⟨rfl, rfl, rfl⟩, rfl, (by show 0 < 2; omega), rfl, by rw [hPg]; rfl, hct, fun v T => grows_fixCont n "R" none v T,
       fun v T => hkt n v T, by rw [hg', hPg]; rfl, by rw [hg']; rfl⟩
   · exact fixStart_R hr hin hPg hPm hg' hi' hfaith hcov hΓP _ u rfl hgr
 

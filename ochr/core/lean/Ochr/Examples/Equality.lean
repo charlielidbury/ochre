@@ -842,3 +842,72 @@ def useMessage : String :=
 #guard (useMessage.splitOn "∧").length == 2
 
 #eval IO.println useMessage
+
+/-! ## [Eq-inj] reads the parameters from the equation's type only (D144)
+
+`Eq(A, C(ā; v̄), C(ā; w̄))` between two values of one constructor computes to the equations between
+their fields, at the field types instantiated at the parameters of the equation's type `A = D(ā)`
+(the paper's [Eq-inj]). Until D144 the checker also took the parameters the values record when `A`
+was not `D(…)`; at such a type (an unknown, a sealed type) the equation now stays, as it does at a
+dependent constructor whose index fields differ. No program reaches that case: with it made an
+error, every verdict of the suite, the case studies and the probes was unchanged, and so was every
+row below, each an attempt to bring two values of one constructor to an equation at a type that
+is not their inductive (a cast to an unknown type through `J`, an unknown type parameter, a
+type-function call stuck at the generic call and refined, a `J` whose endpoints a split makes
+convertible, a borrow, an `Id` observation, `cong`'s codomain). Their values only meet at the
+instantiated type, or the equation's sides are rejected at the stuck type. The change is pinned
+on a state below. -/
+
+ochr EqInjType uses Nats {
+  inductive Box (A : Type) := MkBox(x : A)
+  inductive Two (A : Type) := L(x : A) | R(y : A)
+  def F (n : Nat) : Type := match n { Z => Box(Nat), S(m) => Box(Nat), }
+  def mk (n : Nat) : F(n) := match n { Z => MkBox(1), S(m) => MkBox(2), }
+  def U1 (T : Type) (h : Eq(Type, Box(Nat), T)) : Prop := Eq(T, J(Type, Box(Nat), T, λ(X : Type) : Type => X, h, MkBox(3)), J(Type, Box(Nat), T, λ(X : Type) : Type => X, h, MkBox(4)))
+  def U1C : Eq(Prop, U1(Box(Nat), refl), False) := refl
+  def U2 (T : Type) (x : T) (y : T) : Prop := Eq(Box(T), MkBox(x), MkBox(y))
+  def U2C : Eq(Prop, U2(Box(Nat), MkBox(1), MkBox(2)), False) := refl
+  def S1 (n : Nat) : Prop := Eq(F(n), mk(n), mk(n))
+  reject def S2 (n : Nat) : Prop := Eq(F(n), mk(n), mk(S(n)))
+  reject def S3 (n : Nat) (m : Nat) : Prop := Eq(F(n), mk(m), mk(m))
+  def J1 (n : Nat) (h : Eq(Nat, 0, n)) : Prop := Eq(F(n), J(Nat, 0, n, λ(k : Nat) : Type => F(k), h, MkBox(5)), J(Nat, 0, n, λ(k : Nat) : Type => F(k), h, MkBox(6)))
+  def J1C : Eq(Prop, J1(0, refl), False) := refl
+  def J2 (n : Nat) (m : Nat) (h : Eq(Nat, 0, n)) : Nat := (let p : Prop = Eq(F(m), J(Nat, 0, n, λ(k : Nat) : Type => F(m), h, mk(m)), J(Nat, 0, n, λ(k : Nat) : Type => F(m), h, mk(m))); match n { Z => 0, S(k) => 1, })
+  def B1 (r : &Box(Nat)) : Prop := Eq(Box(Nat), *r, MkBox(3))
+  def B1C : Eq(Prop, (let c = MkBox(3); B1(&c)), True) := refl
+  def I1 (n : Nat) : Prop := Id(F(n), (let c : F(n) = mk(n); c), (let d : F(n) = mk(n); d))
+  reject def I2 (n : Nat) : Prop := Id(Nat, (let c : F(n) = mk(n); 0), (let d : F(n) = mk(S(n)); 0))
+  def C1 (n : Nat) (m : Nat) (h : Eq(Nat, n, m)) : Eq(F(n), mk(n), mk(n)) := refl
+  reject def C2 (n : Nat) (m : Nat) (h : Eq(Nat, n, m)) : Prop := Eq(F(n), mk(n), mk(m))
+  def T1 (T : Type) (h : Eq(Type, Two(Nat), T)) : Prop := Eq(T, J(Type, Two(Nat), T, λ(X : Type) : Type => X, h, L(1)), J(Type, Two(Nat), T, λ(X : Type) : Type => X, h, R(1)))
+}
+
+#guard (run "EqInjType" EqInjType).rejectedWith [
+  ("S2", "the right side of Eq has type Box(Nat), expected ⌈F(σ0)⌉"),
+  ("S3", "the left side of Eq has type ⌈F(σ1)⌉, expected ⌈F(σ0)⌉"),
+  ("I2", "the ascribed term has type Box(Nat), expected ⌈F(σ0)⌉"),
+  ("C2", "the right side of Eq has type ⌈F(σ1)⌉, expected ⌈F(σ0)⌉")]
+
+namespace Ochr.Examples.EqInjType
+open Ochr
+
+/-- `inductive B (A : Type) := MkB(x : A)`. -/
+def declB : IndDecl := { name := "B", params := [(⟨"A"⟩, .sort 1)], ctors := [("MkB", [("x", .place (.var 0))])] }
+
+/-- `MkB[Nat](n)`: a value of `B(Nat)` recording its parameter `Nat`. -/
+def mkB (n : Value) : Value := .ind "B" 0 ⟨"MkB"⟩ [.tNat] [n]
+
+/-- `Eq(A, MkB[Nat](0), MkB[Nat](1))`, computed (`mkEqM`) from a state with `B` declared and one
+unknown type `σ0`. -/
+def eqAt (A : Value) : Option Value :=
+  match runM (mkEqM 100 A (mkB .zero) (mkB (.succ .zero))) { inds := [declB], nextAbs := 1, absTy := #[.sort 1] } with
+  | .ok v => some v
+  | .error _ => none
+
+-- at the equation's own type `B(Nat)`: injectivity, then `0 = 1` is `False`
+#guard eqAt (.tInd "B" [.tNat]) == some vFalse
+-- at an unknown type: the equation stays (before D144 it computed to `False`, by the values'
+-- recorded parameters)
+#guard eqAt (.abs 0) == some (.tEq (.abs 0) (mkB .zero) (mkB (.succ .zero)))
+
+end Ochr.Examples.EqInjType

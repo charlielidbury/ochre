@@ -31,13 +31,7 @@ namespace Ochr.Meaning.Steps.Form.Master
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
 
-/-- A place the checker reads directly: no positional projection `q.i` (which it runs as the one-constructor match
-naming the field, D81 [Proj], `projIn`; a number's `.0` included, conservatively). -/
-def _root_.Ochr.Place.Direct : Place → Prop
-  | .var _ => True
-  | .deref q => q.Direct
-  | .field _ q => q.Direct
-  | .proj _ _ => False
+-- `Place.Direct` moved to `Master.lean` (lead49: the end-of-body match inversions read it too, main's D145)
 
 /-- The checker's write of `⊥` at a place, as a function of Ω (`Machine.setPlace`): at the variable's position, the
 path updated. -/

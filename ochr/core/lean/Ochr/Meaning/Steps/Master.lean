@@ -76,6 +76,16 @@ need their own statement (`clone`/`peek` of a place reads in place on both sides
 
 namespace Ochr.Meaning.Steps.Form.Master
 
+/-- A place the checker reads directly: no positional projection `q.i` (which it runs as the one-constructor match
+naming the field, D81 [Proj], `projIn`; a number's `.0` included, conservatively). Read by the direct place read (`MasterPlace`) and, since
+main's D145, by the end-of-body match inversions (`TailMatchNatInv`, `TailMatchIndInv`). -/
+def _root_.Ochr.Place.Direct : Place → Prop
+  | .var _ => True
+  | .deref q => q.Direct
+  | .field _ q => q.Direct
+  | .proj _ _ => False
+
+
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
 
 /-! ## What a successful run keeps -/

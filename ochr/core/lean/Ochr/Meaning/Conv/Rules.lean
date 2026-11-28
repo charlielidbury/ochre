@@ -153,13 +153,23 @@ inductive ConvTL : List Term → List Term → Prop
   | cons {a b : Term} {as bs : List Term} : ConvT a b → ConvTL as bs → ConvTL (a :: as) (b :: bs)
 end
 
-/-- The parameters [Eq-inj] reads the field types at: the equation's type `D(ā)`, else the
-values' own records (`mkEqM`'s choice). -/
-def eqArgs (A : Value) (t : String) (ps qs : List Value) : Option (List Value) :=
-  let a? : Option (List Value) := match A with
-    | .tInd n as => if n == t then some as else none
-    | _ => none
-  a?.orElse fun _ => if !ps.isEmpty then some ps else if !qs.isEmpty then some qs else none
+/-- The parameters [Eq-inj] reads the field types at: the equation's type `D(ā)`'s (`mkEqM`'s choice;
+the values' own recorded parameters are not read: main's D144, conv2's proposal). -/
+def eqArgs (A : Value) (t : String) (_ps _qs : List Value) : Option (List Value) :=
+  match A with
+  | .tInd n as => if n == t then some as else none
+  | _ => none
+
+/-- [Eq-inj] is at the inductive applied. -/
+theorem eqArgs_ind {A : Value} {t : String} {ps qs args : List Value} (h : eqArgs A t ps qs = some args) :
+    A = .tInd t args := by
+  unfold eqArgs at h
+  split at h
+  · rename_i n as
+    split at h
+    · rename_i hn; cases h; simp only [beq_iff_eq] at hn; rw [hn]
+    · cases h
+  · cases h
 
 variable (Γ : List IndDecl)
 

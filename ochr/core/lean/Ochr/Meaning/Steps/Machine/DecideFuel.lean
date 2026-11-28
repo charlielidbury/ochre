@@ -30,6 +30,7 @@ macro "fuel_step" : tactic => `(tactic| first
   | with_reducible exact fuelLe_preFlags _ _
   | with_reducible exact fuelLe_refineDecl _
   | with_reducible exact fuelLe_sealedSort _
+  | with_reducible exact fuelLe_codomainWritten _ _ _ _
   | (with_reducible refine fuelLe_get_bind fun _ => ?_)
   | (with_reducible refine fuelLe_bind ?_ (fun _ => ?_))
   | (with_reducible refine fuelLe_withLive _ ?_)
@@ -66,6 +67,10 @@ theorem fuelLe_refineDecl (d : DeclInfo) : FuelLe (refineDecl d) (refineDecl d) 
   unfold refineDecl; fuel_go
 theorem fuelLe_sealedSort (t : Term) : FuelLe (sealedSort? t) (sealedSort? t) := by
   unfold sealedSort?; fuel_go
+/-- D143's test of a written codomain (main's merge, lead49). -/
+theorem fuelLe_codomainWritten (what : Unit → String) (c : Term) (ns : List String) (cd : DeclInfo) :
+    FuelLe (codomainWritten what c ns cd) (codomainWritten what c ns cd) := by
+  unfold codomainWritten; fuel_go
 
 /-! ## The fuel recursion -/
 

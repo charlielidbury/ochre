@@ -257,12 +257,12 @@ theorem valsCongrA : ValsCongrA := by
 /-! ## The split at the end of a body, with the model facts proved -/
 
 /-- **`TStepMatchNat` in general, with its three model facts proved** (`matchReaccessM`, `matchReaccessE`,
-`valsCongrA`): ASSUMES 9 facts: `TailMatchNatInv`, `JoinContInv` (checker); `MatchFlagsT`, `ProofJoinG` (table; the
+`valsCongrA`): ASSUMES 10 facts (`TailProjNatG`, NEW at main's D145, among them): `TailMatchNatInv`, `JoinContInv` (checker); `MatchFlagsT`, `ProofJoinG` (table; the
 latter also the checker's `joinCont`); `MatchTagG`, `WorldRefineG`, `JoinContG`, `GenTailG` (mixed); `ProofArmM`
 (model, at the instance's table); and `Strict.FundCtx K`. -/
 theorem tStepMatchNat_from {K : RunCtx} {φ : Future} (hInv : TailMatchNatInv) (hJI : JoinContInv)
     (hMF : MatchFlagsT K.D) (hPJ : ProofJoinG K.D) (hTag : MatchTagG) (hW : WorldRefineG) (hJ : JoinContG)
-    (hG : GenTailG) (hPA : ProofArmM K) (hc : Strict.FundCtx K) : TStepMatchNat K φ :=
-  tStepMatchNat_of hInv hJI hMF hPJ hTag hW hJ hG matchReaccessM matchReaccessE hPA valsCongrA hc
+    (hG : GenTailG) (hPA : ProofArmM K) (hPj : TailProjNatG K φ) (hc : Strict.FundCtx K) : TStepMatchNat K φ :=
+  tStepMatchNat_of hInv hJI hMF hPJ hTag hW hJ hG matchReaccessM matchReaccessE hPA valsCongrA hPj hc
 
 end Ochr.Meaning.Steps.Form.Master

@@ -64,13 +64,14 @@ theorem runs_refineDecl_other {st st' : MState} {b : Nat} {r : DeclInfo}
 -- `runs_restoreKeep_nil` and `runs_evalType_nat'` moved to `Machine.CallJEval` (`runs_evalType_nat_nil`; lead47, R1).
 
 /-- `checkFix`'s continuation only extends the tables. -/
-theorem grows_fixCont (n : Nat) (name : String) (v T : Value) : GrowsM (fixCont n name v T) :=
+theorem grows_fixCont (n : Nat) (name : String) (start : Option Env) (v T : Value) : GrowsM (fixCont n name start v T) :=
   Machine.growsM_of_growsIn fun G => by
     have hCv : ∀ (G : Machine.Tab) (f : Nat) (v w : Value), Machine.GrowsIn G (Ochr.conv f v w) :=
       fun G f => (Machine.machineGrows f).conv
     have hBR : ∀ (G : Machine.Tab) (f : Nat) (what : String) (v T : Value) (lent : List Place) (lw : String),
         Machine.GrowsIn G (Ochr.bodyReturns f what v T lent lw) := fun G f => (Machine.machineGrows f).bodyReturns
-    have hPF : ∀ (G : Machine.Tab) (f : Nat), Machine.GrowsIn G (Ochr.popFrame f) := fun G f => (Machine.machineGrows f).popFrame
+    have hPB : ∀ (G : Machine.Tab) (f : Nat) (start : Option Env) (v : Value) (T : Option Value) (site : String),
+        Machine.GrowsIn G (Ochr.popBody f start v T site) := fun G f => (Machine.machineGrows f).popBody
     unfold fixCont
     grows_goI
 
@@ -81,7 +82,7 @@ generic state `st0R I u` (`u` the check's fresh mark), and its `restoreKeep` onl
 body's check left; Σ after is `R`'s entry, the declarations `I`. -/
 theorem R_check_inv {I : List IndDecl} {fuel : Nat} {st' : MState}
     (hr : (runMachine (checkItem (.defn defR)) { globals := [], inds := I } fuel).1 = .ok () st') :
-    ∃ (n bh u : Nat) (st₁ : MState), Runs (Ochr.checkTail n bodyR (fixCont n "R")) (st0R I u) bh () st₁ ∧
+    ∃ (n bh u : Nat) (st₁ : MState), Runs (Ochr.checkTail n bodyR (fixCont n "R" none)) (st0R I u) bh () st₁ ∧
       TablesGrow st₁ st' ∧ st'.globals = [gR] ∧ st'.inds = I := by
   have h := Machine.runs_of_runMachine_fst hr
   unfold checkItem at h
@@ -115,7 +116,9 @@ theorem R_check_inv {I : List IndDecl} {fuel : Nat} {st' : MState}
   obtain ⟨model, s₅, b₅, hms, h₅⟩ := Runs.bind_inv h₄
   clear h₄
   obtain ⟨rfl, rfl⟩ := runs_modelSignature_R hms
-  simp only [Machine.runs_modify_bind, Bool.false_eq_true, if_false, bind_assoc, runs_pure_bind', pure_bind] at h₅
+  -- main's D147: `R` declares `by`, so its global is appended before its check, and not after
+  simp only [Option.isSome_some, Option.isNone_some, if_true, Machine.runs_modify_bind, Bool.false_eq_true, if_false,
+    bind_assoc, runs_pure_bind', pure_bind] at h₅
   obtain ⟨f, s₆, b₆, hf6, h₆⟩ := Runs.bind_inv h₅
   clear h₅
   have := runs_keep Machine.keep_fuelLeft hf6; subst this
@@ -159,8 +162,9 @@ theorem R_check_inv {I : List IndDecl} {fuel : Nat} {st' : MState}
   obtain ⟨rd, s₁₅, b₁₅, hrd, h₁₅⟩ := Runs.bind_inv h₁₄
   clear h₁₄
   obtain ⟨rfl, rfl⟩ := runs_refineDecl_other hrd
-  simp only [pushBind, topIdx, modifyFrame, Machine.runs_get_bind, Machine.runs_modify_bind, bind_assoc,
-    runs_pure_bind', pure_bind] at h₁₅
+  -- main's D148: `R` declares `by`, so its own-name slot holds it (`pushSelf`) and is marked
+  simp only [pushSelf, Option.isSome_some, ↓reduceIte, pushBind, topIdx, modifyFrame, Machine.runs_get_bind,
+    Machine.runs_modify_bind, bind_assoc, runs_pure_bind', pure_bind] at h₁₅
   clear hpc hpd hpf hA hp1 hc hra hrd hf6 hfl hdo hu hms hd hsh hr h e1 e2
   obtain ⟨g, s₁₆, b₁₆, hg, h₁₆⟩ := Runs.bind_inv h₁₅
   clear h₁₅
@@ -196,13 +200,14 @@ theorem R_check_inv {I : List IndDecl} {fuel : Nat} {st' : MState}
   obtain ⟨cl, s₂₃, b₂₃, hcl, h₂₃⟩ := Runs.bind_inv h₂₂
   clear h₂₂
   obtain ⟨rfl, rfl⟩ := Machine.runs_fnClass_piNat hcl
-  simp only [withErasedIf, bne_self_eq_false, Bool.false_eq_true, if_false] at h₂₃
+  -- main's D142: `R` returns data, so no start environment is kept for the pop (`start = none`)
+  simp only [withErasedIf, bne_self_eq_false, Bool.false_eq_true, if_false, runs_pure_bind', pure_bind] at h₂₃
   obtain ⟨_, st₁, b₂₄, hct, hrk⟩ := Runs.bind_inv h₂₃
   clear h₂₃
-  have hS0 : Runs (Ochr.checkTail (k + 1) bodyR (fixCont (k + 1) "R")) (st0R I nr₂) b₂₃ () st₁ := hct
+  have hS0 : Runs (Ochr.checkTail (k + 1) bodyR (fixCont (k + 1) "R" none)) (st0R I nr₂) b₂₃ () st₁ := hct
   have hg0 : TablesGrow (st0R I nr₂) st₁ :=
     Runs.grows (Machine.growsM_of_growsIn fun G => (Machine.machineGrows (k + 1)).checkTail bodyR _
-      fun v T => Machine.growsIn_of_growsM (grows_fixCont (k + 1) "R" v T)) hS0
+      fun v T => Machine.growsIn_of_growsM (grows_fixCont (k + 1) "R" none v T)) hS0
   have hsv : TablesGrow { globals := [] ++ [gE false], inds := I } st₁ :=
     TablesGrow.trans (show TablesGrow { globals := [] ++ [gE false], inds := I } (st0R I nr₂) from
       ⟨rfl, rfl, Nat.zero_le _, fun _ h => absurd h (Nat.not_lt_zero _), Nat.zero_le _, Nat.le_refl _⟩) hg0

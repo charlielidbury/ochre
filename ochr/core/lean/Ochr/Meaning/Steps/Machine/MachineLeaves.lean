@@ -95,6 +95,8 @@ theorem growsIn_hasDependent_both :
 @[grows] theorem growsIn_capMarks t : GrowsIn G (capMarks t) := by unfold capMarks; grows_go
 @[grows] theorem growsIn_markCapRec m : GrowsIn G (markCapRec m) := by unfold markCapRec; grows_go
 @[grows] theorem growsIn_markLastRec u : GrowsIn G (markLastRec u) := by unfold markLastRec; grows_go
+/-- D148's own-name slot (main's merge, lead49). -/
+@[grows] theorem growsIn_pushSelf self rec? : GrowsIn G (pushSelf self rec?) := by unfold pushSelf; grows_go
 @[grows] theorem growsIn_callRecUid f : GrowsIn G (callRecUid f) := by unfold callRecUid; grows_go
 @[grows] theorem growsIn_neutralLookup v : GrowsIn G (neutralLookup v) := by unfold neutralLookup; grows_go
 @[grows] theorem growsIn_recordedNeutral v : GrowsIn G (recordedNeutral v) := by unfold recordedNeutral; grows_go

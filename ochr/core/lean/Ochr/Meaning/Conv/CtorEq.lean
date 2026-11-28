@@ -14,12 +14,9 @@ already proved on plain sides. The named premises (each classed; status in the r
   earlier fields typed. As conv1 stated it (at every parameter list) it is not derivable: faithfulness
   speaks of typed parameters only (`FieldsFaithful`, `RecordsFaithful`), and at untyped parameters
   the record is arbitrary. Its content is (II) for `fieldTele`'s typed runs and `FieldsFaithful`.
-* `InjAtInd` (C): [Eq-inj] takes two constructor values apart only at their inductive type: the
-  equation's type is `D(ā)` (`IndAt`, at the top), and the field type computed for a field holding a
-  constructor value of `D'` is `D'(…)`. Read true at reached states (a constructor value of `D`
-  converts only to `D(…)`); `mkEqM`'s fallback to the values' own parameters, the one place it could
-  fail, is dead on the suite (the probe of the report's task 1), and the proposed deletion of the
-  fallback makes it true by construction.
+* (main's D144, from branch `conv2-eqargs`) [Eq-inj] is at the equation's type `D(ā)` by the rule itself (`eqArgs_ind`): the
+  checker no longer falls back to the values' own recorded parameters, so conv1's premises (a) and (b) are
+  met by construction (the program's `D` at typed parameters) and no class condition is asked of the sides.
 * `LeafsOk` (M): a record at typed parameters of a declaration has no junk leaf at its genuine keys
   (`RecordsFaithful.leafOk`, which `CtxS.faithful` carries for the checker's declarations).
 -/
@@ -51,16 +48,6 @@ structure FieldTysOk (G : Premises) : Prop where
   sound : FieldTysSoundT K ρ φ G
 
 end
-
-/-- The equation's type is the inductive applied when a side is one of its constructor values. -/
-def IndAt (A a : Value) : Prop :=
-  ∀ t c h ps fs, a = .ind t c h ps fs → ∃ as, A = .tInd t as
-
-/-- **(H10) [Eq-inj] takes constructor values apart only at their inductive type** (C): the field type
-computed for a field that holds a constructor value of `D'` is `D'(…)`. -/
-def InjAtInd (G : Premises) : Prop :=
-  ∀ d args c (fs Ts : List Value), G.fieldTys d args c fs Ts → ∀ (j : Nat) (f T : Value), fs[j]? = some f →
-    Ts[j]? = some T → IndAt T f
 
 /-- (M) Records at typed parameters of the declarations `Γ` finds have no junk leaf at their genuine
 keys (`RecordsFaithful.leafOk`). -/
@@ -238,27 +225,21 @@ theorem meanParams_length (K : RunCtx) (ρ : Assignment) (φ : Future) (d : IndD
 section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future} {G : Premises} {gs0 : List GDef} {Γ : List IndDecl}
 
-/-- `S`'s predecessor read at `Nat` as a number is not a constructor value. -/
-theorem indAt_nat {x : Value} {n : Nat} (hn : meanV K ρ φ (.plain TyM.nat) x = .el0 Nat n) : IndAt .tNat x := by
-  intro t c h ps fs e; subst e; exact absurd hn ind_not_num
-
 mutual
 /-- **`Eq` computes soundly on sides that hold no code** (constructor values included): if
 `Eq(A, a, b)` computes to `P` by the rules (the machine's instance), its sides hold no code and no
-`Prop` constructor value, are each `⊥` or a member of `⟦A⟧`, `⟦A⟧` has a level, and `A` is the
-inductive applied when `a` is one of its constructor values, then `P` means `⟦a⟧ = ⟦b⟧` at `⟦A⟧`, at
-every hint. Assumes [Conv-fun]'s premise (for [Eq-refl]), the unit laws, the library's connectives,
-the restated field types (`FieldTysOk`), that [Eq-inj] takes constructor values apart at their
-inductive type (`InjAtInd`), records without junk leaves at typed parameters (`LeafsOk`), and that
-the rules' declarations are the context's (`hΓ`). -/
+`Prop` constructor value, are each `⊥` or a member of `⟦A⟧`, and `⟦A⟧` has a level, then `P` means
+`⟦a⟧ = ⟦b⟧` at `⟦A⟧`, at every hint. Assumes [Conv-fun]'s premise (for [Eq-refl]), the unit laws, the
+library's connectives, the restated field types (`FieldTysOk`), records without junk leaves at typed
+parameters (`LeafsOk`), and that the rules' declarations are the context's (`hΓ`). -/
 theorem eqTo_fo (hp : PremFn K ρ φ G) (hu : UnitOk K ρ φ FO) (hl : LibOk K ρ φ)
-    (hf : FieldTysOk K ρ φ G) (hi : InjAtInd G) (hlf : LeafsOk K Γ)
+    (hf : FieldTysOk K ρ φ G) (hlf : LeafsOk K Γ)
     (hΓ : ∀ t d, Γ.find? (·.name == t) = some d → K.Γ.find? (·.name == t) = some d) :
     ∀ {A a b P : Value}, EqTo Syn.machine G gs0 Γ A a b P → FO a → FO b → NoProp K a → NoProp K b →
-      IndAt A a → SideOkV K ρ φ (capTy K ρ φ A) a → SideOkV K ρ φ (capTy K ρ φ A) b →
+      SideOkV K ρ φ (capTy K ρ φ A) a → SideOkV K ρ φ (capTy K ρ φ A) b →
       (capTy K ρ φ A).level.isSome = true →
       PropU K ρ φ P (meanV K ρ φ (.plain (capTy K ρ φ A)) a = meanV K ρ φ (.plain (capTy K ρ φ A)) b)
-  | A, a, b, _, .disjBot hne, _, _, _, _, _, sa, sb, _ => fun hint => by
+  | A, a, b, _, .disjBot hne, _, _, _, _, sa, sb, _ => fun hint => by
     rw [hl.fls hint]
     congr 2
     refine propext ⟨False.elim, fun e => ?_⟩
@@ -280,14 +261,14 @@ theorem eqTo_fo (hp : PremFn K ρ φ G) (hu : UnitOk K ρ φ FO) (hl : LibOk K �
           · exact absurd ((beq_bot_iff a).1 e1) hab
           · rfl
         subst hb; exact mem_ne_moved ha' (e.trans rfl)
-  | _, _, _, _, .refl d, pa, pb, na, nb, _, sa, sb, _ => fun hint => by
+  | _, _, _, _, .refl d, pa, pb, na, nb, sa, sb, _ => fun hint => by
     rw [hl.tru hint, convV_alike_fo hp hu d pa pb _ _ na nb (fit_of_sideV sa) (fit_of_sideV sb)]
     congr 2
     exact propext ⟨fun _ => rfl, fun _ => trivial⟩
-  | A, .succ a', .succ b', P, .succ d, .succ pa, .succ pb, na, nb, _, sa, sb, _ => by
+  | A, .succ a', .succ b', P, .succ d, .succ pa, .succ pb, na, nb, sa, sb, _ => by
     obtain ⟨n, hn⟩ := side_succ_num sa
     obtain ⟨m, hm⟩ := side_succ_num sb
-    have ih := eqTo_fo hp hu hl hf hi hlf hΓ d pa pb na nb (indAt_nat hn) (side_of_num hn) (side_of_num hm) rfl
+    have ih := eqTo_fo hp hu hl hf hlf hΓ d pa pb na nb (side_of_num hn) (side_of_num hm) rfl
     intro hint
     rw [ih hint]
     congr 2
@@ -296,25 +277,23 @@ theorem eqTo_fo (hp : PremFn K ρ φ G) (hu : UnitOk K ρ φ FO) (hl : LibOk K �
     rw [hn, hm, sem_succ_el0, sem_succ_el0]
     exact propext ⟨fun h => by cases h; rfl, fun h => by cases h; rfl⟩
   | _, _, _, _, @EqTo.inj _ _ _ _ A t c hh hh' ps qs fs gs' args Ts Ps d hargs hd hlen hdep hG hTs heqL,
-      .ind pfs, .ind pgs, na, nb, hia, sa, sb, hA => by
-    obtain ⟨as, rfl⟩ := hia t c hh ps fs rfl
-    have hargs' : as = args := by simpa [eqArgs] using hargs
-    subst hargs'
+      .ind pfs, .ind pgs, na, nb, sa, sb, hA => by
+    obtain rfl := eqArgs_ind hargs
     have hdK := hΓ t d hd
-    rcases meanV_tInd_cases K ρ φ (.plain .err) t as with he | ⟨d', hd', hpk⟩
+    rcases meanV_tInd_cases K ρ φ (.plain .err) t args with he | ⟨d', hd', hpk⟩
     · exfalso
-      have : capTy K ρ φ (.tInd t as) = TyM.err := by unfold capTy; rw [he]; rfl
+      have : capTy K ρ φ (.tInd t args) = TyM.err := by unfold capTy; rw [he]; rfl
       rw [this] at hA; simp [TyM.err, TyM.level, Code0.level] at hA
     rw [hdK] at hd'
     cases hd'
     have hs : (d.sort == 0) = false := by have := na.1 d hdK; simpa using this
-    have hcap : capTy K ρ φ (.tInd t as) = K.dm.tyR d (K.dm.recOf d (meanParams K ρ φ d 0 [] as)) := by
+    have hcap : capTy K ρ φ (.tInd t args) = K.dm.tyR d (K.dm.recOf d (meanParams K ρ φ d 0 [] args)) := by
       unfold capTy
       simp only [meanV, hdK]
       rw [if_pos hpk]
       rfl
-    have hcode : (K.dm.tyR d (K.dm.recOf d (meanParams K ρ φ d 0 [] as))).dataCode? =
-        some (d, K.dm.recOf d (meanParams K ρ φ d 0 [] as)) := by
+    have hcode : (K.dm.tyR d (K.dm.recOf d (meanParams K ρ φ d 0 [] args))).dataCode? =
+        some (d, K.dm.recOf d (meanParams K ρ φ d 0 [] args)) := by
       simp [DataModel.tyR, hs, TyM.dataCode?, Code0.dataCode?]
     rw [hcap] at sa sb ⊢
     rcases sa with ha | ha
@@ -331,8 +310,8 @@ theorem eqTo_fo (hp : PremFn K ρ φ G) (hu : UnitOk K ρ φ FO) (hl : LibOk K �
     obtain ⟨rfl, rfl⟩ := hT
     obtain ⟨rfl, rfl⟩ := hT'
     rw [ea, eb]
-    have hleaf : K.dm.RecLeafOk d (K.dm.recOf d (meanParams K ρ φ d 0 [] as)) :=
-      hlf t d hd _ (by rw [meanParams_length]; exact hf.len d as c fs Ts hG) (paramsTyped_of_ok hpk)
+    have hleaf : K.dm.RecLeafOk d (K.dm.recOf d (meanParams K ρ φ d 0 [] args)) :=
+      hlf t d hd _ (by rw [meanParams_length]; exact hf.len d args c fs Ts hG) (paramsTyped_of_ok hpk)
     have hidx : ∀ (k : Nat) (f g : Value), 0 + k ∈ d.indexFields c → fs[k]? = some f → gs'[k]? = some g →
         Alike K ρ φ f g := by
       intro k f g hk hf' hg'
@@ -345,22 +324,22 @@ theorem eqTo_fo (hp : PremFn K ρ φ G) (hu : UnitOk K ρ φ FO) (hl : LibOk K �
       rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, hf', hg'] at hconv
       exact convV_alike_fo hp hu hconv (pfs f (List.mem_of_getElem? hf')) (pgs g (List.mem_of_getElem? hg'))
     have hTs' : ∀ (k : Nat) (T : Value), Ts[k]? = some T →
-        capTy K ρ φ T = K.dm.fieldTyR d (K.dm.recOf d (meanParams K ρ φ d 0 [] as)) c (0 + k)
-          ([] ++ (meanFields K ρ φ d (K.dm.recOf d (meanParams K ρ φ d 0 [] as)) c 0 [] fs).take k) ∧
+        capTy K ρ φ T = K.dm.fieldTyR d (K.dm.recOf d (meanParams K ρ φ d 0 [] args)) c (0 + k)
+          ([] ++ (meanFields K ρ φ d (K.dm.recOf d (meanParams K ρ φ d 0 [] args)) c 0 [] fs).take k) ∧
         (capTy K ρ φ T).level.isSome = true := by
       intro k T hk
-      obtain ⟨e1, e2⟩ := hf.sound d as c fs Ts hG hpk k T hk
+      obtain ⟨e1, e2⟩ := hf.sound d args c fs Ts hG hpk k T hk
         (fun i f _ hfi => fitsM_typed K.dm hleaf hc hFa i f hfi)
       simp only [Nat.zero_add, List.nil_append]
       exact ⟨e1, e2⟩
-    have hL := eqL_fo hp hu hl hf hi hlf hΓ heqL 0 (arity d c) [] [] hleaf hc (by simp) rfl rfl
-      (by simp) hidx pfs pgs na.2 nb.2 (by simpa using hFa) (by simpa using hFb) hTs' (hi d as c fs Ts hG)
+    have hL := eqL_fo hp hu hl hf hlf hΓ heqL 0 (arity d c) [] [] hleaf hc (by simp) rfl rfl
+      (by simp) hidx pfs pgs na.2 nb.2 (by simpa using hFa) (by simpa using hFb) hTs'
     exact propU_congr hL (propext ⟨fun h => by rw [h], fun h => by injection h⟩)
-  | A, a, b, _, .disj hd, _, _, na, nb, _, sa, sb, _ => fun hint => by
+  | A, a, b, _, .disj hd, _, _, na, nb, sa, sb, _ => fun hint => by
     rw [hl.fls hint]
     congr 2
     exact propext ⟨False.elim, fun e => disj_fo_absurd hd na nb sa sb e⟩
-  | A, a, b, _, .stuck, _, _, _, _, _, sa, sb, hA => fun hint => by
+  | A, a, b, _, .stuck, _, _, _, _, sa, sb, hA => fun hint => by
     rw [meanV_tEq', if_pos ⟨hA, sideOk_of_sideV sa, sideOk_of_sideV sb⟩]
 
 /-- **The field equations mean the equality of the fields**, walking the two telescopes together:
@@ -369,7 +348,7 @@ while its index fields are convertible, hence alike, hence equal), each field is
 type its equation is at (it fits the telescope at a record without junk leaves), and each equation
 is sound by `eqTo_fo`. -/
 theorem eqL_fo (hp : PremFn K ρ φ G) (hu : UnitOk K ρ φ FO) (hl : LibOk K ρ φ)
-    (hf : FieldTysOk K ρ φ G) (hi : InjAtInd G) (hlf : LeafsOk K Γ)
+    (hf : FieldTysOk K ρ φ G) (hlf : LeafsOk K Γ)
     (hΓ : ∀ t d, Γ.find? (·.name == t) = some d → K.Γ.find? (·.name == t) = some d) {d : IndDecl} {r : Rec}
     {c : Nat} :
     ∀ {Ts fs gs Ps : List Value}, EqL Syn.machine G gs0 Γ Ts fs gs Ps →
@@ -383,12 +362,11 @@ theorem eqL_fo (hp : PremFn K ρ φ G) (hu : UnitOk K ρ φ FO) (hl : LibOk K ρ
       (∀ (k : Nat) (T : Value), Ts[k]? = some T →
         capTy K ρ φ T = K.dm.fieldTyR d r c (i + k) (ea ++ (meanFields K ρ φ d r c i ea fs).take k) ∧
         (capTy K ρ φ T).level.isSome = true) →
-      (∀ (k : Nat) (f T : Value), fs[k]? = some f → Ts[k]? = some T → IndAt T f) →
       PropU K ρ φ (andList Ps) (meanFields K ρ φ d r c i ea fs = meanFields K ρ φ d r c i eb gs)
-  | _, _, _, _, .nil, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ =>
+  | _, _, _, _, .nil, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ =>
     propU_congr (propU_andList_nil hl) (propext ⟨fun _ => rfl, fun _ => trivial⟩)
   | _, _, _, _, @EqL.cons _ _ _ _ T f g P Ts fs gs Ps hT hrest, i, n, ea, eb, hok, hc, hn, hla, hlb, hag,
-      hidx, pfs, pgs, nfs, ngs, hFa, hFb, hTs, hinj => by
+      hidx, pfs, pgs, nfs, ngs, hFa, hFb, hTs => by
     obtain ⟨nf, nfs'⟩ := nfs
     obtain ⟨ng, ngs'⟩ := ngs
     have pf : FO f := pfs f (List.mem_cons_self ..)
@@ -416,7 +394,7 @@ theorem eqL_fo (hp : PremFn K ρ φ G) (hu : UnitOk K ρ φ FO) (hl : LibOk K ρ
     have hFb' : FitsM K.dm.sig d r c i n (eb.map Sem.small)
         (meanV K ρ φ (.plain (K.dm.fieldTyR d r c i eb)) g ::
           meanFields K ρ φ d r c (i + 1) (eb ++ [meanV K ρ φ (.plain (K.dm.fieldTyR d r c i eb)) g]) gs) := hFb
-    have ihT := eqTo_fo hp hu hl hf hi hlf hΓ hT pf pg nf ng (hinj 0 f T rfl rfl)
+    have ihT := eqTo_fo hp hu hl hf hlf hΓ hT pf pg nf ng
     show PropU K ρ φ (andList (P :: Ps))
       (meanV K ρ φ (.plain (K.dm.fieldTyR d r c i ea)) f ::
           meanFields K ρ φ d r c (i + 1) (ea ++ [meanV K ρ φ (.plain (K.dm.fieldTyR d r c i ea)) f]) fs =
@@ -452,11 +430,11 @@ theorem eqL_fo (hp : PremFn K ρ φ G) (hu : UnitOk K ρ φ FO) (hl : LibOk K ρ
         have hal := hidx 0 f g (by simpa using hk) rfl rfl
         rw [← hx, ← hy]
         exact hal _ _ nf ng (.inr (.inl (hx ▸ hxm))) (.inr (.inl (hy ▸ hym)))
-    have ihL := eqL_fo hp hu hl hf hi hlf hΓ hrest (i + 1) n (ea ++ [x]) (eb ++ [y]) hok hc (by omega)
+    have ihL := eqL_fo hp hu hl hf hlf hΓ hrest (i + 1) n (ea ++ [x]) (eb ++ [y]) hok hc (by omega)
       (by simp [hla]) (by simp [hlb]) hag'
       (fun k f' g' hk hf' hg' => hidx (k + 1) f' g' (by rwa [show i + (k + 1) = i + 1 + k by omega]) hf' hg')
       (fun a ha => pfs a (List.mem_cons_of_mem _ ha)) (fun a ha => pgs a (List.mem_cons_of_mem _ ha)) nfs' ngs'
-      (by simpa using h2) (by simpa using k2) hTtail (fun k f' T' hf' hT' => hinj (k + 1) f' T' hf' hT')
+      (by simpa using h2) (by simpa using k2) hTtail
     exact propU_congr (propU_andList_cons hl ihT' ihL) (List.cons.injEq _ _ _ _).symm
 end
 

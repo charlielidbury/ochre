@@ -180,6 +180,10 @@ theorem ns_refineDecl (d : DeclInfo) : NS (refineDecl d) := by unfold refineDecl
 theorem ns_sealedSort (t : Term) : NS (sealedSort? t) := by
   unfold sealedSort?; ns_go
   all_goals first | exact ns_lookupGlobal _ | exact ns_lookupInd _ | exact ns_absReading _
+/-- D143's test of a written codomain (main's merge, lead49). -/
+theorem ns_codomainWritten (what : Unit → String) (c : Term) (ns : List String) (cd : DeclInfo) :
+    NS (codomainWritten what c ns cd) := by
+  unfold codomainWritten; ns_go
 
 def DecideNS (fuel : Nat) : Prop :=
   (∀ sc p, NS (placeDecl fuel sc p)) ∧
@@ -239,6 +243,7 @@ macro "ns_ih" : tactic => `(tactic| repeat (any_goals first
   | with_reducible exact ns_ctorIsProof _
   | with_reducible exact ns_preFlags _ _ | with_reducible exact ns_refineDecl _
   | with_reducible exact ns_sealedSort _
+  | with_reducible exact ns_codomainWritten _ _ _ _
   | with_reducible exact ns_liveDecl _ | with_reducible exact ns_lookupInd _
   | with_reducible exact ns_lookupGlobal _ | with_reducible exact ns_absReading _
   | with_reducible exact ns_capReadings _ _

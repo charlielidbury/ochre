@@ -115,42 +115,46 @@ def deep : List (Bool × Option (Value × Option Value) × MState) :=
   | (_, _, log) => log.toList.filterMap fun
       | LogEntry.deep ex fl st => some (ex, fl, st) | _ => none
 
-/-- The callee's frame as `runBodyCore` builds it: `self` at the declared Π-type, read `.pi .other`,
-unmarked; then `n ↦ w` lazily typed, the deferred type parameter 0 of `I`'s Π-type at `[Z]`. -/
-def calleeFrameOk (fr : Frame) (w : Value) : Bool :=
+/-- The callee's frame as `runBodyCore` builds it: the own-name slot; then `n ↦ w` lazily typed, the deferred type
+parameter 0 of `I`'s Π-type at `[Z]`. The slot, with `new` (main's D148, `pushSelf`): `()` at `Unit`, unnamed,
+unmarked, since `I` has no `by`; without (before D148, and the hand-built `stCJ` until the model's half of R-dec):
+`self` at the declared Π-type, read `.pi .other`, unmarked. -/
+def calleeFrameOk (fr : Frame) (w : Value) (new : Bool := false) : Bool :=
   fr.binds.size == 2 && fr.temps.isEmpty &&
-  bindOk fr.binds[0]! "I" (.gfn "I") piNat (.pi .other) none &&
+  (if new then ParGuards.unitSlotOk fr.binds[0]! else bindOk fr.binds[0]! "I" (.gfn "I") piNat (.pi .other) none) &&
   (let b := fr.binds[1]!
    b.hint.name == "n" && b.val == w && b.ty.isNone && declIs b.decl .other && !b.proof && b.recUid.isNone &&
      !b.cap && b.lazyTy.any fun (P, ws, i) => P == piNat && ws == [.zero] && i == 0)
 
 /-- The callee's state: `stJ`'s frame below (its temporaries taken), the callee's frame on top, the
 counters as at the call, at call depth 1. -/
-def calleeOk (st : MState) (w : Value) : Bool :=
-  st.env.size == 2 && st.env[0]!.binds.isEmpty && st.env[0]!.temps.isEmpty && calleeFrameOk st.env[1]! w &&
+def calleeOk (st : MState) (w : Value) (new : Bool := false) : Bool :=
+  st.env.size == 2 && st.env[0]!.binds.isEmpty && st.env[0]!.temps.isEmpty && calleeFrameOk st.env[1]! w new &&
   st.absTy.isEmpty && st.nextAbs == 0 && st.nextLoan == 0 && st.goal.isNone && st.depth == 1 &&
   !st.copying && !st.inPlace && !st.headEval && st.erasedDepth == 0 && st.privateDepth == 0 && st.recStack.isEmpty
 
--- four records: the body's entry, the read's entry, the read's exit, the body's exit
+-- four records: the body's entry, the read's entry, the read's exit, the body's exit. The callee's slot is `()`
+-- (`new`): flipped by D148 (it held `I` at its Π-type)
 #guard deep.length == 4
 -- the body's entry: the callee's state `stCJ`, in tail position (`tailNext`)
 #guard match deep with
-  | (false, _, st) :: _ => calleeOk st .zero && st.tailNext && !st.curTail && st.tailDecl.isNone
+  | (false, _, st) :: _ => calleeOk st .zero true && st.tailNext && !st.curTail && st.tailDecl.isNone
   | _ => false
 -- the read of `n`, UNTYPED (`typing` false), as the tail term (`curTail`)
 #guard match deep with
-  | _ :: (false, _, st) :: _ => calleeOk st .zero && !st.typing && st.curTail
+  | _ :: (false, _, st) :: _ => calleeOk st .zero true && !st.typing && st.curTail
   | _ => false
 -- the read returns `Z` with no type and moves `n`
 #guard match deep with
-  | _ :: _ :: (true, some (v, T), st) :: _ => v == .zero && T.isNone && calleeOk st .bot
+  | _ :: _ :: (true, some (v, T), st) :: _ => v == .zero && T.isNone && calleeOk st .bot true
   | _ => false
 -- the body returns `S(Z)` at `Nat`
 #guard match deep with
-  | [_, _, _, (true, some (v, T), st)] => v == .succ .zero && T == some .tNat && calleeOk st .bot
+  | [_, _, _, (true, some (v, T), st)] => v == .succ .zero && T == some .tNat && calleeOk st .bot true
   | _ => false
 
-/-- `stCJ`: the callee's state on entry to the body, as recorded (its kernel). -/
+/-- `stCJ`: the callee's state on entry to the body, as recorded (its kernel) before main's D148; since D148 the
+recorded slot is `()` (above), and `stCJ` is re-made with it by the model's half of R-dec (lead49). -/
 def stCJ : MState :=
   { env := #[{}, { binds := #[
       { hint := ⟨"I"⟩, ty := some piNat, val := .gfn "I", decl := .pi .other },

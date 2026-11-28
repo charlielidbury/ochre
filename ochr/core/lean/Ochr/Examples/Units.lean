@@ -298,16 +298,19 @@ def failsWith {α : Type} (r : Except String α) (pre : String) : Bool :=
 
 end Ochr.Units
 
-/-! ## Every function's binding of itself is marked (D78, D136's amendment)
+/-! ## A function's own-name slot holds it only when it has `by` (D78, D148)
 
-Where a function's check starts (`checkFix`), its binding of its own name, the first of its body's
-frame after the captures, carries a fresh mark (`Binding.recUid`), whether or not the function
-recurses; only a function that declares `by` also gets an entry on the [Rec] stack, with that mark
-(D136). The checker reads the mark only through such an entry (`recFrameOf`), so for a function
-without `by` it decides nothing, and no verdict depends on it. It states a fact about the state,
-that this binding is the function's own, which the consistency proof's relation reads to find the
-function in its body's frame: D136's deletion commit marked only functions with `by`, and eight of
-the proof's checks of recorded states failed. Pinned here on the states at each function's hole. -/
+The first binding of a body's frame after the captures is the function's own-name slot. Since D148
+it holds the function itself, at its Π-type, with a fresh mark (`Binding.recUid`, its [Rec]
+entry's), only for a function that declares `by`: its body calls it, and [Rec] recognises the calls
+by the mark. For every other function, a top-level definition without `by` or a local function,
+the slot holds `()` at `Unit`, unnamed and unmarked, in the check of the body (`checkFix`) and at
+every call (`runBodyCore`): its name is not in scope in its body (D31), and the consistency proof's
+model has nothing there for the function itself. (D136's amendment had marked every function's
+slot, holding the function; the proof's relation now finds a non-recursive function's slot by its
+position.) Pinned on the states at each function's hole, and on hand-built core terms that read the
+slot, which no checked body can (D31 rejects it in `checkFix`): only a body run without its check
+reaches it, a closure or a global made by hand. -/
 
 namespace Ochr.Units
 
@@ -317,28 +320,198 @@ ochr SelfMarks uses Nats {
   def NR (n : Nat) : Nat := ?
   -- one that does
   def R (n : Nat) : Nat by n := match n { Z => ?, S(m) => R(m), }
-  -- a local function (never recursive, D136) inside one that does not recurse
+  -- a local function (never recursive, D136) inside one that does not recurse, and inside one that does
   def L (n : Nat) : Nat := (fix go (y : Nat) : Nat := ?)(n)
+  def RL (n : Nat) : Nat by n := match n { Z => (fix go (y : Nat) : Nat := ?)(n), S(m) => RL(m), }
 }
 
-/-- At each recorded state of `name`'s own code whose top frame holds a binding named `self` (the
-function's binding of itself: its body, the hole included), that binding's mark and the marks of
-the [Rec] stack's entries (`Config.recordStates`, located). -/
-def selfMarks (name self : String) : List (Option Nat × List Nat) :=
+/-- At each recorded state of `name`'s own code (`Config.recordStates`, located; its body, the
+hole included): the own-name slot of the top frame (its first binding that is not a capture), as
+its name, value, type and mark, and the marks of the [Rec] stack's entries. -/
+def selfMarks (name : String) : List ((String × Value × Option Value × Option Nat) × List Nat) :=
   let r := runWith (some Prelude) "SelfMarks" SelfMarks { recordStates := true } (located := true)
   match r.rows.find? (·.name == name) with
   | some row => row.trace.toList.filterMap fun
-      | .state _ false _ st => (st.env.back!.binds.find? (·.hint.name == self)).map fun b =>
-          (b.recUid, st.recStack.map (·.uid))
+      | .state _ false _ st => (st.env.back!.binds.find? (!·.cap)).map fun b =>
+          ((b.hint.name, b.val, b.ty, b.recUid), st.recStack.map (·.uid))
       | _ => none
   | none => []
 
--- the hole of a non-recursive global's body: its binding of itself carries a mark, and the [Rec]
--- stack is empty (D136's deletion left the mark off)
-#guard !(selfMarks "NR" "NR").isEmpty && (selfMarks "NR" "NR").all fun (m, rs) => m.isSome && rs.isEmpty
--- a recursive global: its mark is its [Rec] entry's, the only one on the stack
-#guard !(selfMarks "R" "R").isEmpty && (selfMarks "R" "R").all fun (m, rs) => m.isSome && rs == m.toList
--- a local function's binding of itself carries a mark too, and it has no [Rec] entry
-#guard !(selfMarks "L" "go").isEmpty && (selfMarks "L" "go").all fun (m, rs) => m.isSome && rs.isEmpty
+/-- The slot of a function without `by`: `()` at `Unit`, unnamed, unmarked. -/
+def unitSlot : String × Value × Option Value × Option Nat → Bool
+  | ("_", .unit, some .tUnit, none) => true
+  | _ => false
+
+-- the hole of a non-recursive global's body: its slot is `()`, and the [Rec] stack is empty (before
+-- D148 it held the global, marked)
+#guard !(selfMarks "NR").isEmpty && (selfMarks "NR").all fun (b, rs) => unitSlot b && rs.isEmpty
+-- a recursive global: its slot holds it, at its Π-type, and its mark is its [Rec] entry's, the
+-- only one on the stack
+#guard !(selfMarks "R").isEmpty && (selfMarks "R").all fun
+  | (("R", .gfn "R", some (.tPi ..), some m), rs) => rs == [m]
+  | _ => false
+-- a local function's slot is `()` too, and it has no [Rec] entry; inside a recursive global, the
+-- stack holds the global's entry only
+#guard !(selfMarks "L").isEmpty && (selfMarks "L").all fun (b, rs) => unitSlot b && rs.isEmpty
+#guard (selfMarks "RL").any (fun (b, rs) => unitSlot b && rs.length == 1)
+
+/-- A body made by hand that reads its own-name slot (`.var 1`, after the parameter `x`), with or
+without `by`. -/
+def readSelf (dec : Option Nat) : Term := .fix ⟨"g"⟩ [⟨"x"⟩] [.nat] .nat dec (.place (.var 1))
+
+/-- The untyped call `f(0)` from the state after `Nats` with the global `G` made by hand from
+`readSelf dec`: its value or its error. -/
+def callSelf (f : Term) (dec : Option Nat) : String :=
+  let G : GDef := { name := "G", ty := .tPi [] (.pi [⟨"x"⟩] [.nat] .nat) [], fn? := some (readSelf dec), val := .gfn "G" }
+  match runM (do pure (← Ochr.eval 1000 false (.call f [.zero] false) none).1)
+      { st Nats 0 with globals := globalsOf Nats ++ [G] } with
+  | .ok v => s!"{v}"
+  | .error m => m
+
+-- a closure without `by` reads `()` in its slot (before D148: the closure itself)
+#guard callSelf (.val (.clo [] (readSelf none) [])) none == "()"
+-- a global without `by` likewise (before D148: `G`)
+#guard callSelf (.const "G") none == "()"
+-- a global with `by`: its slot holds it
+#guard callSelf (.const "G") (some 0) == "G"
+
+end Ochr.Units
+
+/-! ## A definition without `by` enters Σ after its check (D147)
+
+A constant is added to the globals after its body is checked; a function definition was added
+before, with or without `by`. So during the check of a non-recursive `f`, `f ∈ Σ`, and the core term
+`f(a)` ran `f`'s unchecked body in place. No source program reaches it (D31 takes `f` out of scope
+in its body, D118 rejects a written name not in Σ, D55's pass rejects the embedded global), but the
+consistency proof speaks of every core term at every state the check reaches. Since D147 only a
+definition with `by` is in Σ during its own check (its body calls it); one without `by` is added
+once its check succeeds, as a constant is. Pinned on the states the check of each body records
+(`Config.recordStates`, located): there, the call `NR(0)` of the non-recursive `NR` names no global
+(before D147 it ran `NR`'s body and gave `1`), while the recursive `R` is in Σ and `R(0)` closes off
+(D135). After its check `NR` is in Σ and runs. -/
+
+namespace Ochr.Units
+
+#guard_msgs (drop warning) in
+ochr InSigma uses Nats {
+  def NR (n : Nat) : Nat := S(n)
+  def R (n : Nat) : Nat by n := match n { Z => 0, S(m) => S(R(m)), }
+  def NRRuns : Eq(Nat, NR(0), 1) := refl
+}
+
+/-- At each state recorded in `name`'s own code (`Config.recordStates`, located): whether `name` is
+in Σ there, and what the untyped core call `name(0)` gives from that state (its value or its
+error). -/
+def inSigma (name : String) : List (Bool × String) :=
+  let r := runWith (some Prelude) "InSigma" InSigma { recordStates := true } (located := true)
+  match r.rows.find? (·.name == name) with
+  | some row => row.trace.toList.filterMap fun
+      | .state _ false _ st => some (st.globals.any (·.name == name),
+          match runM (do pure (← Ochr.eval 1000 false (.call (.const name) [.zero] false) none).1) st with
+          | .ok v => s!"{v}"
+          | .error m => m)
+      | _ => none
+  | none => []
+
+-- inside the check of the non-recursive `NR`: not in Σ, and `NR(0)` is an unknown name
+#guard !(inSigma "NR").isEmpty && (inSigma "NR").all (· == (false, "unknown constant NR"))
+-- inside the check of the recursive `R`: in Σ, and `R(0)` closes off (D135)
+#guard !(inSigma "R").isEmpty && (inSigma "R").all (· == (true, "⌈R(0)⌉"))
+
+end Ochr.Units
+
+/-! ## A match has exactly one arm per constructor, checked by the core (D146)
+
+The core pairs a match's arms with its declaration's constructors by position: arm `i` is
+constructor `i`'s (an arm's hint is a name for printing, which equality ignores). The surface
+resolver orders the arms and rejects a missing or an extra one, so no source program has the wrong
+number; but the core took it on trust: at an unknown scrutinee a constructor with no arm got no
+world, a known constructor read `arms[c]`, so a missing middle arm made it run the next
+constructor's arm, and a match on a proof checked the arms it had. Since D146 every place that
+pairs arms with constructors takes them from `ctorArms`, which rejects the match unless there is
+exactly one arm per constructor. Pinned on hand-built definitions (the whole match, its last arm
+dropped, its middle arm dropped, an arm added, no arms) at an unknown scrutinee at the end of a
+body, under a `let`, at a known constructor (the middle one and the last one), on a proof at the
+end and under a `let`, and on an untyped call of a global made by hand. Before D146 every
+malformed match below was accepted, except at the known last constructor with an arm dropped
+("[Match] no arm for constructor 2"), and the untyped call `G(TB)` with the middle arm dropped
+gave `2`, the last arm's value. -/
+
+namespace Ochr.Units
+
+#guard_msgs (drop warning) in
+ochr ArmCount uses Nats {
+  inductive Tri := TA | TB | TC
+  inductive Tp : Prop := PA | PB | PC
+}
+
+/-- The state after `ArmCount` (a function: a closed definition here would be evaluated when every
+executable that imports the examples starts). -/
+def stArm (_ : Unit) : MState :=
+  let p := Ochr.Test.libOf {} 2000000 ArmCount ++ ArmCount.decls
+  let (g, i) := globalsAfter {} (p.filterMap fun d => (resolveProgram p d).toOption)
+  { globals := g, inds := i }
+
+def numT : Nat → Term
+  | 0 => .zero
+  | n + 1 => .succ (numT n)
+def reflT : Term := .ctor "True" 0 ⟨"I"⟩ [] []
+def triArms : List (Hint × Term) := [(⟨"TA"⟩, numT 0), (⟨"TB"⟩, numT 1), (⟨"TC"⟩, numT 2)]
+def tpArms : List (Hint × Term) := [(⟨"PA"⟩, reflT), (⟨"PB"⟩, reflT), (⟨"PC"⟩, reflT)]
+/-- The whole match's arms, its last arm dropped, its middle arm dropped, an arm added. -/
+def malformed (as : List (Hint × Term)) : List (List (Hint × Term)) :=
+  [as.take 2, as.take 1 ++ as.drop 2, as ++ as.drop 2]
+
+/-- The verdict of a definition made by hand, checked after `ArmCount`. -/
+def armVerdict (d : Def) : String :=
+  match runM (checkDef d) (stArm ()) with
+  | .ok () => "accepted"
+  | .error m => m
+
+-- at an unknown scrutinee at the end of a body; under a `let`; at a known constructor (`TB`, `TC`);
+-- on a proof at the end and under a `let`
+def atEnd (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [⟨"t"⟩], doms := [.tind "Tri" []], cod := .nat, body := .matchInd (.var 0) "Tri" as }
+def underLet (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [⟨"t"⟩], doms := [.tind "Tri" []], cod := .nat,
+    body := .letIn ⟨"r"⟩ (.matchInd (.var 0) "Tri" as) (.place (.var 0)) }
+def atKnown (c : Nat) (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [], doms := [], cod := .nat,
+    body := .letIn ⟨"t"⟩ (.ctor "Tri" c ⟨"T"⟩ [] []) (.matchInd (.var 0) "Tri" as) }
+def onProof (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [⟨"t"⟩], doms := [.tind "Tp" []], cod := .tind "True" [], body := .matchInd (.var 0) "Tp" as }
+def onProofLet (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [⟨"t"⟩], doms := [.tind "Tp" []], cod := .tind "True" [],
+    body := .letIn ⟨"r"⟩ (.ascribe (.matchInd (.var 0) "Tp" as) (.tind "True" [])) (.place (.var 0)) }
+
+def armMsg (n m : Nat) (d : String) : String :=
+  s!"[D146] the match on t has {n} arm{if n == 1 then "" else "s"}, and {d} has {m} constructors: a match has exactly one arm per constructor, in the declaration's order"
+
+-- the whole match is accepted at each place
+#guard [atEnd triArms, underLet triArms, atKnown 1 triArms, atKnown 2 triArms, onProof tpArms,
+  onProofLet tpArms].all (armVerdict · == "accepted")
+-- each malformed one is rejected, by D146
+#guard (malformed triArms).all fun as => [atEnd as, underLet as, atKnown 1 as, atKnown 2 as].all fun d =>
+  armVerdict d == armMsg as.length 3 "Tri"
+#guard (malformed tpArms).all fun as => [onProof as, onProofLet as].all fun d =>
+  armVerdict d == armMsg as.length 3 "Tp"
+-- no arms: rejected by the rule for a match with no arms at the end of a body, by D146 elsewhere
+#guard armVerdict (atEnd []) == "a match with no arms on t : Tri, which has constructors"
+#guard armVerdict (onProof []) == "a match with no arms on t : Tp, which has constructors"
+#guard [underLet [], atKnown 1 [], onProofLet []].all fun d => (armVerdict d).startsWith "[D146] the match on t has 0 arms"
+
+/-- An untyped run: the call `G(C)` of a global made by hand whose body is a match with the arms
+`as`, `C` the constructor `c` of `Tri`. -/
+def callArms (c : Nat) (as : List (Hint × Term)) : String :=
+  let fx : Term := .fix ⟨"G"⟩ [⟨"t"⟩] [.tind "Tri" []] .nat none (.matchInd (.var 0) "Tri" as)
+  let G : GDef := { name := "G", ty := .tPi [] (.pi [⟨"t"⟩] [.tind "Tri" []] .nat) [], fn? := some fx, val := .gfn "G" }
+  match runM (do pure (← Ochr.eval 1000 false (.call (.const "G") [.ctor "Tri" c ⟨"T"⟩ [] []] false) none).1)
+      (let s := stArm (); { s with globals := s.globals ++ [G] } : MState) with
+  | .ok v => s!"{v}"
+  | .error m => m
+
+#guard callArms 1 triArms == "1" && callArms 2 triArms == "2"
+-- before D146 `G(TB)` with the middle arm dropped gave `2`, the last arm's
+#guard (malformed triArms ++ [[]]).all fun as => [1, 2].all fun c => callArms c as == armMsg as.length 3 "Tri"
 
 end Ochr.Units

@@ -133,6 +133,11 @@ theorem zero_popFrame :
     GrowsIn tb (Ochr.popFrame 0) := by
   unfold Ochr.popFrame; grows_go
 
+theorem zero_popBody :
+    ∀ (start : Option Env) (v : Value) (T : Option Value) (site : String), GrowsIn tb (Ochr.popBody 0 start v T site) := by
+  intro start v T site
+  unfold Ochr.popBody; grows_go
+
 theorem zero_placeTypeQ :
     ∀ (p : Place), GrowsIn tb (Ochr.placeType? 0 p) := by
   intro p
@@ -154,9 +159,14 @@ theorem zero_projIn :
   unfold Ochr.projIn; grows_go
 
 theorem zero_projMatch :
-    ∀ (q : Place) (i : Nat) (k : Place → Term), GrowsIn tb (Ochr.projMatch 0 q i k) := by
-  intro q i k
+    ∀ (q : Place) (i : Nat), GrowsIn tb (Ochr.projMatch 0 q i) := by
+  intro q i
   unfold Ochr.projMatch; grows_go
+
+theorem zero_projStep :
+    ∀ (s : Place × Nat × (Place → Place)), GrowsIn tb (Ochr.projStep 0 s) := by
+  intro s
+  unfold Ochr.projStep; grows_go
 
 theorem zero_depFieldType :
     ∀ (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place) (declared : Bool), GrowsIn tb (Ochr.depFieldType 0 d ps g q declared) := by
@@ -410,8 +420,8 @@ theorem zero_runBody :
   unfold Ochr.runBody; grows_go
 
 theorem zero_runBodyCore :
-    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term), GrowsIn tb (Ochr.runBodyCore 0 fv cs t rd ws B self hs ds c body) := by
-  intro fv cs t rd ws B self hs ds c body
+    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term), GrowsIn tb (Ochr.runBodyCore 0 fv cs t rd ws B self hs ds c dec body) := by
+  intro fv cs t rd ws B self hs ds c dec body
   unfold Ochr.runBodyCore; grows_go
 
 theorem zero_callFn :

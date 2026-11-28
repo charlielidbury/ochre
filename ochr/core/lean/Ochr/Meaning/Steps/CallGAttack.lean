@@ -55,13 +55,14 @@ def holeOf (blk : String) (prog : Ochr.Surface.Block) (nm : String) : MState :=
       | .state _ false _ st => some st | _ => none).getLast?.getD default
   | none => default
 
-/-- The checker's state at `At`'s hole: the cells' frame (empty), then `At ↦ At` (its own binding), `a ↦ σa` (variable 2),
+/-- The checker's state at `At`'s hole: the cells' frame (empty), then `At`'s own-name slot (`()` since main's D148), `a ↦ σa` (variable 2),
 `c ↦ σc` (variable 1), `b ↦ Z` (variable 0). -/
 def stH : MState := holeOf "CallAtk" CallAtk "At"
 
 #guard stH.env.size == 2 && stH.env[1]!.binds.size == 4
 #guard Value.exact stH.env[1]!.binds[3]!.val .zero
-#guard stH.globals.length == 5
+-- flipped by D147: `At` is not in Σ during its own check (it was 5, `At` included)
+#guard stH.globals.length == 4
 
 /-- A call run from the hole, typed or untyped, with the type wanted (as a `let`'s right-hand side). -/
 def run (typed : Bool) (t : Term) : M (Value × Option Value) := do

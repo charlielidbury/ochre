@@ -42,12 +42,12 @@ def exits : List (Value × MState) :=
       | _ => none
   | none => []
 
--- the lambda's body at its generic call: the capture `κ ↦ σ0` (a capture), the closure's own binding marked with the
--- fresh mark `1` its check took (main's D136 as amended: a local function is not recursive, but marked), `m ↦ σ2`;
+-- the lambda's body at its generic call: the capture `κ ↦ σ0` (a capture), the closure's own-name slot `()` at `Unit`,
+-- unmarked (flipped by main's D148: it held the closure, marked with the fresh mark `1` its check took), `m ↦ σ2`;
 -- its value `σ0`
 #guard exits.any fun (v, st) => v.exact (.abs 0) && st.env.size == 2 && st.env[1]!.binds.size == 3 &&
   st.env[1]!.binds[0]!.cap && (st.env[1]!.binds[0]!.val).exact (.abs 0) &&
-  st.env[1]!.binds[1]!.recUid == some 1 && st.env[1]!.binds[1]!.hint.name == "_" &&
+  Steps.Form.ParGuards.unitSlotOk st.env[1]!.binds[1]! &&
   (st.env[1]!.binds[2]!.val).exact (.abs 2)
 -- the closure value: one capture, `σ0`, BY MOVE (`n ↦ ⊥` after), read `.other` at `Nat`
 #guard exits.any fun (v, st) => (match v with

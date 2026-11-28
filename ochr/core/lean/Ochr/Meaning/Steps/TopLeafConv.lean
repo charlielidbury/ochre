@@ -30,8 +30,8 @@ split, a returned borrow, a stuck call's fill re-run at the pop, a generalisatio
 a one-constructor parameter refined in place. On main, D142's `popBody` puts an erased function's environment back
 before the pop and keeps "the goal as its splits refined it": the fact keeps its content, `fixCont` must be re-copied.) -/
 def LeafGoalPopG : Prop :=
-  ∀ (n : Nat) (name : String) (v T : Value) (stl stk : MState) (bk : Nat),
-    Runs (fixCont n name v T) stl bk () stk →
+  ∀ (n : Nat) (name : String) (start : Option Env) (v T : Value) (stl stk : MState) (bk : Nat),
+    Runs (fixCont n name start v T) stl bk () stk →
     ∃ (st₂ st₃ : MState) (b : Nat), Runs (Ochr.conv n T (stl.goal.getD .bot)) st₂ b true st₃
 
 /-- **N3's side conditions at the leaf** (MIXED): the goal at the leaf is set and is not D124's deferred hint (CHECKER,
@@ -42,8 +42,8 @@ constructor value of a `Prop` declaration (`NoProp`, the checker's D42; read tru
 every assignment meeting the leaf's state (UNREAD; the reference's result type at a typed leaf, which `StrAgree` ties to
 `T`, has a level where the result is a member; GoodRes's third case, a result typed `err`, is what this excludes). -/
 def LeafSideG : Prop :=
-  ∀ (n : Nat) (name : String) (v T : Value) (stl stk : MState) (bk : Nat),
-    Runs (fixCont n name v T) stl bk () stk →
+  ∀ (n : Nat) (name : String) (start : Option Env) (v T : Value) (stl stk : MState) (bk : Nat),
+    Runs (fixCont n name start v T) stl bk () stk →
     ∀ (K : RunCtx) (ρ : Assignment), Pre K ρ (stl.withTempT v (some T)) →
       ∃ g, stl.goal = some g ∧ deferredHint? g = none ∧ FO T ∧ FO g ∧ NoProp K T ∧ NoProp K g ∧
         Fit K.dm.read TyM.err (meanV K ρ (fun _ => .err) (.plain TyM.err) T)
@@ -63,9 +63,9 @@ theorem fit_err_of_level {R : DataRead} {s : Sem} (h : s.asTy.level.isSome = tru
 
 /-- **`LeafConvG` from its parts** (PROVED from `LeafGoalPopG`, `LeafSideG`, `N3Hyps`; the goal's level from `Pre`). -/
 theorem leafConvG_of (hp : LeafGoalPopG) (hs : LeafSideG) (hn : N3Hyps) : LeafConvG := by
-  intro n name v T stl stk bk hk K ρ hpre
-  obtain ⟨st₂, st₃, b, hconv⟩ := hp n name v T stl stk bk hk
-  obtain ⟨g, hg, hdh, fT, fg, nT, ng, ftT⟩ := hs n name v T stl stk bk hk K ρ hpre
+  intro n name start v T stl stk bk hk K ρ hpre
+  obtain ⟨st₂, st₃, b, hconv⟩ := hp n name start v T stl stk bk hk
+  obtain ⟨g, hg, hdh, fT, fg, nT, ng, ftT⟩ := hs n name start v T stl stk bk hk K ρ hpre
   rw [hg, Option.getD_some] at hconv
   obtain ⟨hpf, hld, hla⟩ := hn K ρ
   -- the goal's level: `Pre`'s

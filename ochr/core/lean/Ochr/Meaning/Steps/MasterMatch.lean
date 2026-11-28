@@ -111,10 +111,15 @@ goal, not from `st`: `locatedTail` sets the editor's fields (`locs.here`, `locs.
 editor's table holds the match, and a continuation that reads them succeeds at the run's leaves and fails at the end of
 every chain from `st` (`MatchRd.kHere`, `chainZ`; as `TailOtherInv` was, machine9); (ii) a later world's base is the exit
 from a state that grew from the snapshot and keeps the tables' invariant (`WorldBase`), which needs that invariant at
-`st` and of the continuation (`KeepsTab`), and that the continuation only grows the tables. -/
+`st` and of the continuation (`KeepsTab`), and that the continuation only grows the tables.
+RESTATED at main's D145 (lead49): at a DIRECT scrutinee (`Place.Direct`: no positional projection `q.i`), where
+`checkTailAt`'s new first step, `projIn`, finds no field step and reads nothing (`runs_projIn_direct`), so the chain
+above is unchanged. A scrutinee with a positional projection is now named by the one-arm match on its parent first
+(`projStep`, the run's step), so the check continues as `checkTail` of that match: that class is the named fact
+`TailProjNatG` (before D145 the check failed there, "no such place", so the class had no successful run). -/
 def TailMatchNatInv : Prop :=
   ∀ (n : Nat) (p : Place) (z u : Term) (k : Value → Value → M Unit) (st st' : MState) (bh : Nat) (D : Decisions),
-    TabInv st → (∀ v T, GrowsM (k v T)) → (∀ v T, KeepsTab (k v T)) →
+    p.Direct → TabInv st → (∀ v T, GrowsM (k v T)) → (∀ v T, KeepsTab (k v T)) →
     DecTab D st' → Runs (Ochr.checkTail n (.matchNat p z u) k) st bh () st' →
     ∃ (m : Nat) (st₀ stA : MState) (bA : Nat), m + 2 ≤ n ∧ Kern st st₀ ∧ ModeEq st st₀ ∧
       st₀.tailNext = st.tailNext ∧ st₀.tailDecl = st.tailDecl ∧
@@ -353,7 +358,7 @@ theorem tStepMatchNat_data (hInv : TailMatchNatInv) (hJI : JoinContInv) (hMF : M
     (hr : Rel K ρ φ π st s) (hS : Strict.SGood K.dm K.Γ φ s)
     (hv : (Term.matchNat p z u).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchNat p z u).absBelow st.absTy.size)
     (hnh : (Term.matchNat p z u).hasHolePrim = false) (hD : DecTab K.D st')
-    (hrun : Runs (Ochr.checkTail n (.matchNat p z u) k) st bh () st')
+    (hrun : Runs (Ochr.checkTail n (.matchNat p z u) k) st bh () st') (hdir : p.Direct)
     (hfl2 : (K.D.flags (scopeOf s) (.matchNat p z u)).2 = false) :
     TailOutK K ρ φ π st s (runT K ρ φ true (hintM K ρ st.goal) (.matchNat p z u)) k := by
   have hfl : K.D.flags (scopeOf s) (.matchNat p z u) = (false, false) := by
@@ -361,7 +366,7 @@ theorem tStepMatchNat_data (hInv : TailMatchNatInv) (hJI : JoinContInv) (hMF : M
     rw [hfl2] at h1
     exact Prod.ext h1 hfl2
   obtain ⟨m, st₀, stA, bA, hmn, hk₀, hme₀, htn₀, htd₀, hacc, hDA, hcases⟩ :=
-    hInv n p z u k st st' bh K.D (TabInv.of_pre hp) hk hkt hD hrun
+    hInv n p z u k st st' bh K.D hdir (TabInv.of_pre hp) hk hkt hD hrun
   obtain ⟨hTok, tg, sA, ρA, ΔA, πA, htag, heA₀, hKA₀, htnA₀, htdA₀, hgA₀, hpA, hrA, hZ, hSu, hAb⟩ :=
     hTag K ρ φ π st₀ stA s p m bA (fun m' hm' => ih m' (by omega)) (hm.of_modeEq hme₀)
       (by rw [← ColumnC.size_of_erase hk₀.env]; exact hne) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hDA hacc
@@ -565,11 +570,11 @@ theorem tStepMatchNat_proof (hInv : TailMatchNatInv) (hJI : JoinContInv) (hPJ : 
     (hr : Rel K ρ φ π st s) (hS : Strict.SGood K.dm K.Γ φ s)
     (hv : (Term.matchNat p z u).valsOk (Strict.ValsP K ρ φ)) (hab : (Term.matchNat p z u).absBelow st.absTy.size)
     (hnh : (Term.matchNat p z u).hasHolePrim = false) (hD : DecTab K.D st')
-    (hrun : Runs (Ochr.checkTail n (.matchNat p z u) k) st bh () st')
+    (hrun : Runs (Ochr.checkTail n (.matchNat p z u) k) st bh () st') (hdir : p.Direct)
     (hfl2 : (K.D.flags (scopeOf s) (.matchNat p z u)).2 = true) :
     TailOutE K ρ φ π st s (runT K ρ φ true (hintM K ρ st.goal) (.matchNat p z u)) k := by
   obtain ⟨m, st₀, stA, bA, hmn, hk₀, hme₀, htn₀, htd₀, hacc, hDA, hcases⟩ :=
-    hInv n p z u k st st' bh K.D (TabInv.of_pre hp) hk hkt hD hrun
+    hInv n p z u k st st' bh K.D hdir (TabInv.of_pre hp) hk hkt hD hrun
   obtain ⟨hTok, tg, sA, ρA, ΔA, πA, htag, heA₀, hKA₀, htnA₀, htdA₀, hgA₀, hpA, hrA, hZ, hSu, hAb⟩ :=
     hTag K ρ φ π st₀ stA s p m bA (fun m' hm' => ih m' (by omega)) (hm.of_modeEq hme₀)
       (by rw [← ColumnC.size_of_erase hk₀.env]; exact hne) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hDA hacc
@@ -622,26 +627,39 @@ end
 
 /-! ## The step `TStepMatchNat`, assembled -/
 
+/-- **The step at the end of a body at a match on a number whose scrutinee has a positional projection** (MIXED; NEW at
+main's D145, UNREAD; lead49): since D145 `checkTailAt` names a scrutinee with a field step `q.i` by the one-arm match on
+its parent first (`projStep`, the run's step: the parent refined in place, D93, or matched by its type), then checks
+that match; the reference's `.matchNat` reads the tag at the field place directly (`tagOf`). Before D145 the check
+failed at such a scrutinee ("no such place"), so the class had no successful run. Its content: the checker's one-arm
+match on the parent against the reference's direct read of the field, the [Proj] agreement the eval side's place read
+also leaves open (`PlaceInvD` is at a direct place). -/
+def TailProjNatG (K : RunCtx) (φ : Future) : Prop :=
+  ∀ n, IH K φ n → ∀ Δ ρ p z u, ¬ p.Direct → TailAt { K with Δ := Δ } ρ φ n (.matchNat p z u)
+
 /-- **`TStepMatchNat` in general** (a match on a number at the end of a body: the paper's [Tail-split], [Tail-gen],
 [Tail-match]; docs/18's principle "worlds are exclusive" and case 4): the full form where the table does not read the
 match as a proof (`tStepMatchNat_data`), the erased form where it does (`tStepMatchNat_proof`; D248's ruling (P1)).
-ASSUMES 12 facts: `TailMatchNatInv`, `JoinContInv` (checker); `MatchFlagsT`, `ProofJoinG` (table; the latter also
-the checker's `joinCont`); `MatchTagG`, `WorldRefineG`, `JoinContG`, `GenTailG` (mixed); `MatchReaccessM`,
-`MatchReaccessE`, `ProofArmM`, `ValsCongrA` (model); and `Strict.FundCtx K`. -/
+ASSUMES 13 facts: `TailMatchNatInv`, `JoinContInv` (checker); `MatchFlagsT`, `ProofJoinG` (table; the latter also
+the checker's `joinCont`); `MatchTagG`, `WorldRefineG`, `JoinContG`, `GenTailG`, `TailProjNatG` (mixed; the last NEW at
+main's D145: a projected scrutinee); `MatchReaccessM`, `MatchReaccessE`, `ProofArmM`, `ValsCongrA` (model); and
+`Strict.FundCtx K`. -/
 theorem tStepMatchNat_of {K : RunCtx} {φ : Future} (hInv : TailMatchNatInv) (hJI : JoinContInv)
     (hMF : MatchFlagsT K.D) (hPJ : ProofJoinG K.D) (hTag : MatchTagG) (hW : WorldRefineG) (hJ : JoinContG)
     (hG : GenTailG) (hRe : MatchReaccessM) (hRE : MatchReaccessE) (hPA : ProofArmM K) (hVC : ValsCongrA)
-    (hc : Strict.FundCtx K) : TStepMatchNat K φ := by
-  intro n ih Δ ρ p z u st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun
+    (hPj : TailProjNatG K φ) (hc : Strict.FundCtx K) : TStepMatchNat K φ := by
+  intro n ih Δ ρ p z u
+  refine (Classical.em p.Direct).elim (fun hdir => ?_) (fun hdir => hPj n ih Δ ρ p z u hdir)
+  intro st k s π bh st' hm htn hne htd hk hkt hp hrt hr hS hv hab hnh hD hrun
   have ih' : IH { K with Δ := Δ } φ n := ih
   have hc' : Strict.FundCtx { K with Δ := Δ } := ⟨hc.globals, hc.sorts⟩
   refine ⟨fun h2 => tStepMatchNat_data (K := { K with Δ := Δ }) hInv hJI hMF hTag hW hJ hG hRe hVC hc' ih' ρ p z u st k s π bh st' hm htn hne htd
-    hk hkt hp hrt hr hS hv hab hnh hD hrun h2, ?_⟩
+    hk hkt hp hrt hr hS hv hab hnh hD hrun hdir h2, ?_⟩
   cases h2 : ({ K with Δ := Δ } : RunCtx).D.flags (scopeOf s) (.matchNat p z u) |>.2
   · exact (tStepMatchNat_data (K := { K with Δ := Δ }) hInv hJI hMF hTag hW hJ hG hRe hVC hc' ih' ρ p z u st k s π bh st' hm htn hne htd
-      hk hkt hp hrt hr hS hv hab hnh hD hrun h2).toE
+      hk hkt hp hrt hr hS hv hab hnh hD hrun hdir h2).toE
   · exact tStepMatchNat_proof (K := { K with Δ := Δ }) hInv hJI hPJ hTag hW hG hPA hRE hVC ih' ρ p z u st k s π bh st' hm htn hne htd
-      hk hkt hp hrt hr hS hv hab hnh hD hrun h2
+      hk hkt hp hrt hr hS hv hab hnh hD hrun hdir h2
 
 /-! ## A match on a known constructor, not at the end of a body (`StepMatchNat`'s known case): STATED, not proved
 

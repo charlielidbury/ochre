@@ -6,8 +6,8 @@ import Ochr.Meaning.Steps.Machine.StepInv
 
 `Top.Leaf.LeafGoalPopG`, the one fact of the leaf about the checker alone, inverted along `fixCont`: [Return]'s first
 check (`wholeReturned`, which tests and writes nothing), [Return]'s repack (`bodyReturns`), the result parked as a
-temporary (`pushTempAt`, which writes the frame), the frame's pop (`popFrame`), the temporary taken back (`popTemp`), the
-goal read, the trace, and the comparison. PROVED from two facts about the two machine functions that reach far:
+temporary, the frame's pop and the temporary taken back (`popBody` since main's D142: for an erased function the start's
+environment put back first, which writes the environment only), the goal read, the trace, and the comparison. PROVED from two facts about the two machine functions that reach far:
 `bodyReturns` and `popFrame` keep the goal (`BodyReturnsKeepsGoal`, `PopFrameKeepsGoal`; CHECKER, read true: they reach
 substitution with `types := false`, the re-run of sealed programs, `nfSealed`, which restores the goal, conversion, which
 restores the state but for names, and field-type evaluation, the conversion lane's `FieldTysKept`). Each is a statement in
@@ -42,26 +42,53 @@ theorem runs_pushTempAt_goal {f : Nat} {v : Value} {T : Option Value} {site : St
   peel h
   split at h <;> peel h <;> (unfold modifyFrame at h; peel h; rw [(runs_pure_inv h).2])
 
-/-- **`LeafGoalPopG` from the two facts** (PROVED: `fixCont` inverted step by step). -/
+/-- **`popBody` keeps the goal** (from `PopFrameKeepsGoal`; main's D142): putting back an erased body's start
+environment writes the environment only, then the pop as before. -/
+theorem runs_popBody_goal (hp : PopFrameKeepsGoal) {n : Nat} {start : Option Env} {v : Value} {T : Option Value}
+    {site : String} {st st' : MState} {b : Nat} {r : Value} (h : Runs (Ochr.popBody n start v T site) st b r st') :
+    st'.goal = st.goal := by
+  unfold Ochr.popBody at h
+  rcases n with _ | n
+  · simp only [runs_exhausted_iff] at h
+  cases start with
+  | none =>
+    dsimp only at h
+    have e₀ : st.goal = st.goal := rfl
+    generalize st = s₀ at e₀ h ⊢
+    obtain ⟨i, s₁, b₁, h₁, h⟩ := Runs.bind_inv h
+    obtain ⟨_, s₂, b₂, h₂, h⟩ := Runs.bind_inv h
+    obtain ⟨_, s₃, b₃, h₃, h⟩ := Runs.bind_inv h
+    have e₁ : s₁ = s₀ := (runs_topIdx_inv h₁).2
+    have e₂ : s₂.goal = s₁.goal := runs_pushTempAt_goal h₂
+    have e₃ : s₃.goal = s₂.goal := hp _ _ _ _ h₃
+    rw [(runs_popTemp_inv h).2, e₃, e₂, e₁]
+  | some e =>
+    dsimp only at h
+    obtain ⟨_, s₀, b₀, h₀, h⟩ := Runs.bind_inv h
+    have e₀ : s₀.goal = st.goal := by have := runs_modify_inv h₀; subst this; rfl
+    obtain ⟨i, s₁, b₁, h₁, h⟩ := Runs.bind_inv h
+    obtain ⟨_, s₂, b₂, h₂, h⟩ := Runs.bind_inv h
+    obtain ⟨_, s₃, b₃, h₃, h⟩ := Runs.bind_inv h
+    have e₁ : s₁ = s₀ := (runs_topIdx_inv h₁).2
+    have e₂ : s₂.goal = s₁.goal := runs_pushTempAt_goal h₂
+    have e₃ : s₃.goal = s₂.goal := hp _ _ _ _ h₃
+    rw [(runs_popTemp_inv h).2, e₃, e₂, e₁, e₀]
+
+/-- **`LeafGoalPopG` from the two facts** (PROVED: `fixCont` inverted step by step; since main's D142 the pop is
+`popBody`, which keeps the goal at every `start`). -/
 theorem leafGoalPopG_of (hb : BodyReturnsKeepsGoal) (hp : PopFrameKeepsGoal) : LeafGoalPopG := by
-  intro n name v T stl stk bk h
+  intro n name start v T stl stk bk h
   unfold fixCont at h
   obtain ⟨_, s₁, b₁, h₁, h⟩ := Runs.bind_inv h
   obtain ⟨_, s₂, b₂, h₂, h⟩ := Runs.bind_inv h
-  obtain ⟨i, s₃, b₃, h₃, h⟩ := Runs.bind_inv h
-  obtain ⟨_, s₄, b₄, h₄, h⟩ := Runs.bind_inv h
-  obtain ⟨_, s₅, b₅, h₅, h⟩ := Runs.bind_inv h
   obtain ⟨_, s₆, b₆, h₆, h⟩ := Runs.bind_inv h
   -- the goal read is the leaf's
   have e₁ : s₁ = stl := runs_wholeReturned_inv h₁
   have e₂ : s₂.goal = s₁.goal := hb _ _ _ _ _ _ _ h₂
-  have e₃ : s₃ = s₂ := (runs_topIdx_inv h₃).2
-  have e₄ : s₄.goal = s₃.goal := runs_pushTempAt_goal h₄
-  have e₅ : s₅.goal = s₄.goal := hp _ _ _ _ h₅
-  have e₆ : s₆.goal = s₅.goal := by
+  have e₆ : s₆.goal = s₂.goal := by
     obtain ⟨u, hu, -⟩ := Runs.map_inv h₆
-    rw [(runs_popTemp_inv hu).2]
-  have hg : s₆.goal = stl.goal := by rw [e₆, e₅, e₄, e₃, e₂, e₁]
+    exact runs_popBody_goal hp hu
+  have hg : s₆.goal = stl.goal := by rw [e₆, e₂, e₁]
   -- the read, the trace, the comparison
   rw [runs_get_bind] at h
   obtain ⟨_, s₇, b₇, h₇, h⟩ := Runs.bind_inv h

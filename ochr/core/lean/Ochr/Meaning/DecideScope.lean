@@ -340,6 +340,11 @@ theorem sim_refineDecl (d : DeclInfo) : Sim EnvRel (refineDecl d) := by
 theorem sim_sealedSort (t : Term) : Sim EnvRel (sealedSort? t) := by
   unfold sealedSort?; sim_go
 
+/-- D143's test of a written codomain (main's merge, lead49): it reads only its arguments. -/
+theorem sim_codomainWritten (what : Unit → String) (c : Term) (ns : List String) (cd : DeclInfo) :
+    Sim EnvRel (codomainWritten what c ns cd) := by
+  unfold codomainWritten; sim_go
+
 /-! ## The fuel recursion -/
 
 /-- Every function of `Decide.lean`'s mutual block the decisions reach respects `EnvRel`, at
@@ -403,6 +408,7 @@ macro "sim_ih" : tactic => `(tactic| repeat (any_goals first
   | with_reducible exact sim_ctorIsProof _
   | with_reducible exact sim_preFlags _ _ | with_reducible exact sim_refineDecl _
   | with_reducible exact sim_sealedSort _
+  | with_reducible exact sim_codomainWritten _ _ _ _
   | assumption
   | with_reducible apply ihTF
   | sim_step))

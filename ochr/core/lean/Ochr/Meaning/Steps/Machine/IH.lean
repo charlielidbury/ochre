@@ -8,8 +8,8 @@ connected call graph) recurs on the fuel, each call at the fuel one less. So the
 proved for all of them at once, by induction on the fuel: `MachineGrows tb nf` says every function
 of the block at fuel `nf` only extends the tables, from a state with the tables `tb`. A function
 that takes a computation (a continuation, an arm, a run) assumes it of that computation.
-`joinCont` returns a continuation, which keeps the property too (`joinContRet`). `joinLogged`
-takes no fuel and is proved on its own (`growsIn_joinLogged`).
+`joinCont` returns a continuation, which keeps the property too (`joinContRet`). `joinLogged`,
+`lentInFields` and `ctorArms` take no fuel and are proved on their own (`growsIn_joinLogged`, …).
 
 The step for one function at `nf + 1` is its body walked by `grows_go ih` (`Steps/Machine/Step*.lean`).
 -/
@@ -40,6 +40,11 @@ theorem growsIn_bind_ret {G : Tab} {α β : Type} {x : M α} {k : α → M β} {
 @[grows] theorem growsIn_lentInFields {G : Tab} (q : Place) (g : FieldRef) : GrowsIn G (lentInFields q g) := by
   unfold lentInFields; grows_go
 
+/-- D146's pairing of a match's arms with the constructors (main's merge, lead49): it takes no fuel. -/
+@[grows] theorem growsIn_ctorArms {G : Tab} (d : IndDecl) (p : Place) (arms : List (Hint × Term)) :
+    GrowsIn G (ctorArms d p arms) := by
+  unfold ctorArms; grows_go
+
 /-- Every function of the machine's mutual block at fuel `nf` only extends the tables, from a
 state with the tables `tb`. -/
 structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
@@ -68,11 +73,13 @@ structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
   dropValue : ∀ (v : Value) (T : Option Value), GrowsIn tb (Ochr.dropValue nf v T)
   endLoansOfTopTemp : GrowsIn tb (Ochr.endLoansOfTopTemp nf)
   popFrame : GrowsIn tb (Ochr.popFrame nf)
+  popBody : ∀ (start : Option Env) (v : Value) (T : Option Value) (site : String), GrowsIn tb (Ochr.popBody nf start v T site)
   placeType? : ∀ (p : Place), GrowsIn tb (Ochr.placeType? nf p)
   placeType : ∀ (p : Place), GrowsIn tb (Ochr.placeType nf p)
   natPlace : ∀ (q : Place), GrowsIn tb (Ochr.natPlace nf q)
   projIn : ∀ (p : Place), GrowsIn tb (Ochr.projIn nf p)
-  projMatch : ∀ (q : Place) (i : Nat) (k : Place → Term), GrowsIn tb (Ochr.projMatch nf q i k)
+  projMatch : ∀ (q : Place) (i : Nat), GrowsIn tb (Ochr.projMatch nf q i)
+  projStep : ∀ (s : Place × Nat × (Place → Place)), GrowsIn tb (Ochr.projStep nf s)
   depFieldType : ∀ (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place) (declared : Bool), GrowsIn tb (Ochr.depFieldType nf d ps g q declared)
   fieldDeclType : ∀ (p : Place), GrowsIn tb (Ochr.fieldDeclType nf p)
   packedErr : ∀ (v : Value) (T : Value), GrowsIn tb (Ochr.packedErr nf v T)
@@ -123,7 +130,7 @@ structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
   bindTy? : ∀ (pos : Pos), GrowsIn tb (Ochr.bindTy? nf pos)
   endBorrowArgs : ∀ (n : Nat), GrowsIn tb (Ochr.endBorrowArgs nf n)
   runBody : ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value), GrowsIn tb (Ochr.runBody nf fv cs t rd ws B)
-  runBodyCore : ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term), GrowsIn tb (Ochr.runBodyCore nf fv cs t rd ws B self hs ds c body)
+  runBodyCore : ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term), GrowsIn tb (Ochr.runBodyCore nf fv cs t rd ws B self hs ds c dec body)
   callFn : ∀ (typed : Bool) (fT : Option Value) (n : Nat) (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool) (resTy : Option Value), GrowsIn tb (Ochr.callFn nf typed fT n tys head cls? recUid? res fills want defer resTy)
   closeCall : ∀ (n : Nat) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeCall nf n kind res fills tys)
   refine : ∀ (σ : Nat) (r : Value), GrowsIn tb (Ochr.refine nf σ r)

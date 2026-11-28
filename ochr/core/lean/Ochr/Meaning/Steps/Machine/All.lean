@@ -81,11 +81,13 @@ theorem machineGrows_zero : MachineGrows tb 0 where
   dropValue := zero_dropValue
   endLoansOfTopTemp := zero_endLoansOfTopTemp
   popFrame := zero_popFrame
+  popBody := zero_popBody
   placeType? := zero_placeTypeQ
   placeType := zero_placeType
   natPlace := zero_natPlace
   projIn := zero_projIn
   projMatch := zero_projMatch
+  projStep := zero_projStep
   depFieldType := zero_depFieldType
   fieldDeclType := zero_fieldDeclType
   packedErr := zero_packedErr
@@ -202,11 +204,13 @@ theorem machineGrows_succ (nf : Nat) (ih : MachineGrows tb nf) : MachineGrows tb
   dropValue := step_dropValue ih
   endLoansOfTopTemp := step_endLoansOfTopTemp ih
   popFrame := step_popFrame ih
+  popBody := step_popBody ih
   placeType? := step_placeTypeQ ih
   placeType := step_placeType ih
   natPlace := step_natPlace ih
   projIn := step_projIn ih
   projMatch := step_projMatch ih
+  projStep := step_projStep ih
   depFieldType := step_depFieldType ih
   fieldDeclType := step_fieldDeclType ih
   packedErr := step_packedErr ih

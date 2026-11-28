@@ -51,7 +51,8 @@ open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt outVal)
 def stA : MState := CallGAttack.holeOf "CallRanAtk" CallRanAtk "At"
 
 #guard stA.env.size == 2 && stA.env[1]!.binds.size == 4
-#guard stA.globals.length == 8
+-- flipped by D147: `At` is not in Σ during its own check (it was 8, `At` included)
+#guard stA.globals.length == 7
 
 /-- The call point of `g(ws)`: the head and the arguments pushed as the top frame's last temporaries (D115). -/
 def callPoint (g : String) (ws : List Value) : M Unit := do

@@ -74,8 +74,9 @@ def vals (n : String) : List String := ((stAt n).env.toList.getLast?.map fun fr 
 def tys (n : String) : List String := ((stAt n).env.toList.getLast?.map fun fr => fr.binds.toList.map fun b => (b.ty.map toString).getD "-").getD []
 
 -- (1) a stuck program re-run after the refinement
-#guard vals "A1B" == ["A1B", "σ0", "⌈Pred2(σ0)⌉"]
-#guard vals "A1S" == ["A1S", "S(σ1)", "σ1"] && toString (stAt "A1S").refs == "[(0, S(σ1))]"
+-- the own-name slot is `()` (flipped by D148: a function without `by` does not hold itself; it held `A1B`, `A1S`)
+#guard vals "A1B" == ["()", "σ0", "⌈Pred2(σ0)⌉"]
+#guard vals "A1S" == ["()", "S(σ1)", "σ1"] && toString (stAt "A1S").refs == "[(0, S(σ1))]"
 #guard (vals "B1S")[2]! == "⌈let c1 = σ1; let c2 = σ2; let r = PickP(S(σ3), &c1, &c2); *r := loan_2; c1⌉"
 #guard (vals "B1S")[3]! == "⌈let c1 = σ1; let c2 = σ2; let r = PickP(S(σ3), &c1, &c2); *r := loan_2; c2⌉"
 #guard (vals "B1S")[4]! == "borrow_2 σ2" && (stAt "B1B").nextLoan == 4 && (stAt "B1S").nextLoan == 16

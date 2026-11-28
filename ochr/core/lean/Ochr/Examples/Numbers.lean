@@ -191,3 +191,86 @@ ochr Numbers uses Nats {
   def UnitStill (x : Unit) : Eq(Unit, x, ()) := refl
 }
 
+
+/-! ## A match on a field place at the end of a body (D145)
+
+A run reads a place with a field step `q.i` by first naming the field with a match on `q`
+(D81 [Proj]); the end of a body's check read the scrutinee as it stood, so
+`def F1E (b : Box) : Nat := match b.0 { Z => 0, S(m) => 1, }` was rejected ("no such place b.0:
+its path does not exist in σ0") while the same match under a `let` (`F1L`) ran. Since D145 the two
+share the one step (`projStep`). Each form of scrutinee a run accepts, at the end of a body (`…E`)
+and under a `let` (`…L`), now with the same verdict and message: a variable, a field path of one
+and of two steps, through a borrow, a field of a known value and of a written one, a field of a
+type with several constructors, a field of a value whose other field's type depends on it and the
+dependent field itself, a call, a sealed program's field, a proof's field, in an arm, against a
+goal that names the match. A proof field of data named by `.1` is rejected by D81 on both paths
+(`PdE`, `PdL`), and named by a match it is the field the index write invalidated (`PdM`). -/
+
+ochr FieldScrutinee uses Nats {
+  inductive Box := MkBox(v : Nat)
+  inductive BB := MkBB(b : Box)
+  inductive Tri := TA | TB | TC
+  inductive BT := MkBT(v : Tri)
+  def F (n : Nat) : Type := match n { Z => Unit, S(m) => Tri, }
+  inductive DP := MkDP(n : Nat, x : F(n))
+  inductive Ex : Prop := W1(n : Nat) | W2(m : Nat)
+  def Id1 (n : Nat) : Nat := n
+  def mk (n : Nat) : Box := match n { Z => MkBox(0), S(m) => MkBox(1), }
+  -- a variable
+  def VarE (n : Nat) : Nat := match n { Z => 0, S(m) => 1, }
+  def VarL (n : Nat) : Nat := (let r = match n { Z => 0, S(m) => 1, }; r)
+  -- a field path of one step, of two steps
+  def F1E (b : Box) : Nat := match b.0 { Z => 0, S(m) => 1, }
+  def F1L (b : Box) : Nat := (let r = match b.0 { Z => 0, S(m) => 1, }; r)
+  def F1ERun : Eq(Nat, F1E(MkBox(3)), 1) := refl
+  def F2E (c : BB) : Nat := match (c.0).0 { Z => 0, S(m) => 1, }
+  def F2L (c : BB) : Nat := (let r = match (c.0).0 { Z => 0, S(m) => 1, }; r)
+  def F2ERun : Eq(Nat, F2E(MkBB(MkBox(0))), 0) := refl
+  -- through a borrow, one and two steps
+  def BrE (b : &Box) : Nat := match (*b).0 { Z => 0, S(m) => 1, }
+  def BrL (b : &Box) : Nat := (let r = match (*b).0 { Z => 0, S(m) => 1, }; r)
+  def Br2E (c : &BB) : Nat := match ((*c).0).0 { Z => 0, S(m) => 1, }
+  def Br2L (c : &BB) : Nat := (let r = match ((*c).0).0 { Z => 0, S(m) => 1, }; r)
+  def BrERun : Eq(Nat, (let b = MkBox(2); BrE(&b)), 1) := refl
+  -- a field of a known value, and of one just written
+  def KnE (n : Nat) : Nat := (let b = MkBox(3); match b.0 { Z => 0, S(m) => 1, })
+  def KnL (n : Nat) : Nat := (let b = MkBox(3); let r = match b.0 { Z => 0, S(m) => 1, }; r)
+  def WrE (b : Box) : Nat := (b.0 := 0; match b.0 { Z => 0, S(m) => 1, })
+  def WrL (b : Box) : Nat := (b.0 := 0; let r = match b.0 { Z => 0, S(m) => 1, }; r)
+  -- a field of a type with several constructors
+  def TrE (b : BT) : Nat := match b.0 { TA => 0, TB => 1, TC => 2, }
+  def TrL (b : BT) : Nat := (let r = match b.0 { TA => 0, TB => 1, TC => 2, }; r)
+  def TrERun : Eq(Nat, TrE(MkBT(TC)), 2) := refl
+  -- a field another field's type depends on; the dependent field, at a stuck type and once known
+  def DpE (d : DP) : Nat := match d.0 { Z => 0, S(m) => 1, }
+  def DpL (d : DP) : Nat := (let r = match d.0 { Z => 0, S(m) => 1, }; r)
+  reject def DxE (d : DP) : Nat := match d.1 { TA => 0, TB => 1, TC => 2, }
+  reject def DxL (d : DP) : Nat := (let r = match d.1 { TA => 0, TB => 1, TC => 2, }; r)
+  def DxKE (d : DP) : Nat := match d { MkDP(n, x) => match n { Z => 0, S(k) => match d.1 { TA => 0, TB => 1, TC => 2, }, }, }
+  def DxKL (d : DP) : Nat := match d { MkDP(n, x) => match n { Z => 0, S(k) => (let r = match d.1 { TA => 0, TB => 1, TC => 2, }; r), }, }
+  -- a call; a sealed program's field
+  def CaE (n : Nat) : Nat := match Id1(n) { Z => 0, S(m) => 1, }
+  def CaL (n : Nat) : Nat := (let r = match Id1(n) { Z => 0, S(m) => 1, }; r)
+  def SeE (n : Nat) : Nat := (let b = mk(n); match b.0 { Z => 0, S(m) => 1, })
+  def SeL (n : Nat) : Nat := (let b = mk(n); let r = match b.0 { Z => 0, S(m) => 1, }; r)
+  def SeEC : Eq(Nat, SeE(0), 0) := refl
+  -- a proof's field (And's second component), matched by its type
+  def PfE (h : And(True, Ex)) : True := match h.1 { W1(n) => refl, W2(m) => refl, }
+  def PfL (h : And(True, Ex)) : True := (let r : True = match h.1 { W1(n) => refl, W2(m) => refl, }; r)
+  -- in an arm; against a goal that names the same match
+  def ArE (n : Nat) (b : Box) : Nat := match n { Z => match b.0 { Z => 0, S(m) => 1, }, S(k) => 0, }
+  def ArL (n : Nat) (b : Box) : Nat := match n { Z => (let r = match b.0 { Z => 0, S(m) => 1, }; r), S(k) => 0, }
+  def GoE (b : Box) : Eq(Nat, match b.0 { Z => 0, S(m) => 1, }, F1E(b)) := match b.0 { Z => refl, S(m) => refl, }
+  -- a proof field of data: by `.1` (D81) at the end and under a `let`, and by a match
+  inductive VP := MkVP(n : Nat, h : Eq(Nat, n, S(Z)))
+  reject def PdE (r : &VP) : Unit := ((*r).0 := Z; match (*r).1 {})
+  reject def PdL (r : &VP) : Unit := ((*r).0 := Z; let z : Unit = match (*r).1 {}; z)
+  reject def PdM (r : &VP) : Unit := ((*r).0 := Z; match *r { MkVP(n, h) => match h {}, })
+}
+
+#guard (run "FieldScrutinee" FieldScrutinee).rejectedWith [
+  ("DxE", "[Match] on d.x, whose type ⌈F(σ1)⌉ is not an inductive type"),
+  ("DxL", "[Match] on d.x, whose type ⌈F(σ1)⌉ is not an inductive type"),
+  ("PdE", "[D81] *r.1: field h of VP is a proof and *r is data, and `.1` takes a field of its parent's class: name it with a match, `let MkVP(…) = *r`"),
+  ("PdL", "[D81] *r.1: field h of VP is a proof and *r is data, and `.1` takes a field of its parent's class: name it with a match, `let MkVP(…) = *r`"),
+  ("PdM", "[Match] on (*r).h, which was moved out")]

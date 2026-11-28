@@ -114,7 +114,7 @@ the end of the body (`L6`), a write into a parameter of one constructor refined 
 /-- `checkFix`'s continuation at the leaf, then the goal as it was at the leaf. -/
 def kPop (name : String) : Value → Value → M Unit := fun v T => do
   let g0 := (← get).goal
-  Ochr.Meaning.Steps.Form.Top.fixCont 1000 name v T
+  Ochr.Meaning.Steps.Form.Top.fixCont 1000 name none v T
   unless (← get).goal == g0 do err "LeafGoalPop: the goal read after the pop is not the leaf's"
 
 /-- The leaf's goal is a goal: set, and not D124's deferred hint (`hintM` reads it as a type, `Value.tyS`). -/
@@ -150,7 +150,7 @@ assignment's value, so an assignment sending `σ0` to `.moved` refutes the first
 /-- At the leaf the value is an unknown, and `checkFix`'s continuation succeeds. -/
 def kAbsLeaf (name : String) : Value → Value → M Unit := fun v T => do
   unless v matches .abs _ do err "not an unknown"
-  Ochr.Meaning.Steps.Form.Top.fixCont 1000 name v T
+  Ochr.Meaning.Steps.Form.Top.fixCont 1000 name none v T
 
 #guard (bodyOf "Id1").pp [] == "#0"
 #guard (entryOf "Id1" 1).any fun st => isOk (Ochr.checkTail 1000 (bodyOf "Id1") (kAbsLeaf "Id1")) st 100000
@@ -165,7 +165,7 @@ it), and each cell (the generic call's owned place of a borrow parameter) holds 
 
 /-- `fixCont` at the leaf, then the cells: no borrow or loan left, each cell whole at its content type. -/
 def kCells (name : String) : Value → Value → M Unit := fun v T => do
-  Ochr.Meaning.Steps.Form.Top.fixCont 1000 name v T
+  Ochr.Meaning.Steps.Form.Top.fixCont 1000 name none v T
   let st ← get
   for p in allPos st.env do
     let w := valAt st.env p

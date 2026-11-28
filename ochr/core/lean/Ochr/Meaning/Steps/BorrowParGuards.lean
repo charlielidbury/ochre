@@ -92,6 +92,13 @@ def renamed (st0 st : MState) : MState :=
   let b0' : Binding := { b0 with hint := sb.hint, val := sb.val, ty := sb.ty }
   { st with globals := st0.globals, env := st.env.set! 1 { fr1 with binds := fr1.binds.set! 0 b0' } }
 
+/-- Since main's D147/D148: the recorded entry of `f`'s body has the kernel `st0` (of the function `g`) with the slot
+`()` and `g` not in Σ (`ParGuards.to148`); nothing to rename, the slot not naming the function. -/
+def entryOk148 (b : Block) (f : String) (st0 : MState) (g : String) : Bool :=
+  (FrameGuards.entryAt b f [1, 2]).any fun st =>
+    kernEq st (ParGuards.to148 st0 g) &&
+    st.typing && !st.curTail && !st.tailNext && st.tailDecl.isNone && !st.copying && !st.inPlace && st.privateDepth == 0
+
 /-- The recorded entry of the body (frames of sizes `[1, 2]`: the cell, then the function and the parameter), renamed,
 has `st0`'s kernel, in `checkFix`'s mode. -/
 def entryOk (b : Block) (f : String) (st0 : MState) : Bool :=
@@ -99,7 +106,9 @@ def entryOk (b : Block) (f : String) (st0 : MState) : Bool :=
     kernEq (renamed st0 st) st0 &&
     st.typing && !st.curTail && !st.tailNext && st.tailDecl.isNone && !st.copying && !st.inPlace && st.privateDepth == 0
 
-#guard entryOk BorrowProbeW "Wc" stW && entryOk BorrowProbeK "Kc" stK
+-- flipped by D147/D148: the recorded entry has the kernel's shape with the slot `()` and Σ without the function
+-- (`to148`); it was the kernel itself, renamed
+#guard entryOk148 BorrowProbeW "Wc" stW "W" && entryOk148 BorrowProbeK "Kc" stK "K"
 
 /-! ## The bodies' runs -/
 

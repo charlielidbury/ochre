@@ -122,6 +122,8 @@ theorem runs_checkInd_peel {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs (
   obtain ⟨_, s₇, b₇, hg₇, hTP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₇b, b₇b, hg₇b, hUP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈, b₈, hg₈, hUF, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  -- main's D141: a parameter whose reading is "any" is rejected (the loop passing)
+  obtain ⟨_, s₈a, b₈a, hg₈a, h141, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈b, b₈b, hg₈b, hHD, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨ps, s₉, b₉, hg₉, hPs, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₁₀, b₁₀, hg₁₀, hFL, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
@@ -202,6 +204,8 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
   obtain ⟨_, s₇, b₇, hg₇, hTP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₇b, b₇b, hg₇b, hUP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈, b₈, hg₈, hUF, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  -- main's D141: a parameter whose reading is "any" is rejected (the loop passing)
+  obtain ⟨_, s₈a, b₈a, hg₈a, h141, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈b, b₈b, hg₈b, hHD, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨ps, s₉, b₉, hg₉, hPs, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₁₀, b₁₀, hg₁₀, hFL, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
@@ -212,7 +216,7 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
       exact ⟨_, (runs_pure_inv hr).1⟩) hFL
   have hs2 : s₂.inds = s₁.inds := hg₂.inds
   have hT9 : s₉.inds = s₁.inds ++ [{ d' with ctors := [], nestable := [], declaring := true }] := by
-    rw [hg₉.inds, hg₈b.inds, hg₈.inds, hg₇b.inds, hg₇.inds, hg₇a.inds, hg₆.inds, hg₅.inds, hg₄.inds, hg₃.inds]
+    rw [hg₉.inds, hg₈b.inds, hg₈a.inds, hg₈.inds, hg₇b.inds, hg₇.inds, hg₇a.inds, hg₆.inds, hg₅.inds, hg₄.inds, hg₃.inds]
     show s₂.inds ++ _ = _
     rw [hs2]
   intro c cn fields hc j fname FT hj
@@ -266,7 +270,7 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
     rw [hfj, hFTc] at hFO'
     obtain ⟨g, hg, rest⟩ := runs_firstOrder_call hFO'
     have hG : s₉'.globals = s₁.globals := by
-      rw [h9, hg8.globals, h7, hT₅.globals, h3', hT₁.globals, hg₉.globals, hg₈b.globals, hg₈.globals,
+      rw [h9, hg8.globals, h7, hT₅.globals, h3', hT₁.globals, hg₉.globals, hg₈b.globals, hg₈a.globals, hg₈.globals,
         hg₇b.globals, hg₇.globals, hg₇a.globals, hg₆.globals, hg₅.globals, hg₄.globals, hg₃.globals]
       exact hg₂.globals
     rw [hG] at hg
@@ -350,16 +354,16 @@ theorem runs_checkInd_heads_mem {d : IndDecl} {st st' : MState} {b : Nat} (h : R
   obtain ⟨_, s₇, b₇, hg₇, hTP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₇b, b₇b, hg₇b, hUP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈, b₈, hg₈, hUF, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  -- main's D141: a parameter whose reading is "any" is rejected (the loop passing)
+  obtain ⟨_, s₈a, b₈a, hg₈a, h141, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈b, b₈b, hg₈b, hHD, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨-, hallC⟩ := runs_forIn_all (fun a b => growsM_of_growsIn fun G => by grows_goI)
     (fun a b s bh y s' hr => by
       obtain ⟨_, _, _, _, hr⟩ := Runs.bind_inv hr
       exact ⟨_, (runs_pure_inv hr).1⟩) hHD
-  have hG8 : s₈.globals = s₁.globals := by
-    rw [hg₈.globals, hg₇b.globals, hg₇.globals, hg₇a.globals, hg₆.globals, hg₅.globals, hg₄.globals, hg₃.globals]
-    exact hg₂.globals
-  have hG8 : s₈.globals = s₁.globals := by
-    rw [hg₈.globals, hg₇b.globals, hg₇.globals, hg₇a.globals, hg₆.globals, hg₅.globals, hg₄.globals, hg₃.globals]
+  have hG8 : s₈a.globals = s₁.globals := by
+    rw [hg₈a.globals, hg₈.globals, hg₇b.globals, hg₇.globals, hg₇a.globals, hg₆.globals, hg₅.globals, hg₄.globals,
+      hg₃.globals]
     exact hg₂.globals
   refine ⟨fun cn fields hc fname v hf hv => ?_, fun cn fields hc fname f as hd hf => ?_⟩
   all_goals

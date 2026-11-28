@@ -74,7 +74,8 @@ def calleeOk (st : MState) (w : Value) : Bool :=
   | (false, _, st) :: _ =>
     -- `calleeFrameOk` asks the deferred type at `[Z]`; here the argument is `S(Z)`
     st.env.size == 2 && bindOk st.env[0]!.binds[0]! "x" .bot .tNat .other none &&
-    bindOk st.env[1]!.binds[0]! "I" (.gfn "I") piNat (.pi .other) none &&
+    -- flipped by D148: the callee's slot is `()` (it was `I` at its Π-type)
+    ParGuards.unitSlotOk st.env[1]!.binds[0]! &&
     st.env[1]!.binds[1]!.val == .succ .zero && st.env[1]!.binds[1]!.ty.isNone &&
     st.env[1]!.binds[1]!.lazyTy.any (fun (P, ws, i) => P == piNat && ws == [.succ .zero] && i == 0) &&
     st.nextLoan == 0 && st.tailNext && st.depth == 1

@@ -614,8 +614,10 @@ ochr FieldHeads {
   def G1 (n : Nat) : Type₁ := Type
   def G2 (n : Nat) : Type₁ := match n { Z => Type, S(p) => Prop, }
   def G3 (A : Type₁) : Type₁ := A
-  def GL (n : Nat) : (let z = 0; Type) := Nat
-  def GS (n : Nat) : ((); Type) := Nat
+  -- D143: a codomain that reads as a sort without being written as one is rejected where it is
+  -- written (each of these was accepted, and every use of it an internal error, until D143)
+  reject def GL (n : Nat) : (let z = 0; Type) := Nat
+  reject def GS (n : Nat) : ((); Type) := Nat
   def GA (n : Nat) : HTT := Nat
   def GF (n : Nat) : HIdT(Type) := Nat
   inductive WGT (k : Nat) := MkWGT(x : GT(k))
@@ -645,7 +647,9 @@ private def notSort (B : String) : String :=
   ("PT1", paramHead "PT1" "x" "Type₁"), ("PT2", paramHead "PT2" "x" "Type₂"),
   ("PT1Prop", paramHead "PT1Prop" "x" "Type₁"), ("PT1Dep", paramHead "PT1Dep" "x" "Type₁"),
   ("PT1Two", paramHead "PT1Two2" "x" "Type₁"),
-  ("PMatch0", paramHead "PMatch0" "x" "match e {  }"), ("PHole", paramHead "PHole" "x" "hole"),
+  -- D141 fires first: a parameter whose type says nothing about its values
+  ("PMatch0", "[D141] the parameter B of PMatch0 is declared at match e {  }, which says nothing"),
+  ("PHole", "[D141] the parameter B of PHole is declared at hole, which says nothing"),
   ("PLet", "[D128] the parameter B of PLet is declared at let z = 0; Type"),
   ("PSeq", "[D128] the parameter B of PSeq is declared at (); Type"),
   ("PMatchEq", "[D128] the parameter B of PMatchEq is declared at match n { Z => Type, S _ => Type }"),
@@ -655,9 +659,195 @@ private def notSort (B : String) : String :=
   ("WG1", callHead "WG1" "x" "G1" "Type₁"), ("WG1k", callHead "WG1k" "x" "G1" "Type₁"),
   ("WG2", callHead "WG2" "x" "G2" "Type₁"), ("WG2Z", callHead "WG2Z" "x" "G2" "Type₁"),
   ("WG3", callHead "WG3" "x" "G3" "Type₁"), ("WG3B", callHead "WG3B" "x" "G3" "Type₁"),
-  ("WGL", callHead "WGL" "x" "GL" "let z = 0; Type"), ("WGS", callHead "WGS" "x" "GS" "(); Type"),
+  ("GL", "[D143] the result type of GL is declared at let z = 0; Type, which reads as the sort Type"),
+  ("GS", "[D143] the result type of GS is declared at (); Type, which reads as the sort Type"),
+  ("WGL", "unknown constant GL"), ("WGS", "unknown constant GS"),
   ("WGA", notSort "GA(0)"), ("WGF", notSort "GF(0)"),
   ("WG1Nest", "the parameter A of HBox has type Type₁, expected Type")]
+
+/-! ## A parameter's declared type can be read (D141)
+
+An inductive declaration's parameter whose declared type reads as "any" tells the readers nothing
+about its values: a hole, a match with no arms, a `;`, a `let` or an ascription ending in one, a
+call whose head's result type is one. D55 lets such a parameter stand wherever a type does
+(`Box(B)`), and D128 sees no sort, so before D141 only the evaluation of the parameter's type
+rejected it ("the type expected here is not known"), or D140 where it headed a field. The proof
+lane's instance is `VS`. Now each is rejected before anything runs. An unknown name reads as "any"
+too and keeps D118's message (`U0`); a match with a hole in one arm reads as its other arms (`MS`,
+D128); a parameter whose type is a function type into a hole reads as a function (`CP0`), not as
+"any", and is rejected by its evaluation, as before; a later parameter's type that calls it reads
+as "any" (`CP1`). -/
+
+ochr ReadableParams {
+  inductive Box (A : Type) := MkBox(x : A)
+  -- the proof lane's instance
+  reject inductive VS (A : Type) (B : (A; ?)) := MkVS(y : Box(B))
+  -- a hole: no field, heading a field, nested, a proposition, between two others
+  reject inductive H0 (B : ?) := MkH0
+  reject inductive H1 (B : ?) := MkH1(x : B)
+  reject inductive H2 (B : ?) := MkH2(y : Box(B))
+  reject inductive H3 (B : ?) : Prop := MkH3
+  reject inductive H4 (A : Type) (B : ?) (C : Type) := MkH4(c : C)
+  -- a `;` ending in a hole
+  reject inductive S0 (A : Type) (B : (A; ?)) := MkS0
+  reject inductive S1 (B : ((); ?)) := MkS1
+  reject inductive S2 (B : ((); ?)) := MkS2(y : Box(B))
+  reject inductive S3 (A : Type) (B : (A; ?)) := MkS3(x : B)
+  -- a `let` ending in a hole, or naming one
+  reject inductive L0 (B : (let z = 0; ?)) := MkL0
+  reject inductive L1 (A : Type) (B : (let z = A; ?)) := MkL1(y : Box(B))
+  reject inductive L2 (B : (let z = 0; let w = z; ?)) := MkL2(x : B)
+  reject inductive L3 (B : (let T = ?; T)) := MkL3(y : Box(B))
+  -- a match with no arms, or whose arms are all holes
+  reject inductive M0 (e : False) (B : match e {}) := MkM0
+  reject inductive M1 (e : False) (B : match e {}) := MkM1(y : Box(B))
+  reject inductive M2 (e : False) (B : (let z = 0; match e {})) := MkM2(y : Box(B))
+  reject inductive MH (n : Nat) (B : match n { Z => ?, S(m) => ? }) := MkMH(y : Box(B))
+  -- an ascription at a hole
+  reject inductive A0 (B : (Nat : ?)) := MkA0
+  reject inductive A1 (B : (Type : ?)) := MkA1(y : Box(B))
+  reject inductive A2 (A : Type) (B : (A : ?)) := MkA2(y : Box(B))
+  reject inductive A3 (B : (Type : (let z = 0; ?))) := MkA3(y : Box(B))
+  -- a call whose head's result type is a hole: a parameter's, a λ's
+  reject inductive CP1 (F : Π(n : Nat). ?) (B : F(Z)) := MkCP1
+  reject inductive CP2 (F : Π(n : Nat). ?) (B : F(Z)) := MkCP2(y : Box(B))
+  reject inductive CP3 (F : Π(n : Nat). ?) (B : F(Z)) := MkCP3(x : B)
+  reject inductive CP4 (F : Π(n : Nat). (Nat; ?)) (B : F(Z)) := MkCP4(y : Box(B))
+  reject inductive LC (B : (λ(x : Nat) : ? => Type)(Z)) := MkLC(y : Box(B))
+  -- the edges: an unknown name (D118), a hole in one arm only (D128), a function into a hole (its
+  -- evaluation)
+  reject inductive U0 (B : Foo) := MkU0(y : Box(B))
+  reject inductive MS (n : Nat) (B : match n { Z => ?, S(m) => Type }) := MkMS(y : Box(B))
+  reject inductive CP0 (F : Π(n : Nat). ?) := MkCP0
+  -- controls
+  inductive CT (B : Type) := MkCT(y : Box(B))
+  inductive CN (B : Nat) := MkCN
+}
+
+private def unread (n B T : String) : String :=
+  s!"[D141] the parameter {B} of {n} is declared at {T}, which says nothing about its values"
+
+#guard (run "ReadableParams" ReadableParams).rejectedWith [
+  ("VS", unread "VS" "B" "A; hole"),
+  ("H0", unread "H0" "B" "hole"), ("H1", unread "H1" "B" "hole"), ("H2", unread "H2" "B" "hole"),
+  ("H3", unread "H3" "B" "hole"), ("H4", unread "H4" "B" "hole"),
+  ("S0", unread "S0" "B" "A; hole"), ("S1", unread "S1" "B" "(); hole"),
+  ("S2", unread "S2" "B" "(); hole"), ("S3", unread "S3" "B" "A; hole"),
+  ("L0", unread "L0" "B" "let z = 0; hole"), ("L1", unread "L1" "B" "let z = A; hole"),
+  ("L2", unread "L2" "B" "let z = 0; let w = z; hole"), ("L3", unread "L3" "B" "let T = hole; T"),
+  ("M0", unread "M0" "B" "match e {  }"), ("M1", unread "M1" "B" "match e {  }"),
+  ("M2", unread "M2" "B" "let z = 0; match e {  }"),
+  ("MH", unread "MH" "B" "match n { Z => hole, S _ => hole }"),
+  ("A0", unread "A0" "B" "(Nat : hole)"), ("A1", unread "A1" "B" "(Type : hole)"),
+  ("A2", unread "A2" "B" "(A : hole)"), ("A3", unread "A3" "B" "(Type : let z = 0; hole)"),
+  ("CP1", unread "CP1" "B" "F(0)"), ("CP2", unread "CP2" "B" "F(0)"), ("CP3", unread "CP3" "B" "F(0)"),
+  ("CP4", unread "CP4" "B" "F(0)"),
+  ("LC", unread "LC" "B" "(fix _ (x : Nat) : hole := Type)(0)"),
+  ("U0", "unknown constant Foo"),
+  ("MS", "[D128] the parameter B of MS is declared at match n { Z => hole, S _ => Type }"),
+  ("CP0", "?: the type expected here is not known")]
+
+/-! ## A codomain that reads as a sort is written as one (D143)
+
+D128's rule at a function's result type (a definition's, a λ's, a function type's, wherever it is
+written). The class of a function's calls is read from its written codomain (a written sort
+returns types), and the erasure pre-pass reads each call by the codomain's declared reading. A
+codomain that reads as a sort without being written as one, through a `let`, a `;` or a match whose
+arms all return the sort, made the two disagree: `GL` was accepted and every use of it, as a type,
+in a `let`, an equation or a call, was rejected with "INTERNAL [pre-pass] GL(0): erased/proof =
+(true, false) by its declared type, (false, false) after running". Each such codomain is now
+rejected where it is written, before anything runs, dead code included (`Dead`), at every depth (a
+parameter's function type, `HL`; a curried codomain, `HN`; inside an equation, `EqPi`; an
+inductive's parameter, `IP`). A codomain that reads as data although its value is a sort (an
+ascription, a constant or a type function computing `Type`: `GA`, `GC`, `GF`) is read as data on
+both paths, as D55 allows (`P0 : Type₁ := Prop` used as a codomain), and is not held: its calls run,
+and its uses are held by D55 and D131 as before (`UA1`, `UA4`). A constant's declared type is read
+from its value (`CL`). -/
+
+ochr WrittenCodomains {
+  def TT : Type₁ := Type
+  def PP : Type₁ := Prop
+  def IdT (X : Type₁) : Type₁ := X
+  def useTy (A : Type) : Nat := 3
+  -- definitions whose codomain reads as a sort without being written as one
+  reject def GL (n : Nat) : (let z = 0; Type) := Nat
+  reject def GS (n : Nat) : ((); Type) := Nat
+  reject def GLp (n : Nat) : (let z = 0; Prop) := Eq(Nat, n, n)
+  reject def GL1 (n : Nat) : (let z = 0; Type₁) := Type
+  reject def GLL (n : Nat) : (let T = Type; T) := Nat
+  reject def GM (n : Nat) : match n { Z => Type, S(m) => Type } := match n { Z => Nat, S(m) => Nat }
+  reject def GMl (n : Nat) : (let k = 0; match k { Z => Type, S(m) => Type }) := Nat
+  -- their uses (each was an internal error)
+  reject def UL1 : Nat := (let y : GL(0) = 3; y)
+  reject def UL2 (x : GL(0)) : Nat := Z
+  reject def UL3 : Type := GL(0)
+  reject def UL4 (n : Nat) : Nat := (let T = GL(n); Z)
+  reject def UL5 : Eq(Type, GL(0), Nat) := refl
+  reject def UM4 (n : Nat) : Nat := (let T = GM(n); Z)
+  -- λs, function types and their places
+  reject def LL (n : Nat) : Nat := (let f = (λ(m : Nat) : (let z = 0; Type) => Nat); Z)
+  reject def LLc (n : Nat) : Nat := (let f = (λ(m : Nat) : (let z = 0; Type) => Nat); let T = f(0); Z)
+  reject def Dead (n : Nat) : Nat := (let z = Z; match z { Z => Z, S(k) => (let f = (λ(m : Nat) : (let q = 0; Type) => Nat); Z), })
+  reject def HL (f : Π(m : Nat). (let z = 0; Type)) : Nat := Z
+  reject def HLc (f : Π(m : Nat). (let z = 0; Type)) : Nat := (let T = f(0); Z)
+  reject def HM (f : Π(m : Nat). match m { Z => Type, S(k) => Type }) : Nat := Z
+  reject def HN (f : Π(m : Nat). Π(k : Nat). (let z = 0; Type)) : Nat := Z
+  reject def LamPar (n : Nat) : Nat := (let f = (λ(g : Π(m : Nat). (let q = 0; Type)) : Nat => Z); Z)
+  reject def AnnL (n : Nat) : Nat := (let g : Π(m : Nat). (let z = 0; Type) = (λ(m : Nat) : Type => Nat); Z)
+  reject def CodPi (n : Nat) : (Π(m : Nat). (let z = 0; Type)) := (λ(m : Nat) : Type => Nat)
+  reject def TyPi : Type₁ := Π(m : Nat). (let z = 0; Type)
+  reject def EqPi : Eq(Type₁, Π(n : Nat). (let z = 0; Type), Π(n : Nat). Type) := refl
+  reject inductive IP (F : Π(n : Nat). (let z = 0; Type)) := MkIP
+  -- unchanged: written sorts; codomains that read as data (their calls run, D55 and D131 hold their
+  -- uses); a constant; data and proof codomains through a `let`
+  def GT (n : Nat) : Type := Nat
+  def GA (n : Nat) : (Type : Type₁) := Nat
+  def GC (n : Nat) : TT := Nat
+  def GCp (n : Nat) : PP := Eq(Nat, n, n)
+  def GF (n : Nat) : IdT(Type) := Nat
+  def GMix (n : Nat) : match n { Z => Type, S(m) => Prop } := match n { Z => Nat, S(m) => Eq(Nat, m, m) }
+  def UA2 (k : Nat) : Nat := useTy(GA(k))
+  def UA5 : Eq(Type, GA(0), Nat) := refl
+  reject def UA1 : Nat := (let y : GA(0) = 3; y)
+  reject def UA4 (n : Nat) : Nat := (let T = GA(n); Z)
+  def CL : (let z = 0; Type) := Nat
+  def UCL : Nat := (let y : CL = 3; y)
+  def GN (n : Nat) : (let z = 0; Nat) := 3
+  def GPr (n : Nat) : (let z = 0; Eq(Nat, n, n)) := refl
+  def LT (n : Nat) : Nat := (let f = (λ(m : Nat) : Type => Nat); let T = f(0); Z)
+  def LA (n : Nat) : Nat := (let f = (λ(m : Nat) : (Type : Type₁) => Nat); Z)
+  def HT (f : Π(m : Nat). Type) : Nat := (let T = f(0); Z)
+  def HA (f : Π(m : Nat). (Type : Type₁)) : Nat := Z
+  inductive IPok (F : Π(n : Nat). Type) := MkIPok
+  def Curried (n : Nat) : (Π(m : Nat). Type) := (λ(m : Nat) : Type => Nat)
+  def CurriedUse (n : Nat) : Nat := (let T = Curried(0)(0); Z)
+}
+
+private def codNotWritten (what C S : String) : String :=
+  s!"[D143] the result type of {what} is declared at {C}, which reads as the sort {S} without being written as one"
+
+#guard (run "WrittenCodomains" WrittenCodomains).rejectedWith [
+  ("GL", codNotWritten "GL" "let z = 0; Type" "Type"), ("GS", codNotWritten "GS" "(); Type" "Type"),
+  ("GLp", codNotWritten "GLp" "let z = 0; Prop" "Prop"), ("GL1", codNotWritten "GL1" "let z = 0; Type₁" "Type₁"),
+  ("GLL", codNotWritten "GLL" "let T = Type; T" "Type"),
+  ("GM", codNotWritten "GM" "match n { Z => Type, S _ => Type }" "Type"),
+  ("GMl", codNotWritten "GMl" "let k = 0; match k { Z => Type, S _ => Type }" "Type"),
+  ("UL1", "unknown constant GL"), ("UL2", "unknown constant GL"), ("UL3", "unknown constant GL"),
+  ("UL4", "unknown constant GL"), ("UL5", "unknown constant GL"), ("UM4", "unknown constant GM"),
+  ("LL", codNotWritten "a λ" "let z = 0; Type" "Type"), ("LLc", codNotWritten "a λ" "let z = 0; Type" "Type"),
+  ("Dead", codNotWritten "a λ" "let q = 0; Type" "Type"),
+  ("HL", codNotWritten "the function type Π(m : Nat). let z = 0; Type" "let z = 0; Type" "Type"),
+  ("HLc", codNotWritten "the function type Π(m : Nat). let z = 0; Type" "let z = 0; Type" "Type"),
+  ("HM", codNotWritten "the function type Π(m : Nat). match m { Z => Type, S _ => Type }" "match m { Z => Type, S _ => Type }" "Type"),
+  ("HN", codNotWritten "the function type Π(k : Nat). let z = 0; Type" "let z = 0; Type" "Type"),
+  ("LamPar", codNotWritten "the function type Π(m : Nat). let q = 0; Type" "let q = 0; Type" "Type"),
+  ("AnnL", codNotWritten "the function type Π(m : Nat). let z = 0; Type" "let z = 0; Type" "Type"),
+  ("CodPi", codNotWritten "the function type Π(m : Nat). let z = 0; Type" "let z = 0; Type" "Type"),
+  ("TyPi", codNotWritten "the function type Π(m : Nat). let z = 0; Type" "let z = 0; Type" "Type"),
+  ("EqPi", codNotWritten "the function type Π(n : Nat). let z = 0; Type" "let z = 0; Type" "Type"),
+  ("IP", codNotWritten "the function type Π(n : Nat). let z = 0; Type" "let z = 0; Type" "Type"),
+  ("UA1", "[D55] GA(0) is written where a type is expected, but its declared type is not a sort"),
+  ("UA4", "[D131] T is a type (its type Type is a sort), but its declared type reads as data")]
 
 /-! ## The inductive model's probes (notes/inductive-model.md)
 

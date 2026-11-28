@@ -32,15 +32,15 @@ longer assumes the clause. (Before, this file stated the strengthened forms `Out
 succeeds there, `LeafAttack`'s guard) an assignment sending `σ0` to `.moved` makes it mean `⊥` (`leafReturnG_old_false`).
 Its one consumer reads it at the leaf's own assignment, which meets `Pre`; restated so (`LeafReturnG`). -/
 def LeafReturnG_old : Prop :=
-  ∀ (n : Nat) (name : String) (v T : Value) (stl stk : MState) (bk : Nat),
-    Runs (fixCont n name v T) stl bk () stk →
+  ∀ (n : Nat) (name : String) (start : Option Env) (v T : Value) (stl stk : MState) (bk : Nat),
+    Runs (fixCont n name start v T) stl bk () stk →
     ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS), meanV K ρ φ h v ≠ .moved
 
 /-- The first form is false wherever `fixCont` succeeds at a leaf whose value is an unknown. -/
-theorem leafReturnG_old_false {n : Nat} {name : String} {σ : Nat} {T : Value} {stl stk : MState} {bk : Nat}
-    (hk : Runs (fixCont n name (.abs σ) T) stl bk () stk) (K : RunCtx) (φ : Future) (h : TyS) :
+theorem leafReturnG_old_false {n : Nat} {name : String} {start : Option Env} {σ : Nat} {T : Value} {stl stk : MState} {bk : Nat}
+    (hk : Runs (fixCont n name start (.abs σ) T) stl bk () stk) (K : RunCtx) (φ : Future) (h : TyS) :
     ¬ LeafReturnG_old := fun hR =>
-  hR n name (.abs σ) T stl stk bk hk K (fun _ => .moved) φ h (by rw [Ochr.Meaning.Attack.meanV_abs])
+  hR n name start (.abs σ) T stl stk bk hk K (fun _ => .moved) φ h (by rw [Ochr.Meaning.Attack.meanV_abs])
 
 /-- **[Return] at the leaf** (MIXED; READ TRUE, unproved; RESTATED by lead48, docs/31 D291: at an assignment meeting the
 leaf's state, as `LeafConvG` is): the leaf's value means no `⊥`. Its parts: the value is whole (checker: `wholeReturned`
@@ -49,8 +49,8 @@ tests a returned borrow's content; a data value in flight is whole, every read o
 that meets the state (model: `meanV` gives `.moved` at `.bot`, and at an unknown its assignment's value, a member of its
 type by `TypedAssignment`). -/
 def LeafReturnG : Prop :=
-  ∀ (n : Nat) (name : String) (v T : Value) (stl stk : MState) (bk : Nat),
-    Runs (fixCont n name v T) stl bk () stk →
+  ∀ (n : Nat) (name : String) (start : Option Env) (v T : Value) (stl stk : MState) (bk : Nat),
+    Runs (fixCont n name start v T) stl bk () stk →
     ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS), Pre K ρ (stl.withTempT v (some T)) →
       meanV K ρ φ h v ≠ .moved
 
@@ -61,8 +61,8 @@ every assignment meeting the state) makes the two types' meanings equal at the l
 D291, `Steps/TopLeafConv.leafConvG_of`) from the checker's part (`LeafGoalPopG`, read true, attacked), N3's hypotheses
 (`N3Hyps`, the conversion lane's) and N3's side conditions (`LeafSideG`). -/
 def LeafConvG : Prop :=
-  ∀ (n : Nat) (name : String) (v T : Value) (stl stk : MState) (bk : Nat),
-    Runs (fixCont n name v T) stl bk () stk →
+  ∀ (n : Nat) (name : String) (start : Option Env) (v T : Value) (stl stk : MState) (bk : Nat),
+    Runs (fixCont n name start v T) stl bk () stk →
     ∀ (K : RunCtx) (ρ : Assignment), Pre K ρ (stl.withTempT v (some T)) →
       (Value.tyS K.dm K.M K.Γ ρ T).m = (hintM K ρ stl.goal).m
 
@@ -72,7 +72,7 @@ flight is related to the reference's; so the reference's ends after the body (`f
 live at the run's end, the result holding none) pass, at any context with the leaf's data model and declarations. -/
 def LeafPopG : Prop :=
   ∀ (n : Nat) (name : String) (v T : Value) (stl stk : MState) (bk : Nat),
-    Runs (fixCont n name v T) stl bk () stk →
+    Runs (fixCont n name none v T) stl bk () stk →
     ∀ (K K₁ : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (s' : SState),
       K₁.dm = K.dm → K₁.Γ = K.Γ →
       Pre K ρ (stl.withTempT v (some T)) → Rel K ρ φ π (stl.withTempT v (some T)) s' →
@@ -132,7 +132,7 @@ as data); the reference's result is the stage's run's (`heq`), whose result is g
 (`FixStartAt`'s hint, `hhint`; the hint `fixCod` is `outG`'s codomain, by definition); the pop's ends (`LeafPopG`); no
 cell, so no final. -/
 theorem fixLeafG_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
-    (P : ProgState) (d : Def) (st' : MState) (w : FixWit)
+    (P : ProgState) (d : Def) (st' : MState) (w : FixWit) (hst : w.start = none)
     (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem)
     (hnoref : ∀ p ∈ psG (P.ctx dm D Γ st') ρ φ d.doms, p.isRef = false)
     (hdata : (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).isRef = false)
@@ -142,7 +142,7 @@ theorem fixLeafG_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
     (hT : TailConcl (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ π w.st₀
       (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) d.body
       (runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal) d.body)
-      (fixCont w.n d.name))
+      (fixCont w.n d.name w.start))
     (hhint : hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal = (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.1 a)
     (heq : runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal) d.body
         (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) =
@@ -159,12 +159,12 @@ theorem fixLeafG_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
   obtain ⟨hgood, hsg⟩ := hfund r s' hx
   -- the result's type is the codomain at `a`
   have hty : r.2.m = (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).cod a := by
-    rw [← hstr T rfl, hConv _ _ v T stl stk bk hk _ ρ' hpl, hgoal, hhint]
+    rw [← hstr T rfl, hConv _ _ _ v T stl stk bk hk _ ρ' hpl, hgoal, hhint]
     rfl
   have hmem : r.1 ∈ₛ[dm.read] (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).cod a := by
     rcases hgood with h | h | ⟨he, -⟩
     · rw [← hty]; exact h
-    · exact absurd (hmv.trans h) (hRet _ _ v T stl stk bk hk _ ρ' _ r.2 hpl)
+    · exact absurd (hmv.trans h) (hRet _ _ _ v T stl stk bk hk _ ρ' _ r.2 hpl)
     · exact absurd (hty ▸ he) hcod
   have hcells : ∀ s₀ : SState, ((a.zip (psG (P.ctx dm D Γ st') ρ φ d.doms)).foldl
       (fixStep (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod)) (s₀, [], [])).2.2 = [] := fun s₀ =>
@@ -182,7 +182,7 @@ theorem fixLeafG_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
   subst hc₂
   rw [← hs₂, hx]
   simp only [hdata, Bool.false_eq_true, if_false]
-  have hends := (hPop w.n d.name v T stl stk bk hk { ctxBΔ dm D Γ P d st' ρ φ b Δa with Δ := Δ' } (P.ctx dm D Γ st') ρ' φ π'
+  have hends := (hPop w.n d.name v T stl stk bk (hst ▸ hk) { ctxBΔ dm D Γ P d st' ρ φ b Δa with Δ := Δ' } (P.ctx dm D Γ st') ρ' φ π'
     s' rfl rfl hpl hrl hsg)
   have hkeep : (if (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).isRef = true then r.2.label else none) = none := by
     rw [hdata]; rfl
@@ -233,7 +233,7 @@ true, unproved); the clause is no longer assumed (it is `TailAt`'s conclusion si
 at `D`'s code (the aligned table reads the type `Nat` as data, and `D`'s body at its start as data: read true); and
 what `knot_step` holds there (`FixStartAt`'s hint, the run being the stage's, the fundamental lemma at it). -/
 theorem fixLeafG_D (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
-    (P : ProgState) (st' : MState) (w : FixWit) (hT0 : (D st').typeDecl [] .nat = .other)
+    (P : ProgState) (st' : MState) (w : FixWit) (hst : w.start = none) (hT0 : (D st').typeDecl [] .nat = .other)
     (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem)
     (hpre : Pre (ctxBΔ dm D Γ P defD st' ρ φ b Δa) ρa w.st₀)
     (hfl : ((ctxBΔ dm D Γ P defD st' ρ φ b Δa).D.flags
@@ -242,7 +242,7 @@ theorem fixLeafG_D (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
       (startAt (P.ctx dm D Γ st') ρ φ defD.hs defD.doms defD.cod defD.dec defD.body b a) defD.body
       (runT (ctxBΔ dm D Γ P defD st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P defD st' ρ φ b Δa) ρa w.st₀.goal)
         defD.body)
-      (fixCont w.n defD.name))
+      (fixCont w.n defD.name w.start))
     (hhint : hintM (ctxBΔ dm D Γ P defD st' ρ φ b Δa) ρa w.st₀.goal =
       (fbG (P.ctx dm D Γ st') ρ φ defD.doms defD.cod).2.1 a)
     (heq : runT (ctxBΔ dm D Γ P defD st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P defD st' ρ φ b Δa) ρa w.st₀.goal)
@@ -259,7 +259,7 @@ theorem fixLeafG_D (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
       show (D st').paramDecls [] [.nat] = [.other]
       simp [Decisions.paramDecls, Decisions.teleDecls, hT0])
   have hout : outG (P.ctx dm D Γ st') ρ φ defD.doms defD.cod = ColumnI.outI := ColumnI.codOf_nat _ ρ φ formG _ _
-  refine fixLeafG_of hRet hConv hPop P defD st' w ρ ρa Δa φ π b a (by rw [hps]; intro p hp; simp [ColumnI.psI] at hp; subst hp; rfl)
+  refine fixLeafG_of hRet hConv hPop P defD st' w hst ρ ρa Δa φ π b a (by rw [hps]; intro p hp; simp [ColumnI.psI] at hp; subst hp; rfl)
     (by rw [hout]; rfl) hpre hfl hT hhint heq hfund (by
       rw [hout]; intro h; injection h with h1; exact PEmpty.elim (cast h1 (0 : Nat)))
 
@@ -270,7 +270,7 @@ fundamental lemma. The facts about the definition: its domains are not borrows a
 computing `psG`, `outG`), the table reads its body as data at every start (TABLE), and the codomain at member arguments
 is not `err` (MODEL). -/
 theorem fixLeafAt_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
-    (P : ProgState) (d : Def) (st' : MState) (w : FixWit)
+    (P : ProgState) (d : Def) (st' : MState) (w : FixWit) (hst : w.start = none)
     (hnoref : ∀ ρ φ, ∀ p ∈ psG (P.ctx dm D Γ st') ρ φ d.doms, p.isRef = false)
     (hdata : ∀ ρ φ, (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).isRef = false)
     (hfl : ∀ ρ φ b Δa a, ((ctxBΔ dm D Γ P d st' ρ φ b Δa).D.flags
@@ -279,18 +279,18 @@ theorem fixLeafAt_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
       (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).cod a ≠ TyM.err) :
     FixLeafAt dm D Γ P d st' w := by
   intro ρ ρa Δa φ π b a ha _ hpre _ hhint hT heq hfund
-  exact fixLeafG_of hRet hConv hPop P d st' w ρ ρa Δa φ π b a (hnoref ρ φ) (hdata ρ φ) hpre (hfl ρ φ b Δa a) hT hhint
+  exact fixLeafG_of hRet hConv hPop P d st' w hst ρ ρa Δa φ π b a (hnoref ρ φ) (hdata ρ φ) hpre (hfl ρ φ b Δa a) hT hhint
     heq hfund (hcod ρ φ a ha)
 
 /-- **The link `FixLeafAt` at `D`** (PROVED from `LeafReturnG`, `LeafConvG`, `LeafPopG` and two TABLE facts at `D`'s
 code, each read true: the type `Nat` read as data, `D`'s body read as data at every start; docs/31 D290). -/
 theorem fixLeafAt_D (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
-    (P : ProgState) (st' : MState) (w : FixWit) (hT0 : (D st').typeDecl [] .nat = .other)
+    (P : ProgState) (st' : MState) (w : FixWit) (hst : w.start = none) (hT0 : (D st').typeDecl [] .nat = .other)
     (hfl : ∀ ρ φ b Δa a, ((ctxBΔ dm D Γ P defD st' ρ φ b Δa).D.flags
       (scopeOf (startAt (P.ctx dm D Γ st') ρ φ defD.hs defD.doms defD.cod defD.dec defD.body b a)) defD.body).2 = false) :
     FixLeafAt dm D Γ P defD st' w := by
   intro ρ ρa Δa φ π b a _ _ hpre _ hhint hT heq hfund
-  exact fixLeafG_D hRet hConv hPop P st' w hT0 ρ ρa Δa φ π b a hpre (hfl ρ φ b Δa a) hT hhint heq hfund
+  exact fixLeafG_D hRet hConv hPop P st' w hst hT0 ρ ρa Δa φ π b a hpre (hfl ρ φ b Δa a) hT hhint heq hfund
 
 
 /-! ## A function with borrow parameters: the pop leaves members in the cells (`Z0`) -/
@@ -317,7 +317,7 @@ def LeafPopAt (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (P
   ∀ (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (b : Nat) (a : List Sem) (v T : Value) (stl stk : MState) (bk : Nat)
     (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (s' : SState),
     DomMembers dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) a →
-    Runs (fixCont w.n d.name v T) stl bk () stk →
+    Runs (fixCont w.n d.name w.start v T) stl bk () stk →
     Pre { ctxBΔ dm D Γ P d st' ρ φ b Δa with Δ := Δ' } ρ' (stl.withTempT v (some T)) →
     Rel { ctxBΔ dm D Γ P d st' ρ φ b Δa with Δ := Δ' } ρ' φ π' (stl.withTempT v (some T)) s' →
     Strict.SGood dm Γ φ s' →
@@ -340,7 +340,7 @@ theorem fixLeafG_ofRef (hRet : LeafReturnG) (hConv : LeafConvG)
     (hT : TailConcl (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ π w.st₀
       (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) d.body
       (runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal) d.body)
-      (fixCont w.n d.name))
+      (fixCont w.n d.name w.start))
     (hhint : hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal = (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.1 a)
     (heq : runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal) d.body
         (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) =
@@ -356,12 +356,12 @@ theorem fixLeafG_ofRef (hRet : LeafReturnG) (hConv : LeafConvG)
   rw [heq] at hx
   obtain ⟨hgood, hsg⟩ := hfund r s' hx
   have hty : r.2.m = (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).cod a := by
-    rw [← hstr T rfl, hConv _ _ v T stl stk bk hk _ ρ' hpl, hgoal, hhint]
+    rw [← hstr T rfl, hConv _ _ _ v T stl stk bk hk _ ρ' hpl, hgoal, hhint]
     rfl
   have hmem : r.1 ∈ₛ[dm.read] (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod).cod a := by
     rcases hgood with h | h | ⟨he, -⟩
     · rw [← hty]; exact h
-    · exact absurd (hmv.trans h) (hRet _ _ v T stl stk bk hk _ ρ' _ r.2 hpl)
+    · exact absurd (hmv.trans h) (hRet _ _ _ v T stl stk bk hk _ ρ' _ r.2 hpl)
     · exact absurd (hty ▸ he) hcod
   obtain ⟨hends, hfin⟩ := hPop ρ ρa Δa φ b a v T stl stk bk ρ' Δ' π' s' ha hk hpl hrl hsg
   rw [stG_succ]
@@ -430,7 +430,7 @@ theorem fixLeafG_Z0 (hRet : LeafReturnG) (hConv : LeafConvG) (P : ProgState) (st
       (startAt (P.ctx dm D Γ st') ρ φ defZ0.hs defZ0.doms defZ0.cod defZ0.dec defZ0.body b a) defZ0.body
       (runT (ctxBΔ dm D Γ P defZ0 st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P defZ0 st' ρ φ b Δa) ρa w.st₀.goal)
         defZ0.body)
-      (fixCont w.n defZ0.name))
+      (fixCont w.n defZ0.name w.start))
     (hhint : hintM (ctxBΔ dm D Γ P defZ0 st' ρ φ b Δa) ρa w.st₀.goal =
       (fbG (P.ctx dm D Γ st') ρ φ defZ0.doms defZ0.cod).2.1 a)
     (heq : runT (ctxBΔ dm D Γ P defZ0 st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P defZ0 st' ρ φ b Δa) ρa w.st₀.goal)

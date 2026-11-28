@@ -301,6 +301,9 @@ theorem fwd_ctorIsProof (ty : String) : Fwd R (ctorIsProof ty) := by unfold ctor
 theorem fwd_preFlags (t : Term) (d : DeclInfo) : Fwd R (preFlags t d) := by unfold preFlags; fwd_go
 theorem fwd_refineDecl (d : DeclInfo) : Fwd R (refineDecl d) := by unfold refineDecl; fwd_go
 theorem fwd_sealedSort (t : Term) : Fwd R (sealedSort? t) := by unfold sealedSort?; fwd_go
+/-- D143's test of a written codomain (main's merge, lead49). -/
+theorem fwd_codomainWritten (what : Unit → String) (c : Term) (ns : List String) (cd : DeclInfo) :
+    Fwd R (codomainWritten what c ns cd) := by unfold codomainWritten; fwd_go
 end
 
 /-- The seventeen functions of `Decide.lean`'s block the decisions reach, at `n`: `declCopy` and
@@ -340,6 +343,7 @@ macro "fwd_ih" : tactic => `(tactic| repeat (any_goals first
   | with_reducible exact fwd_fieldIsProof _ | with_reducible exact fwd_fieldTermIsProp _ _
   | with_reducible exact fwd_ctorIsProof _ | with_reducible exact fwd_preFlags _ _
   | with_reducible exact fwd_refineDecl _ | with_reducible exact fwd_sealedSort _
+  | with_reducible exact fwd_codomainWritten _ _ _ _
   | assumption
   | (with_reducible refine ih.typeFnDecl _ _ _ _ _ _ _ ?_)
   | fwd_step))

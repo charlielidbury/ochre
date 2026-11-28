@@ -101,7 +101,10 @@ def modeOk (st : MState) : Bool :=
 def recordedStart : Option MState :=
   ((entries DataProbeNot "Not").filter (fun st => st.env.size == 2 && st.env[1]!.binds.size == 2)).head?
 
-#guard recordedStart.any fun st => st.env[1]!.binds[0]!.recUid == some 0 && kernEqI st stNot && modeOk st
+-- flipped by D147/D148: the recorded start is `stNot` with the slot `()` and `Not` not in Σ (`to148`); it was `stNot`
+-- itself, the slot marked (`recUid = some 0`)
+#guard recordedStart.any fun st => st.env[1]!.binds[0]!.recUid.isNone && kernEqI st (ParGuards.to148 stNot "Not") &&
+  modeOk st
 #guard kernEqI stNotF stNot && modeOk stNotF
 
 /-! ## The split -/

@@ -64,9 +64,10 @@ def stQm : MState :=
 
 -- the hand-built kernel and mode are those `checkFix` starts a body with one `Nat` parameter in (`ParGuards`)
 #guard ParGuards.kernelOk "Q" bodyQ stQ && ParGuards.kernelOk "Q" bodyQ stQm && ParGuards.modeOk "Q" stQm
--- the surface program's recorded start state: the same kernel (but for its body, a call of `succFn`) and mode
+-- the surface program's recorded start state: the same kernel (but for its body, a call of `succFn`) and mode, with
+-- the slot `()` and Σ empty since main's D147/D148 (flipped: it was `kernelOk "Qs" …`, the slot holding `Qs`)
 #guard (ParGuards.entries BlockProbe "Qs").head?.any fun st =>
-  ParGuards.kernelOk "Qs" (.call Ochr.Surface.succFn [matchQ] false) st && ParGuards.modeOk "Qs" st
+  ParGuards.kernelOk148 st && ParGuards.modeOk "Qs" st
 
 /-! ## The block: captures, value, type, state after -/
 

@@ -141,6 +141,23 @@ def agreeTypeDecl (ds : List DeclInfo) : DeclInfo :=
     else if (d :: rest).any (· matches .pi _) then .conflict
     else .other
 
+/-- D143 (D128's rule at a codomain): the result type `c` of a function (a definition, a λ, a
+Π-type term), whose declared reading is `cd` in the scope named `ns`, reads as a sort only where
+it is written as one. The class of a function's calls is read from the written codomain
+(`fnClass`: a written sort returns types), and the pre-pass reads each call by the codomain's
+reading (`declOf`'s call case, through `.pi cd`); a codomain that reads as a sort without being
+written as one (`let z = 0; Type`, `(); Type`, a match whose arms all return the sort) made the
+pre-pass erase a call the run did not, an internal error at every use of the function. A codomain
+that reads as data although its value is a sort (an ascription `(Type : Type₁)`, a constant or a
+type function computing `Type`) is read as data on both paths, as D55 lets it, and is not held
+here. A codomain that is an embedded value (a stuck block's function, whose class is given at its
+call) is not written. `what` names the function (made only for the message). -/
+def codomainWritten (what : Unit → String) (c : Term) (ns : List String) (cd : DeclInfo) : M Unit := do
+  if c matches .sort _ | .val _ then return
+  if let .sort l := cd then
+    let S := (Term.sort l).pp []
+    err s!"[D143] the result type of {what ()} is declared at {c.pp ns}, which reads as the sort {S} without being written as one: a function returning types has its result type written as a sort (write {S} there)"
+
 /-- The error for a term with no declared type (D63). -/
 def conflictMsg (t : Term) (ns : List String) : String :=
   s!"[D63] the arms of a match in {t.pp ns} disagree about being proofs (some are, some are not), so it has no declared type"
@@ -464,12 +481,18 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
   | .pi hs ds c => do
     let (sc', ns', l) ← telescope fuel' chk sc ns hs ds
     let lc ← typePos fuel' chk sc' ns' c
+    -- D143: a codomain that reads as a sort is written as one
+    if chk && !(c matches .sort _ | .val _) then
+      codomainWritten (fun _ => s!"the function type {t.pp ns}") c ns' (← typeDecl fuel' false sc' ns' c)
     pure (.sort (if lc == 0 then 0 else max l lc))
   | .fix self hs ds c _ body => do
     let (sc', ns', _) ← telescope fuel' chk sc ns hs ds
     discard (typePos fuel' chk sc' ns' c)
     let cd ← typeDecl fuel' chk sc' ns' c
     if chk then
+      -- D143: a codomain that reads as a sort is written as one (a constant, no parameters, is not
+      -- a function: its declared type is read from its value, D80, the same on every path)
+      unless ds.isEmpty do codomainWritten (fun _ => if self.name == "_" then "a λ" else self.name) c ns' cd
       -- the body sees the parameters, then `self`, then the enclosing scope
       let k := ds.length
       discard (declOf fuel' chk (sc'.take k ++ (DeclInfo.pi cd :: sc)) (ns'.take k ++ (self.name :: ns)) body)
@@ -826,7 +849,8 @@ field by its declared type (v2.0: a parameter declared `: Prop`, or a Prop induc
 sub-places and captured values never are.
 
 D100: by the declared reading, not the binding's `proof` flag. They differ at one kind of
-binding: a proof function's binding of itself in its body (`runBodyCore`, `checkFix`), and a
+binding: a recursive proof function's binding of itself in its body (`runBodyCore`, `checkFix`;
+since D148 only a function with `by` holds itself there, any other's slot being `()`), and a
 closure's capture of it, which hold the function itself rather than `⋆` so that [Rec] sees the
 recursive calls made through them (D78). Their flag stays `false`, since a capture flagged a proof
 has its reads inlined as `(⋆ : T)` (`capture`), which would hide a call that does not decrease

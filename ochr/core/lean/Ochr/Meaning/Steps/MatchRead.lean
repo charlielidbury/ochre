@@ -32,7 +32,8 @@ attacked by programs run on the real checker. What is found, in the order of doc
   Repair: `cur` grew from the snapshot and keeps the tables' invariant (`TailMatchNatInv` supplies it).
 * **A fault of the checker, an incompleteness** (`TB`, `TB2`): a match on a field place at the end of a body is rejected
   ("no such place b.0"), the same match not at the end accepted: `checkTailAt` does not name a field step by a match
-  first (`projIn`/`projMatch`), as `evalMatch` does.
+  first (`projIn`/`projMatch`), as `evalMatch` does. Fixed on main by D145 (`checkTailAt` takes the run's step
+  `projStep`): `TB` and `TBi` are accepted.
 -/
 
 open Ochr.Test
@@ -49,10 +50,12 @@ ochr MatchRd {
   def J4a (n : Nat) (k : Nat) : Box := (let b = G(clone(n)); G(n))
   -- a split at the end of a body (as `MatchAtk.A1`)
   def A1 (x : Nat) (y : Nat) (n : Nat) : Nat := match n { Z => x, S(m) => y, }
-  -- a match on a field place: rejected at the end of a body, accepted elsewhere (an incompleteness)
-  reject def TB (b : Box) : Nat := match b.0 { Z => 0, S(m) => 1, }
+  -- a match on a field place: accepted at the end of a body as elsewhere (flipped by D145: was `reject def`, an
+  -- incompleteness, "no such place b.0")
+  def TB (b : Box) : Nat := match b.0 { Z => 0, S(m) => 1, }
   def TB2 (b : Box) : Nat := (let r = match b.0 { Z => 0, S(m) => 1, }; r)
-  reject def TBi (b : BoxT) : Nat := match b.0 { Lo => 0, Hi => 1, }
+  -- flipped by D145: was `reject def`
+  def TBi (b : BoxT) : Nat := match b.0 { Lo => 0, Hi => 1, }
   def TBi2 (b : BoxT) : Nat := (let r = match b.0 { Lo => 0, Hi => 1, }; r)
 }
 
@@ -63,9 +66,10 @@ open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt outVal)
 
 -- every verdict as expected
 #guard ((Ochr.Test.runWith (some Prelude) "MatchRd" MatchRd {} (located := false)).allAsExpected)
--- `TB` is rejected at the field place, which `checkTailAt` reads as it stands
+-- `TB` is accepted: `checkTailAt` names the field step by the match on `b` first (flipped by D145; it was rejected,
+-- "no such place b.0")
 #guard ((Ochr.Test.runWith (some Prelude) "MatchRd" MatchRd {} (located := false)).rows.find? (·.name == "TB")).any
-  fun r => match r.verdict with | .rejected m _ => (m.splitOn "no such place b.0").length > 1 | _ => false
+  fun r => match r.verdict with | .accepted => true | _ => false
 
 /-- The resolved body of a definition of the block. -/
 def bodyOf (name : String) : Term :=

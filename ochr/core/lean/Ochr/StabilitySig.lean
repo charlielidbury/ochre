@@ -368,6 +368,10 @@ macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_ctorIs
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_fieldIsProof)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_fieldTermIsProp)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_refineDecl)
+-- D143: the check that a codomain reading as a sort is written as one (only reads, or fails)
+theorem sigPres_codomainWritten (what : Unit → String) (c : Term) (ns : List String) (cd : DeclInfo) :
+    SigPres (codomainWritten what c ns cd) := by unfold codomainWritten; sp
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_codomainWritten)
 
 /-- The declared-type readers keep the signature, at fuel `n`. -/
 structure DecSP (n : Nat) : Prop where

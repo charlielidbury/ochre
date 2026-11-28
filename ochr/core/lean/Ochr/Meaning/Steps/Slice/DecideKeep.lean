@@ -188,6 +188,9 @@ theorem keep_ctorIsProof (ty : String) : Keep (ctorIsProof ty) := by unfold ctor
 theorem keep_preFlags (t : Term) (d : DeclInfo) : Keep (preFlags t d) := by unfold preFlags; keep_go
 theorem keep_refineDecl (d : DeclInfo) : Keep (refineDecl d) := by unfold refineDecl; keep_go
 theorem keep_sealedSort (t : Term) : Keep (sealedSort? t) := by unfold sealedSort?; keep_go
+/-- D143's test of a written codomain (main's merge, lead49). -/
+theorem keep_codomainWritten (what : Unit → String) (c : Term) (ns : List String) (cd : DeclInfo) :
+    Keep (codomainWritten what c ns cd) := by unfold codomainWritten; keep_go
 
 /-! ## The fuel recursion (the shape of `DecideScope.decideSim`) -/
 
@@ -249,6 +252,7 @@ macro "keep_ih" : tactic => `(tactic| repeat (any_goals first
   | with_reducible exact keep_ctorIsProof _
   | with_reducible exact keep_preFlags _ _ | with_reducible exact keep_refineDecl _
   | with_reducible exact keep_sealedSort _
+  | with_reducible exact keep_codomainWritten _ _ _ _
   | assumption
   | with_reducible apply ihTF
   | keep_step))

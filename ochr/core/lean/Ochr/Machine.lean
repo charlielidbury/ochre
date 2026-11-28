@@ -564,8 +564,8 @@ first), the mark of the binding it captures: whether it is some function's bindi
 capture of one. Read from the bindings themselves, never from their values: capturing a function
 value that is not a copy moves it, leaving `⊥` behind, but the binding keeps its mark. Since D139
 a function under check is never kept as a capture, and the only bindings that carry a mark are
-functions' bindings of themselves (D136's amendment), which only a recursive function's body can
-name (D31), where it holds the function under check, and captures marked from them; so every mark
+recursive functions' bindings of themselves (D148; D136's amendment marked every function's), which
+only a recursive function's body can name (D31), where it holds the function under check, and captures marked from them; so every mark
 read here is `none` (measured at D139's landing), and the marks decide nothing a comparison of
 names would not. Kept, as D139 says. -/
 def capMarks (fvs : List Nat) : M (Array (Option Nat)) := do
@@ -584,13 +584,28 @@ def markCapRec (marks : Array (Option Nat)) : M Unit := do
     pure { fr with binds := bs }
 
 /-- D78: mark the top frame's last binding as the binding of itself of the function whose
-mark is `uid` (every function's check takes a fresh one; it is its [Rec] frame's when it declares
-`by`, D136's amendment). -/
+mark is `uid`: its [Rec] frame's. Only a function that declares `by` is marked: any other
+function's slot holds `()` and no mark (D148, reverting D136's amendment, which marked every
+function's). -/
 def markLastRec (uid : Nat) : M Unit := do
   let f ← topIdx
   modifyFrame f fun fr =>
     if fr.binds.size == 0 then fr
     else { fr with binds := fr.binds.modify (fr.binds.size - 1) ({ · with recUid := some uid }) }
+
+/-- D148: push a function's own-name slot, the first binding of its body's frame after the
+captures. It holds the function `fv` itself at its Π-type `T` (read as `.pi cd`) only for a
+function that declares `by` (`rec? = some (fv, T, cd)`): its body calls it, and [Rec] recognises
+those calls by the slot's mark. For every other function (a top-level definition without `by`, a
+λ, a stuck block's function) the slot is `()` at `Unit`, unnamed (`_`) and unmarked: its name is
+not in scope in its body (D31), so nothing reads the slot, and the consistency proof's model has no
+counterpart there for the function itself. The binder stays in the code, so no index changes. The
+one place both frames that run a body take the slot from: the check of the body (`checkFix`) and
+every call (`runBodyCore`). -/
+def pushSelf (self : Hint) (rec? : Option (Value × Value × DeclInfo)) : M Unit :=
+  match rec? with
+  | some (fv, T, cd) => pushBind self (some T) fv false (.pi cd)
+  | none => pushBind ⟨"_"⟩ (some .tUnit) .unit false .unit
 
 /-- D78 [Rec]: the frame mark of a call's head, when the head is a variable: the
 `Binding.recUid` of the binding it names (a function's binding of itself; a closure's capture of
@@ -1471,6 +1486,27 @@ def popFrame (fuel : Nat) : M Unit := do
   discard popFrameRaw
 termination_by structural fuel
 
+/-- [Return], the pop: a body's frame is popped with its result `v` held, at `T`, as a temporary of
+the frame below, and `v` comes back. D142: the body of a function whose calls are erased (its class
+is "proof" or "erased", `start` given) leaves no effect behind, as an erased term does on its
+private copy: the pop sees Ω as it was when the body started, `start`. So its tests (each borrow
+parameter ends whole and repacked, [End] and D53 (h); a local dies while no value in flight
+borrows it, [Drop]) are made on a frame nothing has run in, and the caller's places are as the call
+found them. Nothing else of the body's state is put back here: the refinements, the types of the
+unknowns, the goal as its splits refined it, the records of generalisation and the fresh names stay
+for the comparison of the result's type with the goal, which the caller makes next and which is the
+whole of what a caller relies on (an erased function's calls never run: a proof's return `⋆`
+without running, `callFn`; a type function's run inside a statement's private copy). Every
+rejection inside the body was made where it happened. Used by both places a body's frame is popped:
+the generic check (`checkFix`) and a call (`runBodyCore`), so the two paths pop alike. -/
+def popBody (fuel : Nat) (start : Option Env) (v : Value) (T : Option Value) (site : String) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if let some env := start then modify fun s => { s with env }
+  pushTempAt ((← topIdx) - 1) v T site
+  popFrame fuel'
+  popTemp
+termination_by structural fuel
+
 -- ### Types
 
 /-- The type of a place, read off the stored types (RULES §5; e1 F9), never off a value: every
@@ -1554,8 +1590,8 @@ pattern variable `yᵢ` of `match q { C(y₀, …, yₙ) => … }`. A term `k(q.
 one arm `k(q.g)` with `g` the constructor's field `i`: what the destructuring `let C(y₀, …, yₙ) = q`
 does, a match by type on a proof (D45), [Split] on an unknown, the constructor of a value. `q.i`
 has `q`'s class, a field of a proof being a proof and a field of data data, as the erasure pre-pass
-reads it (`placeDecl`). -/
-def projMatch (fuel : Nat) (q : Place) (i : Nat) (k : Place → Term) : M (Place × String × List (Hint × Term)) := do
+reads it (`placeDecl`). This gives the match's inductive, its one arm's hint and the place `q.g`. -/
+def projMatch (fuel : Nat) (q : Place) (i : Nat) : M (String × Hint × Place) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let pq ← ppPlace q
   -- the inductive: the head of `q`'s type (D82: every binding has its declared type)
@@ -1575,7 +1611,24 @@ def projMatch (fuel : Nat) (q : Place) (i : Nat) (k : Place → Term) : M (Place
   if d.sort != 0 && fieldProof then
     err s!"[D81] {pq}.{i}: field {fname} of {n} is a proof and {pq} is data, and `.{i}` takes a field of its parent's class: name it with a match, `let {cn}(…) = {pq}`"
   fire .Proj fun _ => s!"{pq}.{i} is the field {fname} of {cn}"
-  pure (q, n, [(⟨cn⟩, k (.field ⟨n, 0, i, fname⟩ q))])
+  pure (n, ⟨cn⟩, .field ⟨n, 0, i, fname⟩ q)
+termination_by structural fuel
+
+/-- D81 [Proj], D145: a term `k(p)` reading the place `p` through a field step `q.i` runs as the
+match on `q` that names the field: `match q { C(…) => k(p') }`, with `p'` the place `p` with that
+step named through the constructor (`projMatch`). Given the step `projIn` found in `p`, this gives
+`q`, the match's inductive, its arm's hint and `p'`. The one step every reader of such a place
+takes before it reads, `if let some s ← projIn fuel p then … ← projStep fuel s`: a run's place
+operand (`evalCore`), a run's match (`evalMatch`, `evalMatchInd`), and, since D145, the end of a
+body's match (`checkTailAt`), which read the scrutinee as it stood, so that `match b.0 { … }` at
+the end of a body was "no such place b.0" while `let r = match b.0 { … }; r` ran. (`projIn` is
+tested at the caller, and the arm `k(p')` built there: wrapping the test, or taking `k`, cost 0.2%
+of the checking time, since every place a run reads passes it.) -/
+def projStep (fuel : Nat) (s : Place × Nat × (Place → Place)) : M (Place × String × Hint × Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let (q, i, rebuild) := s
+  let (n, h, f) ← projMatch fuel' q i
+  pure (q, n, h, rebuild f)
 termination_by structural fuel
 
 /-- D64, rule 2 and [Open]: the type of field `g` of the value at `q`, of the dependent
@@ -2271,14 +2324,18 @@ def mkEqM (fuel : Nat) (A a b : Value) : M Value := do
   if ← conv fuel' a b then return vTrue
   match a, b with
   | .succ a', .succ b' => return ← mkEqM fuel' .tNat a' b'
-  | .ind t c _ ps fs, .ind u d _ qs gs =>
+  | .ind t c _ _ fs, .ind u d _ _ gs =>
     if t == u && c == d && fs.length == gs.length then
-      -- the field types at the parameters: the equation's type `D(ā)`, else the values' own
+      -- D144: the field types at the parameters of the equation's type `D(ā)`, read from the type
+      -- only (the paper's [Eq-inj]: `eq(D(ā), C(ā; v̄), C(ā; w̄))`). At any other type (an unknown,
+      -- a sealed type) the equation stays, `Eq(A, a, b)`, as it does at a dependent constructor whose
+      -- index fields differ: fail-safe, it only computes less. Before D144 the values' own recorded
+      -- parameters were read when `A` was not `D(…)`: no run of the suite, the case studies or the
+      -- probes reached that case (measured with it made an error), and it was the one place
+      -- [Eq-inj]'s soundness needed the values typed at their own declaration
       let args? := match A with
         | .tInd n as => if n == t then some as else none
         | _ => none
-      let args? := args?.orElse fun _ =>
-        if !ps.isEmpty then some ps else if !qs.isEmpty then some qs else none
       if let some args := args? then
         let dd ← lookupInd t
         -- D64 (D52 restricted): a dependent constructor is taken apart only while its index
@@ -2467,9 +2524,9 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   let ty (T : Value) : Option Value := some T
   -- D81 [Proj]: a place operand with a field step `q.i` runs as the match on `q` that names it
   if let some (p, k) := t.placeOperand? then
-    if let some (q, i, rebuild) ← projIn fuel' p then
-      let (q, n, arms) ← projMatch fuel' q i (fun f => k (rebuild f))
-      return ← evalMatchInd fuel' typed q n arms (tail := tail)
+    if let some st ← projIn fuel' p then
+      let (q, n, h, p') ← projStep fuel' st
+      return ← evalMatchInd fuel' typed q n [(h, k p')] (tail := tail)
   match t with
   | .place p =>
     let T ← if typed then some <$> placeType fuel' p else if want then placeType? fuel' p else pure none
@@ -3277,20 +3334,21 @@ them, moved out of the temporaries (`takeCallTemps`) with nothing run in between
 def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value)
     (B : Option Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let .fix self hs ds c _ body := t | err "internal: not a fix"
+  let .fix self hs ds c dec body := t | err "internal: not a fix"
   -- K2/K3: a model function's body never runs at runtime
   let model ← match fv with
     | .gfn n => do pure (← lookupGlobal n).model
     | _ => pure false
   if model then modify fun s => { s with modelDepth := s.modelDepth + 1 }
-  let r ← onFail (runBodyCore fuel' fv cs t rd ws B self hs ds c body)
+  let r ← onFail (runBodyCore fuel' fv cs t rd ws B self hs ds c dec body)
     (if model then modify fun s => { s with modelDepth := s.modelDepth - 1 } else pure ())
   if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
   pure r
 termination_by structural fuel
 
 def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value)
-    (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term) : M Value := do
+    (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
+    (body : Term) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let d := (← get).depth
   if d ≥ 2000 then exhausted "call depth exceeded (a non-terminating recursion)"
@@ -3305,15 +3363,16 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   -- which is evaluated now
   let piTy := Value.tPi cs (.pi hs ds c) rd
   let tys ← paramTypes fuel' piTy ws.toList ((pds.zipIdx.filter (·.1 matches .ref _)).map (·.2))
-  let selfTy ← funType fuel' fv none
+  -- D148: the own-name slot holds the function only when it declares `by`
+  let selfTy? ← if dec.isSome then some <$> funType fuel' fv none else pure none
   let pds' ← pds.mapM refineDecl
   let f0 ← topIdx
   pushFrame
   pushCaps fuel' cs rd
   -- D115: the head and the arguments leave the caller's temporaries as the frame binds them
   let (fv, ws) ← takeCallTemps f0 ws.size
-  -- `self` has its Π-type
-  pushBind self (some selfTy) fv false (.pi cd)
+  -- `self` has its Π-type, for a function with `by`; any other function's slot is `()` (D148)
+  pushSelf self (selfTy?.map (fv, ·, cd))
   -- D80 (R2): a parameter whose declared type reads as `Unit` is `()`, at every call as at the
   -- generic one (`checkFix`)
   for ((((((h, w), p), pd), A), i), pd') in (((((hs.zip ws.toList).zip pf).zip pds).zip tys.toList).zipIdx).zip pds' do
@@ -3334,14 +3393,15 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
     else pure none
   -- static ends: the body is in tail position, as `checkTail` checks it at the generic call
   modify fun s => { s with tailNext := true }
+  -- D142: an erased function's body leaves no effect behind its pop (`popBody`)
+  let start ← if erasedFn then pure (some (← get).env) else pure none
   let (v, _) ← withErasedIf erasedFn (eval fuel' false body hint)
   wholeReturned v
   -- D104: the result is held across the pop at the call's type, the declared type of the position
   -- it is headed for (the body's run is untyped and has none of its own)
-  pushTempAt ((← topIdx) - 1) v B "runBodyCore"
-  popFrame fuel'
+  let r ← popBody fuel' start v B "runBodyCore"
   modify fun s => { s with depth := d }
-  popTemp
+  pure r
 termination_by structural fuel
 
 /-- [Call] of the head and the `n` arguments held as the last temporaries of the top frame
@@ -3552,9 +3612,9 @@ def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : O
     (tail : Bool := false) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D81 [Proj]: a scrutinee with a field step `q.i` is named by a match on `q` first
-  if let some (q, i, rebuild) ← projIn fuel' p then
-    let (q, n, arms) ← projMatch fuel' q i (fun f => .matchNat (rebuild f) z s)
-    return ← evalMatchInd fuel' typed q n arms expected tail
+  if let some st ← projIn fuel' p then
+    let (q, n, h, p') ← projStep fuel' st
+    return ← evalMatchInd fuel' typed q n [(h, .matchNat p' z s)] expected tail
   if typed then natScrutinee fuel' p
   accessPath fuel' p
   accessNeutralHead fuel' p
@@ -3748,6 +3808,24 @@ def ctorRefinement (fuel : Nat) (d : IndDecl) (ps : List Value) (c : Nat) : M Va
   pure (.ind d.name c ⟨cn⟩ ps fs)
 termination_by structural fuel
 
+/-- D146: the arms of a match on the declaration `d`, to be paired with its constructors: arm `i`
+is constructor `i`'s, by position. The position is the core's only link between an arm and its
+constructor (an arm's hint is a name for printing, which equality ignores). The surface resolver
+orders the arms by the declaration and rejects a missing or an extra one; the core holds every match
+to it itself: unless there is exactly one arm per constructor, the match is rejected where its arms
+are paired, whichever pairing the scrutinee's content selects: a known constructor's arm, the worlds
+of a split (with one constructor, before the unknown is refined in place), a match on a proof
+(`evalMatchByType`, `evalMatchInd`, `checkTailAt`, each taking the arms from here). A stuck
+untyped match pairs nothing, and its sealed program pairs them when it is re-run; nor does an
+erased match on a proof in an untyped run, which is not run. A declaration being
+checked has no constructors yet: D107's rejection, as at `scrutType`. -/
+def ctorArms (d : IndDecl) (p : Place) (arms : List (Hint × Term)) : M (List (Hint × Term)) := do
+  -- D107: a declaration being checked has no constructors yet, so it has nothing to pair with
+  if d.declaring then err (d.declaringMsg s!"a match on {← ppPlace p}")
+  unless arms.length == d.ctors.length do
+    err s!"[D146] the match on {← ppPlace p} has {arms.length} arm{if arms.length == 1 then "" else "s"}, and {d.name} has {d.ctors.length} constructor{if d.ctors.length == 1 then "" else "s"}: a match has exactly one arm per constructor, in the declaration's order"
+  pure arms
+
 /-- The inductive type of a matched place and its parameters, from the place's type (the
 arms' constructors name `ty`; `""` for a match with no arms). The type is read, not
 assumed from the arms (finding: v1.9's checker split a `T(n)`-typed place with `L`'s
@@ -3780,6 +3858,9 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
   let v ← matchContent p
   if v == .bot then err s!"[Match] on {← ppPlace p}, which was moved out"
   if arms.isEmpty then
+    -- D146: a match with no arms that names a declaration (only a hand-built one does: the
+    -- resolver names none) has one arm per constructor too
+    if ty != "" then discard (ctorArms (← lookupInd ty) p arms)
     if typed then
       let (d, _) ← scrutType fuel' p ty
       unless d.ctors.isEmpty do err s!"a match with no arms on {← ppPlace p} : {d.name}, which has constructors"
@@ -3799,15 +3880,17 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
   let subErr : M Unit := err (subsingletonMsg d)
   -- a constructor value (not reached: a Prop inductive's constructor values are `⋆`, D42)
   if let .ind _ c _ _ _ := v then
-    match arms[c]? with
+    match (← ctorArms d p arms)[c]? with     -- D146
     | some (_, a) => do demand (← wanted); return ← eval fuel' typed a
     | none => err s!"[Match] no arm for constructor {c}"
   -- D49 (2): a match on a proof of a non-subsingleton is erased (its checked arms are all
-  -- proofs), so a run does not run it: its value is ⋆ (read from the declaration)
+  -- proofs), so a run does not run it: its value is ⋆ (read from the declaration), and it pairs
+  -- no arm with a constructor
   if !typed && !large then
     setFlags (true, true)
     return (.proof, none)
-  if let [(_, a)] := arms then
+  let carms ← ctorArms d p arms     -- D146
+  if let [(_, a)] := carms then
     let a ← if typed then bindDataFields fuel' p d ps 0 a else pure a
     demand (← wanted)
     -- static ends: its one arm is in tail position where the match is (`checkTail` checks it so)
@@ -3820,14 +3903,14 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
     -- not reached by checked programs (a subsingleton has at most one constructor): an
     -- erased match is ⋆, otherwise no arm can be chosen and the match is stuck
     let pf ← inWorld (← enterWorld) do
-      discard (eval fuel' false arms[0]!.2)
+      discard (eval fuel' false carms[0]!.2)
       pure (← getFlags).2
     if pf then setFlags (true, true); return (.proof, none)
     stuckNow
   let w ← enterWorld
   let mut tys := #[]
   let mut allProof := true
-  for ((_, a0), c) in arms.zipIdx do
+  for ((_, a0), c) in carms.zipIdx do
     let (T, pf) ← inWorld w do
       let a ← bindDataFields fuel' p d ps c a0
       let (_, T) ← eval fuel' true a
@@ -3855,9 +3938,9 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
     (expected : Option Value := none) (tail : Bool := false) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D81 [Proj]: a scrutinee with a field step `q.i` is named by a match on `q` first
-  if let some (q, i, rebuild) ← projIn fuel' p then
-    let (q, n, arms') ← projMatch fuel' q i (fun f => .matchInd (rebuild f) ty arms)
-    return ← evalMatchInd fuel' typed q n arms' expected tail
+  if let some st ← projIn fuel' p then
+    let (q, n, h, p') ← projStep fuel' st
+    return ← evalMatchInd fuel' typed q n [(h, .matchInd p' ty arms)] expected tail
   abstractMatchCheck p ty
   if ← byTypeMatch ty arms then return ← evalMatchByType fuel' typed p ty arms expected tail
   accessPath fuel' p
@@ -3867,14 +3950,15 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
   | .ind t c _ _ _ =>
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
     if typed then discard (scrutType fuel' p ty)
-    match arms[c]? with
+    let d ← lookupInd ty
+    match (← ctorArms d p arms)[c]? with     -- D146
     | some (_, a) => do
       let w ← wanted
       let run := do demand w; modify fun s => { s with tailNext := tail }; eval fuel' typed a (if typed then none else expected)
       -- D93: a match on a type with one constructor has one arm and no other path to agree
       -- with: it never closes off in a typed run (an unknown is refined in place, below), so it
       -- has no entry (rule 2) and no join (D84), on every path
-      if (← lookupInd ty).ctors.length == 1 then run
+      if d.ctors.length == 1 then run
       else joinEnds fuel' (.matchInd p ty arms) tail run
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
@@ -3882,6 +3966,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
     if !typed then stuckOn v
     else
       let (d, ps) ← scrutType fuel' p ty
+      let carms ← ctorArms d p arms     -- D146
       -- D93: an unknown of a type with one constructor is that constructor, so the match
       -- refines it in place and runs its one arm, as an instance does (above)
       if d.ctors.length == 1 then
@@ -3890,7 +3975,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
         let expected ← expected.mapM (substV fuel' (.abs σ) r)
         return ← evalMatchInd fuel' typed p ty arms expected tail
       splitArmsThenClose fuel' (.matchInd p ty arms) σ
-        ((List.range d.ctors.length).zip (arms.map (·.2)) |>.map fun (c, a) => (ctorRefinement fuel' d ps c, a)) expected
+        (carms.zipIdx.map fun ((_, a), c) => (ctorRefinement fuel' d ps c, a)) expected
   | .sealed _ | .loan _ =>
     if !typed then stuckOn v
     else
@@ -3900,12 +3985,13 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
         let expected ← expected.mapM (substV fuel' v r)
         return ← evalMatchInd fuel' typed p ty arms expected tail
       let (d, ps) ← scrutType fuel' p ty
+      let carms ← ctorArms d p arms     -- D146
       let σ ← generalizeNeutral fuel' p v
       let expected ← expected.mapM (substV fuel' v (.abs σ))
       -- D93: generalised, it is refined in place (above)
       if d.ctors.length == 1 then return ← evalMatchInd fuel' typed p ty arms expected tail
       splitArmsThenClose fuel' (.matchInd p ty arms) σ
-        ((List.range d.ctors.length).zip (arms.map (·.2)) |>.map fun (c, a) => (ctorRefinement fuel' d ps c, a)) expected
+        (carms.zipIdx.map fun ((_, a), c) => (ctorRefinement fuel' d ps c, a)) expected
   | _ => err s!"[Match] on {v}, which is not a value of {ty}"
 termination_by structural fuel
 
@@ -4751,6 +4837,10 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
     dropValue fuel' v Tv
     checkTail fuel' w k
   | .matchNat p z s =>
+    -- D145: a scrutinee with a field step `q.i` is named by a match on `q` first, the run's step
+    if let some st ← projIn fuel' p then
+      let (q, n, h, p') ← projStep fuel' st
+      return ← checkTail fuel' (.matchInd q n [(h, .matchNat p' z s)]) k
     natScrutinee fuel' p
     accessPath fuel' p
     accessNeutralHead fuel' p
@@ -4778,6 +4868,10 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
       let (v, T) ← eval fuel' true t
       k v T.get!
   | .matchInd p ty arms =>
+    -- D145: a scrutinee with a field step `q.i` is named by a match on `q` first, the run's step
+    if let some st ← projIn fuel' p then
+      let (q, n, h, p') ← projStep fuel' st
+      return ← checkTail fuel' (.matchInd q n [(h, .matchInd p' ty arms)]) k
     abstractMatchCheck p ty
     if ← byTypeMatch ty arms then
       -- D45 (v2.0): [Split] on a proof is by its type: each arm is checked, with the fields
@@ -4788,15 +4882,19 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
       let (d, ps) ← scrutType fuel' p ty
       if arms.isEmpty && !d.ctors.isEmpty then
         err s!"a match with no arms on {← ppPlace p} : {d.name}, which has constructors"
+      let carms ← ctorArms d p arms     -- D146
       let needProof := !(← largeElim d)
       let k' : Value → Value → M Unit := fun r R => do
         if needProof && !(← getFlags).2 then err (subsingletonMsg d)
         k r R
       match v with
-      | .ind _ c _ _ _ => checkTail fuel' (arms[c]!).2 k'     -- not reached: a Prop inductive's values are `⋆` (D42)
+      | .ind _ c _ _ _ =>     -- not reached: a Prop inductive's values are `⋆` (D42)
+        match carms[c]? with
+        | some (_, a) => checkTail fuel' a k'
+        | none => err s!"[Match] no arm for constructor {c}"
       | _ =>
         let w ← enterWorld
-        for ((_, a), c) in arms.zipIdx do
+        for ((_, a), c) in carms.zipIdx do
           inWorld w do
             checkTail fuel' (← bindDataFields fuel' p d ps c a) k'     -- D49 (3)
       return
@@ -4806,14 +4904,16 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
     | .ind t c _ _ _ =>
       if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
       discard (scrutType fuel' p ty)
-      match arms[c]? with
+      let d ← lookupInd ty
+      match (← ctorArms d p arms)[c]? with     -- D146
       | some (_, a) =>
         -- D93: one constructor, one arm: no join
-        if (← lookupInd ty).ctors.length == 1 then checkTail fuel' a k
+        if d.ctors.length == 1 then checkTail fuel' a k
         else checkTail fuel' a (← joinCont fuel' (.matchInd p ty arms) k)
       | none => err s!"[Match] no arm for constructor {c}"
     | .abs σ =>
       let (d, ps) ← scrutType fuel' p ty
+      let carms ← ctorArms d p arms     -- D146
       -- D93: an unknown of a type with one constructor is refined in place, as `evalMatchInd` does
       if d.ctors.length == 1 then
         let r ← etaInPlace fuel' σ d ps
@@ -4821,7 +4921,7 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
         return ← checkTail fuel' t k
       -- D119: each world's arm ends with the join, as a known constructor's does (above)
       let w ← enterWorld
-      for (c, (_, a)) in (List.range d.ctors.length).zip arms do
+      for ((_, a), c) in carms.zipIdx do
         inWorld w do
           let r ← ctorRefinement fuel' d ps c
           refine fuel' σ r
@@ -4902,10 +5002,11 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
   let F1 ← popFrameRaw
   let piTy := Value.tPi cs (.pi hs ds c) rd
-  -- D78, D136's amendment: every function's binding of itself carries a fresh mark, whether or not
-  -- it recurses. The mark states a fact about the state (this binding is this function's own), which
-  -- the consistency proof's relation reads to find the function in its body's frame; the checker
-  -- reads it only through an entry of the [Rec] stack, which only a function with `by` has (below)
+  -- D78, D148: a function that declares `by` holds itself in its binding of itself (`pushSelf`),
+  -- which carries a fresh mark, its [Rec] entry's (below): the checker reads it through the entry,
+  -- and the consistency proof's relation reads it to find the function in its body's frame. Any
+  -- other function's slot is `()`, unmarked (D148 reverts D136's amendment there). The mark is
+  -- drawn for every function, so the numbering is as before
   let uid := (← get).nextRecUid
   modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
   pushFrame
@@ -4914,8 +5015,8 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   -- recursive call of that function from this closure's body is still recognised by name (since
   -- D139 no closure captures a function under check, so no capture carries a mark: `capMarks`)
   markCapRec capRec
-  pushBind self (some piTy) fv false (.pi cd)
-  markLastRec uid
+  pushSelf self (if dec.isSome then some (fv, piTy, cd) else none)
+  if dec.isSome then markLastRec uid
   for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof b.decl
   -- [Rec]: the stack holds the functions being checked that declare `by xⱼ` (v1.2, D23), which
   -- since D136 is the top-level definition being checked. A local function has no entry: it cannot
@@ -4928,12 +5029,13 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   -- D53 (b): the body of a function whose calls are erased is an erased term
   -- (tracked with or without D53: K2/K3 read it too)
   let bodyCopies ← pure ((← fnClass fuel' piTy) != 0)
+  -- D142: and its effects do not outlive the check of the body: the frame's pop sees Ω as it was
+  -- here (`popBody`)
+  let start ← if bodyCopies then pure (some (← get).env) else pure none
   withErasedIf bodyCopies <| checkTail fuel' body fun v T => do
     wholeReturned v
     bodyReturns fuel' s!"{self.name} returns it" v T [] ""
-    pushTempAt ((← topIdx) - 1) v (some T) "checkFix"
-    popFrame fuel'
-    discard popTemp
+    discard (popBody fuel' start v (some T) "checkFix")
     let g := (← get).goal.getD .bot
     trace fun _ => s!"[Def] {self.name}: path ends with type {T} against goal {g}"
     unless ← conv fuel' T g do

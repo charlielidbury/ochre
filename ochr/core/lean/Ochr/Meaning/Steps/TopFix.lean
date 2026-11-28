@@ -31,14 +31,14 @@ open Ochr.Meaning.Steps.Form.FixEqDesc
 open Ochr.Meaning.Assembly
 
 /-- **`checkFix`'s continuation**, copied from `Machine.checkFix` (the function `name`, at fuel `fuel'`): [Return] of the
-leaf's value, the value held as a temporary of the cells' frame while the body's frame pops, then the conversion of the
-leaf's type to the goal as the path refined it. -/
-def fixCont (fuel' : Nat) (name : String) : Value → Value → M Unit := fun v T => do
+leaf's value, the body's frame popped with the value held as a temporary of the cells' frame (`popBody`), then the
+conversion of the leaf's type to the goal as the path refined it. `start` is the environment at the body's start for a
+function whose calls are erased, `none` otherwise (main's D142: an erased body's frame is popped from the environment
+as the body found it, the refinements, the goal and the rest kept as the path left them). -/
+def fixCont (fuel' : Nat) (name : String) (start : Option Env) : Value → Value → M Unit := fun v T => do
   wholeReturned v
   bodyReturns fuel' s!"{name} returns it" v T [] ""
-  pushTempAt ((← topIdx) - 1) v (some T) "checkFix"
-  popFrame fuel'
-  discard popTemp
+  discard (popBody fuel' start v (some T) "checkFix")
   let g := (← get).goal.getD .bot
   trace fun _ => s!"[Def] {name}: path ends with type {T} against goal {g}"
   unless ← conv fuel' T g do
@@ -77,6 +77,9 @@ structure FixWit where
   st₁ : MState
   bh : Nat
   model : Bool
+  /-- the environment `checkFix` keeps for the pop (main's D142): the body's start's for a function whose calls are
+  erased, `none` otherwise -/
+  start : Option Env
 
 /-- **The function branch of `checkDef`, inverted to the body's tail check** (CHECKER; read true against `checkDef`,
 `checkFix`; PROVED at `R` but for its `KeepsTab` clause, `Top.RT.R_check_inv`, `fixG_R`, docs/31 D259). The generic state the body is checked from (the plain mode, no reading handed
@@ -86,8 +89,8 @@ throughout), and the entry stored. -/
 def FixCheckAt (P : ProgState) (d : Def) (st' : MState) (w : FixWit) : Prop :=
   ModeR w.st₀ ∧ w.st₀.tailNext = false ∧ 0 < w.st₀.env.size ∧ w.st₀.tailDecl = none ∧
   w.st₀.globals = P.globals ++ [fnEntry d w.model] ∧
-  Runs (Ochr.checkTail w.n d.body (fixCont w.n d.name)) w.st₀ w.bh () w.st₁ ∧
-  (∀ v T, GrowsM (fixCont w.n d.name v T)) ∧ (∀ v T, KeepsTab (fixCont w.n d.name v T)) ∧
+  Runs (Ochr.checkTail w.n d.body (fixCont w.n d.name w.start)) w.st₀ w.bh () w.st₁ ∧
+  (∀ v T, GrowsM (fixCont w.n d.name w.start v T)) ∧ (∀ v T, KeepsTab (fixCont w.n d.name w.start v T)) ∧
   st'.globals = P.globals ++ [fnEntry d w.model] ∧
   ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot = .tPi [] (.pi d.hs d.doms d.cod) []
 
@@ -182,7 +185,7 @@ def FixLeafAt (P : ProgState) (d : Def) (st' : MState) (w : FixWit) : Prop :=
     hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal = (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.1 a →
     TailConcl (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ π w.st₀ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)
       d.body (runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal) d.body)
-      (fixCont w.n d.name) →
+      (fixCont w.n d.name w.start) →
     runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal) d.body
         (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) =
       runT (P.ctx dm D Γ st') ρ φ true ((fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.1 a) d.body
@@ -367,7 +370,7 @@ theorem knot_step
     fundCtx_ctxAt dm Γ P (D st') d.name b _ hP.mem hP.lab (.inl hGmem) rfl hsorts
   have hfc : Strict.FundCtx (ctxBΔ dm D Γ P d st' ρ φ b Δa) := ⟨hfc0.globals, hfc0.sorts⟩
   have hall := hsteps (ctxBΔ dm D Γ P d st' ρ φ b Δa) φ (fun _ => ⟨hfc.globals, hfc.sorts⟩)
-  have hT := tail_all hall ρa w.n d.body w.st₀ (fixCont w.n d.name) _ π w.bh w.st₁ hm htn hsz htd hgr hkt hpre htie hrel hsg
+  have hT := tail_all hall ρa w.n d.body w.st₀ (fixCont w.n d.name w.start) _ π w.bh w.st₁ hm htn hsz htd hgr hkt hpre htie hrel hsg
     hvals hab hhole hdt hrt
   have heq := (congrArg (fun h => runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true h d.body
       (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)) hhint).trans
