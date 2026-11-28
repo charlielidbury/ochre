@@ -1,5 +1,44 @@
-# Lead handoff (forty-third lead, lead43, 2026-11-28; forty-second lead, lead42, 2026-11-28; forty-first lead, lead41, 2026-11-28; fortieth lead, lead40, 2026-11-28; thirty-ninth lead, lead39, 2026-11-28; thirty-seventh lead, lead37, 2026-11-27; thirty-sixth lead, lead36, 2026-11-27; thirty-fifth lead, lead35, 2026-11-27; thirty-fourth lead, lead34, 2026-11-27; thirty-third lead, lead33, 2026-11-27; thirty-second lead, lead32, 2026-11-27; thirty-first lead, lead31, 2026-11-27; thirtieth lead, lead30, 2026-11-22; twenty-ninth lead, lead29, 2026-11-22; twenty-eighth lead, lead28, 2026-11-22; twenty-seventh lead, lead27, 2026-11-22; twenty-sixth lead, lead26, 2026-11-22; twenty-fifth lead, lead25, 2026-11-22; twenty-fourth lead, lead24, 2026-11-22; twenty-third lead, lead23, 2026-11-22; twenty-second lead, lead22, 2026-11-22; twenty-first lead, lead21, 2026-11-22; twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
+# Lead handoff (forty-fourth lead, lead44, 2026-11-28; forty-third lead, lead43, 2026-11-28; forty-second lead, lead42, 2026-11-28; forty-first lead, lead41, 2026-11-28; fortieth lead, lead40, 2026-11-28; thirty-ninth lead, lead39, 2026-11-28; thirty-seventh lead, lead37, 2026-11-27; thirty-sixth lead, lead36, 2026-11-27; thirty-fifth lead, lead35, 2026-11-27; thirty-fourth lead, lead34, 2026-11-27; thirty-third lead, lead33, 2026-11-27; thirty-second lead, lead32, 2026-11-27; thirty-first lead, lead31, 2026-11-27; thirtieth lead, lead30, 2026-11-22; twenty-ninth lead, lead29, 2026-11-22; twenty-eighth lead, lead28, 2026-11-22; twenty-seventh lead, lead27, 2026-11-22; twenty-sixth lead, lead26, 2026-11-22; twenty-fifth lead, lead25, 2026-11-22; twenty-fourth lead, lead24, 2026-11-22; twenty-third lead, lead23, 2026-11-22; twenty-second lead, lead22, 2026-11-22; twenty-first lead, lead21, 2026-11-22; twentieth lead, lead20, 2026-11-22; nineteenth lead, lead19, 2026-11-22; eighteenth lead, lead18, 2026-11-21; seventeenth lead, lead17, 2026-11-21; sixteenth lead, lead16, 2026-11-21; fifteenth lead, lead15, 2026-11-21; fourteenth lead, lead14, 2026-11-21; then the thirteenth's, twelfth's, eleventh's, tenth's, ninth's, sixth and seventh leads')
 
+
+## FORTY-FOURTH LEAD (lead44, 2026-11-28; `spine-lead44`, branched from `origin/spine` 8541ba61)
+
+**What changed in the top (c77ef053, 35529fa2, 7d2d96c3, a4ea46c0; docs/31 D256, D257).** `consistency_of_master` ASSUMES 5 facts:
+- `hsteps`: FALSE as quantified, at a junk `K.cur` naming an earlier global with any good closure (MemBelow at rank 0 admits it). Also false at the top's own contexts, through a state whose [Rec] stack lacks the entry. Only R1 repairs it; restricting `K` cannot.
+- `hdata`: the existence lane's.
+- `ResolveG`: checker, read true; both halves `sorry`.
+- `FalseConstG`: RESTATED to "the recorded type has no member"; read true.
+- `hlinks`: now at every model covering the list and faithful at every stage. At every model it was harmless by reading.
+
+`SortsG` is PROVED and dropped (`TopSorts.sortsG_indsOf`).
+
+The top was VACUOUS at every program holding an accepted constant, two ways:
+1. The body was simulated under the decisions of the state AFTER the constant's entry, so `DecTab (D st') w.st₂` failed at `declOf (.const c)`: `.any` before, `.other` after, guarded on `one` in `TopAttack`. Repaired: simulate at `P.ctx … w.st₂`.
+2. `ConstLeafAt` admitted `r.1 = ⊥`; kernel-checked `constLeafAt_old_forces_moved`. Repaired with the meaning link.
+
+Also: `FixLeafAt` weakened (rank, start `Pre`/`Rel`). `FixMeanAt` is NOT the model's alone: its type is the stored Π-type's meaning, which is `err` unless the parts run at every member tuple (`PiOk`). It is now derived (`TopFix.fixMeanAt_of`, `globalTyS_tPi`: the round trip of codes is definitional) from `FixPartsAt` (mixed: (II)+(I) at `checkFix`'s type evaluations), `FixClosedAt` (resolution) and `FixFlagAt` (decisions), which `FixG` now takes in its place.
+
+**The verdicts of every link** are in docs/31 D257, one line each.
+
+**Not done, in order (the next lead).**
+1. THE ORCHESTRATOR'S SETTLED FORM for a function without `by` (task 4 of my brief; it had not arrived when I stopped). Restate the route of a NON-recursive function through the top as "false until" the checker change is merged, and build the model's half.
+   - If the settled form is the probe's ("a definition without `by` enters Σ after its check, as a constant does"): the route is the constant's with `TailAt` in place of `EvalAt` and one stage in place of the knot.
+   - Take the constant's lesson (D256) with it: its body is simulated under the decisions of the state its run ENDS in (its own entry not yet in Σ), and the move to `defMeaning`'s decisions is a link like `ConstMeanAt`'s.
+   - `FixStartAt` loses `GoodBelowB`/`memBelow`; `FixLeafAt` concludes stage 1's output (= `GG` at `dec = none`); no knot.
+   - If the settled form is R-dec only (D255): lead43's item 1 (the inert slot in `fixStage`/`fixG`).
+2. `ResolveG` (checker alone; `resolves_of_accepted` and the per-item acceptance, both `sorry`). Its only subtle part is that resolution with `record = false` writes no location (by reading `RState.recordLoc`; the other `locs` writes at `Surface.lean` 523/617 to be read too).
+3. `FixFlagAt` (decisions) and `FixClosedAt` (resolution): small, each with no hypothesis; then `FixPartsAt` from (II) at `checkFix`'s evaluations of the parameter types and the codomain. `FixFitsAt`'s sort-0 clause is an instance of `FixPartsAt` plus the sort rule (`piFits_of_rules`); consider deriving `FixFitsAt` from it.
+4. `ConstMeanAt`: RL (`run_counter_indep`, as stated today; the no-caller-frame case of the frame property), plus decision stability `w.st₂` → `st'`. `ConstCheckAt` should pin `w.st₁.env = #[{}]` and `w.st₁.inds = P.inds`.
+5. `GlobGrowG`: by parts (D257). Its `fixEq` part needs `RecDescG` through a second simulation under `MemBelowW` (stated in D257), and that needs R1.
+6. R1 (lead43's item 3) is now the one repair `hsteps` waits on; nothing at the top can replace it.
+7. Out of scope, recorded: `R2` (a recursive function whose λ calls it by its global, accepted today) is the concrete instance where `BodyCongrAt` and `GlobGrowG`'s `fn`/`fixEq` fail until decision (b).
+
+**Traps.**
+- A constant's check appends its entry only after its body: any table "at the item's state" is not the run's.
+- A link quantified over a result (`∀ r`) must carry every clause the producing step concludes about `r` (`GoodRes` admits `⊥`).
+- Scratch `ochr` blocks need `(…)` around a `λ` in a `let` and around a Π codomain.
+- The worktree's lean-lsp server does not see this worktree: iterate with `lake env lean` and `done` for goals.
+- The paper's [T-Sort] types `Prop` at `Type₀`; the checker uses `Type₁` (`sortSucc 0 = 2`).
 
 ## FORTY-THIRD LEAD (lead43, 2026-11-28; `spine-lead43`, branched from `origin/spine` 50f69600)
 
