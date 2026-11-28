@@ -46,13 +46,57 @@ def underProof : Place → M Bool
   | .deref q | .proj _ q | .field _ q => do
     if (← content? q) == some .proof then pure true else underProof q
 
+/-- D81 [Proj], D153: a field read without a match naming its constructor (the positional `q.i`,
+`projMatch`; a named field place on a proof, `proofField`) exists only in a type with one
+constructor: field `i` of that constructor, and of a proof only a proof (D45: data out of a proof
+is a large elimination from a non-subsingleton). Gives the constructor's name, the field's name and
+whether the field is a proof. `shown` prints the place, `many` ends the message for a type with
+several constructors. The one test of both forms. -/
+def oneCtorField (d : IndDecl) (i : Nat) (shown many : String) : M (String × String × Bool) := do
+  let [(cn, fields)] := d.ctors
+    | err s!"{shown}: {d.name} has {d.ctors.length} constructors, and {many}"
+  let some (fname, FT) := fields[i]?
+    | err s!"{shown}: the constructor {cn} of {d.name} has {fields.length} fields"
+  let fieldProof ← fieldTermIsProp d FT
+  if d.sort == 0 && !fieldProof then err s!"{shown}: {subsingletonMsg d}"
+  pure (cn, fname, fieldProof)
+
+/-- D153: a named field place `q.g` on a proof (`q`'s type a proposition, or its value `⋆`) is read
+only where the positional `q.i` could be (`oneCtorField`): `g` names field `i` of the one
+constructor of a proposition, and that field is a proof. A proof is `⋆`, which says nothing about
+its constructor, so a field place naming another constructor, or a data field, has nothing to
+read: before D153 every field step of `⋆` was `⋆`, at the field's declared type, and the core term
+`def Bad : False := (let t = A; t.k)`, with `E : Prop := A | B(k : False)` and `t.k` naming `B`'s
+field, was accepted. The checker writes no such place: the arm of a match on a proof binds every
+field of its constructor as a local (`bindDataFields`), and `.i` is a match. Applied where a place's
+type is read (`placeType?`) and where its value is (`content`), so a typed and an untyped read
+meet it. -/
+def proofField (g : FieldRef) (shown : String) : M Unit := do
+  let d ← lookupInd g.ty
+  unless d.sort == 0 do err s!"[D153] {shown}: a field of {g.ty}, which is not a proposition, read from a proof"
+  discard (oneCtorField d g.idx shown
+    "a field of a proof is read outside a match naming its constructor only in a type with exactly one (D153)")
+  unless g.ctor == 0 do err s!"[D153] {shown}: {g.ty} has no constructor {g.ctor}"
+
+/-- D153: the named field steps of a path taken from a proof `⋆` (every step of `⋆` is `⋆`). -/
+def Value.proofFieldSteps : Value → List Step → List FieldRef
+  | _, [] => []
+  | .proof, .field g :: ss => g :: Value.proofFieldSteps .proof ss
+  | v, s :: ss => match stepV s v with
+    | some w => Value.proofFieldSteps w ss
+    | none => []
+
 /-- The content of a place (RULES §3: follow `x`, `*p` through `borrow_ℓ v` to `v`,
-`p.1` through `S v` to `v`), which must exist. -/
+`p.1` through `S v` to `v`), which must exist. D153: a field of a proof only where `.i` could
+read it (`proofField`). -/
 def content (p : Place) : M Value := do
   let (i, ss) := p.steps
   let v ← getAt (← varPos i)
   match v.follow ss with
-  | some w => pure w
+  | some w =>
+    if w == .proof then
+      for g in v.proofFieldSteps ss do proofField g s!"{← ppPlace p}"
+    pure w
   | none => err s!"no such place {← ppPlace p}: its path does not exist in {v}"
 
 def setPlace (p : Place) (new : Value) : M Unit := do
@@ -1573,6 +1617,8 @@ def placeType? (fuel : Nat) (p : Place) : M (Option Value) := do
       -- the place names its constructor (v2.0), so a proof's field has a type too
       if n != g.ty then err s!"{← ppPlace q}.{g.name}: a field of {g.ty}, at type {n}"
       let d ← lookupInd n
+      -- D153: a field of a proof only where `.i` could read it
+      if d.sort == 0 then proofField g s!"{← ppPlace q}.{g.name}"
       if d.dependent g.ctor then return some (← depFieldType fuel' d ps g q)
       match (← fieldTypes fuel' d ps g.ctor)[g.idx]? with
       | some (_, T) => pure (some T)
@@ -1626,12 +1672,8 @@ def projMatch (fuel : Nat) (q : Place) (i : Nat) : M (String × Hint × Place) :
     | err s!"{pq}.{i}: {pq} is not known to be of an inductive type (`.{i}` names a field of a type with one constructor)"
   let d ← lookupInd n
   if d.declaring then err (d.declaringMsg s!"{pq}.{i}")
-  let [(cn, fields)] := d.ctors
-    | err s!"{pq}.{i}: {n} has {d.ctors.length} constructors, and `.{i}` names a field of a type with exactly one (use match)"
-  let some (fname, FT) := fields[i]?
-    | err s!"{pq}.{i}: the constructor {cn} of {n} has {fields.length} fields"
-  let fieldProof ← fieldTermIsProp d FT
-  if d.sort == 0 && !fieldProof then err s!"{pq}.{i}: {subsingletonMsg d}"
+  let (cn, fname, fieldProof) ← oneCtorField d i s!"{pq}.{i}"
+    s!"`.{i}` names a field of a type with exactly one (use match)"
   if d.sort != 0 && fieldProof then
     err s!"[D81] {pq}.{i}: field {fname} of {n} is a proof and {pq} is data, and `.{i}` takes a field of its parent's class: name it with a match, `let {cn}(…) = {pq}`"
   fire .Proj fun _ => s!"{pq}.{i} is the field {fname} of {cn}"
@@ -1947,10 +1989,12 @@ def indValType? (fuel : Nat) (t : String) (c : Nat) (fs : List Value) : M (Optio
   pure ((sol.toList.mapM id).map fun ps => .tInd t ps)
 termination_by structural fuel
 
-/-- D49 (3): in an arm of a match on a proof, a data field is bound to a fresh abstract
-value (as [Def] binds a parameter) and a proof field stays a place holding `⋆`. The arm
-becomes `let g = σ; …; arm'`, with the field's place (and places under it) replaced by
-the local and every other free place shifted past the new bindings. -/
+/-- D49 (3), D138, D153: in an arm of a match on a proof, every field of the arm's constructor is a
+local of the arm: a data field bound to a fresh abstract value (as [Def] binds a parameter), a
+proof field to `⋆` at its type (D153: it stayed a place holding `⋆` before, so a field place on a
+proof was something the checker itself wrote; now it never is, and a read of one is checked,
+`proofField`). The arm becomes `let g = σ; …; arm'`, with the field's place (and places under it)
+replaced by the local and every other free place shifted past the new bindings. -/
 def bindDataFields (fuel : Nat) (p : Place) (d : IndDecl) (ps : List Value) (c : Nat) (arm : Term) : M Term := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let some (_, fields) := d.ctors[c]? | return arm
@@ -1963,7 +2007,8 @@ def bindDataFields (fuel : Nat) (p : Place) (d : IndDecl) (ps : List Value) (c :
   let mut datas : Array (Nat × String × Value × Term) := #[]
   for (((fname, FT), (_, T, v)), i) in (fields.zip fts).zipIdx do
     if ← fieldTermIsProp d FT then
-      if dep then datas := datas.push (i, fname, T, .ascribe (.val .proof) (.val T))
+      -- D153: a proof field too, `⋆` at its type, so no field place on the scrutinee is left
+      datas := datas.push (i, fname, T, .ascribe (.val .proof) (.val T))
     else
       let g ← if dep then pure v else genericValue fuel' T
       datas := datas.push (i, fname, T, .val g)
@@ -1979,6 +2024,7 @@ def bindDataFields (fuel : Nat) (p : Place) (d : IndDecl) (ps : List Value) (c :
         | .deref => .deref acc | .proj i => .proj i acc
         | .field g => .field g acc) (Place.var (dep + k - 1 - j))
     | none => q.mapRoot fun r => .var (r + dep + k)) 0
+  relocate arm body     -- the editor: the rebuilt arm keeps its source ranges
   let mut t := body
   for (_, fname, _, u) in datas.toList.reverse do
     t := .letIn ⟨fname⟩ u t

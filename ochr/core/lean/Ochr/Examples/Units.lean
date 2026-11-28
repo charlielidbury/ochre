@@ -625,3 +625,71 @@ def shPiNN : Term := .pi [⟨"y"⟩] [.nat, .nat] .nat
   "the body of X has type ⊤, but the goal is Eq(Type, Π(y : Nat) (z : Unit). Nat, Π(y : Nat) (z : Nat). Nat)"
 
 end Ochr.Units
+
+/-! ## A field of a proof is read only where `.i` could read it (D153)
+
+A proof is `⋆`, which says nothing about its constructor, and every field step of `⋆` was `⋆`, at
+the declared type of the field the place names: so a hand-built field place naming another
+constructor's field proved anything that field's type says. With `E : Prop := A | B(k : False)`,
+the core term `def Bad : False := (let t = A; t.k)`, `t.k` naming `B`'s field, was accepted: an
+accepted definition of `False` in the core, which the surface cannot write (a pattern variable
+stays in its arm, `.i` is a match), found by D146's hunt. Since D153 the arm of a match on a proof
+binds every field of its constructor as a local (`bindDataFields`, the proof fields too), so the
+checker writes no field place on a proof, and a field place on a proof is read only where the
+positional `.i` could be: a proposition with one constructor, and a proof field (`proofField`,
+sharing `projMatch`'s test `oneCtorField`), where its type is read (`placeType?`) and where its
+value is (`content`). Pinned through `checkDefs` after the library: the four forms of the fault
+are rejected (each was accepted before D153), and the reads the surface writes stay accepted. -/
+
+namespace Ochr.Units
+
+#guard_msgs (drop warning) in
+ochr ProofFields uses Nats {
+  inductive E : Prop := A | B(k : False)
+  inductive E2 : Prop := U1(h : True) | U2(k : False)
+  inductive Ex : Prop := W1(n : Nat) | W2(m : Nat)
+  inductive Or2 (P : Prop) (Q : Prop) : Prop := Inl(h : P) | Inr(k : Q)
+}
+
+/-- The library and `ProofFields`, as items (a function, as `stArm`). -/
+def pfLib (_ : Unit) : List Item :=
+  let p := Ochr.Test.libOf {} 2000000 ProofFields ++ ProofFields.decls
+  p.filterMap fun d => (resolveProgram p d).toOption
+
+/-- The verdicts of definitions made by hand, checked in order after the library (`checkDefs`). -/
+def pfVerdicts (ds : List Def) : List String :=
+  let lib := pfLib ()
+  ((checkDefs {} (lib ++ ds.map .defn)).drop lib.length).map fun (_, v, _) =>
+    match v with | .accepted => "accepted" | .rejected m _ => m | .undecided m => s!"undecided: {m}"
+
+def pfField (t : String) (c i : Nat) (n : String) (p : Place) : Term := .place (.field ⟨t, c, i, n⟩ p)
+def pfX (doms : List Term) (cod body : Term) : Def := { name := "X", hs := doms.map fun _ => ⟨"t"⟩, doms, cod, body }
+def pfConst (n : String) (cod body : Term) : Def := { name := n, hs := [], doms := [], cod, body }
+def pfFalse : Term := .tind "False" []
+def pfTrue : Term := .tind "True" []
+def pfU1 : Term := .ctor "E2" 0 ⟨"U1"⟩ [] [reflT]
+def pfMany (pq n : String) : String :=
+  s!"{pq}: {n} has 2 constructors, and a field of a proof is read outside a match naming its constructor only in a type with exactly one (D153)"
+
+-- the fault, rejected: no match; a function, then its call; another constructor's arm; data out of a proof
+#guard pfVerdicts [pfConst "Bad" pfFalse (.letIn ⟨"t"⟩ (.ctor "E" 0 ⟨"A"⟩ [] []) (pfField "E" 1 0 "k" (.var 0)))] ==
+  [pfMany "t.k" "E"]
+#guard pfVerdicts [pfX [.tind "E2" []] pfFalse (pfField "E2" 1 0 "k" (.var 0)),
+    pfConst "Bad" pfFalse (.call (.const "X") [pfU1] false)] == [pfMany "t.k" "E2", "unknown constant X"]
+#guard pfVerdicts [pfX [.tind "E2" []] pfFalse (.matchInd (.var 0) "E2"
+    [(⟨"U1"⟩, pfField "E2" 1 0 "k" (.var 0)), (⟨"U2"⟩, pfField "E2" 1 0 "k" (.var 0))]),
+    pfConst "Bad" pfFalse (.call (.const "X") [pfU1] false)] == [pfMany "t.k" "E2", "unknown constant X"]
+#guard pfVerdicts [pfX [.tind "Ex" []] .nat (pfField "Ex" 1 0 "m" (.var 0))] == [pfMany "t.m" "Ex"]
+-- what the surface writes stays accepted: each arm its own fields, a match on the same proof inside
+-- an arm, `Or`'s arms, `And`'s fields by name and by `.0`
+#guard pfVerdicts [pfX [.tind "E2" []] pfTrue (.matchInd (.var 0) "E2"
+    [(⟨"U1"⟩, pfField "E2" 0 0 "h" (.var 0)), (⟨"U2"⟩, .matchInd (.field ⟨"E2", 1, 0, "k"⟩ (.var 0)) "" [])])] == ["accepted"]
+#guard pfVerdicts [pfX [.tind "E2" []] pfTrue (.matchInd (.var 0) "E2"
+    [(⟨"U1"⟩, .matchInd (.var 0) "E2" [(⟨"U1"⟩, pfField "E2" 0 0 "h" (.var 0)),
+      (⟨"U2"⟩, .matchInd (.field ⟨"E2", 1, 0, "k"⟩ (.var 0)) "" [])]), (⟨"U2"⟩, reflT)])] == ["accepted"]
+#guard pfVerdicts [pfX [.tind "Or2" [pfTrue, pfTrue]] pfTrue (.matchInd (.var 0) "Or2"
+    [(⟨"Inl"⟩, pfField "Or2" 0 0 "h" (.var 0)), (⟨"Inr"⟩, pfField "Or2" 1 0 "k" (.var 0))])] == ["accepted"]
+#guard pfVerdicts [pfX [.tind "And" [pfTrue, pfTrue]] pfTrue (pfField "And" 0 0 "l" (.var 0))] == ["accepted"]
+#guard pfVerdicts [pfX [.tind "And" [pfTrue, pfTrue]] pfTrue (.place (.proj 1 (.var 0)))] == ["accepted"]
+
+end Ochr.Units
