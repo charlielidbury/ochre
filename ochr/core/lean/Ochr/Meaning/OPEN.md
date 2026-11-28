@@ -14,6 +14,14 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## EXPERIMENTAL, `spine-exp-block` ONLY: A STUCK BLOCK AS A SEALED TEXT (lead38, 2026-11-28; docs/31 D235 to D237)
+
+This section holds on the experimental branch `spine-exp-block` (spine + the checker lane's `exp-block-text`), not on `spine`.
+- The model's clause for a sealed block's TEXT (`Run.lean`, `.block`): its case PROVED in every induction over the run (standard axioms). New OPEN: `Master.StepBlock` (the master induction's 33rd step); `CellsOk` at each re-run of a sealed block (each cell a member of its recorded type), owed where the simulation meets a re-run; `mean_vQ` for column `Q`'s text (only the old closure's `mean_vQClo` exists).
+- lead37's faults, on this branch: `NTr` GONE (kernel-checked, `BlockTextNTr.mean_vNTr`); `MB0r` under the stage contexts GONE (by reading, pinned text); the re-run binding the block as itself GONE given `CellsOk`; the substitution lemmas' block case PROVED (no closure application equality, no own-slot lemma).
+- CHECKER FAULT (main and the experiment; D237), not built: a λ formed inside a recursive function that calls it captures the function at its declared type (`LamCaptureAttack.CL0`; `capsOk_stage0` kernel-checked: the model's strict reading fails at the knot's bound 0). Until the checker names the function by its global in such a closure's code, `RecDescG`'s establishment through the knot is false there, as it was at `MB0r` on main.
+- `RecDescG`, `FnGoodG` at the knot: still OPEN (not started; the plan, beginning with an instance at `R`, is the handoff's section 38).
+
 ## THE FIXPOINT EQUATION; A STUCK BLOCK IS NOT A FUNCTION (lead37, 2026-11-27, `spine-lead37`; docs/31 D232 to D234)
 
 - `FixEqDesc.fixEqG_of` PROVED: the fixpoint equation of every accepted global from `RecDescG` (RESTATED: closures of good functions; as first stated FALSE by reading) and `FnGoodG` (NEW: the knot's output). Both OPEN as clauses: established at acceptance by the knot's simulation, which is FALSE today at a stuck block calling the definition (`MB0r`, D232: kernel-checked `StageBlockCE`) until main's D139 and the model clause (i) are in.
