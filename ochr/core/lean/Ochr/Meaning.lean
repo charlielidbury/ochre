@@ -380,6 +380,7 @@ import Ochr.Meaning.Steps.TopOne
 import Ochr.Meaning.Steps.TopR
 import Ochr.Meaning.Steps.TopRLinks
 import Ochr.Meaning.Steps.TopRGlob
+import Ochr.Meaning.Steps.TopLeaf
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
