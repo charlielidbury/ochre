@@ -63,17 +63,31 @@ def setPlace (p : Place) (new : Value) : M Unit := do
   | some v' => setAt pos v'
   | none => err s!"no such place {← ppPlace p}: its path does not exist in {v}"
 
-/-- The first live loan met on the path to a place, including at the place itself. -/
-def firstLiveLoanOnPath (env : Env) : Value → List Step → Option Nat
-  | .loan l, _ => if liveLoan env l then some l else none
-  -- static ends: a place lent to a returned borrow is on the path of every access below it
-  | .gloan l w, ss => if liveLoan env l then some l else firstLiveLoanOnPath env w ss
-  -- static ends: a place below a sealed program (a stuck call's fill) lies at an unknown position
-  -- inside it, so the program's holes are on its path (as for matching, D29), as a mark is
-  | v@(.sealed _), _ :: _ => (liveLoansIn env v).head?
-  | v, s :: ss => (stepV s v).bind (firstLiveLoanOnPath env · ss)
-  | _, [] => none
-termination_by v ss => (ss, v)
+/-- The first live mark met on the way into `v` through its `gloan` layers (static ends: a place
+lent to a returned borrow is on the path of every access below it), else `k` of the value under
+them. Structural on the value. -/
+@[specialize] def firstLiveGloan (env : Env) (k : Value → Option Nat) : Value → Option Nat
+  | .gloan l w => if liveLoan env l then some l else firstLiveGloan env k w
+  | v => k v
+termination_by structural v => v
+
+/-- The first live loan met on the path to a place, including at the place itself. Structural on
+the path (each step consumes one), the marks a step meets peeled by `firstLiveGloan` (structural on
+the value), so the kernel can reduce it (it was well-founded on the pair, which the kernel cannot
+compute through). -/
+def firstLiveLoanOnPath (env : Env) (v : Value) (ss : List Step) : Option Nat :=
+  match ss with
+  | [] => firstLiveGloan env (fun
+      | .loan l => if liveLoan env l then some l else none
+      | _ => none) v
+  | s :: ss' => firstLiveGloan env (fun
+      | .loan l => if liveLoan env l then some l else none
+      -- static ends: a place below a sealed program (a stuck call's fill) lies at an unknown
+      -- position inside it, so the program's holes are on its path (as for matching, D29), as a
+      -- mark is
+      | w@(.sealed _) => (liveLoansIn env w).head?
+      | w => (stepV s w).bind (firstLiveLoanOnPath env · ss')) v
+termination_by structural ss
 
 def firstBorrowLabel : Value → Option Nat
   | .borrow l _ => some l

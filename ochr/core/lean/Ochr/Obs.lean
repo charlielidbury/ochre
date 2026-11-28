@@ -100,20 +100,30 @@ def Value.follow (v : Value) : List Step → Option Value
   | [] => some v
   | s :: ss => (stepV s v).bind (·.follow ss)
 
-/-- Update the sub-value at a path. -/
+/-- `k` applied under the `gloan` marks of a value (a step goes through a mark, `stepV`), the marks
+kept. Structural on the value. -/
+@[specialize] def Value.updUnderGloans (k : Value → Option Value) : Value → Option Value
+  | .gloan l w => (Value.updUnderGloans k w).map (.gloan l)
+  | v => k v
+termination_by structural v => v
+
+/-- Update the sub-value at a path. Structural on the path (each step consumes one; the marks a
+step meets are kept by `updUnderGloans`, structural on the value), so the kernel can reduce it (it
+was well-founded, which the kernel cannot compute through). -/
 def Value.updAt (f : Value → Value) : List Step → Value → Option Value
   | [], v => some (f v)
-  | ss, .gloan l w => (Value.updAt f ss w).map (.gloan l)
-  | .deref :: ss, .borrow l w => (Value.updAt f ss w).map (.borrow l)
-  | .proj 0 :: ss, .succ w => (Value.updAt f ss w).map .succ
-  | .proj i :: ss, .ind t 0 h ps fs => match fs[i]? with
-    | some v => (Value.updAt f ss v).map fun v' => .ind t 0 h ps (fs.set i v')
-    | none => none
-  | .field g :: ss, .ind t c h ps fs =>
-    match (if t == g.ty && c == g.ctor then fs[g.idx]? else none) with
-    | some v => (Value.updAt f ss v).map fun v' => .ind t c h ps (fs.set g.idx v')
-    | none => none
-  | _, _ => none
+  | s :: ss, v => Value.updUnderGloans (fun w => match s, w with
+    | .deref, .borrow l w => (Value.updAt f ss w).map (.borrow l)
+    | .proj 0, .succ w => (Value.updAt f ss w).map .succ
+    | .proj i, .ind t 0 h ps fs => match fs[i]? with
+      | some v => (Value.updAt f ss v).map fun v' => .ind t 0 h ps (fs.set i v')
+      | none => none
+    | .field g, .ind t c h ps fs =>
+      match (if t == g.ty && c == g.ctor then fs[g.idx]? else none) with
+      | some v => (Value.updAt f ss v).map fun v' => .ind t c h ps (fs.set g.idx v')
+      | none => none
+    | _, _ => none) v
+termination_by structural ss => ss
 
 /-- The value held at a position contains `borrow_ℓ` (borrows are never inside
 sealed programs: only their loans are). -/

@@ -515,3 +515,25 @@ def callArms (c : Nat) (as : List (Hint × Term)) : String :=
 #guard (malformed triArms ++ [[]]).all fun as => [1, 2].all fun c => callArms c as == armMsg as.length 3 "Tri"
 
 end Ochr.Units
+
+/-! ## The kernel computes a place's update and its path's first live loan
+
+`Value.updAt` (every write) and `firstLiveLoanOnPath` (every access) were defined by well-founded
+recursion, through which the kernel cannot compute, so no fact about a concrete program's check
+that touches a place could be proved by computation (the proof lane: `checkInd` of `Pair` and `And`
+stopped there). Both are structural now: on the path, the marks a step meets peeled by a helper
+structural on the value. These are checked by the kernel (`rfl`); each fails against the
+well-founded definitions. The first live loan of a path that meets a loan or a mark still asks
+`liveLoan`, whose `findBorrow` walks Ω with `allPos`, a `for` over a range, which Lean defines by
+well-founded recursion too. -/
+
+namespace Ochr.Units
+
+example : Value.updAt (fun _ => .zero) [Step.proj 0] (.succ (.succ .zero)) = some (.succ .zero) := rfl
+example : Value.updAt (fun _ => .zero) [Step.proj 0] (.gloan 3 (.succ (.succ .zero))) =
+    some (.gloan 3 (.succ .zero)) := rfl
+example : firstLiveLoanOnPath #[] (.succ (.succ .zero)) [Step.proj 0] = none := rfl
+example : firstLiveLoanOnPath #[] (.ind "Box" 0 ⟨"MkBox"⟩ [] [.zero]) [Step.proj 0] = none := rfl
+example : firstLiveLoanOnPath #[] (.sealed .zero) [Step.proj 0] = none := rfl
+
+end Ochr.Units
