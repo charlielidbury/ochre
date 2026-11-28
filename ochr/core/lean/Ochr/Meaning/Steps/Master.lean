@@ -235,11 +235,51 @@ theorem TailOutK.tailOut {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
   let ⟨stl, v, T, hk, hO, _⟩ := h
   ⟨stl, v, T, hk, hO⟩
 
+/-- **The erased tail form** (docs/31 D248, ruled (P1) by the orchestrator, 2026-11-28): what the end-of-body check of
+a term the table reads as a PROOF concludes. `checkTail` recurses into such a term by its shape and runs its unerased
+parts on the real state, where the reference erases it as a whole (`SM.erasedIf`, which restores its state;
+`MatchAtk.runT_tailShaped_erased_state`): so the leaf's state is NOT related to the reference's (`MatchAtk.L9`). The
+form asks a leaf where the continuation ran, the reference's run succeeding from the start's state, the checker's value
+meaning its result and its type the result's type (for a proof the reference's type is `prop True`, so the type is
+true), `Pre` and `Kept` at the leaf, and no relation there. Reasons (the ruling): a fact about a run concludes only what
+is used after it, and after the leaf of a lemma's body nothing reads the state (the type is compared with the goal
+formed before, the frame is popped, the whole state is restored); and the model does not mirror the effects of erased
+code. -/
+def TailOutE (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st : MState) (s : SState) (x : SM Res)
+    (k : Value → Value → M Unit) : Prop :=
+  ∃ (stl : MState) (v T : Value), (∃ bk stk, Runs (k v T) stl bk () stk) ∧
+    (∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
+      Ext K ρ π st stl ρ' Δ' π' ∧ x s = some (r, s') ∧
+      meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧ StrAgree { K with Δ := Δ' } ρ' T r.2 ∧
+      Pre { K with Δ := Δ' } ρ' (stl.withTempT v (some T))) ∧
+    Kept st stl
+
+/-- The full tail form gives the erased one (it drops the relation at the leaf). -/
+theorem TailOutK.toE {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
+    {x : SM Res} {k : Value → Value → M Unit} (h : TailOutK K ρ φ π st s x k) : TailOutE K ρ φ π st s x k :=
+  let ⟨stl, v, T, hk, ⟨ρ', Δ', π', r, s', he, hx, hm, ha, _, hp, _⟩, hK⟩ := h
+  ⟨stl, v, T, hk, ⟨ρ', Δ', π', r, s', he, hx, hm, ha T rfl, hp⟩, hK⟩
+
+/-- **The tail step's conclusion** (docs/31 D248, ruling (P1)): the erased form always, and the full form (`TailOutK`,
+the relation at the leaf) where the table does not read the term as a proof. As first stated (`TailOutK` everywhere)
+it was FALSE at a tail-shaped term the table reads as a proof (`MatchAtk.L9`), so the five tail steps of a shape were
+false as stated. -/
+def TailConcl (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st : MState) (s : SState) (t : Term)
+    (x : SM Res) (k : Value → Value → M Unit) : Prop :=
+  ((K.D.flags (scopeOf s) t).2 = false → TailOutK K ρ φ π st s x k) ∧ TailOutE K ρ φ π st s x k
+
+/-- The full form everywhere gives the conclusion. -/
+theorem TailConcl.of_K {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
+    {t : Term} {x : SM Res} {k : Value → Value → M Unit} (h : TailOutK K ρ φ π st s x k) :
+    TailConcl K ρ φ π st s t x k :=
+  ⟨fun _ => h, h.toE⟩
+
 /-- **The tail step at fuel `n`, for one term**: `Form.TailSim` for `t` with every continuation that only
 extends the tables (`GrowsM`: so the table aligned at the run's end, after the continuation, is aligned at
 each leaf, `DecTab.back`; `checkFix`'s continuation and every one `checkTail` builds from it are machine
 code), from a state in the plain mode at any erased depth with no reading handed down, for a term the strict run accepts the
-embedded values of, holding the state's unknowns and no hole; the leaf keeps what `Kept` asks. -/
+embedded values of, holding the state's unknowns and no hole; the leaf keeps what `Kept` asks. At a term the table reads
+as a proof the leaf is asked the erased form only (`TailConcl`, docs/31 D248). -/
 def TailAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : Prop :=
   ∀ (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState),
     ModeR st → st.tailNext = false → 0 < st.env.size → st.tailDecl = none → (∀ v T, GrowsM (k v T)) →
@@ -247,7 +287,7 @@ def TailAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : P
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     DecTab K.D st' →
     Runs (Ochr.checkTail n t k) st bh () st' →
-    TailOutK K ρ φ π st s (runT K ρ φ true (hintM K ρ st.goal) t) k
+    TailConcl K ρ φ π st s t (runT K ρ φ true (hintM K ρ st.goal) t) k
 
 /-- **The induction hypothesis at fuel `n`**: at every smaller fuel, every `Δ` and every assignment, the
 evaluation step and the tail step for every term. -/
