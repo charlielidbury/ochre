@@ -3791,6 +3791,24 @@ def ctorRefinement (fuel : Nat) (d : IndDecl) (ps : List Value) (c : Nat) : M Va
   pure (.ind d.name c ⟨cn⟩ ps fs)
 termination_by structural fuel
 
+/-- D146: the arms of a match on the declaration `d`, to be paired with its constructors: arm `i`
+is constructor `i`'s, by position. The position is the core's only link between an arm and its
+constructor (an arm's hint is a name for printing, which equality ignores). The surface resolver
+orders the arms by the declaration and rejects a missing or an extra one; the core holds every match
+to it itself: unless there is exactly one arm per constructor, the match is rejected where its arms
+are paired, whichever pairing the scrutinee's content selects: a known constructor's arm, the worlds
+of a split (with one constructor, before the unknown is refined in place), a match on a proof
+(`evalMatchByType`, `evalMatchInd`, `checkTailAt`, each taking the arms from here). A stuck
+untyped match pairs nothing, and its sealed program pairs them when it is re-run; nor does an
+erased match on a proof in an untyped run, which is not run. A declaration being
+checked has no constructors yet: D107's rejection, as at `scrutType`. -/
+def ctorArms (d : IndDecl) (p : Place) (arms : List (Hint × Term)) : M (List (Hint × Term)) := do
+  -- D107: a declaration being checked has no constructors yet, so it has nothing to pair with
+  if d.declaring then err (d.declaringMsg s!"a match on {← ppPlace p}")
+  unless arms.length == d.ctors.length do
+    err s!"[D146] the match on {← ppPlace p} has {arms.length} arm{if arms.length == 1 then "" else "s"}, and {d.name} has {d.ctors.length} constructor{if d.ctors.length == 1 then "" else "s"}: a match has exactly one arm per constructor, in the declaration's order"
+  pure arms
+
 /-- The inductive type of a matched place and its parameters, from the place's type (the
 arms' constructors name `ty`; `""` for a match with no arms). The type is read, not
 assumed from the arms (finding: v1.9's checker split a `T(n)`-typed place with `L`'s
@@ -3823,6 +3841,9 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
   let v ← matchContent p
   if v == .bot then err s!"[Match] on {← ppPlace p}, which was moved out"
   if arms.isEmpty then
+    -- D146: a match with no arms that names a declaration (only a hand-built one does: the
+    -- resolver names none) has one arm per constructor too
+    if ty != "" then discard (ctorArms (← lookupInd ty) p arms)
     if typed then
       let (d, _) ← scrutType fuel' p ty
       unless d.ctors.isEmpty do err s!"a match with no arms on {← ppPlace p} : {d.name}, which has constructors"
@@ -3842,15 +3863,17 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
   let subErr : M Unit := err (subsingletonMsg d)
   -- a constructor value (not reached: a Prop inductive's constructor values are `⋆`, D42)
   if let .ind _ c _ _ _ := v then
-    match arms[c]? with
+    match (← ctorArms d p arms)[c]? with     -- D146
     | some (_, a) => do demand (← wanted); return ← eval fuel' typed a
     | none => err s!"[Match] no arm for constructor {c}"
   -- D49 (2): a match on a proof of a non-subsingleton is erased (its checked arms are all
-  -- proofs), so a run does not run it: its value is ⋆ (read from the declaration)
+  -- proofs), so a run does not run it: its value is ⋆ (read from the declaration), and it pairs
+  -- no arm with a constructor
   if !typed && !large then
     setFlags (true, true)
     return (.proof, none)
-  if let [(_, a)] := arms then
+  let carms ← ctorArms d p arms     -- D146
+  if let [(_, a)] := carms then
     let a ← if typed then bindDataFields fuel' p d ps 0 a else pure a
     demand (← wanted)
     -- static ends: its one arm is in tail position where the match is (`checkTail` checks it so)
@@ -3863,14 +3886,14 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
     -- not reached by checked programs (a subsingleton has at most one constructor): an
     -- erased match is ⋆, otherwise no arm can be chosen and the match is stuck
     let pf ← inWorld (← enterWorld) do
-      discard (eval fuel' false arms[0]!.2)
+      discard (eval fuel' false carms[0]!.2)
       pure (← getFlags).2
     if pf then setFlags (true, true); return (.proof, none)
     stuckNow
   let w ← enterWorld
   let mut tys := #[]
   let mut allProof := true
-  for ((_, a0), c) in arms.zipIdx do
+  for ((_, a0), c) in carms.zipIdx do
     let (T, pf) ← inWorld w do
       let a ← bindDataFields fuel' p d ps c a0
       let (_, T) ← eval fuel' true a
@@ -3910,14 +3933,15 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
   | .ind t c _ _ _ =>
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
     if typed then discard (scrutType fuel' p ty)
-    match arms[c]? with
+    let d ← lookupInd ty
+    match (← ctorArms d p arms)[c]? with     -- D146
     | some (_, a) => do
       let w ← wanted
       let run := do demand w; modify fun s => { s with tailNext := tail }; eval fuel' typed a (if typed then none else expected)
       -- D93: a match on a type with one constructor has one arm and no other path to agree
       -- with: it never closes off in a typed run (an unknown is refined in place, below), so it
       -- has no entry (rule 2) and no join (D84), on every path
-      if (← lookupInd ty).ctors.length == 1 then run
+      if d.ctors.length == 1 then run
       else joinEnds fuel' (.matchInd p ty arms) tail run
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
@@ -3925,6 +3949,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
     if !typed then stuckOn v
     else
       let (d, ps) ← scrutType fuel' p ty
+      let carms ← ctorArms d p arms     -- D146
       -- D93: an unknown of a type with one constructor is that constructor, so the match
       -- refines it in place and runs its one arm, as an instance does (above)
       if d.ctors.length == 1 then
@@ -3933,7 +3958,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
         let expected ← expected.mapM (substV fuel' (.abs σ) r)
         return ← evalMatchInd fuel' typed p ty arms expected tail
       splitArmsThenClose fuel' (.matchInd p ty arms) σ
-        ((List.range d.ctors.length).zip (arms.map (·.2)) |>.map fun (c, a) => (ctorRefinement fuel' d ps c, a)) expected
+        (carms.zipIdx.map fun ((_, a), c) => (ctorRefinement fuel' d ps c, a)) expected
   | .sealed _ | .loan _ =>
     if !typed then stuckOn v
     else
@@ -3943,12 +3968,13 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
         let expected ← expected.mapM (substV fuel' v r)
         return ← evalMatchInd fuel' typed p ty arms expected tail
       let (d, ps) ← scrutType fuel' p ty
+      let carms ← ctorArms d p arms     -- D146
       let σ ← generalizeNeutral fuel' p v
       let expected ← expected.mapM (substV fuel' v (.abs σ))
       -- D93: generalised, it is refined in place (above)
       if d.ctors.length == 1 then return ← evalMatchInd fuel' typed p ty arms expected tail
       splitArmsThenClose fuel' (.matchInd p ty arms) σ
-        ((List.range d.ctors.length).zip (arms.map (·.2)) |>.map fun (c, a) => (ctorRefinement fuel' d ps c, a)) expected
+        (carms.zipIdx.map fun ((_, a), c) => (ctorRefinement fuel' d ps c, a)) expected
   | _ => err s!"[Match] on {v}, which is not a value of {ty}"
 termination_by structural fuel
 
@@ -4831,15 +4857,19 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
       let (d, ps) ← scrutType fuel' p ty
       if arms.isEmpty && !d.ctors.isEmpty then
         err s!"a match with no arms on {← ppPlace p} : {d.name}, which has constructors"
+      let carms ← ctorArms d p arms     -- D146
       let needProof := !(← largeElim d)
       let k' : Value → Value → M Unit := fun r R => do
         if needProof && !(← getFlags).2 then err (subsingletonMsg d)
         k r R
       match v with
-      | .ind _ c _ _ _ => checkTail fuel' (arms[c]!).2 k'     -- not reached: a Prop inductive's values are `⋆` (D42)
+      | .ind _ c _ _ _ =>     -- not reached: a Prop inductive's values are `⋆` (D42)
+        match carms[c]? with
+        | some (_, a) => checkTail fuel' a k'
+        | none => err s!"[Match] no arm for constructor {c}"
       | _ =>
         let w ← enterWorld
-        for ((_, a), c) in arms.zipIdx do
+        for ((_, a), c) in carms.zipIdx do
           inWorld w do
             checkTail fuel' (← bindDataFields fuel' p d ps c a) k'     -- D49 (3)
       return
@@ -4849,14 +4879,16 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
     | .ind t c _ _ _ =>
       if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
       discard (scrutType fuel' p ty)
-      match arms[c]? with
+      let d ← lookupInd ty
+      match (← ctorArms d p arms)[c]? with     -- D146
       | some (_, a) =>
         -- D93: one constructor, one arm: no join
-        if (← lookupInd ty).ctors.length == 1 then checkTail fuel' a k
+        if d.ctors.length == 1 then checkTail fuel' a k
         else checkTail fuel' a (← joinCont fuel' (.matchInd p ty arms) k)
       | none => err s!"[Match] no arm for constructor {c}"
     | .abs σ =>
       let (d, ps) ← scrutType fuel' p ty
+      let carms ← ctorArms d p arms     -- D146
       -- D93: an unknown of a type with one constructor is refined in place, as `evalMatchInd` does
       if d.ctors.length == 1 then
         let r ← etaInPlace fuel' σ d ps
@@ -4864,7 +4896,7 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
         return ← checkTail fuel' t k
       -- D119: each world's arm ends with the join, as a known constructor's does (above)
       let w ← enterWorld
-      for (c, (_, a)) in (List.range d.ctors.length).zip arms do
+      for ((_, a), c) in carms.zipIdx do
         inWorld w do
           let r ← ctorRefinement fuel' d ps c
           refine fuel' σ r

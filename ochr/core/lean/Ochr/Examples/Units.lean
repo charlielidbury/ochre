@@ -419,3 +419,99 @@ def inSigma (name : String) : List (Bool × String) :=
 #guard !(inSigma "R").isEmpty && (inSigma "R").all (· == (true, "⌈R(0)⌉"))
 
 end Ochr.Units
+
+/-! ## A match has exactly one arm per constructor, checked by the core (D146)
+
+The core pairs a match's arms with its declaration's constructors by position: arm `i` is
+constructor `i`'s (an arm's hint is a name for printing, which equality ignores). The surface
+resolver orders the arms and rejects a missing or an extra one, so no source program has the wrong
+number; but the core took it on trust: at an unknown scrutinee a constructor with no arm got no
+world, a known constructor read `arms[c]`, so a missing middle arm made it run the next
+constructor's arm, and a match on a proof checked the arms it had. Since D146 every place that
+pairs arms with constructors takes them from `ctorArms`, which rejects the match unless there is
+exactly one arm per constructor. Pinned on hand-built definitions (the whole match, its last arm
+dropped, its middle arm dropped, an arm added, no arms) at an unknown scrutinee at the end of a
+body, under a `let`, at a known constructor (the middle one and the last one), on a proof at the
+end and under a `let`, and on an untyped call of a global made by hand. Before D146 every
+malformed match below was accepted, except at the known last constructor with an arm dropped
+("[Match] no arm for constructor 2"), and the untyped call `G(TB)` with the middle arm dropped
+gave `2`, the last arm's value. -/
+
+namespace Ochr.Units
+
+#guard_msgs (drop warning) in
+ochr ArmCount uses Nats {
+  inductive Tri := TA | TB | TC
+  inductive Tp : Prop := PA | PB | PC
+}
+
+/-- The state after `ArmCount` (a function: a closed definition here would be evaluated when every
+executable that imports the examples starts). -/
+def stArm (_ : Unit) : MState :=
+  let p := Ochr.Test.libOf {} 2000000 ArmCount ++ ArmCount.decls
+  let (g, i) := globalsAfter {} (p.filterMap fun d => (resolveProgram p d).toOption)
+  { globals := g, inds := i }
+
+def numT : Nat → Term
+  | 0 => .zero
+  | n + 1 => .succ (numT n)
+def reflT : Term := .ctor "True" 0 ⟨"I"⟩ [] []
+def triArms : List (Hint × Term) := [(⟨"TA"⟩, numT 0), (⟨"TB"⟩, numT 1), (⟨"TC"⟩, numT 2)]
+def tpArms : List (Hint × Term) := [(⟨"PA"⟩, reflT), (⟨"PB"⟩, reflT), (⟨"PC"⟩, reflT)]
+/-- The whole match's arms, its last arm dropped, its middle arm dropped, an arm added. -/
+def malformed (as : List (Hint × Term)) : List (List (Hint × Term)) :=
+  [as.take 2, as.take 1 ++ as.drop 2, as ++ as.drop 2]
+
+/-- The verdict of a definition made by hand, checked after `ArmCount`. -/
+def armVerdict (d : Def) : String :=
+  match runM (checkDef d) (stArm ()) with
+  | .ok () => "accepted"
+  | .error m => m
+
+-- at an unknown scrutinee at the end of a body; under a `let`; at a known constructor (`TB`, `TC`);
+-- on a proof at the end and under a `let`
+def atEnd (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [⟨"t"⟩], doms := [.tind "Tri" []], cod := .nat, body := .matchInd (.var 0) "Tri" as }
+def underLet (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [⟨"t"⟩], doms := [.tind "Tri" []], cod := .nat,
+    body := .letIn ⟨"r"⟩ (.matchInd (.var 0) "Tri" as) (.place (.var 0)) }
+def atKnown (c : Nat) (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [], doms := [], cod := .nat,
+    body := .letIn ⟨"t"⟩ (.ctor "Tri" c ⟨"T"⟩ [] []) (.matchInd (.var 0) "Tri" as) }
+def onProof (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [⟨"t"⟩], doms := [.tind "Tp" []], cod := .tind "True" [], body := .matchInd (.var 0) "Tp" as }
+def onProofLet (as : List (Hint × Term)) : Def :=
+  { name := "X", hs := [⟨"t"⟩], doms := [.tind "Tp" []], cod := .tind "True" [],
+    body := .letIn ⟨"r"⟩ (.ascribe (.matchInd (.var 0) "Tp" as) (.tind "True" [])) (.place (.var 0)) }
+
+def armMsg (n m : Nat) (d : String) : String :=
+  s!"[D146] the match on t has {n} arm{if n == 1 then "" else "s"}, and {d} has {m} constructors: a match has exactly one arm per constructor, in the declaration's order"
+
+-- the whole match is accepted at each place
+#guard [atEnd triArms, underLet triArms, atKnown 1 triArms, atKnown 2 triArms, onProof tpArms,
+  onProofLet tpArms].all (armVerdict · == "accepted")
+-- each malformed one is rejected, by D146
+#guard (malformed triArms).all fun as => [atEnd as, underLet as, atKnown 1 as, atKnown 2 as].all fun d =>
+  armVerdict d == armMsg as.length 3 "Tri"
+#guard (malformed tpArms).all fun as => [onProof as, onProofLet as].all fun d =>
+  armVerdict d == armMsg as.length 3 "Tp"
+-- no arms: rejected by the rule for a match with no arms at the end of a body, by D146 elsewhere
+#guard armVerdict (atEnd []) == "a match with no arms on t : Tri, which has constructors"
+#guard armVerdict (onProof []) == "a match with no arms on t : Tp, which has constructors"
+#guard [underLet [], atKnown 1 [], onProofLet []].all fun d => (armVerdict d).startsWith "[D146] the match on t has 0 arms"
+
+/-- An untyped run: the call `G(C)` of a global made by hand whose body is a match with the arms
+`as`, `C` the constructor `c` of `Tri`. -/
+def callArms (c : Nat) (as : List (Hint × Term)) : String :=
+  let fx : Term := .fix ⟨"G"⟩ [⟨"t"⟩] [.tind "Tri" []] .nat none (.matchInd (.var 0) "Tri" as)
+  let G : GDef := { name := "G", ty := .tPi [] (.pi [⟨"t"⟩] [.tind "Tri" []] .nat) [], fn? := some fx, val := .gfn "G" }
+  match runM (do pure (← Ochr.eval 1000 false (.call (.const "G") [.ctor "Tri" c ⟨"T"⟩ [] []] false) none).1)
+      (let s := stArm (); { s with globals := s.globals ++ [G] } : MState) with
+  | .ok v => s!"{v}"
+  | .error m => m
+
+#guard callArms 1 triArms == "1" && callArms 2 triArms == "2"
+-- before D146 `G(TB)` with the middle arm dropped gave `2`, the last arm's
+#guard (malformed triArms ++ [[]]).all fun as => [1, 2].all fun c => callArms c as == armMsg as.length 3 "Tri"
+
+end Ochr.Units
