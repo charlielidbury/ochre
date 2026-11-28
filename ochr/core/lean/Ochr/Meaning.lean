@@ -254,6 +254,7 @@ import Ochr.Meaning.DataModel.Exists.Step2
 import Ochr.Meaning.DataModel.Exists.Piece3
 import Ochr.Meaning.DataModel.Exists.FrameLocalCE
 import Ochr.Meaning.DataModel.Exists.FactsCE
+import Ochr.Meaning.DataModel.Exists.DecStableCE
 import Ochr.Meaning.DataModel.Exists.FieldLevel
 import Ochr.Meaning.DataModel.Exists.GlobalCalls
 import Ochr.Meaning.DataModel.Exists.GlobalCallsHard
@@ -365,6 +366,11 @@ import Ochr.Meaning.Conv.Compose
 import Ochr.Meaning.Conv.Attack
 import Ochr.Meaning.Conv.FieldIdx
 import Ochr.Meaning.Conv.Lib
+import Ochr.Meaning.Conv.Ctor
+import Ochr.Meaning.Conv.CtorEq
+import Ochr.Meaning.Conv.FieldLen
+import Ochr.Meaning.Conv.ComposeFO
+import Ochr.Meaning.Conv.AttackCtor
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

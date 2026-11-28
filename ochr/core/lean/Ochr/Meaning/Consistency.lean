@@ -7,6 +7,7 @@ import Ochr.Meaning.DecisionsFF
 import Ochr.Meaning.DataModel.Exists.Assembly
 import Ochr.Meaning.Steps.Machine.NoVal
 import Ochr.Meaning.Steps.Machine.RepLocal
+import Ochr.Meaning.Steps.Machine.CapsLocal
 
 /-!
 # Milestone 4: the assembly of `consistencyBounded` (docs/18 Corollaries 15 and 16)
@@ -400,6 +401,17 @@ theorem noValFact_of_resolvesTo (p : Program) (fuel : Nat) (items : List Item) (
   obtain ⟨st, hrun, -⟩ := hres.2 i p[i] (.ind d) (List.getElem?_eq_getElem hlt) hi
   exact Steps.Machine.noVal_runResolve p p[i] fuel false hrun d rfl
 
+/-- **A resolved program's definitions hold no embedded value** in their parameter types, codomains or
+bodies (exists13; `Steps.Machine.noValDef_runResolve`), as `noValFact_of_resolvesTo` for inductive items. -/
+theorem defsNoVal_of_resolvesTo (p : Program) (fuel : Nat) (items : List Item) (hres : ResolvesTo p fuel items) :
+    DataModel.Exists.Assembly.DefsNoVal items := by
+  intro d hd
+  obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hd
+  have hlt : i < p.length := by
+    rw [← hres.1]; exact (List.getElem?_eq_some_iff.1 hi).1
+  obtain ⟨st, hrun, -⟩ := hres.2 i p[i] (.defn d) (List.getElem?_eq_getElem hlt) hi
+  exact Steps.Machine.noValDef_runResolve p p[i] fuel false hrun d rfl
+
 /-- **A data model covering and faithful to every accepted program exists** (docs/34), under the
 checker's decisions, read with no fuel (`DecisionsFF.chainDecisions`, docs/31 D84: the fixed-fuel
 instance never met `DecTab`; an existential choice of decisions could make the runs faithfulness asks
@@ -415,23 +427,24 @@ checker, kept as an assumption of the construction, not a hypothesis here: the c
 decides that two applications of a type former to different arguments are different (a record
 keeps what field types read of the parameters, not the parameters; docs/34 §8, §13).
 
-**Assumes five facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17 state each exactly), and
+**Assumes three facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17, §18.19 state each exactly), and
 that `items` is the resolution of a program (`hres`), from which `NoValFact` is PROVED
 (`noValFact_of_resolvesTo`):
-* `VaryValFact` (about the checker; read true since main's D128, not derived): no field type of an
-  accepted declaration reads a varying value parameter;
-* `NamesFact` (about the checker and resolution; read true for resolved items): the names an accepted
-  item's code mentions are the stage's;
-* `FieldHeads` (about the checker; read true since main's D128, not derived): a parameter heading a
-  field type is written at `Prop` or `Type`, and a global heading one has a stored codomain `Prop` or
-  `Type`;
-* `DecCaps` at every state (an obligation on the decisions: `DecLocal`'s `caps` part, the [Entry]
-  captures rooted at the term's free variables; read true). `DecLocal`'s other three parts are PROVED
-  at the chain's decisions (`inv`, `rep`: exists12; `join`: machine11) and supplied here;
+* `VaryValFact` (about the checker; read true since main's D128, not derived; main's D140 decides its
+  `.any` case only at a field's whole type, `FactsCE.dVS`): no field type of an accepted declaration
+  reads a varying value parameter;
+* `NamesConstTy` (about the checker; read true, not derived): a constant's stored type, the goal value
+  `checkDef` evaluates, names only the stage's declarations and globals. The rest of `NamesFact` (the
+  names an accepted item's written code mentions are the stage's) is PROVED from D118's
+  `undeclaredCheck` and the resolution (`Assembly.namesFact`, `defsNoVal_of_resolvesTo`; exists13);
+* frame locality's obligation on the decisions, `DecLocal`, is PROVED at the chain's decisions and
+  supplied here (`inv`, `rep`: exists12; `join`: machine11; `caps`, the [Entry] captures rooted at the
+  term's free variables: exists13, since main's capture sort);
 * `DecStable` (an obligation on the decisions, at the states the checker reaches on the program).
 `ItemFacts` (what an accepted item does to the declarations and the globals, the stored entry passing
-`Knot.IndChecks`) is proved (`Assembly.itemFacts`, exists12). The model fact `GlobalCallLevels` is
-proved (`Assembly.globalCallLevels`, exists12), and with
+`Knot.IndChecks`) is proved (`Assembly.itemFacts`, exists12). `FieldHeads` (a parameter or a global
+heading a field type is at `Prop` or `Type`) is proved from main's D140 (`Assembly.fieldHeads`,
+exists13). The model fact `GlobalCallLevels` is proved (`Assembly.globalCallLevels`, exists12), and with
 `FieldHeads` gives the field types' level (`FieldLevel.fieldLevel0_of`). The stage prefix fact is
 machine10's `Steps.Machine.indsOf_take_prefix`. -/
 theorem exists_dataModel (p : Program) (items : List Item) (fuel : Nat) (hres : ResolvesTo p fuel items)
@@ -441,9 +454,9 @@ theorem exists_dataModel (p : Program) (items : List Item) (fuel : Nat) (hres : 
       ∀ k, k ≤ items.length → DataFaithful dm (chainDecisions fuel) (indsOf {} fuel items)
         (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
   DataModel.Exists.Assembly.exists_dataModel_facts (chainDecisions fuel) fuel items
-    (noValFact_of_resolvesTo p fuel items hres)
+    (noValFact_of_resolvesTo p fuel items hres) (defsNoVal_of_resolvesTo p fuel items hres)
     (fun st => ⟨Steps.Machine.decLocal_inv_chain fuel st, Steps.Machine.decLocal_join_chain fuel st,
-      Steps.Machine.decLocal_rep_chain fuel st⟩) hF
+      Steps.Machine.decLocal_rep_chain fuel st, Steps.Machine.decLocal_caps_chain fuel st⟩) hF
 
 /-- (leaf, checker) **Every stage's declarations are a prefix of the whole program's** (docs/31 D174):
 along accepted items Σ's inductive declarations only grow at the end (a definition adds none; a

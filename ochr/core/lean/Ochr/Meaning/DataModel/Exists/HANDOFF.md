@@ -1,8 +1,26 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists12` (from `origin/spine` a4a83d0c9), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.17: what exists12 proved, the remaining facts re-read, the status; §18.18: the referee's Y1). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-28 by `exists12`.
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists13` (from `origin/spine` 62dcac80c, main 73bcc8750 merged at 203e13f87), worktree `/home/charlielidbury/repos/ochre-exists3`. Durable record: `ochr/docs/34-data-model-existence.md` §18 (§18.19: what exists13 proved and found, the status). This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-28 by `exists13`.
 
-## Where exists12 stopped (read this first)
+## Where exists13 stopped (read this first)
+
+`exists_dataModel` now assumes THREE facts (`DataFacts`): `VaryValFact`, `NamesConstTy` (about the checker), `DecStable` (on its decisions), plus the program's resolution (`hres`, from which `NoValFact` and `DefsNoVal` are proved).
+
+Done (default build, standard axioms):
+- Merge of main (D139, D140, the capture sort): `runs_checkInd_*` peels gain D140's loop; `staticBlockCaps`/`ckBlockCaps` sort by `blockCapOrder`; the three skeleton capture statements take `kept`.
+- `FieldHeads` PROVED: `Steps.Machine.runs_checkInd_heads` (D140's loop + `firstOrderTerm`'s call clause, `runs_firstOrder_call`, now the fourth conclusion of `runs_checkInd_fields`); `Assembly.fieldHeads`.
+- `DecCaps` PROVED: `Steps/Machine/CapsLocal.lean` (`staticBlockCaps_root`, `decLocal_caps_chain`); `DecLocal` is `exists_dataModel_facts`' own hypothesis, whole.
+- `NamesFact` PROVED but for a constant's stored type: `Exists/Names.lean` (`nok_of_undeclared`, `foB_ctorFree`), `Steps/Machine/NamesSpec.lean` (`runs_checkDef_names`, `runs_checkInd_undeclared`), `NoVal.lean` (`noValDef_runResolve`), Assembly (`verdict_defn`, `verdict_ind`, `stage_globals_means`, `namesFact`). The residue is `NamesConstTy`.
+- Findings: `FactsCE.dVS` (VaryValFact's `.any` case is decided by a run at an inductive's type parameter; messaged), `DecStableCE.lean` (DecStable false as stated for programs with holes).
+
+Next, most valuable first:
+1. `VaryValFact`: if the lead extends D128 to reject a parameter whose declared reading is `.any` (my recommendation, messaged), derive it: off the spine from `NestLoop.nestableSet_spec` with `deepVars` (a varying value parameter read there removes the nestable parameter its type reads); on the spine (the whole field type: D140; an inductive's type-parameter argument: `typePos` through `declOf`'s `.tind` clause gives the reading `.sort` or `.any`; `.sort` gives a written sort by D128). The peel `runs_checkInd_peel` keeps `h128` (D128's loop) and `hTP` (the typePos loop) unused so far.
+2. `DecStable`: the lead's call on the restatement (no holes, or `Extends.dec`'s state extending the seeded `absDecl`); then the machine lane's two-way simulation of the decision procedures under table extension (equal `SucceedsAt` predicates: `readDecisionFF` then agrees with no fuel agreement).
+3. `NamesConstTy`: a whole-machine names invariant over the 113 functions of the mutual block (relational, with a precondition on the term run), generated as `machineGrows` is.
+
+Traps met by exists13: a docstring may not precede `set_option … in` (put it after); `Option` `none == some m` and `none != some m` reduce by `rfl` (use `show (none == some m) = false from rfl` in `simp only`); a structure literal in a `have` type broken across lines does not parse (use `show` with `_`); `find?` lemmas over a `Type 3` list need `{α : Type _}`; `deriving BEq` on `Step`: `show (i == i) = true` exposes the field comparison; the D140 loop's body inverts by `repeat' (first | rw [runs_get_bind] at hr | split at hr)`.
+
+## Where exists12 stopped
 
 `exists_dataModel` now assumes FIVE facts (`DataFacts`): `NamesFact`, `VaryValFact`, `FieldHeads` (about the checker), `DecCaps`, `DecStable` (on its decisions), plus the program's resolution (`hres`). All five read TRUE (docs/34 §18.17 gives each reading, probe and what a derivation needs).
 
