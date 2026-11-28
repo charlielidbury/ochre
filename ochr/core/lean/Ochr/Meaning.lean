@@ -362,6 +362,7 @@ import Ochr.Meaning.Conv.FieldIdx
 import Ochr.Meaning.Conv.Lib
 import Ochr.Meaning.Conv.Ctor
 import Ochr.Meaning.Conv.CtorEq
+import Ochr.Meaning.Conv.FieldLen
 import Ochr.Meaning.Conv.ComposeFO
 import Ochr.Meaning.Conv.AttackCtor
 

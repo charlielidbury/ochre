@@ -30,13 +30,11 @@ open Ochr Ochr.Meaning Ochr.Meaning.Strict Ochr.Meaning.DataModel Ochr.Meaning.D
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- **(H6') [Eq-inj]'s field types, restated** (X): computed at parameters that are typed and of the
-declaration's length, with the earlier fields typed, each field type means the model's field type at
-the parameters' record and the earlier fields, and has a level; and the parameters [Eq-inj] uses are
-of the declaration's length (`fieldTele` fails otherwise). -/
-structure FieldTysOk (G : Premises) : Prop where
-  len : ∀ d args c fs Ts, G.fieldTys d args c fs Ts → args.length = d.params.length
-  sound : ∀ d args c fs Ts, G.fieldTys d args c fs Ts →
+/-- **(H6') [Eq-inj]'s field types, restated** (X): computed at parameters that are typed, with the
+earlier fields typed, each field type means the model's field type at the parameters' record and the
+earlier fields, and has a level. Its content: (II) for `fieldTele`'s typed runs and `FieldsFaithful`. -/
+def FieldTysSoundT (G : Premises) : Prop :=
+  ∀ d args c fs Ts, G.fieldTys d args c fs Ts →
     paramsOk K.dm d (meanParams K ρ φ d 0 [] args) →
     ∀ j T, Ts[j]? = some T →
       (∀ i f, i < j → (meanFields K ρ φ d (K.dm.recOf d (meanParams K ρ φ d 0 [] args)) c 0 [] fs)[i]? = some f →
@@ -45,6 +43,12 @@ structure FieldTysOk (G : Premises) : Prop where
       capTy K ρ φ T = K.dm.fieldTyR d (K.dm.recOf d (meanParams K ρ φ d 0 [] args)) c j
           ((meanFields K ρ φ d (K.dm.recOf d (meanParams K ρ φ d 0 [] args)) c 0 [] fs).take j) ∧
         (capTy K ρ φ T).level.isSome = true
+
+/-- `FieldTysSoundT`, and the parameters [Eq-inj] uses are of the declaration's length (C; `fieldTele` fails
+otherwise: `FieldLen.machPremises_len`, PROVED for the machine's instance). -/
+structure FieldTysOk (G : Premises) : Prop where
+  len : ∀ d args c fs Ts, G.fieldTys d args c fs Ts → args.length = d.params.length
+  sound : FieldTysSoundT K ρ φ G
 
 end
 
