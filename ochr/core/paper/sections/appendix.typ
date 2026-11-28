@@ -362,7 +362,7 @@ The typed argument judgement $ev^*$ is that of [T-Call]. In [T-Ctor] the paramet
 All type formers are erased, so each of these rules runs on a private copy ([T-Erase]).
 
 #rules(
-  ir(name: "T-Sort", $Omega tack.r ty("Prop") ev ty("Prop") : ty("Type")_0 tack.l Omega$),
+  ir(name: "T-Sort", $Omega tack.r ty("Prop") ev ty("Prop") : ty("Type")_1 tack.l Omega$),
   ir(name: "T-Type", $Omega tack.r ty("Type")_i ev ty("Type")_i : ty("Type")_(i+1) tack.l Omega$),
   ir(name: "T-Ind", pv($kw("inductive") ty("D") (overline(x) : overline(X)) : s := dots quad Omega tack.r overline(a) ev^* overline(v) : overline(A') tack.l Omega'$, $Omega";" (x_1 : T_1 |-> v_1, dots, x_(i-1) : T_(i-1) |-> v_(i-1)) tack.r X_i ev T_i "type" quad A'_i equiv T_i$), $Omega tack.r ty("D")(overline(a)) ev ty("D")(overline(v)) : s tack.l Omega'$),
   ir(name: "T-Ref", $Omega tack.r A ev T "type"$, $T : ty("Type")_0$, $Omega tack.r \&A ev \&T : ty("Type")_0$),
