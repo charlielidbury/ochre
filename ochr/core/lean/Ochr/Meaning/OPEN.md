@@ -14,6 +14,13 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE START OF A CALL IN PLACE; THE STEP FOR A CALL COMPOSED (lead39, 2026-11-28, `spine-lead39`; docs/31 D240, D241)
+
+- `CallStartInvG`, `CallStartG`: PROVED (`Steps/CallStartInv`). RESTATED first: `BorrowArgsTyped` replaced by `ArgsHeld` (the borrow arguments' records at the binders' types); as first stated FALSE (by reading) at a `Prop`-sorted function. Owed where consumed: `ArgsHeld` from `BorrowArgsTyped` by a round trip of codes under `PiCallable` (not stated).
+- `callInPlace_of` (C1, frame-free global body): assumes `CallPopG` (OPEN, read true) and `FixEqG` (from `RecDescG`, `FnGoodG`, OPEN). `InPlaceAgree` now transfers at every context.
+- `Steps/CallStep`: `callAcceptedFF_of` PROVED from `CallRanSimG` (OPEN, mixed: the checker's in-place run simulated by `runCallRef`, or by `callOf` closed off; front and tail guarded), `CallPtLocalG` (OPEN, mixed, read true), `OccursLiveG` (OPEN, checker (WF2), read true, guarded), `AcceptedGlobalG` (OPEN, model, read true), `CallPopG`, `FundCtx`, `FixEqG`, `GlobalsOk` across `Δ` (read true). `callFnGW_of` PROVED from `CallUnderCheckG` (OPEN, gained two `OutL` clauses), `CallAcceptedFF`, `CurOnStackG` (OPEN, checker, read true), `GlobalFixG` (OPEN, read true).
+- `CallFnG` as stated: NOT derivable (lacks `RecCurG`, `RecRankG`, `GlobalsOk`, frame-free callee bodies); `CallFnGW` is the derivable form; `EvalAt` must carry `RecCurG` and `RecRankG`. At a `Prop`-sorted callee `CallFnG` would be FALSE (never used: such calls are erased).
+
 ## THE FIXPOINT EQUATION; A STUCK BLOCK IS NOT A FUNCTION (lead37, 2026-11-27, `spine-lead37`; docs/31 D232 to D234)
 
 - `FixEqDesc.fixEqG_of` PROVED: the fixpoint equation of every accepted global from `RecDescG` (RESTATED: closures of good functions; as first stated FALSE by reading) and `FnGoodG` (NEW: the knot's output). Both OPEN as clauses: established at acceptance by the knot's simulation, which is FALSE today at a stuck block calling the definition (`MB0r`, D232: kernel-checked `StageBlockCE`) until main's D139 and the model clause (i) are in.
