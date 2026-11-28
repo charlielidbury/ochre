@@ -416,9 +416,10 @@ end
 
 /-- **The join of a match read as a proof is empty** (table and checker, NEW; probed: `MatchAtk.L11`): its arms are
 statements, which move nothing outside their copies (`Decide.jdMoves`), so the table's join list is empty, and the
-checker's `joinCont`, at a state whose aligned table reads the match as a proof, returns the continuation itself. -/
-def ProofJoinG : Prop :=
-  ∀ (D : Decisions),
+checker's `joinCont`, at a state whose aligned table reads the match as a proof, returns the continuation itself.
+RESTATED (lead42, docs/31 D251): about THE table `D` (as `MatchFlagsT` is), not every one: as first stated, for every
+`D`, its first part was FALSE (a table reading a match as a proof and listing a place to drop). -/
+def ProofJoinG (D : Decisions) : Prop :=
     (∀ (sc : List DeclInfo) (entry : List Place) (p : Place) (z u : Term),
       (D.flags sc (.matchNat p z u)).2 = true → D.joinMoves sc entry (.matchNat p z u) = []) ∧
     ∀ (m : Nat) (p : Place) (z u : Term) (k kc : Value → Value → M Unit) (stW stJ : MState) (bj : Nat),
@@ -429,10 +430,17 @@ def ProofJoinG : Prop :=
 an arm returns the proof token, at a type meaning the true proposition, and leaves the state it started from. Read: an
 arm the table reads as a proof runs under `SM.erasedIf` (exactly `(•, prop True)`, the state restored); a proof constant
 means `•` at its type, which (I) makes true (`propext`), and reads nothing; an arm read `.any` (a match with no arms)
-has no successful run. -/
-def ProofArmM : Prop :=
-  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (p : Place) (z u : Term) (s' s₁ : SState) (c : Nat)
-    (r : Res),
+has no successful run.
+RESTATED (lead42, docs/31 D251): about the run's own context `K₀` at every `Δ` (its table aligned with the checker's,
+its globals good), not every context: as first stated, for every `K`, it was FALSE (a table reading the match as a proof
+and its arm `Z` as data: the reference's `.zero` runs to `0`, not `•`). Read true of the instance, by the arm's former: the
+formers the reference erases as a whole (`SM.erasedIf`: a place, `&`, `:=`, `let`, `;`, the matches, a constructor, `fix`,
+a call, `S`, `&A`, `J`) give `(•, prop True)` and the start's state; the proof rules (`cong`, `symm`, `trans`, `rewrite`)
+run on a copy to `(•, prop True)`; a proof constant means its global, `•` at a true proposition (`FundCtx`), which is
+`prop True` by `propext`; `split f in t` runs `t`; a match with no arms has no successful run. -/
+def ProofArmM (K₀ : RunCtx) : Prop :=
+  ∀ (Δ : Nat → TyS) (ρ : Assignment) (φ : Future) (hint : TyS) (p : Place) (z u : Term) (s' s₁ : SState) (c : Nat)
+    (r : Res), let K := { K₀ with Δ := Δ }
     (K.D.flags (scopeOf s') (.matchNat p z u)).2 = true →
     runT K ρ φ true hint (if c = 0 then z else u) s' = some (r, s₁) → r.1 = .proof ∧ r.2.m = TyM.prop True ∧ s₁ = s'
 
@@ -478,7 +486,7 @@ variable {K : RunCtx} {φ : Future}
 /-- **One world's arm, to the match's leaf, for a match read as a proof** (the erased form): the join is empty, so the
 checker's continuation is the given one, and the arm's leaf is the match's; the reference's match succeeds as the
 erased run of its arm. -/
-theorem matchArm_leafE (hJI : JoinContInv) (hPJ : ProofJoinG) (hPA : ProofArmM) (hVC : ValsCongrA)
+theorem matchArm_leafE (hJI : JoinContInv) (hPJ : ProofJoinG K.D) (hPA : ProofArmM K) (hVC : ValsCongrA)
     {n m : Nat} (ih : IH K φ n) (hmn : m < n) {ρ : Assignment} {π : Nat → Nat} {st stW stJ st₁ : MState}
     {s sA : SState} {p : Place} {z u : Term} {k kc : Value → Value → M Unit} {tg : Sem} {c bj b₁ : Nat}
     {ρW : Assignment} {ΔW : Nat → TyS} {πW : Nat → Nat}
@@ -496,7 +504,7 @@ theorem matchArm_leafE (hJI : JoinContInv) (hPJ : ProofJoinG) (hPA : ProofArmM) 
     (hD₁ : DecTab K.D st₁) (harm : Runs (Ochr.checkTail m (if c = 0 then z else u) kc) stJ b₁ () st₁) :
     TailOutE K ρ φ π st s (runT K ρ φ true (hintM K ρ st.goal) (.matchNat p z u)) k := by
   obtain ⟨hkJ, hmJ, htnJ, htdJ, -, -, -⟩ := hJI m _ k kc stW stJ bj hjc
-  have hkc : kc = k := (hPJ K.D).2 m p z u k kc stW stJ bj (DecTab.of_kern hkJ hDW)
+  have hkc : kc = k := hPJ.2 m p z u k kc stW stJ bj (DecTab.of_kern hkJ hDW)
     (by rw [hKW.top, ← scopeOf_rel hr]; exact hfl2) hjc
   subst hkc
   have hneW : 0 < stW.env.size := by rw [hKW.size]; exact hne
@@ -523,11 +531,11 @@ theorem matchArm_leafE (hJI : JoinContInv) (hPJ : ProofJoinG) (hPA : ProofArmM) 
   rw [hgJ] at hx₁
   have hx₁' : runT K ρ φ true (hintM K ρ st.goal) (if c = 0 then z else u) sA = some (r, s₁) := by
     rw [runT_congrA K ΔW ρ ρW φ true _ _ sA hagree]; exact hx₁
-  obtain ⟨hr1, hr2, hs₁⟩ := hPA K ρ φ _ p z u sA s₁ c r (by rw [hsc]; exact hfl2) hx₁'
+  obtain ⟨hr1, hr2, hs₁⟩ := hPA K.Δ ρ φ _ p z u sA s₁ c r (by rw [hsc]; exact hfl2) hx₁'
   refine ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, (.proof, .plain (TyM.prop True)), s,
     heW.trans (he₁.congr hkJ.absTy hkJ.nextLoan rfl rfl), ?_, ?_, ?_, hp₁⟩, (hKW.trans (Kept.of_kern hkJ hmJ)).trans hK₁⟩
   · exact runT_matchNat_tailProof _ p z u hfl2 hTok htag hcn hx₁' hr1
-      ((hPJ K.D).1 _ _ p z u (by rw [hs₁, hsc]; exact hfl2))
+      (hPJ.1 _ _ p z u (by rw [hs₁, hsc]; exact hfl2))
   · show meanV _ _ _ (.plain (TyM.prop True)) v = .proof
     rw [Ochr.Meaning.meanV_hintM _ _ _ v (.plain (TyM.prop True)) r.2 hr2.symm, hm₁, hr1]
   · exact ha₁.trans hr2
@@ -537,8 +545,8 @@ form `TailOutE`, D248's ruling (P1); a lemma's body: `AddMZero`, `AddZH`): from 
 assignment, as for data (`tStepMatchNat_data`) with the join empty and no relation at the leaf. ASSUMES 9 facts:
 `TailMatchNatInv`, `JoinContInv` (checker), `ProofJoinG` (table and checker), `MatchTagG`, `WorldRefineG`, `GenTailG`
 (mixed), `ProofArmM`, `MatchReaccessE`, `ValsCongrA` (model). -/
-theorem tStepMatchNat_proof (hInv : TailMatchNatInv) (hJI : JoinContInv) (hPJ : ProofJoinG) (hTag : MatchTagG)
-    (hW : WorldRefineG) (hG : GenTailG) (hPA : ProofArmM) (hRe : MatchReaccessE) (hVC : ValsCongrA)
+theorem tStepMatchNat_proof (hInv : TailMatchNatInv) (hJI : JoinContInv) (hPJ : ProofJoinG K.D) (hTag : MatchTagG)
+    (hW : WorldRefineG) (hG : GenTailG) (hPA : ProofArmM K) (hRe : MatchReaccessE) (hVC : ValsCongrA)
     {n : Nat} (ih : IH K φ n) (ρ : Assignment) (p : Place) (z u : Term)
     (st : MState) (k : Value → Value → M Unit) (s : SState) (π : Nat → Nat) (bh : Nat) (st' : MState)
     (hm : ModeR st) (htn : st.tailNext = false) (hne : 0 < st.env.size) (htd : st.tailDecl = none)
@@ -608,8 +616,8 @@ ASSUMES 12 facts: `TailMatchNatInv`, `JoinContInv` (checker); `MatchFlagsT`, `Pr
 the checker's `joinCont`); `MatchTagG`, `WorldRefineG`, `JoinContG`, `GenTailG` (mixed); `MatchReaccessM`,
 `MatchReaccessE`, `ProofArmM`, `ValsCongrA` (model); and `Strict.FundCtx K`. -/
 theorem tStepMatchNat_of {K : RunCtx} {φ : Future} (hInv : TailMatchNatInv) (hJI : JoinContInv)
-    (hMF : MatchFlagsT K.D) (hPJ : ProofJoinG) (hTag : MatchTagG) (hW : WorldRefineG) (hJ : JoinContG)
-    (hG : GenTailG) (hRe : MatchReaccessM) (hRE : MatchReaccessE) (hPA : ProofArmM) (hVC : ValsCongrA)
+    (hMF : MatchFlagsT K.D) (hPJ : ProofJoinG K.D) (hTag : MatchTagG) (hW : WorldRefineG) (hJ : JoinContG)
+    (hG : GenTailG) (hRe : MatchReaccessM) (hRE : MatchReaccessE) (hPA : ProofArmM K) (hVC : ValsCongrA)
     (hc : Strict.FundCtx K) : TStepMatchNat K φ := by
   intro n ih Δ ρ p z u st k s π bh st' hm htn hne htd hk hkt hp hr hS hv hab hnh hD hrun
   have ih' : IH { K with Δ := Δ } φ n := ih
