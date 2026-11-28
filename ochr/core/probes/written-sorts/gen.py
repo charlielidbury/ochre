@@ -44,7 +44,7 @@ def valuey(S, S1, s):
 
 D128 = "[D128] the parameter B of {n} is declared at "
 D55 = "[D55] B is written where a type is expected, but its declared type is not a sort"
-LEVEL = "field x of Mk{n}: its type must be in Prop or Type"
+LEVEL = "[D140] field x of Mk{n}: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"
 
 rows, guards = [], []
 
@@ -68,7 +68,7 @@ for (s, S, S1) in SORTS:
             n = f"{shape}{s}{use}"
             ind(True, n, pre, B, use == "F"); guards.append((n, D128.format(n=n)))
             w = n + "W"
-            # a field of type B : Type₁ is above Type (unchanged by D128)
+            # a parameter written Type₁ heading a field (D140; before it, the level check: unchanged by D128)
             rej = (S == "Type₁" and use == "F")
             ind(rej, w, pre, S, use == "F")
             if rej: guards.append((w, LEVEL.format(n=w)))

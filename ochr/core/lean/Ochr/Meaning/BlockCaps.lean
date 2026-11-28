@@ -128,9 +128,9 @@ def staticBlockCaps (D : Decisions) (Γ : List IndDecl) (fuel : Nat) (sc : List 
   let caps₃ := caps₂.map fun (q, k) => if k != 1 then (q, k) else if pd q matches .prop then (q, 0) else (q, k)
   -- K1(g): granularity
   let out := splitLoop Γ pd moved uses wholeUses fuel caps₃ []
-  -- `blockEntry`'s order: oldest binding first, then shorter paths
-  let sorted := (out.toArray.qsort fun (a, _) (b, _) =>
-    a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))).toList
+  -- `blockEntry`'s order (`blockCapOrder`, main's capture sort): oldest binding first, then shorter
+  -- paths, then by path
+  let sorted := (blockCapOrder out.toArray).toList
   (mv, sorted)
 
 end BlockCaps

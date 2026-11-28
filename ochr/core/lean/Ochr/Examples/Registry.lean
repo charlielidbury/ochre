@@ -44,7 +44,7 @@ def programs : List (String × Block) :=
   [("Prelude", Prelude), ("Bools", Bools), ("Logic", Logic), ("Nats", Nats), ("WordType", WordType), ("Words", Words), ("Lists", Lists),
    ("Options", Options), ("OptionRuns", OptionRuns), ("Boxes", Boxes), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("FrameModel", FrameModel), ("Moves", Moves), ("MovedBorrows", MovedBorrows), ("ReturnedBorrows", ReturnedBorrows), ("Reborrows", Reborrows), ("StaticEnds", StaticEnds), ("StaticEndsRuns", StaticEndsRuns), ("BlockEntry", BlockEntry), ("BlockEntryRuns", BlockEntryRuns), ("OneConstructor", OneConstructor), ("OneConstructorRuns", OneConstructorRuns), ("JoinPlaces", JoinPlaces), ("JoinDeref", JoinDeref), ("JoinPrefix", JoinPrefix), ("JoinEntry", JoinEntry), ("SplitJoin", SplitJoin), ("SplitJoinInd", SplitJoinInd), ("SplitJoinLent", SplitJoinLent), ("HoleSites", HoleSites), ("ObsMoved", ObsMoved), ("FreshResult", FreshResult),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("BlockCaptures", BlockCaptures), ("CloseOffModel", CloseOffModel), ("DeclaredReadings", DeclaredReadings), ("UnitFill", UnitFill), ("Equality", Equality), ("BotConv", BotConv), ("Moves84", Moves84), ("ObsRef", ObsRef), ("IdConsumed", IdConsumed), ("RuntimeJ", RuntimeJ), ("Rewriting", Rewriting),
-   ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion), ("UnderCheck", UnderCheck), ("LocalRec", LocalRec), ("ProofCopies", ProofCopies), ("CloneProof", CloneProof), ("CloneK2", CloneK2), ("CloneK3", CloneK3), ("CloneCaptured", CloneCaptured),
+   ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion), ("UnderCheck", UnderCheck), ("LocalRec", LocalRec), ("NamedByGlobal", NamedByGlobal), ("ProofCopies", ProofCopies), ("CloneProof", CloneProof), ("CloneK2", CloneK2), ("CloneK3", CloneK3), ("CloneCaptured", CloneCaptured),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("SplitCallable", SplitCallable), ("ScrutineeTypes", ScrutineeTypes),
    ("GlobalRecords", GlobalRecords), ("ArmLocal", ArmLocal), ("ArmLocalBoom", ArmLocalBoom), ("ArmRecords", ArmRecords), ("ArmEta", ArmEta), ("Functions", Functions), ("ConvModel", ConvModel), ("CallUnknown", CallUnknown), ("InFlight", InFlight), ("ErasedLets", ErasedLets), ("CallArgs", CallArgs), ("Undeclared", Undeclared), ("OwnName", OwnName), ("NatLists", NatLists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
    ("PolyLists", PolyLists), ("ParamInference", ParamInference), ("UntypedHints", UntypedHints), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
@@ -55,7 +55,7 @@ def programs : List (String × Block) :=
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("PiSorts", PiSorts), ("HiddenSorts", HiddenSorts), ("BorrowTypes", BorrowTypes), ("BlockRow", BlockRow), ("FnBorrows", FnBorrows),
    ("Abstraction", Abstraction), ("DepFields", DepFields), ("StuckBlocks", StuckBlocks), ("LentIndex", LentIndex), ("ScaffoldLoans", ScaffoldLoans), ("StrongUpdate", StrongUpdate), ("LeafFields", LeafFields), ("MarkedFields", MarkedFields), ("MarkedTableTree1", MarkedTableTree1), ("MarkedTableTree2", MarkedTableTree2), ("MarkedTableLeaf1", MarkedTableLeaf1), ("MarkedTableLeaf2", MarkedTableLeaf2), ("MarkedNested", MarkedNested), ("OpenAttacks", OpenAttacks), ("EarlyEnd", EarlyEnd), ("JBlocks", JBlocks), ("Producers", Producers), ("DirectArm", DirectArm), ("Sugar", Sugar),
    ("SugarOwnBool", SugarOwnBool), ("SugarNoBool", SugarNoBool),
-   ("FordVec", FordVec), ("FordLe", FordLe), ("FordRel", FordRel), ("FordAttack", FordAttack), ("WrittenSorts", WrittenSorts), ("InductiveModel", InductiveModel)]
+   ("FordVec", FordVec), ("FordLe", FordLe), ("FordRel", FordRel), ("FordAttack", FordAttack), ("WrittenSorts", WrittenSorts), ("FieldHeads", FieldHeads), ("InductiveModel", InductiveModel)]
 
 /-- The arrays library and the case studies (`Array`, `ArrayBench`, `Quicksort`, `HashMap`,
 `DependentFields`' `DepVec`): checked and counted with the tour, and timed by `lake exe
@@ -74,7 +74,7 @@ def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 5475
+def Ochr.Registry.expectedTotal : Nat := 5566
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

@@ -358,6 +358,42 @@ ochr Subsingletons uses Bools, Fixtures {
     }
   )
 
+  -- The data field is a local of the arm, not a value written at the scrutinee, which stays `⋆`
+  -- (D138). A nested match on the same proof names the same field places, so its pattern
+  -- variables are the outer arm's locals and see what the arm wrote: `Nest` is accepted (written at
+  -- the scrutinee, the inner match would get a fresh unknown for `w2`, and `Nest` would be rejected),
+  -- and its control, which claims the other value, is rejected.
+  inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))
+
+  def Nest (e : Ex) : True := (
+    match e {
+      Wit(w, h) => (
+        w := 5;
+        match e {
+          Wit(w2, h2) => (
+            let q : Eq(Nat, w2, 5) = refl;
+            refl
+          ),
+        }
+      ),
+    }
+  )
+
+  -- twin of Nest: the same arms, claiming `w2` holds 6
+  reject def NestNo (e : Ex) : True := (
+    match e {
+      Wit(w, h) => (
+        w := 5;
+        match e {
+          Wit(w2, h2) => (
+            let q : Eq(Nat, w2, 6) = refl;
+            refl
+          ),
+        }
+      ),
+    }
+  )
+
   -- ... but nothing is known about it.
   reject def SqZero (h : Sq) : Id(Nat, 0, 0) := (
     match h {
@@ -486,4 +522,8 @@ ochr Subsingletons uses Bools, Fixtures {
   -- twin of SqBoom: proves the true `Eq(True, ..)` from `SqIrrOk` instead of `False` from `SqIrr`
   def SqBoomOk : Eq(True, SqTrue(MkSq(0)), SqTrue(MkSq(1))) := SqIrrOk(MkSq(0), MkSq(1))
 }
+
+-- D138: `NestNo`'s inner pattern variable is the outer arm's local, holding 5
+#guard (run "Subsingletons" Subsingletons).rejectedWith [
+  ("NestNo", "the ascribed term has type ⊤, expected False")]
 

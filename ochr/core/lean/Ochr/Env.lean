@@ -27,7 +27,8 @@ structure Binding where
   capture of such a binding, so a recursive call is recognised by the name it is made
   through (syntax), never by comparing function values, which a refinement, an [End] or
   a re-normalisation inside a capture can change (§6.3: which calls recurse is read from
-  syntax). -/
+  syntax). Since D139 no closure captures a function under check (its code names it by its
+  global), so only bindings of themselves carry a mark. -/
   recUid : Option Nat := none
   /-- D82: a declared type evaluated only when it is read (lazily): `(Π, w̄, i)` says it is the
   `i`-th parameter type of the Π-type `Π` at the arguments `w̄` as they were passed, or, for `i`

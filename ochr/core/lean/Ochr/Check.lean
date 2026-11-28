@@ -581,6 +581,31 @@ def checkInd (d : IndDecl) : M Unit := do
   -- without end)
   undeclaredCheck none (d.params.map (·.2)) (own := some n)
   undeclaredCheck (some n) (d.ctors.flatMap (·.2.map (·.2)))
+  -- D140 [Ind-decl]: the head of a field's type has a small result, read from what is written. A
+  -- parameter heading a field's type is written `Prop` or `Type`; a global heading one is declared
+  -- with the codomain `Prop` or `Type` written. Decided from the written types, nothing run. Before
+  -- it the run decided it: a parameter written `Type₁`, or a call of a global into `Type₁`, was
+  -- rejected by the level check below (`sortOf`) or as computing to a sort; a parameter whose type
+  -- reads as no sort (a hole, a match with no arms) by its evaluation; a global whose codomain reads
+  -- as a sort without being written as one (`let z = 0; Type`) by an internal error (the pre-pass
+  -- reads its call as erased, the run does not). A head whose declared type does not read as a sort
+  -- was and is rejected by D55 above. The consistency proof's data model rests on the fact
+  -- (`FieldHeads`)
+  for (cn, fields) in d.ctors do
+    for (fname, FT) in fields do
+      match FT with
+      | .place (.var v) =>
+        if h : v < np then
+          let i := np - 1 - v
+          let (ph, PT) := d.params[i]'(by omega)
+          unless PT matches .sort 0 | .sort 1 do
+            err s!"[D140] field {fname} of {cn}: its type is the parameter {ph.name}, declared at {PT.pp (pnames.drop (np - i))}: a parameter heading a field's type is written Prop or Type"
+      | .call (.const f) _ _ =>
+        if let some g := (← get).globals.find? (·.name == f) then
+          if let .tPi _ (.pi hs _ cod) _ := g.ty then
+            unless cod matches .sort 0 | .sort 1 do
+              err s!"[D140] field {fname} of {cn}: its type is a call of {f}, declared to return {cod.pp (hs.reverse.map (·.name))}: a function heading a field's type is declared to return Prop or Type"
+      | _ => pure ()
   let mut ps := #[]
   for (h, PT) in d.params do
     let A ← evalType (← fuelLeft) PT

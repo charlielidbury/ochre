@@ -99,6 +99,7 @@ theorem runs_checkInd_peel {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs (
   obtain ⟨_, s₇, b₇, hg₇, hTP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₇b, b₇b, hg₇b, hUP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈, b₈, hg₈, hUF, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨_, s₈b, b₈b, hg₈b, hHD, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨ps, s₉, b₉, hg₉, hPs, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₁₀, b₁₀, hg₁₀, hFL, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   -- the [Ind] loop: every field's later references are empty
@@ -176,6 +177,7 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
   obtain ⟨_, s₇, b₇, hg₇, hTP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₇b, b₇b, hg₇b, hUP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈, b₈, hg₈, hUF, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨_, s₈b, b₈b, hg₈b, hHD, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨ps, s₉, b₉, hg₉, hPs, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₁₀, b₁₀, hg₁₀, hFL, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨-, hallC⟩ := runs_forIn_all (fun a b => growsM_of_growsIn fun G => by grows_goI)
@@ -185,7 +187,7 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
       exact ⟨_, (runs_pure_inv hr).1⟩) hFL
   have hs2 : s₂.inds = s₁.inds := hg₂.inds
   have hT9 : s₉.inds = s₁.inds ++ [{ d' with ctors := [], nestable := [], declaring := true }] := by
-    rw [hg₉.inds, hg₈.inds, hg₇b.inds, hg₇.inds, hg₇a.inds, hg₆.inds, hg₅.inds, hg₄.inds, hg₃.inds]
+    rw [hg₉.inds, hg₈b.inds, hg₈.inds, hg₇b.inds, hg₇.inds, hg₇a.inds, hg₆.inds, hg₅.inds, hg₄.inds, hg₃.inds]
     show s₂.inds ++ _ = _
     rw [hs2]
   intro c cn fields hc j fname FT hj
