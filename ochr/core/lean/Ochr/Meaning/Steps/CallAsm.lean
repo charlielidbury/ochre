@@ -51,7 +51,8 @@ theorem runBodyRef_eq (fres : Res) (cs : List Value) (self : Hint) (hs : List Hi
           (bodyFrame K ρ φ fres cs rd ds c args s).1 with
       | some ((r, R), s₁) =>
         if EndsOk K φ (popEnds s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none) s₁) s₁ then
-        some ((r, { R with label := if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none }),
+        some ((r, ⟨(bodyFrame K ρ φ fres cs rd ds c args s).2.cod (args.map (·.1)),
+            if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none⟩),
           popCallFrame s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none) s₁)
         else none
       | none => none := rfl
@@ -123,7 +124,8 @@ theorem runBodyRef_extend (st : MState) (cs : List Value) (self : Hint) (hs : Li
     -- model3: the pop is guarded by its strict ends since ruling (A) (`CallRef.runBodyRef`)
     runBodyRef K ρ₂ φ fres cs (.fix self hs ds c dec body) rd as s =
       if EndsOk K φ (popEnds s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂ then
-      some ((r.1, { r.2 with label := if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none }),
+      some ((r.1, ⟨(bodyFrame K ρ φ fres cs rd ds c as s).2.cod (as.map (·.1)),
+          if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none⟩),
         popCallFrame s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂)
       else none := by
   sorry
@@ -148,12 +150,14 @@ theorem runBody_back (fuel : Nat) (st₂ st' : MState) (s₂ : SState) (π : Nat
       st₂.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st₂.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
       (∀ l, l < st₂.nextLoan → π' l = π l) ∧
       meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l))
-        { r.2 with label := if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none } v = r.1 ∧
+        ⟨(bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.cod (as.map (·.1)),
+          if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none⟩ v = r.1 ∧
       CtxOk { K with Δ := Δ' } ρ' st' ∧
       Rel { K with Δ := Δ' } ρ' φ π' (st'.withTemp v)
         (popCallFrame s.nextLoan (if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) ∧
       GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp v)
-        (flightOf { r.2 with label := if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none }) := by
+        (flightOf ⟨(bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.cod (as.map (·.1)),
+          if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none⟩) := by
   sorry
 
 /-! ### [Call]: the assembly -/

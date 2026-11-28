@@ -83,7 +83,9 @@ noncomputable def runBodyRef (fres : Res) (cs : List Value) (t : Term) (rd : Lis
     | some ((r, R), s₁) =>
       let keep : Option Nat := if out.isRef then R.label else none
       -- STRICT END (ruling (A), docs/31 D106): the pop's ends, as `bodyAt`'s
-      if EndsOk K φ (popEnds start keep s₁) s₁ then some ((r, { R with label := keep }), popCallFrame start keep s₁)
+      -- docs/31 D245: the call's result is typed at the codomain at the arguments, as the checker's `callFn` types it
+      -- (its `B`, the declared codomain at the arguments) and as `callOf` does, not at the body's run type
+      if EndsOk K φ (popEnds start keep s₁) s₁ then some ((r, ⟨out.cod (args.map (·.1)), keep⟩), popCallFrame start keep s₁)
       else none
     | none => none
   | _ => none

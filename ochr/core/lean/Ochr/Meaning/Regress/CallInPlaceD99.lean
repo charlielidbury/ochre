@@ -186,7 +186,8 @@ theorem id1_inPlace_typed :
     dsimp only
     rw [if_pos]
     · simp [outId1, codOf_id1, S₂r, Attack.S₂, SState.freshLoan, SState.setLent]
-      rfl
+      -- docs/31 D245: the call's result is typed at the codomain, `Nat`, which is `T₀`'s
+      exact ⟨rfl, rfl⟩
     · exact hguard
   refine ⟨_, _, hrun, rfl, ?_, ?_, ?_, ?_⟩
   · rw [hpop, endLabel_SPr2]
