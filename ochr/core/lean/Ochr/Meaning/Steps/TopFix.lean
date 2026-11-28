@@ -79,7 +79,7 @@ structure FixWit where
   model : Bool
 
 /-- **The function branch of `checkDef`, inverted to the body's tail check** (CHECKER; read true against `checkDef`,
-`checkFix`; the machine lane's to prove). The generic state the body is checked from (the plain mode, no reading handed
+`checkFix`; PROVED at `R` but for its `KeepsTab` clause, `Top.RT.R_check_inv`, `fixG_R`, docs/31 D259). The generic state the body is checked from (the plain mode, no reading handed
 down, Σ the stage's and the function's entry), the run of `checkTail` with `fixCont`, what `TailAt` asks of the
 continuation (it only extends the tables, `GrowsM`, and keeps their invariant, `KeepsTab`: owed since D250, machine code
 throughout), and the entry stored. -/
@@ -102,8 +102,8 @@ def GoodBelowB (K : RunCtx) (ρ : Assignment) (φ : Future) (d : Def) (b : Nat) 
     ∃ o, stG K ρ φ d.hs d.doms d.cod d.dec d.body b a = some o ∧
       OutGood' K.dm.read (psG K ρ φ d.doms) (outG K ρ φ d.doms d.cod) a o
 
-/-- **The function type fits its sort** (MIXED; the old chain's `fix_sortRule` and `fix_canon`, UNCERTAIN: the sort rule
-for the parts of a function type as the run reads them, and canonical codes). -/
+/-- **The function type fits its sort** (MIXED; the old chain's `fix_sortRule` and `fix_canon`; read true with two
+named clauses, D257; PROVED at `R`, `Top.RT.fixFits_R`). -/
 def FixFitsAt (P : ProgState) (d : Def) (st' : MState) : Prop :=
   ∀ (ρ : Assignment) (φ : Future),
     PiFits dm.read (lG (P.ctx dm D Γ st') d.hs d.doms d.cod) (psG (P.ctx dm D Γ st') ρ φ d.doms)
@@ -116,7 +116,7 @@ noncomputable abbrev ctxBΔ (P : ProgState) (d : Def) (st' : MState) (ρ : Assig
     (Δa : Nat → TyS) : RunCtx :=
   { ctxB dm D Γ P d st' ρ φ b with Δ := Δa }
 
-/-- **The start of the check at bound `b`** (MIXED; read true by parts, unproved). At member arguments `a` of rank below
+/-- **The start of the check at bound `b`** (MIXED; read true by parts; PROVED at `R`, `Top.RT.fixStart_R`, docs/31 D259). At member arguments `a` of rank below
 `b + 1`, given the induction hypothesis, there is an assignment of the generic state's unknowns (each parameter's its
 argument) AND a reading `Δa` of their types under which: `Pre` at the generic state in `K_b` with `Δa` (its `GlobalsOk`:
 the stage's globals from the invariant, the definition's own `memBelow` at `b` from the induction hypothesis, its
@@ -142,15 +142,16 @@ def FixStartAt (P : ProgState) (d : Def) (st' : MState) (w : FixWit) : Prop :=
       d.body.hasHolePrim = false ∧ DecTab (D st') w.st₁ ∧
       hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal = (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.1 a
 
-/-- **The body runs alike in the check's context and the stage's** (MODEL; read true for a body that reads its own name
-only through its own binding: the run reads neither `K.cur` nor, then, the global under check's meaning, and a closed
+/-- **The body runs alike in the check's context and the stage's** (MODEL; PROVED at `R`, `Top.RT.bodyCongr_R`; read true
+for a body that reads its own name only through its own binding: the run reads neither `K.cur` nor, then, the global under check's meaning, and a closed
 body no assignment; FALSE until decision (b)'s model clause for a body forming a closure or a block that names the
 definition by its global, main's D139, which the stage's context reads as `ProgState.dfltGlobal`). -/
 def BodyCongrAt (P : ProgState) (d : Def) (st' : MState) : Prop :=
   ∀ (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (b : Nat) (h : TyS) (s : SState),
     runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true h d.body s = runT (P.ctx dm D Γ st') ρ φ true h d.body s
 
-/-- **The leaf of the check at bound `b`** (MIXED; unread as one fact). Its parts: the leaf's type converts to the goal
+/-- **The leaf of the check at bound `b`** (MIXED; unread as one fact; PROVED at `R` outright, from the column's
+computation of the body's run, its hypotheses unused, `Top.RT.fixLeaf_R`). Its parts: the leaf's type converts to the goal
 as the path refined it, which the extended assignment meets, so the reference's result type is the codomain at `a`
 (conversion's soundness at a type, N3); [Return] makes the result whole, not `⊥`; the reference's frame pop (`fixBodyAt`'s
 ends) passes and leaves members in the cells (the checker's pop, through the relation at the leaf, for a body not read
