@@ -79,7 +79,11 @@ def CallUnderCheckG (K : RunCtx) (φ : Future) : Prop :=
       meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
       (∀ T, T? = some T → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
       r.2.label = (Value.heldLabel v).map π' ∧
-      Pre { K with Δ := Δ' } ρ' (st₁.withTempT v T?) ∧ Rel { K with Δ := Δ' } ρ' φ π' (st₁.withTempT v T?) s') ∧
+      Pre { K with Δ := Δ' } ρ' (st₁.withTempT v T?) ∧ Rel { K with Δ := Δ' } ρ' φ π' (st₁.withTempT v T?) s' ∧
+      -- lead39 (docs/31 D241): `CallFnG`'s two clauses of `OutL` (D183, ruling (ii)), which this branch must conclude too
+      (cf.defer = true → ∀ caps hs ds cod rd ws', st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws') →
+        ({ K with Δ := Δ' }).M.paramTy ρ' (.tPi caps (.pi hs ds cod) rd) ws' ds.length = r.2) ∧
+      ((typed = true ∨ (cf.want = true ∧ cf.defer = false)) → T? = none → r.2.m = TyM.err)) ∧
     Kept stc st₁
 
 /-- **The re-run of a sealed program** (MIXED; Task 1 (b); principle 7: a sealed program means the run of its text, and

@@ -336,6 +336,8 @@ import Ochr.Meaning.Steps.ParamCellAttack
 import Ochr.Meaning.Steps.ProofFieldAttack
 import Ochr.Meaning.Steps.CallInPlaceFrame
 import Ochr.Meaning.Steps.CallStartInv
+import Ochr.Meaning.Steps.CallStep
+import Ochr.Meaning.Steps.CallStepGuards
 import Ochr.Meaning.Steps.StageBlockCE
 import Ochr.Meaning.Steps.RecDescAttack
 import Ochr.Meaning.Steps.FixEqDesc

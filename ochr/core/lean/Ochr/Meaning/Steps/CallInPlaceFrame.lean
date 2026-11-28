@@ -469,10 +469,13 @@ the run in place made and ended the body's labels; `callOf` made none). The conc
 for a checker state in which every label that occurs is live (the checker's (WF2) outside a sealed program's run). Without
 that hypothesis the transfer is false by reading: `Rel.fresh` asks each occurring label's image below the reference's
 counter, which is the body's labels' larger in place, and a stale loan of the checker's could be renamed to a dead label
-the body made (docs/31 D230). -/
+the body made (docs/31 D230). The transfer is asked at EVERY context and assignment (docs/31 D241): it is about the two
+reference states alone (they differ in the counter and in dead labels' records and sites, which the relation does not
+read), and its use, after the checker's run has extended the context and the assignment at what it made, is at the
+extended ones. -/
 def InPlaceAgree : Option (Res × SState) → Option (Res × SState) → Prop
-  | some (r, t), some (r', t') => r = r' ∧ ∀ (st : MState) (π : Nat → Nat),
-      (∀ l, st.Occurs l → liveLoan st.env l = true) → Rel K ρ φ π st t → Rel K ρ φ π st t'
+  | some (r, t), some (r', t') => r = r' ∧ ∀ (K' : RunCtx) (ρ' : Assignment) (st : MState) (π : Nat → Nat),
+      (∀ l, st.Occurs l → liveLoan st.env l = true) → Rel K' ρ' φ π st t → Rel K' ρ' φ π st t'
   | none, none => True
   | _, _ => False
 
@@ -504,7 +507,7 @@ def CallPopG : Prop :=
         (inStart K ρ φ (selfG K ρ φ hs ds c dec body, .plain (piTG K ρ φ hs ds c)) ds c args (callPre c args s)))
       (runT K ρ φ true ((fbG K ρ φ ds c).2.1 (args.map (·.1))) body
         (clStart K ρ φ ds c (piTG K ρ φ hs ds c) (selfG K ρ φ hs ds c dec body) (args.map (·.1)))) →
-    InPlaceAgree K ρ φ (runCallRef K ρ φ (K.C.global g) [] (.fix self hs ds c dec body) [] args s)
+    InPlaceAgree φ (runCallRef K ρ φ (K.C.global g) [] (.fix self hs ds c dec body) [] args s)
       (callOf K.dm.read (K.C.global g) args s)
 
 /-- `BorrowArgsTyped` reads the callee's type only. -/
@@ -533,7 +536,7 @@ theorem callInPlace_of (hst : CallStartG K ρ φ) (hpop : CallPopG K ρ φ) (hc 
     (hlab : ∀ (i : Nat) (a : Res) (d : PiDom), args[i]? = some a → (psG K ρ φ ds)[i]? = some d → (a.2.label.isSome = d.isRef))
     (hbt : BorrowArgsTyped K.dm.read (K.C.global g) args s)
     (hheld : ArgsHeld K ρ φ ds c args (callPre c args s)) :
-    InPlaceAgree K ρ φ (runCallRef K ρ φ (K.C.global g) [] (.fix self hs ds c dec body) [] args s)
+    InPlaceAgree φ (runCallRef K ρ φ (K.C.global g) [] (.fix self hs ds c dec body) [] args s)
       (callOf K.dm.read (K.C.global g) args s) := by
   -- the fixpoint equation at the global's forming state, at the arguments
   have he := hfix g gd self hs ds c dec body hfind hcur hfn ρ φ (args.map fun a : Res => a.1)
