@@ -170,7 +170,7 @@ The annotated $kw("let") x : A = t; u$ runs as $kw("let") x = t; u$: its annotat
 #rules(
   ir(name: "Ctor", $cfg(Omega, overline(t)) ev^* cfg(Omega', overline(v))$, $cfg(Omega, ty("C")(overline(t))) ev cfg(Omega', ty("C")(overline(v)))$),
 )
-A constructor evaluates its fields left to right, each into a temporary ([Args], below); its field types are borrow-free, so a constructor value holds no borrow. A pair is the constructor `Mk`. #lean("evalCore (.ctor, .zero, .succ, .tt)")
+A constructor evaluates its fields left to right, each into a temporary ([Args], below); its field types are borrow-free, so a constructor value holds no borrow. A pair is the constructor `Mk`, and `S(t)` the constructor `S`, its argument typed as a call of a function `Nat → Nat` types its argument (D150). #lean("evalCore (.ctor, .zero, .succ, .tt)", "argTakesHint")
 
 === Functions, types and proofs
 
