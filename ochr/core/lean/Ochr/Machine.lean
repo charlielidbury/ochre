@@ -2292,14 +2292,18 @@ def mkEqM (fuel : Nat) (A a b : Value) : M Value := do
   if ← conv fuel' a b then return vTrue
   match a, b with
   | .succ a', .succ b' => return ← mkEqM fuel' .tNat a' b'
-  | .ind t c _ ps fs, .ind u d _ qs gs =>
+  | .ind t c _ _ fs, .ind u d _ _ gs =>
     if t == u && c == d && fs.length == gs.length then
-      -- the field types at the parameters: the equation's type `D(ā)`, else the values' own
+      -- D144: the field types at the parameters of the equation's type `D(ā)`, read from the type
+      -- only (the paper's [Eq-inj]: `eq(D(ā), C(ā; v̄), C(ā; w̄))`). At any other type (an unknown,
+      -- a sealed type) the equation stays, `Eq(A, a, b)`, as it does at a dependent constructor whose
+      -- index fields differ: fail-safe, it only computes less. Before D144 the values' own recorded
+      -- parameters were read when `A` was not `D(…)`: no run of the suite, the case studies or the
+      -- probes reached that case (measured with it made an error), and it was the one place
+      -- [Eq-inj]'s soundness needed the values typed at their own declaration
       let args? := match A with
         | .tInd n as => if n == t then some as else none
         | _ => none
-      let args? := args?.orElse fun _ =>
-        if !ps.isEmpty then some ps else if !qs.isEmpty then some qs else none
       if let some args := args? then
         let dd ← lookupInd t
         -- D64 (D52 restricted): a dependent constructor is taken apart only while its index
