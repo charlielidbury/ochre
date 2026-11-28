@@ -14,6 +14,22 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## R1 BUILT; THE KNOT'S LEAF NEEDS THE GOAL CLAUSE; THE LEAF AT `D` AND `Z0` (lead47, 2026-11-28, `spine-lead47`; docs/31 D284 to D289)
+
+| Statement | Class | Status |
+|---|---|---|
+| `RecTie` (the [Rec] stack's tie to `K.cur`) | entry condition | BUILT into `EvalAt`/`TailAt` (R1, D285); supplied at a constant (`RecTie.nil`) and at `R` (`recTie_B`, PROVED) |
+| `CurOnStackG` | checker | DELETED (false whenever a function is under check) |
+| `LetDropG`, `CallEnterG` (`CallEntry.stack`) | mixed | restated: also give the stack kept (read true) |
+| `ConstCheckAt` | checker | gains the empty stack; PROVED at `one` |
+| `FixStartAt` | mixed | gains the tie; PROVED at `R`; FALSE at a function without `by` until main's D147/D148 and the top's non-recursive route |
+| the goal clause (`hintM {K with Δ := Δ'} ρ' st'.goal = hintM K ρ st.goal` at `EvalAt`'s end, `TailAt`'s leaf) | general statement | RULED (D286), attacked on paper at every write of the goal: holds by equality (D288); NOT BUILT (plan: D288, handoff item 1) |
+| `FixLeafAt` | mixed | NOT derivable from its hypotheses at a general function (D286: no leaf goal); with the clause, `TailConclG`, PROVED at every function with a data codomain from named facts (`fixLeafG_of`, `fixLeafG_ofRef`), at `D` and `Z0`; needs `FixStartAt`'s hint and the body's flag added (`knot_step` has both) |
+| `LeafReturnG` | mixed | read true: `wholeReturned` and a whole value never means `⊥` |
+| `LeafConvG` | mixed | read true: `fixCont`'s `conv` of the leaf type with the goal read after the pop (the leaf's), N3 (`ConvTypeStmt`) |
+| `LeafPopG` (no borrow parameter), `LeafPopAt` (per definition, with the cells' finals) | mixed | read true: the checker's pop through `Rel` at the leaf |
+| `RetKindR` | model | open (handoff item 3: the route through `callOf`'s `.data` row) |
+
 ## THE ACCEPTANCE TEST AT A RECURSIVE DEFINITION `R` (lead46, 2026-11-28, `spine-lead46`; docs/31 D259)
 
 | Statement | Class | Status |
