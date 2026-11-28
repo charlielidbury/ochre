@@ -850,11 +850,65 @@ noncomputable def refTargetsOf (reps : List Place) (ws : List Sem) (s : SState) 
 noncomputable def refTargets (reps : List Place) (ws : List Sem) (hint : TyS) (t : Term) (s : SState) : Option (List Sem) :=
   (run K ρ φ hint t s).map fun (_, s') => refTargetsOf φ reps ws s'
 
+/-- A term's embedded value, if it is one (`Machine.forceHint`'s reading of the deferred hint's arguments). -/
+def _root_.Ochr.Term.val? : Term → Option Value
+  | .val v => some v
+  | _ => none
+
+/-- **D124's deferred hint taken apart** (`Machine.hintLater P ws = ⌈⋄hint(P, ws)⌉`, the sealed program that only
+`forceHint` reads): the function type and the arguments, as `forceHint` reads them. -/
+def deferredHint? : Value → Option (Value × List Value)
+  | .sealed (.prim "⋄hint" (.val P :: as)) => some (P, as.filterMap Term.val?)
+  | _ => none
+
+theorem anyAtomList_filterMap_val {Q : Value → Bool} : ∀ (as : List Term),
+    Value.anyAtomList Q (as.filterMap Term.val?) = true → Term.anyAtomList Q as = true
+  | [], h => by simp [Value.anyAtomList] at h
+  | a :: as, h => by
+    cases a with
+    | val v =>
+      simp only [List.filterMap_cons, Term.val?, Value.anyAtomList, Bool.or_eq_true] at h
+      rcases h with h | h
+      · simp [Term.anyAtomList, Term.anyAtom, h]
+      · simp [Term.anyAtomList, anyAtomList_filterMap_val as h]
+    | _ =>
+      simp only [List.filterMap_cons, Term.val?] at h
+      simp [Term.anyAtomList, anyAtomList_filterMap_val as h]
+
+/-- The deferred hint's function type and arguments are atoms of the hint. -/
+theorem deferredHint?_atoms {T P : Value} {ws : List Value} (h : deferredHint? T = some (P, ws)) (Q : Value → Bool) :
+    (P.anyAtom Q = true → T.anyAtom Q = true) ∧ (Value.anyAtomList Q ws = true → T.anyAtom Q = true) := by
+  unfold deferredHint? at h
+  split at h
+  · rename_i P' as
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    refine ⟨fun hp => ?_, fun hw => ?_⟩
+    · simp [Value.anyAtom, Term.anyAtom, Term.anyAtomList, hp]
+    · simp [Value.anyAtom, Term.anyAtom, Term.anyAtomList, anyAtomList_filterMap_val as hw]
+  · cases h
+
+/-- The number of domains of a function type value (`paramTy` at this index reads the codomain). -/
+def piArity : Value → Nat
+  | .tPi _ (.pi _ ds _) _ => ds.length
+  | .tPi _ (.fix _ _ ds _ _ _) _ => ds.length
+  | _ => 0
+
 /-! ### Helpers from `Steps/Eval.lean` -/
 
-/-- The type the context gives, as a `TyM` (`err` when none). -/
+/-- The type the context gives, as a `TyM` (`err` when none). D124's deferred hint `⌈⋄hint(P, ws)⌉`
+(`Machine.hintLater`: a called body's declared codomain at its arguments, evaluated where it is read,
+`forceHint`) is read as what it defers, the codomain of `P` at `ws` (`CodeMeaning.paramTy` past the last
+domain), exactly as the statement reads a deferred call type (`LaterOk`) and a binding's deferred type
+(`Env.hintAt`): the hint is a type the checker computes later, not a value of the model (the orchestrator's
+ruling on docs/31 D243; read as a value it means `err`, `CallRanAttack.tyS_hintLater`, and the induction
+hypothesis could not reach a called body that reads its hint, `BareNone`). Every other hint as before. -/
 noncomputable def hintM (hint : Option Value) : TyS :=
-  (hint.map (Value.tyS K.dm K.M K.Γ ρ)).getD (.plain .err)
+  match hint with
+  | none => .plain .err
+  | some T => match deferredHint? T with
+    | some (P, ws) => K.M.paramTy ρ P ws (piArity P)
+    | none => Value.tyS K.dm K.M K.Γ ρ T
 
 /-- **What a private computation leaves** (`inStatement`, `privately`: `restoreKeep`, D37): Ω, the
 goal, the path condition and the declarations are the snapshot's; the tables of unknowns and labels

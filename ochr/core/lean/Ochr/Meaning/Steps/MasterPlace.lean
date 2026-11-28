@@ -300,8 +300,15 @@ theorem kern_withTempT_none (st : MState) (v : Value) (T? : Option Value) :
 theorem strAgree_congrA {K : RunCtx} {ρ ρ₁ : Assignment} {Δ₁ : Nat → TyS} {T : Value} {R : TyS} {n : Nat}
     (hb : HintBelow (some T) n) (hag : ∀ σ, σ < n → ρ₁ σ = ρ σ ∧ Δ₁ σ = K.Δ σ) (h : StrAgree K ρ T R) :
     StrAgree { K with Δ := Δ₁ } ρ₁ T R := by
-  have e := hintM_congrA (K := K) (ρ := ρ) (ρ₁ := ρ₁) (Δ₁ := Δ₁) hb hag
-  show (hintM { K with Δ := Δ₁ } ρ₁ (some T)).m = R.m
+  -- `StrAgree` reads `Value.tyS` (a type the checker holds is never D124's deferred hint, docs/31 D243)
+  show (Value.tyS K.dm (codeMeaning { K with Δ := Δ₁ }) K.Γ ρ₁ T).m = R.m
+  have e : Value.tyS K.dm (codeMeaning { K with Δ := Δ₁ }) K.Γ ρ₁ T = Value.tyS K.dm (codeMeaning K) K.Γ ρ T := by
+    show TyS.plain (Value.mean K.dm (codeMeaning { K with Δ := Δ₁ }) K.Γ ρ₁ (fun _ => .err) (.plain TyM.err) T).asTy =
+      TyS.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ (fun _ => .err) (.plain TyM.err) T).asTy
+    rw [meanV_eq_mean { K with Δ := Δ₁ } ρ₁, meanV_eq_mean K ρ,
+      meanV_congrA K Δ₁ ρ ρ₁ _ T _ (fun σ hσ => by
+        obtain ⟨a, d⟩ := hag σ (hb T rfl σ hσ)
+        exact ⟨a.symm, d.symm⟩)]
   rw [e]; exact h
 
 section

@@ -524,6 +524,97 @@ theorem run_congrA (t : Term) (hint : TyS) (s : SState)
     run K ρ φ hint t s = run (KA K Δ') ρ' φ hint t s :=
   runT_congrA K Δ' ρ ρ' φ false t hint s ha
 
+theorem valAnyAtomList_of_mem {P : Value → Bool} {w : Value} : ∀ {ws : List Value}, w ∈ ws → w.anyAtom P = true →
+    Value.anyAtomList P ws = true
+  | [], hw, _ => absurd hw List.not_mem_nil
+  | a :: as, hw, h => by
+    rw [List.mem_cons] at hw
+    rcases hw with rfl | hw
+    · simp [Value.anyAtomList, h]
+    · simp [Value.anyAtomList, valAnyAtomList_of_mem hw h]
+
+/-- **A deferred type at two assignments and two Δs** (`CodeMeaning.paramTy`: a binding's deferred type, a deferred call's
+type, D124's deferred hint) that agree at the unknowns of the function type and of the arguments: the same. -/
+theorem paramTy_congrA (P : Value) (ws : List Value) (j : Nat)
+    (hP : ∀ σ, P.anyAtom (· == .abs σ) = true → AgreeA K Δ' ρ ρ' σ)
+    (hws : ∀ σ, Value.anyAtomList (· == .abs σ) ws = true → AgreeA K Δ' ρ ρ' σ) :
+    (codeMeaning K).paramTy ρ P ws j = (codeMeaning (KA K Δ')).paramTy ρ' P ws j := by
+  cases P with
+  | tPi caps t rd =>
+    have hcv := capsVals_congrA K Δ' ρ ρ' noFuture caps (fun σ h => hP σ (by simp [Value.anyAtom, h]))
+    have hct := capsTys_congrA K Δ' ρ ρ' noFuture rd (fun σ h => hP σ (by simp [Value.anyAtom, h]))
+    have hacc : ws.map (meanV K ρ noFuture (.plain TyM.err)) = ws.map (meanV (KA K Δ') ρ' noFuture (.plain TyM.err)) := by
+      apply List.map_congr_left
+      intro w hw
+      apply meanV_congrA
+      intro σ h
+      exact hws σ (valAnyAtomList_of_mem hw h)
+    have ht : ∀ σ, t.anyAtom (· == .abs σ) = true → AgreeA K Δ' ρ ρ' σ :=
+      fun σ h => hP σ (by simp [Value.anyAtom, h])
+    cases t with
+    | pi hs ds c =>
+      show (match (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds)[j]? with
+          | some b => b.1 ((ws.map (meanV K ρ noFuture (.plain TyM.err))).take j)
+          | none => fixCod K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)))
+              (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds)
+              (ds.map Term.isRefTy) c (ws.map (meanV K ρ noFuture (.plain TyM.err)))) =
+        (match (bindsOf (KA K Δ') ρ' noFuture (stateOf 0 (capsState (capsVals (KA K Δ') ρ' noFuture caps) (capsTys (KA K Δ') ρ' noFuture rd))) ds)[j]? with
+          | some b => b.1 ((ws.map (meanV (KA K Δ') ρ' noFuture (.plain TyM.err))).take j)
+          | none => fixCod (KA K Δ') ρ' noFuture (stateOf 0 (capsState (capsVals (KA K Δ') ρ' noFuture caps) (capsTys (KA K Δ') ρ' noFuture rd)))
+              (bindsOf (KA K Δ') ρ' noFuture (stateOf 0 (capsState (capsVals (KA K Δ') ρ' noFuture caps) (capsTys (KA K Δ') ρ' noFuture rd))) ds)
+              (ds.map Term.isRefTy) c (ws.map (meanV (KA K Δ') ρ' noFuture (.plain TyM.err))))
+      rw [← hcv, ← hct, ← hacc]
+      generalize stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)) = s
+      have hbs : bindsOf K ρ noFuture s ds = bindsOf (KA K Δ') ρ' noFuture s ds :=
+        runBinds_congrA K Δ' ρ ρ' noFuture s _ ds [] [] (fun σ h => ht σ (by simp [Term.anyAtom, h]))
+      have hc : ∀ bs rs acc, runT K ρ noFuture false (.plain .err) c (extendBy s bs rs acc)
+          = runT (KA K Δ') ρ' noFuture false (.plain .err) c (extendBy s bs rs acc) :=
+        fun bs rs acc => runT_congrA K Δ' ρ ρ' noFuture false c _ _ fun σ h => ht σ (by simp [Term.anyAtom, h])
+      have hout : ∀ bs rs, codOf K ρ noFuture s bs rs c = codOf (KA K Δ') ρ' noFuture s bs rs c := by
+        intro bs rs
+        cases c with
+        | ref U =>
+          have hU : ∀ bs rs acc, runT K ρ noFuture false (.plain .err) U (extendBy s bs rs acc)
+              = runT (KA K Δ') ρ' noFuture false (.plain .err) U (extendBy s bs rs acc) :=
+            fun bs rs acc => runT_congrA K Δ' ρ ρ' noFuture false U _ _ fun σ h => ht σ (by simp [Term.anyAtom, h])
+          simp only [codOf, hU]
+        | _ => simp only [codOf, hc]
+      have hcod : ∀ bs rs, fixCod K ρ noFuture s bs rs c = fixCod (KA K Δ') ρ' noFuture s bs rs c :=
+        fun bs rs => by unfold fixCod; rw [hout]
+      rw [hbs, hcod]
+    | fix self hs ds c dec body =>
+      show (match (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds)[j]? with
+          | some b => b.1 ((ws.map (meanV K ρ noFuture (.plain TyM.err))).take j)
+          | none => fixCod K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)))
+              (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds)
+              (ds.map Term.isRefTy) c (ws.map (meanV K ρ noFuture (.plain TyM.err)))) =
+        (match (bindsOf (KA K Δ') ρ' noFuture (stateOf 0 (capsState (capsVals (KA K Δ') ρ' noFuture caps) (capsTys (KA K Δ') ρ' noFuture rd))) ds)[j]? with
+          | some b => b.1 ((ws.map (meanV (KA K Δ') ρ' noFuture (.plain TyM.err))).take j)
+          | none => fixCod (KA K Δ') ρ' noFuture (stateOf 0 (capsState (capsVals (KA K Δ') ρ' noFuture caps) (capsTys (KA K Δ') ρ' noFuture rd)))
+              (bindsOf (KA K Δ') ρ' noFuture (stateOf 0 (capsState (capsVals (KA K Δ') ρ' noFuture caps) (capsTys (KA K Δ') ρ' noFuture rd))) ds)
+              (ds.map Term.isRefTy) c (ws.map (meanV (KA K Δ') ρ' noFuture (.plain TyM.err))))
+      rw [← hcv, ← hct, ← hacc]
+      generalize stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)) = s
+      have hbs : bindsOf K ρ noFuture s ds = bindsOf (KA K Δ') ρ' noFuture s ds :=
+        runBinds_congrA K Δ' ρ ρ' noFuture s _ ds [] [] (fun σ h => ht σ (by simp [Term.anyAtom, h]))
+      have hc : ∀ bs rs acc, runT K ρ noFuture false (.plain .err) c (extendBy s bs rs acc)
+          = runT (KA K Δ') ρ' noFuture false (.plain .err) c (extendBy s bs rs acc) :=
+        fun bs rs acc => runT_congrA K Δ' ρ ρ' noFuture false c _ _ fun σ h => ht σ (by simp [Term.anyAtom, h])
+      have hout : ∀ bs rs, codOf K ρ noFuture s bs rs c = codOf (KA K Δ') ρ' noFuture s bs rs c := by
+        intro bs rs
+        cases c with
+        | ref U =>
+          have hU : ∀ bs rs acc, runT K ρ noFuture false (.plain .err) U (extendBy s bs rs acc)
+              = runT (KA K Δ') ρ' noFuture false (.plain .err) U (extendBy s bs rs acc) :=
+            fun bs rs acc => runT_congrA K Δ' ρ ρ' noFuture false U _ _ fun σ h => ht σ (by simp [Term.anyAtom, h])
+          simp only [codOf, hU]
+        | _ => simp only [codOf, hc]
+      have hcod : ∀ bs rs, fixCod K ρ noFuture s bs rs c = fixCod (KA K Δ') ρ' noFuture s bs rs c :=
+        fun bs rs => by unfold fixCod; rw [hout]
+      rw [hbs, hcod]
+    | _ => rfl
+  | _ => rfl
+
 end
 
 end Ochr.Meaning

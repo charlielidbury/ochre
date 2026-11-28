@@ -14,16 +14,16 @@ and that the body run from that state is the call's.
 `pushPhase` is a copy of `runBodyCore` up to the body's `eval` (the depth counter, which no statement reads, left out);
 `callAt` runs the real `callFn` from the same call point; the guards compare the two.
 
-**FINDING (the hint).** At a callee whose body reads its hint (a constructor whose parameters are not written, D89) and
-takes no borrow argument, the checker hands the body `hintLater piTy ws` (main's D124: the codomain at the arguments,
-evaluated where it is read, `forceHint`). `BareNone(())` below: the body `None` is run at that hint and builds
-`None[Nat]` (the parameter read off the forced hint). The model reads the hint value through `hintM`, which reads this
-sealed `⋄hint` program as `err` (`hintM_hintLater`, kernel-checked: the reference's `.prim` clause fails on `⋄hint`); and
-the reference's constructor whose parameters are not written fails at the hint `err` (`runT_bareCtor_err`, kernel-
-checked: no record, `ctorOut none`). So at the body of `BareNone`, `EvalAt`'s hypothesis (E4) (the reference's run at
-`hintM K ρ hint` succeeds) is FALSE, though the reference's run in place (`runBodyRef`, at the codomain) succeeds: the
-induction hypothesis cannot be applied to that body. What must change: `hintM` must read the deferred hint as the
-deferred codomain, `K.M.paramTy ρ P ws |ds|` (as `LaterOk` reads a deferred call type), docs/31 D243.
+**FINDING (the hint; docs/31 D243, REPAIRED by the orchestrator's ruling).** At a callee whose body reads its hint (a
+constructor whose parameters are not written, D89) and takes no borrow argument, the checker hands the body
+`hintLater piTy ws` (main's D124: the codomain at the arguments, evaluated where it is read, `forceHint`). `BareNone(())`
+below: the body `ONone` is run at that hint and builds `ONone[Nat]` (the parameter read off the forced hint). Read as a
+value, that sealed `⋄hint` program means `err` (`tyS_hintLater`, kernel-checked: the reference's `.prim` clause fails on
+`⋄hint`), and the reference's constructor whose parameters are not written fails at the hint `err` (`runT_bareCtor_err`,
+kernel-checked: no record, `ctorOut none`). As `hintM` read every hint as a value, `EvalAt`'s (E4) was FALSE at the body
+of `BareNone`, though the reference's run in place (`runBodyRef`, at the codomain) succeeds: the induction hypothesis
+could not be applied to that body. Since the ruling `hintM` reads the deferred hint as the deferred codomain,
+`K.M.paramTy ρ P ws |ds|`, as `LaterOk` reads a deferred call type (`hintM_hintLater`).
 -/
 
 open Ochr.Test
@@ -181,11 +181,12 @@ theorem runT_hintLater (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) 
     (s : SState) : runT K ρ φ tl h (.prim "⋄hint" (.val P :: ws.toList.map Term.val)) s = none := by
   rw [runT] <;> first | rfl | (intros; simp_all)
 
-/-- **`hintM` reads D124's deferred hint as `err`**: the hint `EvalAt` hands the reference's run of a callee's body
-whose checker run got `hintLater piTy ws` is the meaning of that sealed `⋄hint` program, which is `err`, not the
-codomain at the arguments. -/
-theorem hintM_hintLater (K : RunCtx) (ρ : Assignment) (P : Value) (ws : Array Value) :
-    hintM K ρ (some (Ochr.hintLater P ws)) = .plain TyM.err := by
+/-- **D124's deferred hint, read as a value, means `err`** (the record of docs/31 D243's finding): before the ruling,
+`hintM` read every hint as a type value (`Value.tyS`), so the hint `EvalAt` handed the reference's run of a callee's body
+whose checker run got `hintLater piTy ws` was the meaning of that sealed `⋄hint` program, `err`, not the codomain at the
+arguments. -/
+theorem tyS_hintLater (K : RunCtx) (ρ : Assignment) (P : Value) (ws : Array Value) :
+    Value.tyS K.dm K.M K.Γ ρ (Ochr.hintLater P ws) = .plain TyM.err := by
   show TyS.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ (fun _ => .err) (.plain TyM.err) (Ochr.hintLater P ws)).asTy = _
   rw [meanV_eq_mean K ρ]
   unfold Ochr.hintLater
@@ -193,10 +194,24 @@ theorem hintM_hintLater (K : RunCtx) (ρ : Assignment) (P : Value) (ws : Array V
   simp only [runT_hintLater]
   rfl
 
+/-- D124's deferred hint taken apart: the function type and the arguments it was made of. -/
+theorem deferredHint?_hintLater (P : Value) (ws : Array Value) :
+    deferredHint? (Ochr.hintLater P ws) = some (P, ws.toList) := by
+  unfold Ochr.hintLater deferredHint?
+  simp only [List.filterMap_map, Option.some.injEq, Prod.mk.injEq, true_and]
+  have : (Term.val? ∘ Term.val) = (some : Value → Option Value) := funext fun _ => rfl
+  rw [this, List.filterMap_some]
+
+/-- **Since the ruling on D243, `hintM` reads D124's deferred hint as what it defers**: the codomain of the function type
+at the arguments, as `LaterOk` reads a deferred call type. -/
+theorem hintM_hintLater (K : RunCtx) (ρ : Assignment) (P : Value) (ws : Array Value) :
+    hintM K ρ (some (Ochr.hintLater P ws)) = K.M.paramTy ρ P ws.toList (piArity P) :=
+  Master.hintM_of_some (deferredHint?_hintLater P ws)
+
 /-- **The reference's constructor whose parameters are not written fails at the hint `err`** (D89's case: no field
-determines a parameter): no record from the hint, none from the fields, so `ctorOut none`. With `hintM_hintLater`:
-at `BareNone`'s body, run by the checker at `hintLater` (above), the reference's run at `hintM` of that hint fails, so
-`EvalAt`'s (E4) is false there, while the run in place (`runBodyRef`, at the codomain) succeeds. -/
+determines a parameter): no record from the hint, none from the fields, so `ctorOut none`. With `tyS_hintLater`:
+at `BareNone`'s body, run by the checker at `hintLater` (above), the reference's run at that hint read as a value fails, so
+`EvalAt`'s (E4) was false there before the ruling on D243, while the run in place (`runBodyRef`, at the codomain) succeeds. -/
 theorem runT_bareCtor_err (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (ty : String) (c : Nat) (h : Hint)
     (d : IndDecl) (s : SState) (hd : K.Γ.find? (·.name == ty) = some d) (hp : d.params ≠ [])
     (hfl : K.D.flags (scopeOf s) (.ctor ty c h [] []) = (false, false)) :

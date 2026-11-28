@@ -520,6 +520,16 @@ theorem hintBelow_ite {hint : Option Value} {n : Nat} (c : Bool) (h : HintBelow 
   · exact hintBelow_none n
   · exact h
 
+/-- `hintM` at a hint that is not D124's deferred form: its meaning as a type value. -/
+theorem hintM_of_none {K : RunCtx} {ρ : Assignment} {T : Value} (h : deferredHint? T = none) :
+    hintM K ρ (some T) = Value.tyS K.dm K.M K.Γ ρ T := by
+  simp only [hintM, h]
+
+/-- `hintM` at D124's deferred hint: the codomain of the function type at the arguments (docs/31 D243). -/
+theorem hintM_of_some {K : RunCtx} {ρ : Assignment} {T P : Value} {ws : List Value} (h : deferredHint? T = some (P, ws)) :
+    hintM K ρ (some T) = K.M.paramTy ρ P ws (piArity P) := by
+  simp only [hintM, h]
+
 /-- **The hint means the same across an extension** (docs/31 D180): a hint naming only unknowns below `n`
 (`HintBelow`, D179) has the same meaning at an assignment and `Δ` that agree with the old ones below `n`, as
 every extension a step hands on does (`Ext.agree`). The reason `EvalAt` assumes `HintBelow`: an untyped `let`/`;`
@@ -530,12 +540,21 @@ theorem hintM_congrA {K : RunCtx} {ρ ρ₁ : Assignment} {Δ₁ : Nat → TyS} 
   cases hint with
   | none => rfl
   | some T =>
-    show TyS.plain (Value.mean K.dm (codeMeaning { K with Δ := Δ₁ }) K.Γ ρ₁ (fun _ => .err) (.plain TyM.err) T).asTy =
-      TyS.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ (fun _ => .err) (.plain TyM.err) T).asTy
-    rw [meanV_eq_mean { K with Δ := Δ₁ } ρ₁, meanV_eq_mean K ρ,
-      meanV_congrA K Δ₁ ρ ρ₁ _ T _ (fun σ hσ => by
-        obtain ⟨a, d⟩ := hag σ (hb T rfl σ hσ)
-        exact ⟨a.symm, d.symm⟩)]
+    have hT : ∀ σ, T.anyAtom (· == .abs σ) = true → AgreeA K Δ₁ ρ ρ₁ σ := fun σ hσ => by
+      obtain ⟨a, d⟩ := hag σ (hb T rfl σ hσ)
+      exact ⟨a.symm, d.symm⟩
+    cases hd : deferredHint? T with
+    | none =>
+      rw [hintM_of_none hd, hintM_of_none hd]
+      show TyS.plain (Value.mean K.dm (codeMeaning { K with Δ := Δ₁ }) K.Γ ρ₁ (fun _ => .err) (.plain TyM.err) T).asTy =
+        TyS.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ (fun _ => .err) (.plain TyM.err) T).asTy
+      rw [meanV_eq_mean { K with Δ := Δ₁ } ρ₁, meanV_eq_mean K ρ, meanV_congrA K Δ₁ ρ ρ₁ _ T _ hT]
+    | some Pw =>
+      obtain ⟨P, ws⟩ := Pw
+      -- the deferred hint (docs/31 D243): its function type and arguments are atoms of the hint
+      rw [hintM_of_some hd, hintM_of_some hd]
+      exact (paramTy_congrA K Δ₁ ρ ρ₁ P ws (piArity P)
+        (fun σ h => hT σ ((deferredHint?_atoms hd _).1 h)) (fun σ h => hT σ ((deferredHint?_atoms hd _).2 h))).symm
 
 /-- **The push of a binding whose type is deferred** (mixed; STATED, not proved; with `LetCallInvU`, what the
 untyped `let` of a call needs beyond `LetPushG`): as `LetPushG`, the value's type unknown (`T₀ = none`) and the new
