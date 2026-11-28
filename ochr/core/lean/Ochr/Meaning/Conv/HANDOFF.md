@@ -51,15 +51,16 @@ Report: `scratchpad/reports/conv2.md`; docs/31 D282.
 | `Ctor.lean` | `FO` (values that hold no code: plain and constructor values); `alike_ind` ([Conv-cong] at constructor values); `FO.beq_alike` (`==` ignores recorded parameters, so it is likeness, not equality); `unitOk_fo`; `convV_alike_fo` (N3 for `FO` values) | PROVED; `alike_ind` assumes NOTHING; `convV_alike_fo` from `PremFn`, `UnitOk FO` |
 | `CtorEq.lean` | `FieldTysOk` (conv1's `FieldTysSound` restated at typed parameters/fields, with a level), `IndAt`, `InjAtInd`, `LeafsOk`; `disj_fo_absurd` ([Eq-disj] at constructor values); `eqTo_fo`/`eqL_fo` (every `Eq` rule on `FO` sides, [Eq-inj] with D64) | PROVED from the named facts |
 | `ComposeFO.lean` | `conv_sound_fo'` (3 facts, as for plain values), `mkEqM_sound_fo` (7 facts; `LeafsOk` and the declarations' prefix discharged from `CtxS`) | composed |
+| `FieldLen.lean` | `machPremises_len`: `FieldTysOk`'s length half for the machine | PROVED, assumes nothing |
 | `AttackCtor.lean` | blocks `ConvAtkTy` (constructor values at a type unknown), `ConvAtkCtor`, `ConvAtkMoved` (partly moved owners in `Id`), `ConvAtkCode` (code inside compared values; D64 at index fields only convertible) | verdicts and reasons asserted |
 
 ## Settled
-- Premise (b) (a type code's declaration vs the program's): the simulation's statement does NOT change (D282). [Conv-cong] needs neither of conv1's premises; [Eq-inj] needs them only at `mkEqM`'s fallback to the values' recorded parameters, dead on the suite (probe: fallback → error, every verdict unchanged). PROPOSAL for main: delete the fallback; then `InjAtInd` and the consumer's `IndAt` hold by construction.
+- Premise (b) (a type code's declaration vs the program's): the simulation's statement does NOT change (D282). [Conv-cong] needs neither of conv1's premises; [Eq-inj] needs them only at `mkEqM`'s fallback to the values' recorded parameters, dead on the suite (probe: fallback → error, every verdict unchanged). PROPOSAL for main, BUILT on branch `conv2-eqargs` (D283; worktree `../ochre-conv2-probe`): the fallback deleted, every verdict unchanged, `OchrMeaning` green with `IndAt`/`InjAtInd` gone. If main lands it, take `conv2-eqargs`'s `Rules.lean`, `CtorEq.lean`, `ComposeFO.lean` diffs onto `spine`.
 
 ## Open, in the order to take it
 1. **The `Id` step's partly moved sides** (report, "for the theory" 5): decide (i) widen the strict `Eq`'s side condition to open members, or (ii) prove `mkEqM`'s deterministic choice never leaves a partly moved side stuck. Then extend `eqTo_fo` (the congruence for partly moved trees is `alike_ind`'s proof with `OMem` fields, non-dependent constructors only).
 2. **`IndAt` at the consumers** (the `.eq` step, `Id`'s conjuncts, `substV`'s re-made `Eq`s, `J`, `symm`, `trans`): a constructor-valued side's type is its inductive applied (typing); or land the fallback's deletion and drop `IndAt`/`InjAtInd`.
-3. **`FieldTysOk`**: (II) for `fieldTele`'s typed runs + `FieldsFaithful`; its `len` is a checker fact (`fieldTele` errors unless the lengths agree), provable by inverting `Runs` (`DropOne.Runs.bind_inv`, `runs_err_false`).
+3. **`FieldTysSoundT`** (the meaning half of `FieldTysOk`; the length half is PROVED, `FieldLen`): (II) for `fieldTele`'s typed runs + `FieldsFaithful`.
 4. **`CodeOk`**: a run congruence for texts that differ by alike embedded values with alike types (and up to embedded constructor values' recorded parameters).
 5. **`PremFn`**: the reduction of the report's task 5 (`CallFnGW` at `typed = false` from the generic state, the closure call step, `PremPi`'s transfer, the end-all step).
 
