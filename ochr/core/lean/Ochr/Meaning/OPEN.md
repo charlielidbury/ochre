@@ -14,6 +14,14 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE TOP FROM `master`; `FundCtx` AND THE CALL'S CLAUSES REPAIRED; A λ'S OWN SLOT (lead43, 2026-11-28, `spine-lead43`; docs/31 D253 to D255)
+
+- `Top.consistency_of_master`: the consistency statement, ASSUMES 7 facts: `hsteps` (the 32 steps at contexts meeting `FundCtx`; FALSE until main's D147 and `EvalAt`/`TailAt` carrying `RecCurG` both ways, at a context with a function under check), `hdata` (`DataFacts`, the existence lane's), `SortsG` (checker, read true; the NAMED RESTRICTION: no data declaration at `Type₁`), `ResolveG` (checker, read true), `FalseConstG` (mixed, read true), `TopLinks` (per item at its stage): `ConstG` = `ConstCheckAt` (C, read true) + `ConstStartAt` (X, read true by parts) + `ConstLeafAt` (X, unread) + `ConstMeanAt` (M, rests on RL: false as first stated, open); `FixG` = `FixCheckAt` (C, read true) + `FixFitsAt` (X, UNCERTAIN) + `FixStartAt` (X, read true by parts) + `BodyCongrAt` (M, read true, FALSE until decision (b) for D139 bodies) + `FixLeafAt` (X, unread) + `FixMeanAt` (M, read true); `GlobGrowG` (X, unread; needs `RecDescG`, D232).
+- The old top (`consistency_rel`, `defn_member`, `step_member_fix`, `step_member_const`, `consistencyBounded_assembled`): superseded by `consistency_of_master`; its leaves (`const_split`, `fix_split`, `labelsInhabited_of_rel`, `const_value`, `fix_sortRule`, `fix_canon`, `accepted_resolves`, `falseConst_ty`, `stepsIH_zero`) are the old form; their content is restated as the links above; `consistencyBounded` itself is still `sorry` (to be proved from `consistency_of_master` once its hypotheses are).
+- `FundCtx` at program contexts: was FALSE (D253), the model repaired; `fundCtx_progCtx` PROVED.
+- The call step's every-state clauses: FALSE (D253), moved into `GlobalsOk`; `CurOnStackG`: FALSE whenever a function is under check (R1, D147).
+- `StepFix` at a λ: FALSE until D148 and the model's clause of R-dec (D255; NOT BUILT, the next lead's first item).
+
 ## THE SPLIT'S UNREAD FACTS READ; `TailAt` ASKS `KeepsTab` (lead42, 2026-11-28, `spine-lead42`; docs/31 D250 on)
 
 - `TailAt`: RESTATED (D250, sent): every continuation also keeps the tables' invariant (`KeepsTab`, `TabInv`); as stated before, `TStepMatchNat` was FALSE at a continuation that raises the counter of unknowns (`MatchRd.kCheck`). OWED where continuations are built: `JoinContInv`'s new clause; the `let`'s continuation (`TStepLetIn`); `checkFix`'s (`StepFix`).
