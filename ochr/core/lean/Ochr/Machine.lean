@@ -2691,7 +2691,12 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .zero => pure (.zero, ty .tNat)
   | .tt => pure (.unit, ty .tUnit)
   | .succ u =>
-    let (v, T) ← eval fuel' typed u
+    -- D150: its argument is handed `Nat` where a call's argument is handed its parameter's type (a
+    -- constructor, an embedded value, `rewrite`, a hole: `evalCall`), so `S(a)` and the call of the
+    -- function `S` type `a` alike
+    let hint := if (u matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _)
+      then some Value.tNat else none
+    let (v, T) ← eval fuel' typed u hint
     if typed then expectTy fuel' "the argument of S" T .tNat
     pure (.succ v, ty .tNat)
   | .eq A a b => inStatement do
