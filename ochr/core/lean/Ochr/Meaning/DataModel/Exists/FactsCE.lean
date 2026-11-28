@@ -225,5 +225,51 @@ theorem decStableOld_flags (fuel : Nat) (hag0 : FuelAgree (flagsD tFZ) (scopeSta
   obtain ⟨b1, s1, h1⟩ := flagsAt_runs flags_differ.2
   exact ⟨readDecisionFF_of_runs hag0 h0, readDecisionFF_of_runs hag1 h1⟩
 
-end Ochr.Meaning.DataModel.Exists.FactsCE
+/-! ## `VaryValFact` after D140: a declaration only a run rejects (exists13)
 
+D140 checks a parameter that is a field's WHOLE type (written `Prop` or `Type`). A parameter standing at a
+type parameter of an applied declaration (`Box(B)`) is checked by D55 (`typePos` through `declOf`'s `.tind`
+clause), which accepts a declared reading `.any` (a hole, a match with no arms) as it accepts a sort, and by
+D128, which looks only at `.sort` readings. So the `.any` case of `VaryValFact` is closed by D140 at a
+whole field type only; `VS` below is rejected by the evaluation of its parameter's type alone. -/
+
+/-- `inductive Box (A : Type) := MkBox(x : A)`, as stored (`A` nestable). -/
+def dBoxV : IndDecl :=
+  { name := "Box", params := [(⟨"A"⟩, .sort 1)], ctors := [("MkBox", [("x", .place (.var 0))])], nestable := [true] }
+
+/-- `inductive VS (A : Type) (B : (A; ?)) := MkVS(y : Box(B))`, as resolution builds it. `B` varies (its type
+reads `A`, which stays nestable: `B` is read only at `Box`'s nestable parameter), and is not a type parameter
+(its type is written as a sequence). -/
+def dVS : IndDecl :=
+  { name := "VS", params := [(⟨"A"⟩, .sort 1), (⟨"B"⟩, .seq (.place (.var 0)) (.prim "hole" []))],
+    ctors := [("MkVS", [("y", .tind "Box" [.place (.var 0)])])] }
+
+/-- The checker's verdict on `VS` after `Box`: rejected, by the evaluation of `B`'s type (`?: the type expected
+here is not known`), after D55, D128, D118, D133 and D140 have passed. Natively. -/
+def vsVerdict : String :=
+  match (runMachine (checkItem (.ind dVS)) { inds := [dBoxV] } 3000).1 with
+  | .ok () _ => "accepted"
+  | .fail (.error m _) => m
+  | _ => "other"
+
+#guard (vsVerdict.splitOn "the type expected here is not known").length > 1
+
+/-- The entry the checker would store for `VS`: `A` nestable, `B` not. -/
+theorem vs_nestable : nestableSet (nestTableOf [dBoxV]) (sortTableOf [dBoxV] dVS) dVS = [true, false] := by
+  decide +kernel
+
+/-- **Had the checker accepted `VS`, `VaryValFree` would fail at its entry**: the field `y : Box(B)` reads `B`,
+which varies and is not a type parameter. So `VaryValFact` rests, at `VS`, on the run that evaluates `B`'s type,
+not on D140. -/
+theorem vs_not_varyValFree : ¬ Records.VaryValFree { dVS with nestable := [true, false] } := by
+  intro hfree
+  have hv0 : Knot.paramVaries { dVS with nestable := [true, false] } 0 = true := by
+    rw [Knot.paramVaries]; rfl
+  have hv1 : Knot.paramVaries { dVS with nestable := [true, false] } 1 = true := by
+    rw [Knot.paramVaries]
+    simp only [Bool.or_eq_true, List.any_eq_true]
+    exact .inr ⟨0, by decide +kernel, by simp [hv0]⟩
+  have := hfree 0 0 (.tind "Box" [.place (.var 0)]) rfl 0 (by decide +kernel) (by decide) hv1
+  revert this; decide +kernel
+
+end Ochr.Meaning.DataModel.Exists.FactsCE

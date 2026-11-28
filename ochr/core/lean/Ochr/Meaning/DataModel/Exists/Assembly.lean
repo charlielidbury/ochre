@@ -28,9 +28,11 @@ an accepted definition, `inv_defn`; an accepted inductive declaration of either 
 with `inv_ind_faithful`), `exists_of_inv`, `globalCallLevels` (exists12, `GlobalCalls.lean`), and
 `exists_dataModel_facts`, which assumes the facts in `DataFacts` (docs/34 §18.16 and §18.17 give each
 one's exact statement and status):
-* about the checker: `NamesFact` (read true for resolved items), `VaryValFact` and `FieldHeads` (read
-  true since main's D128, merged into this line by machine12; not derived); `ItemFacts` is PROVED
-  (`itemFacts`, exists12: `CheckIndGivesChecks` assembled, `Steps/Machine/CheckIndSpec.lean`);
+* about the checker: `NamesFact` (read true for resolved items) and `VaryValFact` (read true since
+  main's D128; not derived: its `.any` case at an inductive's type parameter is decided by a run,
+  `FactsCE.dVS`); `ItemFacts` is PROVED (`itemFacts`, exists12: `CheckIndGivesChecks` assembled,
+  `Steps/Machine/CheckIndSpec.lean`); `FieldHeads` is PROVED (`fieldHeads`, exists13, from main's D140:
+  `Steps.Machine.runs_checkInd_heads`);
 * about resolution: `NoValFact` (no embedded value in an inductive item's types), PROVED for the items a
   program resolves to (exists12, `Steps.Machine.noVal_runResolve`); a separate hypothesis of
   `exists_dataModel_facts`, discharged by `Consistency.exists_dataModel` from the resolution;
@@ -433,21 +435,38 @@ def HeadLevels (gs : List GDef) (d : IndDecl) : Prop :=
       (gs.find? (·.name == f)).map (·.ty) = some (.tPi cs (.pi hs ds (.sort l)) rd))
 
 /-- **The heads of an accepted declaration's field types are at level 0** (the checker's part of
-exists10's `FieldLevels`; about the checker, not derived). Of the entry `d'` the checker stores for
-the program's `k`-th item, `HeadLevels` at the stage's globals.
-* The call part reads TRUE: `firstOrderTerm` admits a call only of a global whose stored type is a
-  `tPi` with codomain a written sort; `checkInd` rejects a field whose generic value has `sortOf`
-  above 1 or computes to a sort or a Π; with no cumulativity a call into `Type₁` has a value of sort
-  above 1 or is stuck with its codomain's level (probes: `H : Nat → Type₁` at `H(Z)`, `H(k)`, all
-  rejected, docs/34 §18.16).
-* The parameter part is FALSE TODAY, true after main's D128: D55 lets a parameter head a field type
-  when its declared READING is a sort, and `TL`'s `B : (let z = A; Type)` is written as a `let`
-  (`FactsCE.fieldHeads_false`). Otherwise a parameter written at a call is rejected (D55, "a type
-  only by computation") and one written at `Type₁` by the level check (`Big`). -/
+exists10's `FieldLevels`; about the checker; PROVED, `fieldHeads` below, exists13). Of the entry `d'`
+the checker stores for the program's `k`-th item, `HeadLevels` at the stage's globals. Since main's
+D140 both parts are read from what is written, before anything runs: a parameter that is a field's
+whole type is written `Prop` or `Type`; a global whose call is one has its codomain written `Prop` or
+`Type` (D140), and `firstOrderTerm`'s call clause finds it with a written Π-type into a sort. Before
+D140 the level and call parts were decided by the run-based level check (`sortOf` at the generic
+telescope), and the parameter part was false until D128 (`FactsCE.fieldHeads_false`, `TL`). -/
 def FieldHeads : Prop :=
   ∀ (k : Nat) (hk : k < items.length) (st' : MState) (d0 d' : IndDecl),
     verdict fuel items k hk = .ok () st' → items[k] = .ind d0 → st'.inds = indsOf {} fuel (items.take k) ++ [d'] →
     HeadLevels st'.globals d'
+
+/-- **`FieldHeads` holds** (PROVED, no hypothesis; exists13, from main's D140): the checker's run on the
+`k`-th item is `seedHoles` (which writes neither table) then `checkInd d0`, whose D140 loop and
+`firstOrderTerm` give `HeadLevels` of `d0` at the globals it starts from
+(`Steps.Machine.runs_checkInd_heads`); the stored entry `d'` is `d0` with its nestable set
+(`runs_checkInd_tables`, so its parameters and constructors are `d0`'s) and the globals are unchanged. -/
+theorem fieldHeads : FieldHeads fuel items := by
+  intro k hk st' d0 d' hv hit hI
+  unfold verdict at hv
+  have hr := Steps.Machine.runs_of_runMachine_fst hv
+  rw [hit] at hr
+  unfold checkItem at hr
+  obtain ⟨_, s₁, b₁, hs, hc⟩ := Steps.Runs.bind_inv hr
+  obtain ⟨hT1, hT2⟩ := Steps.Machine.runs_checkInd_tables hc
+  obtain ⟨hP, hC⟩ := Steps.Machine.runs_checkInd_heads hc
+  rw [hT2] at hI
+  obtain ⟨-, he⟩ := List.append_inj' hI.symm rfl
+  simp only [List.cons.injEq, and_true] at he
+  subst he
+  rw [hT1]
+  exact ⟨fun c i v h1 h2 => hP c i v h1 h2, fun c i f as hd h1 => hC c i f as hd h1⟩
 
 /-- **A global whose stored codomain is `Prop` or `Type` calls to level-0 type values** (the
 model's part of exists10's `FieldLevels`; about the model; PROVED, `globalCallLevels` below, exists12).
@@ -494,8 +513,9 @@ def DecLocal3 (D : Decisions) : Prop :=
   (∀ sc t q, q ∈ D.rePointed sc t → q.root ∈ t.freeVars)
 
 /-- **The facts the existence of the data model rests on**, together (`exists_dataModel_facts`): about
-the checker, `NamesFact`, `VaryValFact`, `FieldHeads`; obligations on the checker's decisions,
-`DecCaps` (`DecLocal`'s `caps` part) at every state and `DecStable`. No longer fields (exists12):
+the checker, `NamesFact`, `VaryValFact`; obligations on the checker's decisions,
+`DecCaps` (`DecLocal`'s `caps` part) at every state and `DecStable`. No longer a field (exists13):
+`FieldHeads`, proved from main's D140 (`fieldHeads`). No longer fields (exists12):
 `DecLocal`'s other three parts (`DecLocal3`, proved at the chain's decisions, its own hypothesis of
 `exists_dataModel_facts`); `ItemFacts`, proved
 (`itemFacts`); the fact about the model, `GlobalCallLevels`, proved (`globalCallLevels`); the fact about
@@ -505,7 +525,6 @@ from the resolution. -/
 structure DataFacts : Prop where
   varyVal : VaryValFact fuel items
   names : NamesFact D fuel items
-  heads : FieldHeads fuel items
   decCaps : ∀ st, DecCaps (D st)
   decStable : DecStable D fuel items
 
@@ -1041,7 +1060,7 @@ theorem exists_dataModel_facts (hNV : NoValFact items) (hDL : ∀ st, DecLocal3 
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
-  exists_dataModel' D fuel items itemFacts hNV hF.varyVal hF.names hF.heads (globalCallLevels D fuel items)
+  exists_dataModel' D fuel items itemFacts hNV hF.varyVal hF.names (fieldHeads fuel items) (globalCallLevels D fuel items)
     (fun st => ⟨(hDL st).1, (hDL st).2.1, (hDL st).2.2, hF.decCaps st⟩) hF.decStable
     (fun k _ => Steps.Machine.indsOf_take_prefix {} fuel items k)
 

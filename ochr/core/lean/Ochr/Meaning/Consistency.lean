@@ -415,23 +415,22 @@ checker, kept as an assumption of the construction, not a hypothesis here: the c
 decides that two applications of a type former to different arguments are different (a record
 keeps what field types read of the parameters, not the parameters; docs/34 §8, §13).
 
-**Assumes five facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17 state each exactly), and
+**Assumes four facts, bundled in `hF : DataFacts`** (docs/34 §18.16, §18.17, §18.19 state each exactly), and
 that `items` is the resolution of a program (`hres`), from which `NoValFact` is PROVED
 (`noValFact_of_resolvesTo`):
-* `VaryValFact` (about the checker; read true since main's D128, not derived): no field type of an
-  accepted declaration reads a varying value parameter;
+* `VaryValFact` (about the checker; read true since main's D128, not derived; main's D140 decides its
+  `.any` case only at a field's whole type, `FactsCE.dVS`): no field type of an accepted declaration
+  reads a varying value parameter;
 * `NamesFact` (about the checker and resolution; read true for resolved items): the names an accepted
   item's code mentions are the stage's;
-* `FieldHeads` (about the checker; read true since main's D128, not derived): a parameter heading a
-  field type is written at `Prop` or `Type`, and a global heading one has a stored codomain `Prop` or
-  `Type`;
 * `DecCaps` at every state (an obligation on the decisions: `DecLocal`'s `caps` part, the [Entry]
   captures rooted at the term's free variables; read true). `DecLocal`'s other three parts are PROVED
   at the chain's decisions (`inv`, `rep`: exists12; `join`: machine11) and supplied here;
 * `DecStable` (an obligation on the decisions, at the states the checker reaches on the program).
 `ItemFacts` (what an accepted item does to the declarations and the globals, the stored entry passing
-`Knot.IndChecks`) is proved (`Assembly.itemFacts`, exists12). The model fact `GlobalCallLevels` is
-proved (`Assembly.globalCallLevels`, exists12), and with
+`Knot.IndChecks`) is proved (`Assembly.itemFacts`, exists12). `FieldHeads` (a parameter or a global
+heading a field type is at `Prop` or `Type`) is proved from main's D140 (`Assembly.fieldHeads`,
+exists13). The model fact `GlobalCallLevels` is proved (`Assembly.globalCallLevels`, exists12), and with
 `FieldHeads` gives the field types' level (`FieldLevel.fieldLevel0_of`). The stage prefix fact is
 machine10's `Steps.Machine.indsOf_take_prefix`. -/
 theorem exists_dataModel (p : Program) (items : List Item) (fuel : Nat) (hres : ResolvesTo p fuel items)
