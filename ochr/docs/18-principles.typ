@@ -132,7 +132,7 @@ Each is stated as a decision: the question, the options, what was measured, the 
   [Every attack on `G5`, `Q`, `QU`, `PEx`, `ATag*`], [still rejected], [still rejected],
   [Newly rejected that a user would write], [`Inj`-style lemmas, not repairable; `Lift` (repairable by one `rewrite`: `LiftR`); `SwapCall2Ok`], [the same, and `ConsW`, `ConsM` (an `Id` over a local borrow whose lender a side later writes)],
   [Newly accepted], [the five sites, `Bad` (a function from `False`; `Bad(Z, refl)` rejected), `SwapCall2`, `OwnRF`], [the same, and `IdxSame`, `IdxDiff`, `OwnRxF`, `BothF`],
-  [Cost], [−0.01% to 0.0% instructions], [the same],
+  [Cost], [−0.07% to 0.0% instructions], [the same],
   [Size], table.cell(colspan: 2)[+138 / −12 lines in 4 files, both variants behind one switch],
 )
 The shortest lost lemma, with `L (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e`:
