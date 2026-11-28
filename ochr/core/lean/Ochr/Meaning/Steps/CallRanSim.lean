@@ -465,4 +465,22 @@ theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex :
     hmean hlab₂ hpre₂ hrel₂ hkept hexit
   exact ⟨Or.inl hcon, hkept'⟩
 
+/-! ## The step for a call of a global, as one list -/
+
+/-- **The call phase of a call of a global, from its whole list of facts** (docs/31 D247; the brief's task 3's list):
+`CallFnGW` (the call phase with the two entry conditions `EvalAt` does not yet carry, `RecCurG` and `RecRankG`, and a
+frame-free callee body) from `CallUnderCheckG`, `CurOnStackG`, `GlobalFixG`, `OccursLiveG`, the in-place call's
+`CallEnterG`, `CallExitG`, the three hint facts, `CallOfOkG`, and C1's `CallPtLocalG`, `AcceptedGlobalG`, `CallPopG`,
+`FundCtx`, `FixEqG`, `GlobalsOk` across `Δ`. -/
+theorem callFnGW_of_facts {K : RunCtx} {φ : Future} (hU : CallUnderCheckG K φ) (hS : CurOnStackG K) (hF : GlobalFixG K φ)
+    (hocc : OccursLiveG K) (hen : CallEnterG K φ) (hex : CallExitG K φ)
+    (hhn : HintNoneG K φ) (hhd : HintDeferredG K φ) (hhc : HintComputedG K φ) (hco : CallOfOkG K φ)
+    (hpt : CallPtLocalG K φ) (hacc : ∀ st, AcceptedGlobalG K st)
+    (hpop : ∀ Δ ρ, CallPopG { K with Δ := Δ } ρ φ) (hfc : ∀ Δ, Strict.FundCtx { K with Δ := Δ })
+    (hfix : ∀ Δ st, FixEqG { K with Δ := Δ } st) (hGΔ : ∀ Δ st, GlobalsOk K st → GlobalsOk { K with Δ := Δ } st) :
+    CallFnGW K φ :=
+  callFnGW_of hU
+    (callAcceptedFF_of (callRanSimG_of hen hex hhn hhd hhc hco hpt hacc hpop hfc hfix hGΔ) hpt hocc hacc hpop hfc hfix hGΔ)
+    hS hF
+
 end Ochr.Meaning.Steps.Form.Master
