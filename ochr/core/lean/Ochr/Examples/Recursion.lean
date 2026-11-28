@@ -1161,3 +1161,95 @@ def clVerdict (body : Term) : String :=
 #guard clVerdict (.letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ (.succ (.place (.var 0))) (.place (.var 1)))) != ""
 
 end Ochr.Examples.CloneCore
+
+/-! ## A definition during its own check (D147)
+
+A function definition without `by` enters Σ once its check has succeeded, as a constant does; one
+with `by` is in Σ during its check, since its body calls it. A source program cannot tell the two
+apart: without `by` the name is out of scope in the body (D31: `NSelf`, `NSelfL`), it cannot occur
+in its own type (`NTy`, `NTyP`), and `split` names a global by its written name, which D118 checks
+before the definition is added either way (`NSp`, `RSp`). The rows below are every other route by
+which a definition's check could reach the definition by its name or its global: a λ formed in the
+body, called, passed to an earlier higher-order global, nested in a λ; a stuck block; a call of an
+earlier global that mentions it in no way; the erased classes (a type function and a lemma, with a
+λ); a recursive definition, a λ and a block inside it; closures called inside a recursive global
+and inside closures; a sealed program's re-run of a closure and of a global; comparisons of
+function values; a rejected definition, absent from Σ (`UseBad`). Each verdict and message is as it
+was before D147; the change is pinned on the states inside a check (`Units.lean`, `InSigma`). -/
+
+ochr InOwnCheck uses Nats {
+  inductive Bx (A : Type) := MkBx(x : A)
+  def Ap1 (f : Π(j : Nat). Nat) (a : Nat) : Nat := f(a)
+  def Id1 (n : Nat) : Nat := n
+  -- a body that forms a λ, called and passed to an earlier higher-order global; a λ in a λ
+  def NL1 (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => S(j)); g(n))
+  def NL1Runs : Eq(Nat, NL1(2), 3) := refl
+  def NHo (n : Nat) : Nat := Ap1(λ(j : Nat) : Nat => S(j), n)
+  def NHoRuns : Eq(Nat, NHo(2), 3) := refl
+  def NLL (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => (let h = (λ(k : Nat) : Nat => S(k)); h(j))); g(n))
+  def NLLRuns : Eq(Nat, NLL(2), 3) := refl
+  -- a stuck block (a match on the parameter, not at the end)
+  def NB (n : Nat) : Nat := (let r = match n { Z => 0, S(m) => m, }; r)
+  def NBRuns : Eq(Nat, NB(3), 2) := refl
+  def NBEq (n : Nat) : Eq(Nat, NB(n), NB(n)) := refl
+  -- a call of an earlier global that mentions it in no way
+  def NE (n : Nat) : Nat := Id1(Id1(n))
+  def NERuns : Eq(Nat, NE(2), 2) := refl
+  -- its own name in its body without `by` (D31), and in its type
+  reject def NSelf (n : Nat) : Nat := NSelf(n)
+  reject def NSelfL (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => NSelfL(j)); g(n))
+  reject def NTy (n : Nat) : Eq(Nat, NTy(n), n) := refl
+  reject def NTyP (n : Eq(Nat, NTyP(0), 0)) : Nat := 0
+  -- `split` naming the definition itself, with and without `by`
+  reject def NSp (n : Nat) : Eq(Nat, n, n) := split NSp in refl
+  reject def RSp (n : Nat) : Eq(Nat, n, n) by n := split RSp in refl
+  -- a rejected definition is absent from Σ
+  reject def Bad (n : Nat) : Nat := Eq(Nat, n, n)
+  reject def UseBad (n : Nat) : Nat := Bad(n)
+  -- the erased classes: a type function and a lemma, directly and through a λ, used after
+  def TF (n : Nat) : Type := match n { Z => Nat, S(m) => Unit, }
+  def UseTF : TF(0) := 3
+  def Lm (n : Nat) : Eq(Nat, n, n) := refl
+  def UseLm : Eq(Nat, 2, 2) := Lm(2)
+  def TFL (n : Nat) : Type := (let g = (λ(j : Nat) : Type => match j { Z => Nat, S(m) => Unit, }); g(n))
+  def UseTFL : TFL(0) := 3
+  def LmL (n : Nat) : Eq(Nat, n, n) := (let g = (λ(j : Nat) : Eq(Nat, j, j) => refl); g(n))
+  def PL (n : Nat) : Eq(Nat, n, n) := (let g = (λ(j : Nat) : Eq(Nat, j, j) => refl); g(n))
+  def TL (n : Nat) : Nat := (let g = (λ(j : Nat) : Type => Nat); let x : g(n) = 0; x)
+  -- a recursive definition, in Σ during its check; a λ calling it (D139); a stuck block of it
+  def R (n : Nat) : Nat by n := match n { Z => 0, S(m) => S(R(m)), }
+  def RRuns : Eq(Nat, R(3), 3) := refl
+  def RL (m : Nat) (n : Nat) : Nat by n := (let g = (λ(j : Nat) : Nat => match n { Z => Z, S(k) => RL(j, clone(k)), }); g(m))
+  def RLRuns : Eq(Nat, RL(3, 2), 0) := refl
+  def RB (n : Nat) : Nat by n := (let r = match n { Z => 0, S(m) => RB(m), }; r)
+  def RBRuns : Eq(Nat, RB(3), 0) := refl
+  -- a closure called inside a recursive global, and inside a closure inside one
+  def RC (n : Nat) : Nat by n := match n { Z => 0, S(m) => (let g = (λ(j : Nat) : Nat => S(j)); g(RC(m))), }
+  def RCRuns : Eq(Nat, RC(3), 3) := refl
+  def RCC (n : Nat) : Nat by n := match n { Z => 0, S(m) => (let g = (λ(j : Nat) : Nat => (let h = (λ(k : Nat) : Nat => S(k)); h(j))); g(RCC(m))), }
+  def RCCRuns : Eq(Nat, RCC(3), 3) := refl
+  -- a non-recursive global called inside a recursive one, and inside a closure
+  def RN (n : Nat) : Nat by n := match n { Z => 0, S(m) => NL1(RN(m)), }
+  def RNRuns : Eq(Nat, RN(2), 2) := refl
+  def CN (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => NL1(j)); g(n))
+  def CNRuns : Eq(Nat, CN(2), 3) := refl
+  -- a sealed program's re-run (stuck at the generic call, re-run after the split) of a closure
+  -- and of a non-recursive global
+  def SRL (n : Nat) : Nat := (let g = (λ(j : Nat) : Nat => match j { Z => 0, S(k) => 1, }); let r = g(clone(n)); match n { Z => (let e : Eq(Nat, r, 0) = refl; r), S(m) => (let e : Eq(Nat, r, 1) = refl; r), })
+  def SRLRuns : Eq(Nat, SRL(0), 0) := refl
+  def Sw (j : Nat) : Nat := match j { Z => 0, S(k) => 1, }
+  def SRG (n : Nat) : Nat := (let r = Sw(clone(n)); match n { Z => (let e : Eq(Nat, r, 0) = refl; r), S(m) => (let e : Eq(Nat, r, 1) = refl; r), })
+  -- comparisons of function values: two λs by Eq and by Id, a λ and a global
+  def CV1 : Eq(Π(j : Nat). Nat, λ(j : Nat) : Nat => S(j), λ(j : Nat) : Nat => S(j)) := refl
+  def CV2 (n : Nat) : Eq(Π(j : Nat). Nat, λ(j : Nat) : Nat => Id1(j), Id1) := refl
+  def CV3 (n : Nat) : Id(Π(j : Nat). Nat, λ(j : Nat) : Nat => S(j), λ(j : Nat) : Nat => S(j)) := refl
+  -- a λ over a borrow parameter's content
+  def CapB (x : &Nat) : Nat := (let g = (λ(j : Nat) : Nat => S(j)); g(clone(*x)))
+}
+
+#guard (run "InOwnCheck" InOwnCheck).rejectedWith [
+  ("NSelf", "NSelf is not in scope in its own body: it declares no decreasing parameter (`by x`), so it is not recursive (D31)"),
+  ("NSelfL", "NSelfL is not in scope in its own body: it declares no decreasing parameter (`by x`), so it is not recursive (D31)"),
+  ("NTy", "NTy occurs in its own type"), ("NTyP", "NTyP occurs in its own type"),
+  ("NSp", "unknown constant NSp"), ("RSp", "unknown constant RSp"),
+  ("Bad", "the body of Bad has type Prop, but the goal is Nat"), ("UseBad", "unknown constant Bad")]

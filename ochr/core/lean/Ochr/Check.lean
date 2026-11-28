@@ -214,10 +214,15 @@ def checkDef (d : Def) : M Unit := do
     let ty := Value.tPi [] (.pi d.hs d.doms d.cod) []
     -- K2/K3: model code (native, or taking or returning an unsized value) never runs at runtime
     let model ← if d.implBy.isSome then pure true else modelSignature d.hs d.doms d.cod
-    modify fun s => { s with globals := s.globals ++ [{ name := d.name, ty := ty, fn? := some fixT, val := .gfn d.name, model }] }
+    let g : GDef := { name := d.name, ty := ty, fn? := some fixT, val := .gfn d.name, model }
+    -- D147: a definition is in Σ during its own check only when it declares `by` (its body calls
+    -- it, [Rec]); one without `by` enters Σ once its check has succeeded, as a constant does, so
+    -- its check is made in the context of the earlier items alone
+    if d.dec.isSome then modify fun s => { s with globals := s.globals ++ [g] }
     if model then modify fun s => { s with modelDepth := s.modelDepth + 1 }
     checkFix (← fuelLeft) (.gfn d.name) [] fixT
     if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
+    if d.dec.isNone then modify fun s => { s with globals := s.globals ++ [g] }
 
 /-- A program item: a definition, or an inductive type declaration. -/
 inductive Item where

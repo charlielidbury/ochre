@@ -342,3 +342,46 @@ def selfMarks (name self : String) : List (Option Nat × List Nat) :=
 #guard !(selfMarks "L" "go").isEmpty && (selfMarks "L" "go").all fun (m, rs) => m.isSome && rs.isEmpty
 
 end Ochr.Units
+
+/-! ## A definition without `by` enters Σ after its check (D147)
+
+A constant is added to the globals after its body is checked; a function definition was added
+before, with or without `by`. So during the check of a non-recursive `f`, `f ∈ Σ`, and the core term
+`f(a)` ran `f`'s unchecked body in place. No source program reaches it (D31 takes `f` out of scope
+in its body, D118 rejects a written name not in Σ, D55's pass rejects the embedded global), but the
+consistency proof speaks of every core term at every state the check reaches. Since D147 only a
+definition with `by` is in Σ during its own check (its body calls it); one without `by` is added
+once its check succeeds, as a constant is. Pinned on the states the check of each body records
+(`Config.recordStates`, located): there, the call `NR(0)` of the non-recursive `NR` names no global
+(before D147 it ran `NR`'s body and gave `1`), while the recursive `R` is in Σ and `R(0)` closes off
+(D135). After its check `NR` is in Σ and runs. -/
+
+namespace Ochr.Units
+
+#guard_msgs (drop warning) in
+ochr InSigma uses Nats {
+  def NR (n : Nat) : Nat := S(n)
+  def R (n : Nat) : Nat by n := match n { Z => 0, S(m) => S(R(m)), }
+  def NRRuns : Eq(Nat, NR(0), 1) := refl
+}
+
+/-- At each state recorded in `name`'s own code (`Config.recordStates`, located): whether `name` is
+in Σ there, and what the untyped core call `name(0)` gives from that state (its value or its
+error). -/
+def inSigma (name : String) : List (Bool × String) :=
+  let r := runWith (some Prelude) "InSigma" InSigma { recordStates := true } (located := true)
+  match r.rows.find? (·.name == name) with
+  | some row => row.trace.toList.filterMap fun
+      | .state _ false _ st => some (st.globals.any (·.name == name),
+          match runM (do pure (← Ochr.eval 1000 false (.call (.const name) [.zero] false) none).1) st with
+          | .ok v => s!"{v}"
+          | .error m => m)
+      | _ => none
+  | none => []
+
+-- inside the check of the non-recursive `NR`: not in Σ, and `NR(0)` is an unknown name
+#guard !(inSigma "NR").isEmpty && (inSigma "NR").all (· == (false, "unknown constant NR"))
+-- inside the check of the recursive `R`: in Σ, and `R(0)` closes off (D135)
+#guard !(inSigma "R").isEmpty && (inSigma "R").all (· == (true, "⌈R(0)⌉"))
+
+end Ochr.Units
