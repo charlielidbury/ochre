@@ -14,6 +14,22 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE GOAL CLAUSE BUILT; THE LEAF FACTS ATTACKED; `RetKindR` PROVED (lead48, 2026-11-28, `spine-lead48`; docs/31 D290 to D293)
+
+| Statement | Class | Status |
+|---|---|---|
+| the goal clause at `EvalAt`'s end and `TailAt`'s leaf (both forms) | general statement | BUILT (D290); every proved step re-proved; `master` changes only by the conjunct |
+| `LetDropG`, `DropValueG`, `AccessG`, `PlaceTypeG`, `CallEntry.goal` | mixed / checker | restated: give the goal kept, by equality (read true) |
+| `JoinContG`, `CallHeadArgsG`, `CallFnG`/`CallConcl`, `CallUnderCheckG`, `CallExitG` (takes the body's clause), `MatchEntryG`, `JoinDropG` | mixed | restated: give the goal's meaning kept (read true; attacked where the goal IS written: `LeafAtk` (B)) |
+| `FixLeafAt` | mixed | RESTATED: takes `FixStartAt`'s hint; DERIVED at a function with no borrow parameter and a data codomain (`fixLeafAt_of`), at `D` (`fixLeafAt_D`, 5 facts), at `Z0` (`fixLeafAt_Z0`, 4 facts); at `R` computed (`fixLeaf_R`) |
+| `LeafReturnG` | mixed | FALSE as first stated (every assignment: `leafReturnG_old_false`, at `Id1`); RESTATED at the leaf's assignment (`Pre`); read true |
+| `LeafConvG` | mixed | DERIVED (`leafConvG_of`) from `LeafGoalPopG`, `N3Hyps`, `LeafSideG` |
+| `LeafGoalPopG` | checker | RESTATED (every state); DERIVED (`leafGoalPopG_of`) from `BodyReturnsKeepsGoal`, `PopFrameKeepsGoal` (checker, read true; a machine-lane induction) |
+| `LeafSideG` | mixed | the goal set and not deferred (read true, attacked); `FO` FALSE at a function returning a function (`LeafAtk.L8`) until N3 for code; `NoProp` read true; the leaf type's level UNREAD |
+| `N3Hyps` | conversion lane | `PremFn` open; `LibDecls`, `LibAnd` read true |
+| `LeafPopG`, `LeafPopAt` | mixed | read true; attacked on nine programs (`LeafAtk` (C)) |
+| `RetKindR` | model | PROVED (`retKindR`, D292); `hlinks_R1` assumes `KeepsTabFixR` alone |
+
 ## R1 BUILT; THE KNOT'S LEAF NEEDS THE GOAL CLAUSE; THE LEAF AT `D` AND `Z0` (lead47, 2026-11-28, `spine-lead47`; docs/31 D284 to D289)
 
 | Statement | Class | Status |
