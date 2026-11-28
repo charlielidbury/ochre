@@ -2216,7 +2216,7 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
   let saved ← get
   let r ← onFail (do
     let .tPi cs (.pi hs ds c) rd := P | return false
-    let .tPi cs' (.pi _ ds' c') rd' := Q | return false
+    let .tPi cs' (.pi hs' ds' c') rd' := Q | return false
     if ds.length != ds'.length then return false
     -- D54: the erasure class, and whether it returns a borrow, are part of the Π-type (the
     -- `Unit` and data rows of [Close] may differ: `Unit` has one value, D54 refined)
@@ -2248,8 +2248,10 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
         for (w, A) in ws do pushTemp w (some A) "convPi"
         pushFrame
         pushCaps fuel' cs' rd'
-        let (pds', _) ← paramDecls fuel' cs' rd' hs ds' c'
-        for (((d', h), (w, A)), pd) in ((ds'.zip hs).zip ws.toList).zip pds' do
+        -- D151: `Q`'s parameter types are read with `Q`'s own names (`paramDecls`' `telescope`
+        -- checks that they agree), so a comparison is sound on its own inputs
+        let (pds', _) ← paramDecls fuel' cs' rd' hs' ds' c'
+        for (((d', h), (w, A)), pd) in ((ds'.zip hs').zip ws.toList).zip pds' do
           let A' ← evalType fuel' d'
           unless ← conv fuel' A A' do return false
           let pd' ← refineDecl pd
