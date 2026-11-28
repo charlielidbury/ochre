@@ -134,11 +134,11 @@ theorem defMeaning_congrN (K : RunCtx) (dm' : DataModel) (N : Knot.NameOk) (hA :
   have hT : globalTyS ρ { K with dm := dm' } T = globalTyS ρ K T := by
     unfold globalTyS Value.tyS
     rw [meanV_eq_mean, meanV_eq_mean]
-    exact congrArg (fun v => TyS.plain v.asTy) (Knot.meanV_congrN K dm' K.C N ρ _ hA T _ h3).symm
+    exact congrArg (fun v => TyS.plain v.asTy) (Knot.meanV_congrN (cur' := K.cur) K dm' K.C N ρ _ hA T _ h3).symm
   unfold defMeaning
   rw [hT]
   dsimp only
-  rw [Knot.run_congrN K dm' K.C N ρ noFuture hA _ _ _ h1, Knot.run_congrN K dm' K.C N ρ noFuture hA _ _ _ h2]
+  rw [Knot.run_congrN (cur' := K.cur) K dm' K.C N ρ noFuture hA _ _ _ h1, Knot.run_congrN (cur' := K.cur) K dm' K.C N ρ noFuture hA _ _ _ h2]
 
 /-- `Assembly.DataFaithful` (`Consistency.lean`), unfolded: this file sits below `Consistency.lean`,
 which proves `exists_dataModel` from `exists_dataModel'` (docs/31 D174's one-list statement). -/

@@ -219,31 +219,47 @@ variable {φ : Future} (K : RunCtx) (ρ : Assignment)
 
 theorem formG_R : formG = emptyState 0 := rfl
 
-theorem paramDecls_R (hDR : DecTab K.D stR) : K.D.paramDecls (scopeOf formG) [.nat] = [.other] := by
-  obtain ⟨hd1, -, -, -⟩ := fixDecR hDR
+end
+
+/-- **What the vocabulary and the knot read of a decision table at `R`'s code** (lead46: the column's entry condition
+`DecTab K.D stR` was used only through these, and it is false at the top's tables, which hold the library's declarations
+and `R`'s entry; `Top.RT.decR_of` proves `DecR` at every state whose Σ starts with `R`'s entry): the column's
+`ParDecR` and the reference `.fix` clause's four decisions (`fixDecR`). -/
+def DecR (D : Decisions) : Prop :=
+  ParDecR D ∧ D.typeDecl [] .nat = .other ∧ D.typeDecl [.other] .nat = .other ∧
+    D.piSort [] (.pi [⟨"n"⟩] [.nat] .nat) = 1 ∧ D.flags [] fixR = (false, false)
+
+/-- A table aligned with the checker at `stR` decides `R`'s code as `DecR` says. -/
+theorem decR_of_stR {D : Decisions} (hd : DecTab D stR) : DecR D := ⟨parDecR hd, fixDecR hd⟩
+
+section
+variable {φ : Future} (K : RunCtx) (ρ : Assignment)
+
+theorem paramDecls_R (hDR : DecR K.D) : K.D.paramDecls (scopeOf formG) [.nat] = [.other] := by
+  obtain ⟨hd1, -, -, -⟩ := hDR.2
   show K.D.paramDecls [] [.nat] = [.other]
   simp [Decisions.paramDecls, Decisions.teleDecls, hd1]
 
-theorem psG_R (hDR : DecTab K.D stR) : psG K ρ φ [.nat] = psI :=
+theorem psG_R (hDR : DecR K.D) : psG K ρ φ [.nat] = psI :=
   ColumnI.runDoms_nat K ρ φ formG (paramDecls_R K hDR)
 
 theorem outG_R : outG K ρ φ [.nat] .nat = outI := ColumnI.codOf_nat K ρ φ formG _ _
 
-theorem lG_R (hDR : DecTab K.D stR) : lG K [⟨"n"⟩] [.nat] .nat = 1 := (fixDecR hDR).2.2.1
+theorem lG_R (hDR : DecR K.D) : lG K [⟨"n"⟩] [.nat] .nat = 1 := (hDR.2).2.2.1
 
-theorem fbG_R1 (hDR : DecTab K.D stR) : (fbG K ρ φ [.nat] .nat).1 = [(fun _ => .plain TyM.nat, .other)] :=
+theorem fbG_R1 (hDR : DecR K.D) : (fbG K ρ φ [.nat] .nat).1 = [(fun _ => .plain TyM.nat, .other)] :=
   ColumnI.bindsOf_nat K ρ φ formG (paramDecls_R K hDR)
 
-theorem fbG_R2 (hDR : DecTab K.D stR) : (fbG K ρ φ [.nat] .nat).2.2 = .other := by
-  obtain ⟨hd1, hd2, -, -⟩ := fixDecR hDR
+theorem fbG_R2 (hDR : DecR K.D) : (fbG K ρ φ [.nat] .nat).2.2 = .other := by
+  obtain ⟨hd1, hd2, -, -⟩ := hDR.2
   show K.D.typeDecl (K.D.teleDecls [] [.nat]) .nat = .other
   simp [Decisions.teleDecls, hd1, hd2]
 
 /-- **The knot at `R`, at every context**: every stage of `R`'s closure as the `.fix` clause forms it at `K` is good
 below its bound (`goodBelow_stg` with `fixBodyAt_RK`). -/
-theorem goodBelow_stgK (hDR : DecTab K.D stR) :
+theorem goodBelow_stgK (hDR : DecR K.D) :
     ∀ b, GoodBelow K.dm.read b (fixStage K ρ φ (fbG K ρ φ [.nat] .nat) 1 (emptyState 0) psI outI (some 0) 0 bodyR b) := by
-  have hd := parDecR hDR
+  have hd := hDR.1
   intro b
   induction b with
   | zero => intro m h; exact absurd h (Nat.not_lt_zero _)
@@ -258,7 +274,7 @@ theorem goodBelow_stgK (hDR : DecTab K.D stR) :
 
 /-- **`FnGoodG`'s body at `R`, in the general vocabulary, at every context with the aligned table** (gap (i) and (ii)
 crossed): `R`'s function type fits level `1` and its function is defined and good at every number. -/
-theorem fnGoodAt_R (hDR : DecTab K.D stR) : FnGoodAt K ρ φ [⟨"n"⟩] [.nat] .nat (some 0) bodyR := by
+theorem fnGoodAt_R (hDR : DecR K.D) : FnGoodAt K ρ φ [⟨"n"⟩] [.nat] .nat (some 0) bodyR := by
   unfold FnGoodAt
   rw [psG_R K ρ hDR, outG_R K ρ, lG_R K hDR]
   refine ⟨⟨by decide, fun _ _ _ => Nat.le_refl 1⟩, fun a ha => ?_⟩
@@ -272,8 +288,8 @@ theorem fnGoodAt_R (hDR : DecTab K.D stR) : FnGoodAt K ρ φ [⟨"n"⟩] [.nat] 
 
 /-- **`RecDescG`'s body at `R`, in the general vocabulary, at every context with the aligned table** (`recDesc_R` with
 gaps (i) and (ii) crossed). -/
-theorem recDescAt_R (hDR : DecTab K.D stR) : RecDescAt K ρ φ [⟨"n"⟩] [.nat] .nat (some 0) bodyR := by
-  have hd := parDecR hDR
+theorem recDescAt_R (hDR : DecR K.D) : RecDescAt K ρ φ [⟨"n"⟩] [.nat] .nat (some 0) bodyR := by
+  have hd := hDR.1
   unfold RecDescAt
   rw [psG_R K ρ hDR, outG_R K ρ, lG_R K hDR, formG_R]
   intro args hargs outX outY gX gY hrX hrY hfX hfY hgX hgY hag
@@ -302,7 +318,7 @@ theorem recDescAt_R (hDR : DecTab K.D stR) : RecDescAt K ρ φ [⟨"n"⟩] [.nat
 brief's task 4): at every context whose decision table is aligned with the checker at `R`'s generic call, the function the
 `.fix` clause forms for `R`'s code (`GG`) is one run of its body with its own closure bound (`fixBodyAt`, `selfG`), at
 every member argument. `FixEqDesc.fixEqAt_of` (the per-code `fixEqG_of`) from `recDescAt_R` and `fnGoodAt_R`. -/
-theorem fixEqAt_R (hDR : DecTab K.D stR) : FixEqAt K ρ φ [⟨"n"⟩] [.nat] .nat (some 0) bodyR :=
+theorem fixEqAt_R (hDR : DecR K.D) : FixEqAt K ρ φ [⟨"n"⟩] [.nat] .nat (some 0) bodyR :=
   fixEqAt_of K ρ φ (recDescAt_R K ρ hDR) (fnGoodAt_R K ρ hDR)
 
 end

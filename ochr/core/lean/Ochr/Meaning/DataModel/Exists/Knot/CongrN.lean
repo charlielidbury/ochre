@@ -12,7 +12,7 @@ and to hold no embedded value. The assembly needs more (docs/34 §18.13, points 
 * the program meaning's congruence runs a definition's body and reads its stored type (`globalTyS`,
   a `Value`), which holds embedded closures, Π-types and constructor values.
 
-So the congruence here compares `K` with `KN K dm' C'` (another model and other globals, the same
+So the congruence here compares `K` with `KN K dm' C' cur'` (another model and other globals, the same
 declaration list, decisions, Δ, Λ) on a term whose names pass three tests (`NameOk`):
 * `ty`: the names of its applied types (`.tind`, a value `.tInd`). At the declaration such a name
   finds, the two models must agree on parameter types, and on records only at parameter lists that
@@ -90,8 +90,10 @@ def Value.nokRd (N : NameOk) : List (DeclInfo × Value) → Bool
 termination_by structural vs => vs
 end
 
-/-- `K` with another model and other globals. -/
-noncomputable abbrev KN (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) : RunCtx := { K with dm := dm', C := C' }
+/-- `K` with another model, other globals and another function under check (the run never reads `RunCtx.cur`, which
+only the simulation's hypotheses read; lead46 added it so that a check's context and its stage's compare, docs/31 D259). -/
+noncomputable abbrev KN (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) (cur' : Option (String × Nat)) : RunCtx :=
+  { K with dm := dm', C := C', cur := cur' }
 
 /-- **What the two contexts must agree on**, at the declarations the names find in `K.Γ`. -/
 structure AgreeN (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) (N : NameOk) : Prop where
@@ -106,75 +108,75 @@ theorem paramsOk_congr {dm dm' : DataModel} {M : IndDecl} (h : dm'.paramTy M = d
   unfold paramsOk; rw [h]; rfl
 
 section
-variable (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) (φ : Future)
+variable (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) {cur' : Option (String × Nat)} (φ : Future)
 
-theorem lentOk_N : lentOk (KN K dm' C') φ = lentOk K φ := by
-  funext p s; unfold lentOk StateOk; rw [pmem_indep (KN K dm' C').dm K.dm]; rfl
+theorem lentOk_N : lentOk (KN K dm' C' cur') φ = lentOk K φ := by
+  funext p s; unfold lentOk StateOk; rw [pmem_indep (KN K dm' C' cur').dm K.dm]; rfl
 
-theorem obsAt_N : obsAt (KN K dm' C') = obsAt K := by
-  funext T steps ob x; unfold obsAt; rw [follow_indep (KN K dm' C').dm K.dm] <;> rfl
+theorem obsAt_N : obsAt (KN K dm' C' cur') = obsAt K := by
+  funext T steps ob x; unfold obsAt; rw [follow_indep (KN K dm' C' cur').dm K.dm] <;> rfl
 
-theorem contentOf_N : contentOf (KN K dm' C') φ = contentOf K φ := by
-  funext p s; unfold contentOf; rw [follow_indep (KN K dm' C').dm K.dm] <;> rfl
+theorem contentOf_N : contentOf (KN K dm' C' cur') φ = contentOf K φ := by
+  funext p s; unfold contentOf; rw [follow_indep (KN K dm' C' cur').dm K.dm] <;> rfl
 
-theorem setContent_N : setContent (KN K dm' C') φ = setContent K φ := by
-  funext pos steps v s; unfold setContent; rw [updAt_indep (KN K dm' C').dm K.dm] <;> rfl
+theorem setContent_N : setContent (KN K dm' C' cur') φ = setContent K φ := by
+  funext pos steps v s; unfold setContent; rw [updAt_indep (KN K dm' C' cur').dm K.dm] <;> rfl
 
-theorem borrowPlace_N : borrowPlace (KN K dm' C') φ = borrowPlace K φ := by
-  funext p s; unfold borrowPlace; rw [contentOf_N, updAt_indep (KN K dm' C').dm K.dm] <;> rfl
+theorem borrowPlace_N : borrowPlace (KN K dm' C' cur') φ = borrowPlace K φ := by
+  funext p s; unfold borrowPlace; rw [contentOf_N, updAt_indep (KN K dm' C' cur').dm K.dm] <;> rfl
 
-theorem dropAt_N : dropAt (KN K dm' C') φ = dropAt K φ := by
-  funext q pos steps s; unfold dropAt; rw [updAt_indep (KN K dm' C').dm K.dm] <;> rfl
+theorem dropAt_N : dropAt (KN K dm' C' cur') φ = dropAt K φ := by
+  funext q pos steps s; unfold dropAt; rw [updAt_indep (KN K dm' C' cur').dm K.dm] <;> rfl
 
-theorem DropOk_N : DropOk (KN K dm' C') φ = DropOk K φ := by
-  funext q pos steps s; unfold DropOk; rw [updAt_indep (KN K dm' C').dm K.dm] <;> rfl
+theorem DropOk_N : DropOk (KN K dm' C' cur') φ = DropOk K φ := by
+  funext q pos steps s; unfold DropOk; rw [updAt_indep (KN K dm' C' cur').dm K.dm] <;> rfl
 
-theorem tagOf_N : tagOf (KN K dm' C') φ = tagOf K φ := by
+theorem tagOf_N : tagOf (KN K dm' C' cur') φ = tagOf K φ := by
   funext p tag s; unfold tagOf; rw [obsAt_N] <;> rfl
 
-theorem assignAt_N : assignAt (KN K dm' C') φ = assignAt K φ := by
+theorem assignAt_N : assignAt (KN K dm' C' cur') φ = assignAt K φ := by
   funext p v lab s; unfold assignAt; rw [setContent_N] <;> rfl
 
-theorem readPlace_N : readPlace (KN K dm' C') φ = readPlace K φ := by
+theorem readPlace_N : readPlace (KN K dm' C' cur') φ = readPlace K φ := by
   funext p copy s; unfold readPlace; rw [contentOf_N, setContent_N] <;> rfl
 
-theorem invalidateOne_N : invalidateOne (KN K dm' C') φ = invalidateOne K φ := by
+theorem invalidateOne_N : invalidateOne (KN K dm' C' cur') φ = invalidateOne K φ := by
   funext s q; unfold invalidateOne; rw [setContent_N] <;> rfl
 
-theorem invalidate_N : invalidate (KN K dm' C') φ = invalidate K φ := by
+theorem invalidate_N : invalidate (KN K dm' C' cur') φ = invalidate K φ := by
   funext p s; unfold invalidate; rw [invalidateOne_N] <;> rfl
 
-theorem InvalidateOk_N : InvalidateOk (KN K dm' C') φ = InvalidateOk K φ := by
+theorem InvalidateOk_N : InvalidateOk (KN K dm' C' cur') φ = InvalidateOk K φ := by
   funext p s; unfold InvalidateOk; rw [invalidateOne_N] <;> rfl
 
-theorem placeTy_N : placeTy (KN K dm' C') φ = placeTy K φ := by
+theorem placeTy_N : placeTy (KN K dm' C' cur') φ = placeTy K φ := by
   funext p s; unfold placeTy; rw [contentOf_N] <;> rfl
 
-theorem entryCap_N : entryCap (KN K dm' C') φ = entryCap K φ := by
+theorem entryCap_N : entryCap (KN K dm' C' cur') φ = entryCap K φ := by
   funext s qk; unfold entryCap; rw [invalidate_N] <;> rfl
 
-theorem entryAccess_N : entryAccess (KN K dm' C') φ = entryAccess K φ := by
+theorem entryAccess_N : entryAccess (KN K dm' C' cur') φ = entryAccess K φ := by
   funext bc s; unfold entryAccess; rw [entryCap_N] <;> rfl
 
-theorem matchEntry_N : matchEntry (KN K dm' C') φ = matchEntry K φ := by
+theorem matchEntry_N : matchEntry (KN K dm' C' cur') φ = matchEntry K φ := by
   funext ent mt s; unfold matchEntry; rw [entryAccess_N] <;> rfl
 
-theorem EntryCapOk_N : EntryCapOk (KN K dm' C') φ = EntryCapOk K φ := by
+theorem EntryCapOk_N : EntryCapOk (KN K dm' C' cur') φ = EntryCapOk K φ := by
   funext s qk; unfold EntryCapOk; rw [InvalidateOk_N] <;> rfl
 
-theorem EntryAccessOk_N : EntryAccessOk (KN K dm' C') φ = EntryAccessOk K φ := by
+theorem EntryAccessOk_N : EntryAccessOk (KN K dm' C' cur') φ = EntryAccessOk K φ := by
   funext bc s; unfold EntryAccessOk; rw [entryCap_N, EntryCapOk_N] <;> rfl
 
-theorem MatchEntryOk_N : MatchEntryOk (KN K dm' C') φ = MatchEntryOk K φ := by
+theorem MatchEntryOk_N : MatchEntryOk (KN K dm' C' cur') φ = MatchEntryOk K φ := by
   funext ent mt s; unfold MatchEntryOk; rw [EntryAccessOk_N] <;> rfl
 
-theorem joinDrop_N : joinDrop (KN K dm' C') φ = joinDrop K φ := by
+theorem joinDrop_N : joinDrop (KN K dm' C' cur') φ = joinDrop K φ := by
   funext entry t s; unfold joinDrop; rw [dropAt_N] <;> rfl
 
-theorem JoinStepOk_N : JoinStepOk (KN K dm' C') φ = JoinStepOk K φ := by
+theorem JoinStepOk_N : JoinStepOk (KN K dm' C' cur') φ = JoinStepOk K φ := by
   funext s q; unfold JoinStepOk; rw [DropOk_N] <;> rfl
 
-theorem JoinDropOk_N : JoinDropOk (KN K dm' C') φ = JoinDropOk K φ := by
+theorem JoinDropOk_N : JoinDropOk (KN K dm' C' cur') φ = JoinDropOk K φ := by
   funext entry t s; unfold JoinDropOk; rw [JoinStepOk_N, dropAt_N] <;> rfl
 
 end
@@ -182,12 +184,12 @@ end
 /-! ## The `.fix` clause's pieces -/
 
 section
-variable (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) (ρ : Assignment) (φ : Future)
+variable (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) {cur' : Option (String × Nat)} (ρ : Assignment) (φ : Future)
 
 theorem fixBodyAt_congrN {body : Term} {fb : List PBind × PBind}
-    (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KN K dm' C') ρ φ true hint body s₂)
+    (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KN K dm' C' cur') ρ φ true hint body s₂)
     (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (selfM : Sem) (args : List Sem) :
-    fixBodyAt K ρ φ fb s ps out piT start body selfM args = fixBodyAt (KN K dm' C') ρ φ fb s ps out piT start body selfM args := by
+    fixBodyAt K ρ φ fb s ps out piT start body selfM args = fixBodyAt (KN K dm' C' cur') ρ φ fb s ps out piT start body selfM args := by
   unfold fixBodyAt
   dsimp only
   generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F
@@ -197,26 +199,26 @@ theorem fixBodyAt_congrN {body : Term} {fb : List PBind × PBind}
   rfl
 
 theorem fixStage_congrN {body : Term} {fb : List PBind × PBind}
-    (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KN K dm' C') ρ φ true hint body s₂)
+    (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KN K dm' C' cur') ρ φ true hint body s₂)
     (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (dec : Option Nat) (start : Nat) :
-    ∀ k, fixStage K ρ φ fb l s ps out dec start body k = fixStage (KN K dm' C') ρ φ fb l s ps out dec start body k
+    ∀ k, fixStage K ρ φ fb l s ps out dec start body k = fixStage (KN K dm' C' cur') ρ φ fb l s ps out dec start body k
   | 0 => rfl
   | k + 1 => by
     show fixBodyAt K ρ φ fb s ps out _ start body
         (closureAt K.dm.read l φ ps _ (stageFn l ps (fixRank dec) k (fixStage K ρ φ fb l s ps out dec start body k)))
-      = fixBodyAt (KN K dm' C') ρ φ fb s ps out _ start body
-        (closureAt K.dm.read l φ ps _ (stageFn l ps (fixRank dec) k (fixStage (KN K dm' C') ρ φ fb l s ps out dec start body k)))
+      = fixBodyAt (KN K dm' C' cur') ρ φ fb s ps out _ start body
+        (closureAt K.dm.read l φ ps _ (stageFn l ps (fixRank dec) k (fixStage (KN K dm' C' cur') ρ φ fb l s ps out dec start body k)))
     rw [fixStage_congrN hb l s ps out dec start k]
     funext args
     exact fixBodyAt_congrN K dm' C' ρ φ hb s ps out _ start _ args
 
 theorem fixG_congrN {body : Term} {fb : List PBind × PBind}
-    (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KN K dm' C') ρ φ true hint body s₂)
+    (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KN K dm' C' cur') ρ φ true hint body s₂)
     (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (dec : Option Nat) :
-    fixG K ρ φ fb l s ps out piT start dec body = fixG (KN K dm' C') ρ φ fb l s ps out piT start dec body := by
+    fixG K ρ φ fb l s ps out piT start dec body = fixG (KN K dm' C' cur') ρ φ fb l s ps out piT start dec body := by
   funext args
   show fixStage K ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
-    = fixStage (KN K dm' C') ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
+    = fixStage (KN K dm' C' cur') ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
   rw [fixStage_congrN K dm' C' ρ φ hb]
 
 end
@@ -252,7 +254,7 @@ macro "nkv" : tactic => `(tactic| (simp only [Term.nok, Term.nokList, Term.nokAr
 /-! ## The congruence -/
 
 section
-variable (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) (N : NameOk) (ρ : Assignment) (φ : Future)
+variable (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) {cur' : Option (String × Nat)} (N : NameOk) (ρ : Assignment) (φ : Future)
 set_option linter.unusedSectionVars false
 variable (hA : AgreeN K dm' C' N)
 include hA
@@ -262,7 +264,7 @@ mutual
 under `K` and under `K` with another model and other globals that agree with `K`'s at those names
 (`AgreeN`). -/
 theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term.nok N t = true →
-    runT K ρ φ tl hint t s = runT (KN K dm' C') ρ φ tl hint t s
+    runT K ρ φ tl hint t s = runT (KN K dm' C' cur') ρ φ tl hint t s
   | tl, .place p, hint, s, ha => by rw [runT, runT, readPlace_N K dm' C' φ]; rfl
   | tl, .borrow p, hint, s, ha => by
     rw [runT, runT, lentOk_N K dm' C' φ, borrowPlace_N K dm' C' φ, invalidate_N K dm' C' φ, InvalidateOk_N K dm' C' φ]; rfl
@@ -298,7 +300,7 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
   | tl, .tt, hint, s, ha => by rw [runT, runT]
   | tl, .cong f g, hint, s, ha => by
     rw [runT, runT]
-    have hg : ∀ s, runT K ρ φ false (.plain .err) g s = runT (KN K dm' C') ρ φ false (.plain .err) g s :=
+    have hg : ∀ s, runT K ρ φ false (.plain .err) g s = runT (KN K dm' C' cur') ρ φ false (.plain .err) g s :=
       fun s => runT_congrN false g _ s (by nk)
     exact SM.onCopy_congr (premises_congr_all [g] (fun y hy => by rw [List.mem_singleton.mp hy]; exact hg) s)
   | tl, .val v, hint, s, ha => by
@@ -363,7 +365,7 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
     | none => rfl
     | some M =>
       obtain ⟨hp, hr⟩ := hA.ty n M (by simp only [Term.nok, Bool.and_eq_true] at ha; exact ha.1) hM
-      have hp' : (KN K dm' C').dm.paramTy M = K.dm.paramTy M := hp
+      have hp' : (KN K dm' C' cur').dm.paramTy M = K.dm.paramTy M := hp
       apply SM.bind_congr (runParams_congrN M args 0 [] s
         (nok_of_list (by simp only [Term.nok, Bool.and_eq_true] at ha; exact ha.2)))
       intro psM s₁ _
@@ -378,8 +380,8 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
     dsimp only
     refine SM.erasedIf_congr ?_
     have hhead : SM.headOf f (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT K ρ φ false (.plain .err) f) s
-        = SM.headOf f (fun p => SM.guarded (ContentOk (KN K dm' C') φ p) (readPlace (KN K dm' C') φ p true))
-          (runT (KN K dm' C') ρ φ false (.plain .err) f) s :=
+        = SM.headOf f (fun p => SM.guarded (ContentOk (KN K dm' C' cur') φ p) (readPlace (KN K dm' C' cur') φ p true))
+          (runT (KN K dm' C' cur') ρ φ false (.plain .err) f) s :=
       SM.headOf_congr (fun p => by rw [readPlace_N K dm' C' φ]; rfl) (runT_congrN false f _ s (by nk))
     apply SM.bind_congr hhead
     intro fv s₁ _
@@ -417,7 +419,7 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
     obtain ⟨s₁, lend⟩ := me
     dsimp only
     have harms := nok_of_arms (N := N) (as := arms) (by simpa [Term.nok] using ha)
-    rw [show (KN K dm' C').D.subsingleton n = K.D.subsingleton n from rfl]
+    rw [show (KN K dm' C' cur').D.subsingleton n = K.D.subsingleton n from rfl]
     split
     · rename_i c _
       apply Option.bind_congr' (runArm_congrN tl arms (tailHint tl hint) c s₁ harms)
@@ -445,13 +447,13 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
     rw [runT, runT]
     have hbs := runBinds_congrN s (K.D.paramDecls (scopeOf s) ds) ds [] []
       (nok_of_list (by simp only [Term.nok, Bool.and_eq_true] at ha; exact ha.1))
-    have hc : ∀ bs rs acc, runT K ρ φ false (.plain .err) c (extendBy s bs rs acc) = runT (KN K dm' C') ρ φ false (.plain .err) c (extendBy s bs rs acc) :=
+    have hc : ∀ bs rs acc, runT K ρ φ false (.plain .err) c (extendBy s bs rs acc) = runT (KN K dm' C' cur') ρ φ false (.plain .err) c (extendBy s bs rs acc) :=
       fun bs rs acc => runT_congrN false c _ _ (by nk)
     dsimp only
     rw [hbs]
     cases c with
     | ref U =>
-      have hU : ∀ bs rs acc, runT K ρ φ false (.plain .err) U (extendBy s bs rs acc) = runT (KN K dm' C') ρ φ false (.plain .err) U (extendBy s bs rs acc) :=
+      have hU : ∀ bs rs acc, runT K ρ φ false (.plain .err) U (extendBy s bs rs acc) = runT (KN K dm' C' cur') ρ φ false (.plain .err) U (extendBy s bs rs acc) :=
         fun bs rs acc => runT_congrN false U _ _ (by nk)
       simp only [hU]
       rfl
@@ -463,8 +465,8 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
     | none => rfl
     | some M =>
       obtain ⟨hr, hp⟩ := hA.rc ty M (by simp only [Term.nok, Bool.and_eq_true] at ha; exact ha.1.1) hM
-      have hr' : (KN K dm' C').dm.recOf M = K.dm.recOf M := hr
-      have hp' : (KN K dm' C').dm.paramTy M = K.dm.paramTy M := hp
+      have hr' : (KN K dm' C' cur').dm.recOf M = K.dm.recOf M := hr
+      have hp' : (KN K dm' C' cur').dm.paramTy M = K.dm.paramTy M := hp
       apply SM.bind_congr (runParams_congrN M ps 0 [] s
         (nok_of_list (by simp only [Term.nok, Bool.and_eq_true] at ha; exact ha.1.2)))
       intro psM s₁ h1
@@ -478,14 +480,14 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
   | tl, .prim n args, hint, s, ha => by
     have havl := nok_of_list (ts := args) (N := N) (by simpa [Term.nok] using ha)
     have hallT : ∀ t ∈ args, ∀ (tl' : Bool) (hint : TyS) (s : SState),
-        runT K ρ φ tl' hint t s = runT (KN K dm' C') ρ φ tl' hint t s := fun t hm tl' hint s =>
+        runT K ρ φ tl' hint t s = runT (KN K dm' C' cur') ρ φ tl' hint t s := fun t hm tl' hint s =>
       runAll_congrN args t hm tl' hint s (havl t hm)
     have hall : ∀ t ∈ args, ∀ (hint : TyS) (s : SState),
-        run K ρ φ hint t s = run (KN K dm' C') ρ φ hint t s := fun t hm hint s => hallT t hm false hint s
+        run K ρ φ hint t s = run (KN K dm' C' cur') ρ φ hint t s := fun t hm hint s => hallT t hm false hint s
     have hprem : ∀ xs : List Term, (∀ x ∈ xs, x ∈ args) →
         SM.onCopy (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k)
           (pure ((.proof, .plain (TyM.prop True)) : Res))) s =
-        SM.onCopy (xs.foldr (fun t k => runT (KN K dm' C') ρ φ false (.plain TyM.err) t >>= fun _ => k)
+        SM.onCopy (xs.foldr (fun t k => runT (KN K dm' C' cur') ρ φ false (.plain TyM.err) t >>= fun _ => k)
           (pure ((.proof, .plain (TyM.prop True)) : Res))) s := fun xs hxs =>
       SM.onCopy_congr (premises_congr_all xs (fun x hx s' => hall x (hxs x hx) _ s') s)
     by_cases e1 : ∃ h, n = "symm" ∧ args = [h]
@@ -514,7 +516,7 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
       apply SM.bind_congr rfl
       intro _ s₆ e6; have e := SM.onCopy_state e6; subst e
       dsimp only
-      rw [show ∀ (hh : TyS) s₀, runT K ρ φ false hh t s₀ = runT (KN K dm' C') ρ φ false hh t s₀ from
+      rw [show ∀ (hh : TyS) s₀, runT K ρ φ false hh t s₀ = runT (KN K dm' C' cur') ρ φ false hh t s₀ from
         fun hh s₀ => hall t (hm t (by simp)) hh s₀]
     by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
     · obtain ⟨u, hn, hargs⟩ := hc
@@ -541,28 +543,28 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
     all_goals first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3 | exact hs'
   | tl, .fix self hs ds c dec body, hint, s, ha => by
     have hds0 := nok_of_list (by simp only [Term.nok, Bool.and_eq_true] at ha; exact ha.1.1)
-    have hbs : bindsOf K ρ φ s ds = bindsOf (KN K dm' C') ρ φ s ds :=
+    have hbs : bindsOf K ρ φ s ds = bindsOf (KN K dm' C' cur') ρ φ s ds :=
       runBinds_congrN s (K.D.paramDecls (scopeOf s) ds) ds [] [] hds0
-    have hds : runDoms K ρ φ s ds = runDoms (KN K dm' C') ρ φ s ds := by unfold runDoms; rw [hbs]
-    have hc : ∀ bs rs acc, runT K ρ φ false (.plain .err) c (extendBy s bs rs acc) = runT (KN K dm' C') ρ φ false (.plain .err) c (extendBy s bs rs acc) :=
+    have hds : runDoms K ρ φ s ds = runDoms (KN K dm' C' cur') ρ φ s ds := by unfold runDoms; rw [hbs]
+    have hc : ∀ bs rs acc, runT K ρ φ false (.plain .err) c (extendBy s bs rs acc) = runT (KN K dm' C' cur') ρ φ false (.plain .err) c (extendBy s bs rs acc) :=
       fun bs rs acc => runT_congrN false c _ _ (by nk)
-    have hb : ∀ (hint : TyS) (s₂ : SState), runT K ρ φ true hint body s₂ = runT (KN K dm' C') ρ φ true hint body s₂ :=
+    have hb : ∀ (hint : TyS) (s₂ : SState), runT K ρ φ true hint body s₂ = runT (KN K dm' C' cur') ρ φ true hint body s₂ :=
       fun hint s₂ => runT_congrN true body hint s₂ (by nk)
-    have hout : ∀ bs rs, codOf K ρ φ s bs rs c = codOf (KN K dm' C') ρ φ s bs rs c := by
+    have hout : ∀ bs rs, codOf K ρ φ s bs rs c = codOf (KN K dm' C' cur') ρ φ s bs rs c := by
       intro bs rs
       cases c with
       | ref U =>
-        have hU : ∀ bs rs acc, runT K ρ φ false (.plain .err) U (extendBy s bs rs acc) = runT (KN K dm' C') ρ φ false (.plain .err) U (extendBy s bs rs acc) :=
+        have hU : ∀ bs rs acc, runT K ρ φ false (.plain .err) U (extendBy s bs rs acc) = runT (KN K dm' C' cur') ρ φ false (.plain .err) U (extendBy s bs rs acc) :=
           fun bs rs acc => runT_congrN false U _ _ (by nk)
         simp only [codOf, hU]
       | _ => simp only [codOf, hc]
-    have hcod : ∀ bs rs, fixCod K ρ φ s bs rs c = fixCod (KN K dm' C') ρ φ s bs rs c := fun bs rs => by unfold fixCod; rw [hout]
+    have hcod : ∀ bs rs, fixCod K ρ φ s bs rs c = fixCod (KN K dm' C' cur') ρ φ s bs rs c := fun bs rs => by unfold fixCod; rw [hout]
     rw [run_fix_def, run_fix_def, hds, hbs, hout, hcod]
     rw [fixG_congrN K dm' C' ρ φ hb]
     rfl
 
 theorem runAll_congrN : ∀ (ts : List Term) (t : Term), t ∈ ts → ∀ (tl : Bool) (hint : TyS) (s : SState),
-    Term.nok N t = true → runT K ρ φ tl hint t s = runT (KN K dm' C') ρ φ tl hint t s
+    Term.nok N t = true → runT K ρ φ tl hint t s = runT (KN K dm' C' cur') ρ φ tl hint t s
   | [], t, h, _, _, _, _ => absurd h List.not_mem_nil
   | a :: as, t, h, tl, hint, s, ha => by
     rw [List.mem_cons] at h
@@ -572,25 +574,25 @@ theorem runAll_congrN : ∀ (ts : List Term) (t : Term), t ∈ ts → ∀ (tl : 
 
 theorem runBinds_congrN (s : SState) (dcs : List DeclInfo) : ∀ (ds : List Term) (pre : List PBind) (rs : List Bool),
     (∀ a ∈ ds, Term.nok N a = true) →
-    runBinds K ρ φ s dcs pre rs ds = runBinds (KN K dm' C') ρ φ s dcs pre rs ds
+    runBinds K ρ φ s dcs pre rs ds = runBinds (KN K dm' C' cur') ρ φ s dcs pre rs ds
   | [], _, _, _ => rfl
   | x :: ds, pre, rs, hds => by
     have hds' := fun pre' rs' => runBinds_congrN s dcs ds pre' rs' (fun a h => hds a (List.mem_cons_of_mem _ h))
     have ha := hds x (List.mem_cons_self ..)
     have hd : (fun acc => runT K ρ φ false (.plain .err) x (extendBy s pre rs acc))
-        = (fun acc => runT (KN K dm' C') ρ φ false (.plain .err) x (extendBy s pre rs acc)) :=
+        = (fun acc => runT (KN K dm' C' cur') ρ φ false (.plain .err) x (extendBy s pre rs acc)) :=
       funext fun acc => runT_congrN false x _ _ ha
     cases x with
     | ref A =>
       have hA' : (fun acc => runT K ρ φ false (.plain .err) A (extendBy s pre rs acc))
-          = (fun acc => runT (KN K dm' C') ρ φ false (.plain .err) A (extendBy s pre rs acc)) :=
+          = (fun acc => runT (KN K dm' C' cur') ρ φ false (.plain .err) A (extendBy s pre rs acc)) :=
         funext fun acc => runT_congrN false A _ _ (by nk)
       simp only [runBinds, hA', hds']
     | _ => simp only [runBinds, hd, hds']
 
 theorem runArgs_congrN (stmt : Bool) (fT : TyM) :
     ∀ (args : List Term) (earlier : List Sem) (s : SState), (∀ a ∈ args, Term.nok N a = true) →
-    runArgs K ρ φ stmt fT earlier args s = runArgs (KN K dm' C') ρ φ stmt fT earlier args s
+    runArgs K ρ φ stmt fT earlier args s = runArgs (KN K dm' C' cur') ρ φ stmt fT earlier args s
   | [], _, _, _ => rfl
   | a :: as, earlier, s, ha => by
     simp only [runArgs]
@@ -599,25 +601,25 @@ theorem runArgs_congrN (stmt : Bool) (fT : TyM) :
     apply SM.bind_congr (runArgs_congrN stmt fT as _ s₁ (fun b h => ha b (List.mem_cons_of_mem _ h)))
     intro _ _ _; rfl
 
-theorem runFields_congrN (stmt : Bool) (M : IndDecl) (hr : (KN K dm' C').dm.recOf M = K.dm.recOf M) (c : Nat) :
+theorem runFields_congrN (stmt : Bool) (M : IndDecl) (hr : (KN K dm' C' cur').dm.recOf M = K.dm.recOf M) (c : Nat) :
     ∀ (args : List Term) (i : Nat) (rh : Option Rec) (sol : List (Option Sem)) (earlier : List Sem) (s : SState),
     (∀ a ∈ args, Term.nok N a = true) →
-    runFields K ρ φ stmt M c i rh sol earlier args s = runFields (KN K dm' C') ρ φ stmt M c i rh sol earlier args s
+    runFields K ρ φ stmt M c i rh sol earlier args s = runFields (KN K dm' C' cur') ρ φ stmt M c i rh sol earlier args s
   | [], _, _, _, _, _, _ => rfl
   | a :: as, i, rh, sol, earlier, s, ha => by
-    have hF : (KN K dm' C').dm.fieldTy M = K.dm.fieldTy M := by
+    have hF : (KN K dm' C' cur').dm.fieldTy M = K.dm.fieldTy M := by
       funext ps c i e; unfold DataModel.fieldTy; rw [hr]; rfl
     simp only [runFields]
     rw [hF]
     apply SM.bind_congr (SM.stmtIf_congr (runT_congrN false a _ s (ha a (List.mem_cons_self ..))))
     intro r s₁ _
-    simp only [unifyTyS_indep (KN K dm' C').dm K.dm]
+    simp only [unifyTyS_indep (KN K dm' C' cur').dm K.dm]
     apply SM.bind_congr (runFields_congrN stmt M hr c as _ _ _ _ s₁ (fun b h => ha b (List.mem_cons_of_mem _ h)))
     intro _ _ _; rfl
 
 theorem runParams_congrN (M : IndDecl) :
     ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s : SState), (∀ a ∈ args, Term.nok N a = true) →
-    runParams K ρ φ M i earlier args s = runParams (KN K dm' C') ρ φ M i earlier args s
+    runParams K ρ φ M i earlier args s = runParams (KN K dm' C' cur') ρ φ M i earlier args s
   | [], _, _, _, _ => rfl
   | a :: as, i, earlier, s, ha => by
     simp only [runParams]
@@ -630,7 +632,7 @@ theorem runParams_congrN (M : IndDecl) :
 
 theorem runArm_congrN : ∀ (tl : Bool) (arms : List (Hint × Term)) (hint : TyS) (c : Nat) (s : SState),
     (∀ p ∈ arms, Term.nok N p.2 = true) →
-    runArm K ρ φ tl hint c arms s = runArm (KN K dm' C') ρ φ tl hint c arms s
+    runArm K ρ φ tl hint c arms s = runArm (KN K dm' C' cur') ρ φ tl hint c arms s
   | _, [], _, _, _, _ => rfl
   | tl, (h, t) :: rest, hint, c, s, ha => by
     simp only [runArm]
@@ -639,22 +641,22 @@ theorem runArm_congrN : ∀ (tl : Bool) (arms : List (Hint × Term)) (hint : TyS
     · exact runArm_congrN tl rest hint (c - 1) s (fun p hp => ha p (List.mem_cons_of_mem _ hp))
 
 theorem meanV_congrN : ∀ (v : Value) (hint : TyS), Value.nok N v = true →
-    meanV K ρ φ hint v = meanV (KN K dm' C') ρ φ hint v
+    meanV K ρ φ hint v = meanV (KN K dm' C' cur') ρ φ hint v
   | .abs σ, hint, hv => rfl
   | .gfn n, hint, hv => by
     show (K.C.global n).1 = (C'.global n).1
     rw [hA.gl n (by simpa [Value.nok] using hv)]
   | .succ w, hint, hv => by
-    show (meanV K ρ φ _ w).succ = (meanV (KN K dm' C') ρ φ _ w).succ
+    show (meanV K ρ φ _ w).succ = (meanV (KN K dm' C' cur') ρ φ _ w).succ
     rw [meanV_congrN w _ (by nkv)]
   | .borrow _ w, hint, hv => by
-    show meanV K ρ φ hint w = meanV (KN K dm' C') ρ φ hint w
+    show meanV K ρ φ hint w = meanV (KN K dm' C' cur') ρ φ hint w
     exact meanV_congrN w hint (by nkv)
   | .gloan _ w, hint, hv => by
-    show meanV K ρ φ hint w = meanV (KN K dm' C') ρ φ hint w
+    show meanV K ρ φ hint w = meanV (KN K dm' C' cur') ρ φ hint w
     exact meanV_congrN w hint (by nkv)
   | .tRef A, hint, hv => by
-    show meanV K ρ φ _ A = meanV (KN K dm' C') ρ φ _ A
+    show meanV K ρ φ _ A = meanV (KN K dm' C' cur') ρ φ _ A
     exact meanV_congrN A _ (by nkv)
   | .tEq A a b, hint, hv => by
     rw [meanV, meanV]
@@ -694,9 +696,9 @@ theorem meanV_congrN : ∀ (v : Value) (hint : TyS), Value.nok N v = true →
       dsimp only
       rw [meanParams_congrN M hp args _ _ (by simp only [Value.nok, Bool.and_eq_true] at hv; exact hv.2)]
       simp only [paramsOk_congr hp]
-      by_cases hok : paramsOk K.dm M (meanParams (KN K dm' C') ρ φ M 0 [] args)
-      · have hr' : dm'.recOf M (meanParams (KN K dm' C') ρ φ M 0 [] args)
-            = K.dm.recOf M (meanParams (KN K dm' C') ρ φ M 0 [] args) := hr _ hok
+      by_cases hok : paramsOk K.dm M (meanParams (KN K dm' C' cur') ρ φ M 0 [] args)
+      · have hr' : dm'.recOf M (meanParams (KN K dm' C' cur') ρ φ M 0 [] args)
+            = K.dm.recOf M (meanParams (KN K dm' C' cur') ρ φ M 0 [] args) := hr _ hok
         simp only [hok, if_true, DataModel.tyM, hr']
         rfl
       · simp only [hok, if_false]
@@ -710,14 +712,14 @@ theorem meanV_congrN : ∀ (v : Value) (hint : TyS), Value.nok N v = true →
   | .sort _, _, _ => rfl
 
 theorem capsVals_congrN : ∀ (vs : List Value), Value.nokList N vs = true →
-    capsVals K ρ φ vs = capsVals (KN K dm' C') ρ φ vs
+    capsVals K ρ φ vs = capsVals (KN K dm' C' cur') ρ φ vs
   | [], _ => rfl
   | v :: vs, hv => by
     simp only [capsVals]
     rw [meanV_congrN v _ (by nkv), capsVals_congrN vs (by nkv)]
 
 theorem capsTys_congrN : ∀ (rd : List (DeclInfo × Value)), Value.nokRd N rd = true →
-    capsTys K ρ φ rd = capsTys (KN K dm' C') ρ φ rd
+    capsTys K ρ φ rd = capsTys (KN K dm' C' cur') ρ φ rd
   | [], _ => rfl
   | (d, T) :: rest, hv => by
     simp only [capsTys]
@@ -725,7 +727,7 @@ theorem capsTys_congrN : ∀ (rd : List (DeclInfo × Value)), Value.nokRd N rd =
 
 theorem meanFields_congrN (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem), Value.nokList N vs = true →
-    meanFields K ρ φ d r c i earlier vs = meanFields (KN K dm' C') ρ φ d r c i earlier vs
+    meanFields K ρ φ d r c i earlier vs = meanFields (KN K dm' C' cur') ρ φ d r c i earlier vs
   | [], _, _, _ => rfl
   | v :: vs, i, earlier, hv => by
     simp only [meanFields]
@@ -734,17 +736,17 @@ theorem meanFields_congrN (d : IndDecl) (r : Rec) (c : Nat) :
 
 theorem meanParams_congrN (d : IndDecl) (hp : dm'.paramTy d = K.dm.paramTy d) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem), Value.nokList N vs = true →
-    meanParams K ρ φ d i earlier vs = meanParams (KN K dm' C') ρ φ d i earlier vs
+    meanParams K ρ φ d i earlier vs = meanParams (KN K dm' C' cur') ρ φ d i earlier vs
   | [], _, _, _ => rfl
   | v :: vs, i, earlier, hv => by
-    have hp' : (KN K dm' C').dm.paramTy d = K.dm.paramTy d := hp
+    have hp' : (KN K dm' C' cur').dm.paramTy d = K.dm.paramTy d := hp
     simp only [meanParams]
     rw [hp', meanV_congrN v _ (by nkv), meanParams_congrN d hp vs _ _ (by nkv)]
 end
 
 /-- `runT_congrN` at a position that is not a tail. -/
 theorem run_congrN (t : Term) (hint : TyS) (s : SState) (ht : Term.nok N t = true) :
-    run K ρ φ hint t s = run (KN K dm' C') ρ φ hint t s :=
+    run K ρ φ hint t s = run (KN K dm' C' cur') ρ φ hint t s :=
   runT_congrN K dm' C' N ρ φ hA false t hint s ht
 
 end

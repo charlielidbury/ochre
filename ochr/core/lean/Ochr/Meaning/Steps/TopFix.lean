@@ -109,34 +109,46 @@ def FixFitsAt (P : ProgState) (d : Def) (st' : MState) : Prop :=
     PiFits dm.read (lG (P.ctx dm D Γ st') d.hs d.doms d.cod) (psG (P.ctx dm D Γ st') ρ φ d.doms)
       (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod) (fun _ => True)
 
+/-- **The check's context at bound `b`, reading the unknowns' types as `Δa`** (lead46, docs/31 D259): `Pre` asks the
+context's `Δ` to give every unknown the state names its type (`DeltaOk`), and `ctxB`'s is the default, so at a generic
+state that names a parameter's unknown `Pre` at `ctxB` itself is false (at `R`: `σ0 : Nat`, read `.plain err`). -/
+noncomputable abbrev ctxBΔ (P : ProgState) (d : Def) (st' : MState) (ρ : Assignment) (φ : Future) (b : Nat)
+    (Δa : Nat → TyS) : RunCtx :=
+  { ctxB dm D Γ P d st' ρ φ b with Δ := Δa }
+
 /-- **The start of the check at bound `b`** (MIXED; read true by parts, unproved). At member arguments `a` of rank below
 `b + 1`, given the induction hypothesis, there is an assignment of the generic state's unknowns (each parameter's its
-argument) under which: `Pre` at the generic state in `K_b` (its `GlobalsOk`: the stage's globals from the invariant,
-the definition's own `memBelow` at `b` from the induction hypothesis, its `codeValFree` from resolution; `RecCurG` both
-ways once `EvalAt` carries it, false until main's D147); the generic state related to the closure's frame at `a`
-(`startAt`: cells, its own binding, the parameters; docs/31 D126) and that frame good; the body holding no embedded value,
-unknown or hole; the table aligned at the run's end; and the checker's goal read under the assignment as the closure's
-body hint at `a` (the codomain at `a`, (M1)). -/
+argument) AND a reading `Δa` of their types under which: `Pre` at the generic state in `K_b` with `Δa` (its `GlobalsOk`:
+the stage's globals from the invariant, the definition's own `memBelow` at `b` from the induction hypothesis, its
+`codeValFree` from resolution; `RecCurG` both ways once `EvalAt` carries it, false until main's D147); the generic state
+related to the closure's frame at `a` (`startAt`: cells, its own binding, the parameters; docs/31 D126) and that frame
+good; the body holding no embedded value, unknown or hole; the table aligned at the run's end; and the checker's goal read
+under the assignment as the closure's body hint at `a` (the codomain at `a`, (M1)).
+
+RESTATED (lead46, docs/31 D259): as lead43 stated it, `Pre` was asked at `ctxB` itself, whose `Δ` is the default, so the
+link was FALSE at every function whose generic state names an unknown (every function with a data parameter: at `R`,
+`DeltaOk` asks `ctxB.Δ 0 = .plain nat`). The context's `Δa` is now the start's to choose (the fundamental lemma's
+condition does not read `Δ`), and the leaf and congruence links are stated at the same context. -/
 def FixStartAt (P : ProgState) (d : Def) (st' : MState) (w : FixWit) : Prop :=
   ∀ (ρ : Assignment) (φ : Future) (b : Nat) (a : List Sem),
     GoodBelowB (P.ctx dm D Γ st') ρ φ d b →
     DomMembers dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) a → fixRank d.dec a < b + 1 →
-    ∃ (ρa : Assignment) (π : Nat → Nat),
-      Pre (ctxB dm D Γ P d st' ρ φ b) ρa w.st₀ ∧
-      Rel (ctxB dm D Γ P d st' ρ φ b) ρa φ π w.st₀
+    ∃ (ρa : Assignment) (Δa : Nat → TyS) (π : Nat → Nat),
+      Pre (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀ ∧
+      Rel (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ π w.st₀
         (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) ∧
       Strict.SGood dm Γ φ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) ∧
-      d.body.valsOk (Strict.ValsP (ctxB dm D Γ P d st' ρ φ b) ρa φ) ∧ d.body.absBelow w.st₀.absTy.size ∧
+      d.body.valsOk (Strict.ValsP (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ) ∧ d.body.absBelow w.st₀.absTy.size ∧
       d.body.hasHolePrim = false ∧ DecTab (D st') w.st₁ ∧
-      hintM (ctxB dm D Γ P d st' ρ φ b) ρa w.st₀.goal = (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.1 a
+      hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal = (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.1 a
 
 /-- **The body runs alike in the check's context and the stage's** (MODEL; read true for a body that reads its own name
 only through its own binding: the run reads neither `K.cur` nor, then, the global under check's meaning, and a closed
 body no assignment; FALSE until decision (b)'s model clause for a body forming a closure or a block that names the
 definition by its global, main's D139, which the stage's context reads as `ProgState.dfltGlobal`). -/
 def BodyCongrAt (P : ProgState) (d : Def) (st' : MState) : Prop :=
-  ∀ (ρ ρa : Assignment) (φ : Future) (b : Nat) (h : TyS) (s : SState),
-    runT (ctxB dm D Γ P d st' ρ φ b) ρa φ true h d.body s = runT (P.ctx dm D Γ st') ρ φ true h d.body s
+  ∀ (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (b : Nat) (h : TyS) (s : SState),
+    runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true h d.body s = runT (P.ctx dm D Γ st') ρ φ true h d.body s
 
 /-- **The leaf of the check at bound `b`** (MIXED; unread as one fact). Its parts: the leaf's type converts to the goal
 as the path refined it, which the extended assignment meets, so the reference's result type is the codomain at `a`
@@ -146,19 +158,19 @@ as a proof; for a proof, whose leaf gives no relation, the reference restores th
 arguments); a returned borrow's backward function is injective (N5's (X5)). From `TailAt`'s conclusion, the fundamental
 lemma at the reference's run, and the run being the stage's: stage `b + 1`'s output at `a` is good.
 
-Since docs/31 D256 it also takes what the knot has at that point and lead43's form left out: `a`'s rank below `b + 1` (above
+Since docs/31 D259 it is stated at the check's context with the start's `Δa` (`ctxBΔ`). Since docs/31 D256 it also takes what the knot has at that point and lead43's form left out: `a`'s rank below `b + 1` (above
 it the stage-`b` self returns its weakened output, and nothing else in the hypotheses excludes that) and the start's `Pre`
 and relation at the assignment `ρa` (which ties `ρa`'s parameters to `a`, so that the goal under `ρa` is the codomain at
 `a`). Both only weaken the link. -/
 def FixLeafAt (P : ProgState) (d : Def) (st' : MState) (w : FixWit) : Prop :=
-  ∀ (ρ ρa : Assignment) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem),
+  ∀ (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem),
     DomMembers dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) a → fixRank d.dec a < b + 1 →
-    Pre (ctxB dm D Γ P d st' ρ φ b) ρa w.st₀ →
-    Rel (ctxB dm D Γ P d st' ρ φ b) ρa φ π w.st₀ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) →
-    TailConcl (ctxB dm D Γ P d st' ρ φ b) ρa φ π w.st₀ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)
-      d.body (runT (ctxB dm D Γ P d st' ρ φ b) ρa φ true (hintM (ctxB dm D Γ P d st' ρ φ b) ρa w.st₀.goal) d.body)
+    Pre (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀ →
+    Rel (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ π w.st₀ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) →
+    TailConcl (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ π w.st₀ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)
+      d.body (runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal) d.body)
       (fixCont w.n d.name) →
-    runT (ctxB dm D Γ P d st' ρ φ b) ρa φ true (hintM (ctxB dm D Γ P d st' ρ φ b) ρa w.st₀.goal) d.body
+    runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal) d.body
         (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) =
       runT (P.ctx dm D Γ st') ρ φ true ((fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.1 a) d.body
         (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) →
@@ -336,17 +348,18 @@ theorem knot_step
         OutGood' dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) (outG (P.ctx dm D Γ st') ρ φ d.doms d.cod) a o := by
   intro a ha hlt
   obtain ⟨hm, htn, hsz, htd, -, hrt, hgr, hkt, -, -⟩ := hck
-  obtain ⟨ρa, π, hpre, hrel, hsg, hvals, hab, hhole, hdt, hhint⟩ := hstart ρ φ b a hIH ha hlt
+  obtain ⟨ρa, Δa, π, hpre, hrel, hsg, hvals, hab, hhole, hdt, hhint⟩ := hstart ρ φ b a hIH ha hlt
   have hGmem := stageClo_mem (P.ctx dm D Γ st') ρ φ d b (hfits ρ φ) hIH
-  have hfc : Strict.FundCtx (ctxB dm D Γ P d st' ρ φ b) :=
+  have hfc0 : Strict.FundCtx (ctxB dm D Γ P d st' ρ φ b) :=
     fundCtx_ctxAt dm Γ P (D st') d.name b _ hP.mem hP.lab (.inl hGmem) rfl hsorts
-  have hall := hsteps (ctxB dm D Γ P d st' ρ φ b) φ (fun _ => ⟨hfc.globals, hfc.sorts⟩)
+  have hfc : Strict.FundCtx (ctxBΔ dm D Γ P d st' ρ φ b Δa) := ⟨hfc0.globals, hfc0.sorts⟩
+  have hall := hsteps (ctxBΔ dm D Γ P d st' ρ φ b Δa) φ (fun _ => ⟨hfc.globals, hfc.sorts⟩)
   have hT := tail_all hall ρa w.n d.body w.st₀ (fixCont w.n d.name) _ π w.bh w.st₁ hm htn hsz htd hgr hkt hpre hrel hsg
     hvals hab hhole hdt hrt
-  have heq := (congrArg (fun h => runT (ctxB dm D Γ P d st' ρ φ b) ρa φ true h d.body
+  have heq := (congrArg (fun h => runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true h d.body
       (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)) hhint).trans
-    (hcongr ρ ρa φ b _ _)
-  refine hleaf ρ ρa φ π b a ha hlt hpre hrel hT heq (fun r s' hx => ?_)
+    (hcongr ρ ρa Δa φ b _ _)
+  refine hleaf ρ ρa Δa φ π b a ha hlt hpre hrel hT heq (fun r s' hx => ?_)
   rw [← heq] at hx
   have hF := Strict.fund_all hfc d.body hvals true _ _ s' r hsg hx
   exact ⟨hF.1, hF.2.2.2⟩

@@ -157,7 +157,7 @@ theorem field_transfer {D : MState → Decisions} {st st' : MState} {d : IndDecl
   have e1 : KA K Kb.Δ = { KA K Kb.Δ with D := D st } := by
     apply ctx_ext <;> simp [hKD]
   rw [e1, hKD, hDS (KA K Kb.Δ) ρb ps e]
-  rw [run_congrN _ Kb.dm Kb.C N ρb noFuture hA FT _ _ hnok]
+  rw [run_congrN (cur' := Kb.cur) _ Kb.dm Kb.C N ρb noFuture hA FT _ _ hnok]
   rw [teleFrame_congr hrec hpt, hKbD]
   congr 1
   apply ctx_ext <;> simp [hΓ, hKbD, hΛ, hcur]
@@ -178,7 +178,7 @@ theorem param_transfer {D : MState → Decisions} {st st' : MState} {d : IndDecl
   have e1 : KA K Kb.Δ = { KA K Kb.Δ with D := D st } := by
     apply ctx_ext <;> simp [hKD]
   rw [e1, hKD, ← hPT, hDS (KA K Kb.Δ) ρb ps false, hPT]
-  rw [run_congrN _ Kb.dm Kb.C N ρb noFuture hA PT _ _ hnok]
+  rw [run_congrN (cur' := Kb.cur) _ Kb.dm Kb.C N ρb noFuture hA PT _ _ hnok]
   rw [hKbD]
   have e2 : (KA K Kb.Δ).dm.paramTy d = P := hpt
   rw [e2]
