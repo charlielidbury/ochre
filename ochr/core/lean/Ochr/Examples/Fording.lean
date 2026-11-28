@@ -904,3 +904,72 @@ ochr InductiveModel uses Lists {
   ("HL2", "field y of MkHL2 : f(Zero): fields are first-order data"),
   ("NegV", "field r of MkNegV"),
   ("efBad", "field h of MkEqF has type ⊤, expected Eq(Π(x : Word). Word")]
+
+/-! ## An inductive declaration binds its earlier parameters with their declared readings (D149)
+
+While a declaration's later parameters and its fields are evaluated, its earlier parameters are
+bound; they were bound with no declared reading (`other`), where a definition's are bound with
+theirs. A function parameter into `Type` or `Prop` was then data to the erasure pre-pass, so a later
+parameter typed by a call of it read as data and was found a type or a proof by the run: with
+`F : Π(n : Nat). Type`, `inductive CPT (F : Π(n : Nat). Type) (B : F(Z)) := MkCPT` was rejected
+with "INTERNAL [pre-pass] #0(0): erased/proof = (false, false) by its declared type, (true, false)
+after running", while `def KT` with the same parameters was accepted; and a parameter typed by a
+type a large parameter's function type captured read as no sort (`CPQ`, "κ is not a type"). Since
+D149 each is bound with its reading (`telescope`'s, the one D128 and D141 read): each declaration
+below is accepted and usable, or rejected by an ordinary rule (D36: a field typed by a call of a
+parameter), and no internal error is reachable. Nothing else moves: D128, D140 and D141 are
+decided before the parameters are bound, and D107's nesting and D120 in the field loop pass as
+for any declaration (a field typed by `Nat`, `CPTx`; no field mentions the type being declared). -/
+
+ochr ParamReadings {
+  inductive Box (A : Type) := MkBox(x : A)
+  def TF (n : Nat) : Type := match n { Z => Nat, S(m) => Unit, }
+  -- the same parameters on a definition, accepted before D149
+  def KT (F : Π(n : Nat). Type) (B : F(Z)) : Nat := Z
+  def KP (P : Π(n : Nat). Prop) (h : P(Z)) : Nat := Z
+  def KD (f : Π(n : Nat). Nat) (k : Eq(Nat, f(Z), Z)) : Nat := Z
+  -- a later parameter typed by a call of an earlier function parameter into `Type`
+  inductive CPT (F : Π(n : Nat). Type) (B : F(Z)) := MkCPT
+  inductive CPT2 (F : Π(n : Nat). Type) (B : F(Z)) (C : F(S(Z))) := MkCPT2
+  inductive CPTx (F : Π(n : Nat). Type) (B : F(Z)) := MkCPTx(y : Nat)
+  inductive CPV (F : Π(n : Nat). Type) (m : Nat) (B : F(m)) := MkCPV
+  inductive CPE (F : Π(n : Nat). Type) (B : F(Z)) (e : Eq(F(Z), B, B)) := MkCPE
+  inductive CPH (G : Π(n : Nat). Type) (H : Π(x : G(Z)). Nat) := MkCPH
+  inductive CPS (F : Π(n : Nat). Type) (G : Π(x : F(Z)). Prop) := MkCPS
+  -- ... into `Prop`, of a data and of a proof declaration
+  inductive CPP (P : Π(n : Nat). Prop) (h : P(Z)) := MkCPP
+  inductive CPPp (P : Π(n : Nat). Prop) (h : P(Z)) : Prop := MkCPPp
+  -- a type a large parameter's function type captures
+  inductive CPQ (A : Type) (F : Π(x : A). Type) (a : A) (b : F(a)) := MkCPQ
+  -- unchanged: a data function in an equation, a global type function, a match on an earlier
+  -- parameter, a parameter at `Unit`
+  inductive CPL (f : Π(n : Nat). Nat) (k : Eq(Nat, f(Z), Z)) := MkCPL
+  inductive CPG (n : Nat) (B : TF(n)) := MkCPG
+  inductive CPGf (f : Π(n : Nat). Nat) (B : TF(f(Z))) := MkCPGf
+  inductive CPM (n : Nat) (B : match n { Z => Nat, S(m) => Unit, }) := MkCPM
+  inductive CPU (u : Unit) (k : Eq(Unit, u, ())) := MkCPU
+  -- a field typed by a call of a parameter: D36, as before (`CPN`, `CPNv`: the internal error before)
+  reject inductive CPF (F : Π(n : Nat). Type) := MkCPF(y : Box(F(Z)))
+  reject inductive CPN (F : Π(n : Nat). Type) (B : F(Z)) := MkCPN(y : Box(Box(F(Z))))
+  reject inductive CPNv (F : Π(n : Nat). Type) (B : F(Z)) := MkCPNv(y : Box(Nat), e : Eq(F(Z), B, B))
+  reject inductive CPPf (P : Π(n : Nat). Prop) := MkCPPf(h : P(Z))
+  -- uses: values at closed and generic arguments, a match
+  def UseCPT : CPT(λ(n : Nat) : Type => Nat, 3) := MkCPT
+  def UseCPTGen (F : Π(n : Nat). Type) (b : F(Z)) : CPT(F, b) := MkCPT
+  def UseCPTx (c : CPTx(λ(n : Nat) : Type => Nat, 3)) : Nat := match c { MkCPTx(y) => y, }
+  def UseCPTxRun : Eq(Nat, UseCPTx(MkCPTx(4)), 4) := refl
+  def UseCPV : CPV(λ(n : Nat) : Type => Nat, 2, 5) := MkCPV
+  def UseCPE : CPE(λ(n : Nat) : Type => Nat, 3, refl) := MkCPE
+  def UseCPS : CPS(λ(n : Nat) : Type => Nat, λ(x : Nat) : Prop => ⊤) := MkCPS
+  def UseCPP : CPP(λ(n : Nat) : Prop => ⊤, refl) := MkCPP
+  def UseCPQ : CPQ(Nat, λ(x : Nat) : Type => Nat, 1, 2) := MkCPQ
+  def UseCPL : CPL(λ(n : Nat) : Nat => Z, refl) := MkCPL
+  -- an argument of the wrong type at the later parameter
+  reject def BadCPT : CPT(λ(n : Nat) : Type => Nat, ()) := MkCPT
+}
+
+#guard (run "ParamReadings" ParamReadings).rejectedWith [
+  ("CPF", "field y of MkCPF : Box(F(0)): fields are first-order data"),
+  ("CPN", "field y of MkCPN : Box(Box(F(0))): fields are first-order data"),
+  ("CPNv", "field e of MkCPNv : Eq(F(0), B, B): fields are first-order data"),
+  ("CPPf", "field h of MkCPPf : P(0): fields are first-order data")]

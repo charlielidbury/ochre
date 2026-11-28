@@ -1474,7 +1474,12 @@ ochr PositivityProbesAdv uses Nats, Lists, WordType {
   inductive H (f : Π(x : Word). Type) := HB | HS(y : App0(f), r : H(λ(x : Word) : Type => f(Succ(x))))
   def hh : H(λ(x : Word) : Type => Word) := HS[λ(x : Word) : Type => Word](Zero, HB)
   def AppU (U : Type₁) (F : Π(x : U). Type) (a : U) : Type := F(a)
-  reject inductive LB (U : Type₁) (F : Π(x : U). Type) (a : U) := MkLB(y : AppU(U, F, a))
+  -- accepted since D149 (before, "κ is not a type": `U` was bound with no reading, so `F`'s type,
+  -- which captures it, read as no sort), as Lean accepts it; usable
+  inductive LB (U : Type₁) (F : Π(x : U). Type) (a : U) := MkLB(y : AppU(U, F, a))
+  def lb : LB(Type, λ(X : Type) : Type => X, Word) := MkLB[Type, λ(X : Type) : Type => X, Word](Zero)
+  reject def lbBad : LB(Type, λ(X : Type) : Type => X, Word) := MkLB[Type, λ(X : Type) : Type => X, Word](())
+  def lbY (l : LB(Type, λ(X : Type) : Type => X, Word)) : Word := match l { MkLB(y) => y, }
   def MG (G : Π(X : Type). Word) : Type := (match G(Word) { Zero => Word, Succ(k) => Unit })
   inductive MM (G : Π(X : Type). Word) := MkMM(y : MG(G))
   def mm0 : MM(λ(X : Type) : Word => Zero) := MkMM[λ(X : Type) : Word => Zero](Zero)
@@ -1491,7 +1496,7 @@ ochr PositivityProbesAdv uses Nats, Lists, WordType {
   ("TagAB", "the body of TagAB has type Eq(Type, TagA(Zero), TagB(Zero)), but the goal is False"),
   ("reBad", "field v of MkRE has type ⊤, expected False"),
   ("RoseL", "field v of NodeL : Eq(Word, LenL(RoseL(A), kids), LenL(RoseL(A), kids)): fields are first-order data"),
-  ("LB", "κ is not a type: its declared type is not a sort"),
+  ("lbBad", "field y of MkLB has type Unit, expected Word"),
   ("mm0Bad", "field y of MkMM has type Unit, expected Word")]
 
 /-! The battery's controls: a later declaration nested at a parameter passed to a type function,

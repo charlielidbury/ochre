@@ -623,13 +623,23 @@ def checkInd (d : IndDecl) : M Unit := do
               err s!"[D140] field {fname} of {cn}: its type is a call of {f}, declared to return {cod.pp (hs.reverse.map (·.name))}: a function heading a field's type is declared to return Prop or Type"
       | _ => pure ()
   let mut ps := #[]
-  for (h, PT) in d.params do
+  -- D149: each parameter is bound for the later parameters' and the fields' types with its declared
+  -- reading (D55, `telescope`'s `sc`, the readings D128 and D141 read) and its proof flag, as
+  -- `checkFix` binds a definition's parameters. Bound with no reading (`other`), a function
+  -- parameter into `Type` or `Prop` was data to the erasure pre-pass, so a later parameter's type
+  -- calling it was read as data and found erased by the run: `inductive CPT (F : Π(n : Nat). Type)
+  -- (B : F(Z)) := MkCPT` was an internal error. Two of `checkFix`'s tests are not made here, since
+  -- each would reject accepted declarations: D131's (the reading agrees with the type: a parameter
+  -- written `B : (Type : Type₁)` reads as data, is a type, and is accepted, `Fording.WrittenSorts`)
+  -- and D77's (`refineDecl`: a parameter whose type is a type function's call with arms that
+  -- disagree, `f : NegF(A, n)`, reads as a conflict, `Inductives.NestReads.NF`)
+  for ((h, PT), r) in d.params.zip sc.reverse do
     let A ← evalType (← fuelLeft) PT
     -- D71: a value parameter's argument is recorded in the type and in every constructor value,
     -- so it may not be a borrow (no borrows inside data or types)
     if A.typeHasRef then err s!"{n}: the parameter {h.name} has the borrow type {A}: no borrows inside data or types"
-    let v ← genericValue (← fuelLeft) A
-    pushBind h (some A) v
+    let v ← genericValue (← fuelLeft) A r
+    pushBind h (some A) v r.isProof r
     ps := ps.push v
   for ((cn, fields), c) in d.ctors.zipIdx do
     let names := pnames ++ fields.reverse.map (·.1)
