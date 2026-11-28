@@ -144,10 +144,17 @@ as the path refined it, which the extended assignment meets, so the reference's 
 ends) passes and leaves members in the cells (the checker's pop, through the relation at the leaf, for a body not read
 as a proof; for a proof, whose leaf gives no relation, the reference restores the start's state, so the finals are the
 arguments); a returned borrow's backward function is injective (N5's (X5)). From `TailAt`'s conclusion, the fundamental
-lemma at the reference's run, and the run being the stage's: stage `b + 1`'s output at `a` is good. -/
+lemma at the reference's run, and the run being the stage's: stage `b + 1`'s output at `a` is good.
+
+Since docs/31 D256 it also takes what the knot has at that point and lead43's form left out: `a`'s rank below `b + 1` (above
+it the stage-`b` self returns its weakened output, and nothing else in the hypotheses excludes that) and the start's `Pre`
+and relation at the assignment `ρa` (which ties `ρa`'s parameters to `a`, so that the goal under `ρa` is the codomain at
+`a`). Both only weaken the link. -/
 def FixLeafAt (P : ProgState) (d : Def) (st' : MState) (w : FixWit) : Prop :=
   ∀ (ρ ρa : Assignment) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem),
-    DomMembers dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) a →
+    DomMembers dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) a → fixRank d.dec a < b + 1 →
+    Pre (ctxB dm D Γ P d st' ρ φ b) ρa w.st₀ →
+    Rel (ctxB dm D Γ P d st' ρ φ b) ρa φ π w.st₀ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) →
     TailConcl (ctxB dm D Γ P d st' ρ φ b) ρa φ π w.st₀ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)
       d.body (runT (ctxB dm D Γ P d st' ρ φ b) ρa φ true (hintM (ctxB dm D Γ P d st' ρ φ b) ρa w.st₀.goal) d.body)
       (fixCont w.n d.name) →
@@ -242,7 +249,7 @@ theorem knot_step
   have heq := (congrArg (fun h => runT (ctxB dm D Γ P d st' ρ φ b) ρa φ true h d.body
       (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)) hhint).trans
     (hcongr ρ ρa φ b _ _)
-  refine hleaf ρ ρa φ π b a ha hT heq (fun r s' hx => ?_)
+  refine hleaf ρ ρa φ π b a ha hlt hpre hrel hT heq (fun r s' hx => ?_)
   rw [← heq] at hx
   have hF := Strict.fund_all hfc d.body hvals true _ _ s' r hsg hx
   exact ⟨hF.1, hF.2.2.2⟩

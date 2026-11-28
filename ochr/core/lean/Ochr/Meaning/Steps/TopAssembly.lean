@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.TopFix
+import Ochr.Meaning.Steps.TopSorts
 
 /-!
 # `consistency_of_master`: the consistency statement from the 32 steps and named links (lead43; docs/31 D254)
@@ -161,17 +162,23 @@ def ResolveG (q : Program) (fuel : Nat) : Prop :=
       ItemAccepted fuel (progMeaning dm D Γ (fun _ => .err) {} fuel (items.take i)) it
 
 open Ochr.Consistency Ochr.Surface in
-/-- **A closed definition of `False` is recorded at the type `False`** (MIXED; the old chain's `falseConst_ty`, `sorry`
+/-- **A closed definition of `False` is recorded at a type with no member** (MIXED; the old chain's `falseConst_ty`, `sorry`
 there and SUSPECT for lacking an acceptance and a coverage hypothesis, both added: the checker records the accepted
 parameterless `d` with its stored type the library's `False` (names distinct, `Check.declared`; the library in front);
-the model's `False` means the empty proposition, `Assembly.false_means_empty`, PROVED). -/
+the model's `False` means the empty proposition, `Assembly.false_means_empty`, PROVED).
+
+**Restated (docs/31 D256)**: as lead43 stated it, it concluded that the recorded type IS `prop False`. But
+`ProgState.step` records `(err, err)` for a definition whose reference run fails, so that form was provable only from the
+constant's run succeeding, which is the knot's output (`const_member`), not a fact about the checker. The recorded type
+has no member in both cases (`prop False`, and `err`, whose carrier is empty), which is all the final contradiction
+reads. -/
 def FalseConstG (q : Program) (fuel : Nat) : Prop :=
   Accepted (Prelude.decls ++ q) fuel → ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items →
     ∀ dm : DataModel,
       (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm →
       ∀ d ∈ q, d.IsFalseConst →
         ∃ s T, (d.name, s, T) ∈ (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel items).means ∧
-          T.m = .prop False
+          ¬ ∃ x, x ∈ₛ[dm.read] T.m
 
 open Ochr.Consistency Ochr.Surface in
 /-- **CONSISTENCY FROM `master`** (assembled in Lean; the project's statement in `consistencyBounded`'s form: no accepted,
@@ -179,11 +186,12 @@ hole-free, level-bounded program has a closed definition of `False`). ASSUMES:
 * the 32 step statements at every context meeting the fundamental lemma's condition (`hsteps`; FALSE until main's D147
   and `EvalAt`/`TailAt` carrying `RecCurG` both ways, at a context with a function under check, D253 item 3);
 * the data model's theorem's facts (`hdata`, `DataFacts`; `Assembly.exists_dataModel` itself PROVED from them);
-* the NAMED RESTRICTION that no data declaration is at `Type₁` (`hsorts`, `SortsG`; checker, read true; lifting it needs
-  data declarations at `Type₁` built at level 1 in the model);
 * the checker's resolution (`ResolveG`) and the recorded `False` constant (`FalseConstG`);
-* the per-item links (`TopLinks`, at the data model `exists_dataModel` gives, whatever it is).
-The fundamental lemma (`Strict.fund_all`) is PROVED and used inside (`const_member`, `knot_step`), as are `FundCtx` at each
+* the per-item links (`TopLinks`), at every data model covering the declarations and faithful at every stage (restated
+  docs/31 D256 from "at every data model": every link already took both at its stage; the hypothesis now says so).
+The restriction that no data declaration is at `Type₁` (`SortsG`) was a hypothesis; it is PROVED at every program
+(`sortsG_indsOf`, docs/31 D256: the checker rejects such a declaration), so it is no longer assumed; what lifting it would
+need is the model's. The fundamental lemma (`Strict.fund_all`) is PROVED and used inside (`const_member`, `knot_step`), as are `FundCtx` at each
 item's context (`fundCtx_progCtx`, `fundCtx_ctxAt`), the stage closure's membership, the knot's induction
 (`knot_member`, `stages_below`), an inductive declaration's step (`stageOk_ind`), and the program-level induction. -/
 theorem consistency_of_master (q : Program) (fuel : Nat) (_holes : NoHoles q) (_levels : LevelsBelow 2 q)
@@ -191,22 +199,21 @@ theorem consistency_of_master (q : Program) (fuel : Nat) (_holes : NoHoles q) (_
     (hsteps : ∀ (K : RunCtx) (φ : Future), (∀ Δ, Strict.FundCtx { K with Δ := Δ }) → AllSteps K φ)
     (hdata : ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items →
       DataModel.Exists.Assembly.DataFacts (chainDecisions fuel) fuel items)
-    (hsorts : ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items → SortsG (indsOf {} fuel items))
     (hres : ResolveG q fuel) (hfalse : FalseConstG q fuel)
     (hlinks : ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items →
-      ∀ dm, TopLinks dm (chainDecisions fuel) (indsOf {} fuel items) fuel items) :
+      ∀ dm, (∀ d' ∈ indsOf {} fuel items, dm.covers d') →
+        (∀ k, k ≤ items.length → DataFaithful dm (chainDecisions fuel) (indsOf {} fuel items)
+          (progMeaning dm (chainDecisions fuel) (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k))) →
+        TopLinks dm (chainDecisions fuel) (indsOf {} fuel items) fuel items) :
     ∀ d ∈ q, ¬ d.IsFalseConst := by
   intro d hd hf
   obtain ⟨items, hri, hacc⟩ := hres acc
   obtain ⟨dm, hcov, hfaith⟩ := exists_dataModel _ items fuel hri (hdata items hri)
   have hcov' : ∀ d' ∈ indsOf {} fuel items, dm.covers d' := fun d' hd' => hcov d' (by rw [progMeaning_inds]; exact hd')
   have hS := inv_all dm (chainDecisions fuel) (indsOf {} fuel items) fuel items (stageOk_empty _ _ _)
-    (itemStep hsteps (hsorts items hri) items (hlinks items hri dm) hcov') (fun i it h => hacc dm _ _ i it h)
+    (itemStep hsteps (sortsG_indsOf {} fuel items) items (hlinks items hri dm hcov' hfaith) hcov') (fun i it h => hacc dm _ _ i it h)
     (fun k _ => by rw [progMeaning_inds]; exact Steps.Machine.indsOf_take_prefix {} fuel items k) hfaith
   obtain ⟨s, T, hin, hT⟩ := hfalse acc items hri dm hcov d hd hf
-  have h := hS.mem _ s T hin
-  rw [hT] at h
-  obtain ⟨⟨a⟩, -⟩ := h
-  exact a
+  exact hT ⟨s, hS.mem _ s T hin⟩
 
 end Ochr.Meaning.Steps.Form.Top

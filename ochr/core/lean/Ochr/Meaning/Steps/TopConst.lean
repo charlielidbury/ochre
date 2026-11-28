@@ -57,38 +57,55 @@ def ConstCheckAt (P : ProgState) (d : Def) (st' : MState) (w : ConstWit) : Prop 
   ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot = w.goal
 
 /-- **The constant's start** (MIXED; read true by parts, unproved). At the state the body is evaluated from, under the
-item's context, at every assignment and future: `Pre` (its `CtxS`: the declarations a prefix of the program's, the model
-covering and faithful, no global labelled, `GlobalsOk` from the invariant's `glob` at the stage's Σ; its `Inv`, the
-checker's invariant at a state with one empty frame; its `Asg`, no unknown referenced); the reference's reading of that
-state related to it (`Rel.start`: it holds no borrow) and good; the body holding no embedded value, unknown or hole
-(resolution, `NoHoles`); the decision table aligned at the run's end (the item's, the tables only growing). -/
-def ConstStartAt (P : ProgState) (d : Def) (st' : MState) (w : ConstWit) : Prop :=
-  ∀ (ρ : Assignment) (φ : Future),
-    Pre (P.ctx dm D Γ st') ρ w.st₁ ∧ Rel (P.ctx dm D Γ st') ρ φ id w.st₁ (SM' (P.ctx dm D Γ st') ρ w.st₁) ∧
-    Strict.SGood dm Γ φ (SM' (P.ctx dm D Γ st') ρ w.st₁) ∧ d.body.valsOk (Strict.ValsP (P.ctx dm D Γ st') ρ φ) ∧
-    d.body.absBelow w.st₁.absTy.size ∧ HintBelow (some w.goal) w.st₁.absTy.size ∧ d.body.hasHolePrim = false ∧
-    DecTab (D st') w.st₂
+context of the item's check AT THE STATE THE BODY'S RUN ENDS IN (`w.st₂`, whose Σ is the stage's: the constant's own entry
+is appended only after its check), at every assignment and future: `Pre` (its `CtxS`: the declarations a prefix of the
+program's, the model covering and faithful, no global labelled, `GlobalsOk` from the invariant's `glob` at the stage's Σ,
+`LaterDec` at `w.st₂`; its `Inv`, the checker's invariant at a state with one empty frame; its `Asg`, no unknown
+referenced); the reference's reading of that state related to it (`Rel.start`: it holds no borrow) and good; the body
+holding no embedded value, unknown or hole (resolution, `NoHoles`); the decision table aligned at the run's end
+(`DecisionsFF.decTab_ff` at `w.st₂`).
 
-/-- **The constant's leaf** (MIXED; unread as one fact; its parts: conversion's soundness at a type (N3), [Return] giving
-a whole result (not `⊥`), the goal of a level-bounded program meaning a type that is not `err`, and the goal holding no
-unknown (so its meaning is the same under every assignment)). The reference's result good, its type the checker's type
-there, the checker's type converting to the goal, [Return] passed: the result is a member of the goal's meaning at the
-program's assignment. -/
-def ConstLeafAt (P : ProgState) (d : Def) (st' : MState) (w : ConstWit) : Prop :=
-  ∀ (ρ' : Assignment) (Δ' : Nat → TyS) (r : Res),
-    Pre { P.ctx dm D Γ st' with Δ := Δ' } ρ' (w.st₂.withTempT w.v (some w.T)) →
-    StrAgree { P.ctx dm D Γ st' with Δ := Δ' } ρ' w.T r.2 → Strict.GoodRes dm.read r →
-    r.1 ∈ₛ[dm.read] (globalTyS (fun _ => .err) (P.ctx dm D Γ st') w.goal).m
+**As lead43 stated it, FALSE at every accepted constant whose name the checker reads as more than `.any`** (docs/31 D256):
+it ran the body at `P.ctx … st'`, the decisions at the state AFTER the constant's entry is in Σ, and asked
+`DecTab (D st') w.st₂`; but at `w.st₂` the checker's `declOf (.const c)` finds no `c` and answers `.any`, while at `st'` it
+reads `c`'s stored type (`TopAttack`, guarded on `def one : Nat := S(Z)`: `.any` against `.other`). So the steps' own
+hypothesis (E9) was unsatisfiable at the top's context of every such constant, and the top vacuous at every program
+holding one. -/
+def ConstStartAt (P : ProgState) (d : Def) (_st' : MState) (w : ConstWit) : Prop :=
+  ∀ (ρ : Assignment) (φ : Future),
+    Pre (P.ctx dm D Γ w.st₂) ρ w.st₁ ∧ Rel (P.ctx dm D Γ w.st₂) ρ φ id w.st₁ (SM' (P.ctx dm D Γ w.st₂) ρ w.st₁) ∧
+    Strict.SGood dm Γ φ (SM' (P.ctx dm D Γ w.st₂) ρ w.st₁) ∧ d.body.valsOk (Strict.ValsP (P.ctx dm D Γ w.st₂) ρ φ) ∧
+    d.body.absBelow w.st₁.absTy.size ∧ HintBelow (some w.goal) w.st₁.absTy.size ∧ d.body.hasHolePrim = false ∧
+    DecTab (D w.st₂) w.st₂
+
+/-- **The constant's leaf** (MIXED; read true by parts, unproved: conversion's soundness at a type (N3), [Return] giving a
+whole result, so its meaning is not `⊥`, the goal of a level-bounded program meaning a type that is not `err`, and the goal
+holding no unknown, so its meaning is the same under every assignment). The reference's result good, MEANING THE CHECKER'S
+VALUE (`OutL`'s meaning link), its type the checker's type there, the checker's type converting to the goal, [Return]
+passed: the result is a member of the goal's meaning at the program's assignment.
+
+**As lead43 stated it, FALSE wherever the step's own conclusion holds** (docs/31 D256): `r` was tied to the checker's run
+only by its type, and `GoodRes` admits `r.1 = ⊥`, so the link asserted that `⊥` is a member of the goal
+(`TopAttack.constLeafAt_old_forces_moved`, kernel-checked; false at `Nat`, `moved_not_mem_nat`). Repaired by the meaning
+link, which `eval_all` gives. -/
+def ConstLeafAt (P : ProgState) (_d : Def) (_st' : MState) (w : ConstWit) : Prop :=
+  ∀ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res),
+    Pre { P.ctx dm D Γ w.st₂ with Δ := Δ' } ρ' (w.st₂.withTempT w.v (some w.T)) →
+    meanV { P.ctx dm D Γ w.st₂ with Δ := Δ' } ρ' (fun l => noFuture (π' l)) r.2 w.v = r.1 →
+    StrAgree { P.ctx dm D Γ w.st₂ with Δ := Δ' } ρ' w.T r.2 → Strict.GoodRes dm.read r →
+    r.1 ∈ₛ[dm.read] (globalTyS (fun _ => .err) (P.ctx dm D Γ w.st₂) w.goal).m
 
 /-- **The constant's meaning is the simulated run's** (MODEL; its parts: the counter's independence (RL,
-`run_counter_indep`, false as first stated, open), the future's (the result holds no live label after [Return]), the
-assignment's (a closed body), the hint (`hintM` of the goal, not deferred, is `globalTyS`'s reading), the reference's
-state at the start being `emptyState` at the checker's counter, and `•` at a proposition (`constMean`)). -/
+`run_counter_indep`, the shift from `w.st₁`'s label counter to `0`), the future's (the result holds no live label after
+[Return]), the assignment's (a closed body), the hint (`hintM` of the goal, not deferred, is `globalTyS`'s reading), the
+reference's state at the start being `emptyState` at the checker's counter, `•` at a proposition (`constMean`), and,
+since docs/31 D256, the decisions' stability from `w.st₂` to `st'`: the two tables differ only at the constant's own name,
+which its body cannot mention (D118), and at unknowns made after `w.st₂`, which its body does not hold). -/
 def ConstMeanAt (P : ProgState) (d : Def) (st' : MState) (w : ConstWit) : Prop :=
   ∀ (ρ : Assignment) (φ : Future) (r : Res) (s' : SState),
-    runT (P.ctx dm D Γ st') ρ φ false (hintM (P.ctx dm D Γ st') ρ (some w.goal)) d.body (SM' (P.ctx dm D Γ st') ρ w.st₁) =
-      some (r, s') →
-    r.1 ∈ₛ[dm.read] (globalTyS (fun _ => .err) (P.ctx dm D Γ st') w.goal).m →
+    runT (P.ctx dm D Γ w.st₂) ρ φ false (hintM (P.ctx dm D Γ w.st₂) ρ (some w.goal)) d.body
+        (SM' (P.ctx dm D Γ w.st₂) ρ w.st₁) = some (r, s') →
+    r.1 ∈ₛ[dm.read] (globalTyS (fun _ => .err) (P.ctx dm D Γ w.st₂) w.goal).m →
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D Γ st') d w.goal = some m ∧ m.1 ∈ₛ[dm.read] m.2.m
 
 /-- **A constant's links, about its own check**: an accepted constant at a stage meeting the invariant has a witness
@@ -121,15 +138,15 @@ theorem const_member
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
   obtain ⟨w, ⟨hm, htn, hsz, htd, hgl, hev, -, -, -, hfind⟩, hst', hleaf, hmean⟩ :=
     hc P d st' hin hd hrun hP hfaith hcov hΓP
-  have hfc : Strict.FundCtx (P.ctx dm D Γ st') := fundCtx_progCtx dm D Γ P st' hP.mem hP.lab hsorts
+  have hfc : Strict.FundCtx (P.ctx dm D Γ w.st₂) := fundCtx_progCtx dm D Γ P w.st₂ hP.mem hP.lab hsorts
   obtain ⟨hpre, hrel, hsg, hvals, hab, hhb, hhole, hdt⟩ := hst' (fun _ => .err) noFuture
-  have hall := hsteps (P.ctx dm D Γ st') noFuture (fun _ => ⟨hfc.globals, hfc.sorts⟩)
-  obtain ⟨⟨ρ', Δ', π', r, s', -, hx, -, hstr, -, hpre', -, -, -⟩, -⟩ :=
+  have hall := hsteps (P.ctx dm D Γ w.st₂) noFuture (fun _ => ⟨hfc.globals, hfc.sorts⟩)
+  obtain ⟨⟨ρ', Δ', π', r, s', -, hx, hmv, hstr, -, hpre', -, -, -⟩, -⟩ :=
     eval_all hall (fun _ => .err) w.n d.body w.st₁ w.st₂ true (some w.goal) w.v (some w.T) _ id hm (fun _ => htn) hsz
       (Or.inl htd) hpre hrel hsg hvals hab hhb hhole (fun h => by cases h) hdt w.bh hev
   rw [htn] at hx
   have hgood := (Strict.fund_all hfc d.body hvals false _ _ s' r hsg hx).1
-  have hmem := hleaf ρ' Δ' r hpre' (hstr w.T rfl) hgood
+  have hmem := hleaf ρ' Δ' π' r hpre' hmv (hstr w.T rfl) hgood
   rw [hfind]
   exact hmean (fun _ => .err) noFuture r s' hx hmem
 

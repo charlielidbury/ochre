@@ -375,6 +375,7 @@ import Ochr.Meaning.Regress.EveryStateCE
 import Ochr.Meaning.Steps.TopCtx
 import Ochr.Meaning.Steps.TopGuards
 import Ochr.Meaning.Steps.TopAssembly
+import Ochr.Meaning.Steps.TopAttack
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
