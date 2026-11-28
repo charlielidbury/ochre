@@ -59,7 +59,9 @@ def CallConcl (K : RunCtx) (φ : Future) (Δ : Nat → TyS) (ρ : Assignment) (�
     ((typed = true ∨ (cf.want = true ∧ cf.defer = false)) → T? = none → r.2.m = TyM.err)
 
 /-- **The checker's call of an accepted global, simulated in place or closed off** (MIXED; the parts (i) to (v) of the
-module docstring, and `CallClosedG`). -/
+module docstring, and `CallClosedG`). At a body in the frame-free fragment (lead40, docs/31 D244: the hypothesis
+`frameFree` added, which the in-place branch has and C1 needs, for the body's (E4)); assembled from the induction
+hypothesis and named facts in `Steps/CallRanSim` (`callRanSimG_of`). -/
 def CallRanSimG (K : RunCtx) (φ : Future) : Prop :=
   ∀ n, IH K φ (n + 1) → ∀ (Δ : Nat → TyS) (ρ : Assignment) (π : Nat → Nat) (g : String) (hd typed : Bool)
     (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (cf : CallFlags) (stc st₁ : MState)
@@ -67,6 +69,7 @@ def CallRanSimG (K : RunCtx) (φ : Future) : Prop :=
     (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
     K.cur.map (·.1) ≠ some g → stc.recStack.any (·.fn == .gfn g) = false → GlobalsOk K stc →
     stc.globals.find? (·.name == g) = some gd → gd.fn? = some (.fix self hs ds c dec body) → lG K hs ds c ≠ 0 →
+    body.frameFree = true →
     ModeR stc → stc.tailNext = false → 0 < stc.env.size →
     CallPt { K with Δ := Δ } ρ φ π stc sc g ws tys (K.C.global g) asR →
     fT = (stc.globals.find? (·.name == g)).map (·.ty) →
@@ -140,7 +143,7 @@ theorem callAcceptedFF_of {K : RunCtx} {φ : Future} (hsim : CallRanSimG K φ) (
   intro n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body hcur hns hG hfind hfn hl0
     hff hm htn hsz hcp hfT hok hD hrun
   obtain ⟨hdisj, hkept⟩ := hsim n ih Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body hcur
-    hns hG hfind hfn hl0 hm htn hsz hcp hfT hok hD hrun
+    hns hG hfind hfn hl0 hff hm htn hsz hcp hfT hok hD hrun
   obtain ⟨hgood, hloc, hlw, hsites, hlive, hnd, hdom, hlab, hbt, hheld⟩ :=
     hpt Δ ρ π g ws tys stc sc asR gd self hs ds c dec body hfind hfn hcp
   have hrefCall : refCall { K with Δ := Δ } (K.C.global g) asR sc = callOf K.dm.read (K.C.global g) asR sc := by

@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.CallStepGuards
+import Ochr.Meaning.Steps.CallRanSim
 
 /-!
 # The checker's in-place run of a callee's body, attacked before the simulation is closed through it (lead40, 2026-11-28)
@@ -37,6 +38,7 @@ ochr CallRanAtk {
   def Kc (r : &Nat) : &Nat := r
   def R (n : Nat) : Nat by n := match n { Z => Z, S m => R(m) }
   def BareNone (u : Unit) : Op(Nat) := ONone
+  def BareB (r : &Nat) : Op(Nat) := ONone
   def At (a : Nat) (c : Nat) : Unit := (let b = Z; ?)
 }
 
@@ -49,7 +51,7 @@ open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt outVal)
 def stA : MState := CallGAttack.holeOf "CallRanAtk" CallRanAtk "At"
 
 #guard stA.env.size == 2 && stA.env[1]!.binds.size == 4
-#guard stA.globals.length == 7
+#guard stA.globals.length == 8
 
 /-- The call point of `g(ws)`: the head and the arguments pushed as the top frame's last temporaries (D115). -/
 def callPoint (g : String) (ws : List Value) : M Unit := do
@@ -173,6 +175,54 @@ argument), `Wc(&b)` (a borrow parameter), `Kc(&b)` (a returned borrow), `BareNon
 #guard match (outVal (do let (_, body) ← start unit₀ "BareNone"; Ochr.eval 1000 false body none) stA 1000000).1 with
   | .ind "Op" _ _ [] [] => true | _ => false
 
+/-! ## The decomposition `CallRanSim` states, run on the checker: front, push, body, `exitM`
+
+`replica` runs, from the call point, the front's reservation at a borrow codomain ([Lend]'s marks), the push (`pushPhase`),
+the body's `eval`, and `Master.exitM` (the copy of the code after the body that `CallEnterG` and `CallExitG` name); the
+guards compare its value and its frames (each binding's value and each temporary) with the real `callFn` from the same
+call point, at a data codomain (the hint none, deferred, computed) and at a borrow codomain (`Kc`). -/
+
+/-- The frames as values: each frame's bindings' values and its temporaries. -/
+def fp (st : MState) : List (List Value × List Value) := st.env.toList.map fun fr => (fr.binds.toList.map (·.val), fr.temps.toList)
+
+def replica (pre : M (List Value)) (g : String) (ref : Bool) (B : Option Value) : M (Value × Option Value) := do
+  let ws ← atCall pre g
+  let g? ← if ref then do
+      let gl ← Ochr.freshLoan
+      for w in ws do
+        if let .borrow l _ := w then Ochr.lendEnv 999 (.mark l gl)
+      pure (some gl)
+    else pure none
+  let f ← Ochr.topIdx
+  let (_, ws') ← Ochr.callTemps f ws.length
+  let d := (← get).depth
+  let (hint, body) ← pushPhase 998 (.gfn g) ws'
+  let (v₀, _) ← Ochr.eval 997 false body hint
+  let e : Master.ExitData := ⟨997, d, false, false, B, g?, 999, 0, .other, false, .tNat, ws'⟩
+  Master.exitM e v₀
+
+/-- The replica agrees with `callFn`: the same value and the same frames after. -/
+def agrees (pre : M (List Value)) (g : String) (ref : Bool) : Bool :=
+  let real := callAt pre g 1
+  let B := (outVal real stA 1000000).2
+  let rep := replica pre g ref B
+  isOk rep stA 1000000 && isOk real stA 1000000 &&
+    Value.exact (outVal rep stA 1000000).1 (outVal real stA 1000000).1 && fp (outSt rep stA 1000000) == fp (outSt real stA 1000000)
+
+#guard agrees zero₀ "Ip" false
+#guard agrees zero₀ "Two" false
+#guard agrees (pure [.succ .zero]) "R" false
+#guard agrees borrowB "Wc" false
+#guard agrees unit₀ "BareNone" false
+#guard agrees borrowB "BareB" false
+#guard agrees borrowB "Kc" true
+
+-- the hint computed at the call: a body reading its hint, with a borrow argument (`declCallType`'s value, not deferred)
+#guard match hintP borrowB "BareB" with
+  | some (.tInd "Op" [.tNat]) => true | _ => false
+#guard match (outVal (bodyRun borrowB "BareB") stA 1000000).1 with
+  | .ind "Op" _ _ [.tNat] [] => true | _ => false
+
 /-! ## The model's side of the finding, kernel-checked -/
 
 /-- **The reference's run of D124's deferred hint fails**: `⋄hint` is no primitive of the model (`runT`'s last `.prim`
@@ -194,19 +244,11 @@ theorem tyS_hintLater (K : RunCtx) (ρ : Assignment) (P : Value) (ws : Array Val
   simp only [runT_hintLater]
   rfl
 
-/-- D124's deferred hint taken apart: the function type and the arguments it was made of. -/
-theorem deferredHint?_hintLater (P : Value) (ws : Array Value) :
-    deferredHint? (Ochr.hintLater P ws) = some (P, ws.toList) := by
-  unfold Ochr.hintLater deferredHint?
-  simp only [List.filterMap_map, Option.some.injEq, Prod.mk.injEq, true_and]
-  have : (Term.val? ∘ Term.val) = (some : Value → Option Value) := funext fun _ => rfl
-  rw [this, List.filterMap_some]
-
 /-- **Since the ruling on D243, `hintM` reads D124's deferred hint as what it defers**: the codomain of the function type
 at the arguments, as `LaterOk` reads a deferred call type. -/
 theorem hintM_hintLater (K : RunCtx) (ρ : Assignment) (P : Value) (ws : Array Value) :
     hintM K ρ (some (Ochr.hintLater P ws)) = K.M.paramTy ρ P ws.toList (piArity P) :=
-  Master.hintM_of_some (deferredHint?_hintLater P ws)
+  Master.hintM_of_some (Master.deferredHint?_hintLater P ws)
 
 /-- **The reference's constructor whose parameters are not written fails at the hint `err`** (D89's case: no field
 determines a parameter): no record from the hint, none from the fields, so `ctorOut none`. With `tyS_hintLater`:
