@@ -2233,8 +2233,10 @@ a split (`E3`, whose closed call takes the other arm, `E3C`): accepted, and unre
 instance, since each needs an inhabitant of an empty type; on the opened field itself (`E4`, typed
 by its content), moved out (`E5`), or a proof field the index write invalidated (`E6`): rejected; a
 tail call passing the borrow on, whole or reborrowed (`E8`, `E9`), and a normal end after an opaque
-call or a proof (`E10`, `E11`, `E12`): [Repack]. Only a manufactured emptiness, an opened field read
-at its declared type, made the early end dangerous. -/
+call or a unit value (`E11`, `E12`): [Repack]. Only a manufactured emptiness, an opened field read
+at its declared type, made the early end dangerous. `E10`, the same end in a lemma (its result a
+proof), was rejected by [Repack] too, and is accepted since D142: a lemma's calls never run, so its
+body leaves no value open at any caller, and its frame's pop sees the borrow as the body found it. -/
 
 ochr EarlyEnd uses Nats {
   inductive Void : Type
@@ -2254,7 +2256,7 @@ ochr EarlyEnd uses Nats {
   reject def E6 (r : &VP) : Unit := ((*r).0 := Z; match (*r).1 {})
   reject def E8 (k : Nat) (r : &V) : Unit by k := match k { Z => (), S(j) => ((*r).0 := Z; E8(j, r)), }
   reject def E9 (k : Nat) (r : &V) : Unit by k := match k { Z => (), S(j) => ((*r).0 := Z; E9(j, &*r)), }
-  reject def E10 (r : &V) (h : Eq(Nat, (*r).0, S(Z))) : Eq(Nat, S(Z), S(Z)) := ((*r).0 := Z; refl)
+  def E10 (r : &V) (h : Eq(Nat, (*r).0, S(Z))) : Eq(Nat, S(Z), S(Z)) := ((*r).0 := Z; refl)
   reject def E11 (f : Π(u : Unit). Void) (r : &V) : Void := ((*r).0 := Z; f(()))
   reject def E12 (r : &V) : Unit := ((*r).0 := Z; ())
 }
@@ -2265,7 +2267,6 @@ ochr EarlyEnd uses Nats {
   ("E6", "[Match] on (*r).1, which was moved out"),
   ("E8", "[Repack] r is read whole, but it is open"),
   ("E9", "[Repack] *r is borrowed whole, but it is open"),
-  ("E10", "[Repack] a borrow of it ends, but it is open"),
   ("E11", "[Repack] a borrow of it ends, but it is open"),
   ("E12", "[Repack] a borrow of it ends, but it is open")]
 

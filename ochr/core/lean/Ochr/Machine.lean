@@ -1471,6 +1471,27 @@ def popFrame (fuel : Nat) : M Unit := do
   discard popFrameRaw
 termination_by structural fuel
 
+/-- [Return], the pop: a body's frame is popped with its result `v` held, at `T`, as a temporary of
+the frame below, and `v` comes back. D142: the body of a function whose calls are erased (its class
+is "proof" or "erased", `start` given) leaves no effect behind, as an erased term does on its
+private copy: the pop sees Ω as it was when the body started, `start`. So its tests (each borrow
+parameter ends whole and repacked, [End] and D53 (h); a local dies while no value in flight
+borrows it, [Drop]) are made on a frame nothing has run in, and the caller's places are as the call
+found them. Nothing else of the body's state is put back here: the refinements, the types of the
+unknowns, the goal as its splits refined it, the records of generalisation and the fresh names stay
+for the comparison of the result's type with the goal, which the caller makes next and which is the
+whole of what a caller relies on (an erased function's calls never run: a proof's return `⋆`
+without running, `callFn`; a type function's run inside a statement's private copy). Every
+rejection inside the body was made where it happened. Used by both places a body's frame is popped:
+the generic check (`checkFix`) and a call (`runBodyCore`), so the two paths pop alike. -/
+def popBody (fuel : Nat) (start : Option Env) (v : Value) (T : Option Value) (site : String) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if let some env := start then modify fun s => { s with env }
+  pushTempAt ((← topIdx) - 1) v T site
+  popFrame fuel'
+  popTemp
+termination_by structural fuel
+
 -- ### Types
 
 /-- The type of a place, read off the stored types (RULES §5; e1 F9), never off a value: every
@@ -3334,14 +3355,15 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
     else pure none
   -- static ends: the body is in tail position, as `checkTail` checks it at the generic call
   modify fun s => { s with tailNext := true }
+  -- D142: an erased function's body leaves no effect behind its pop (`popBody`)
+  let start ← if erasedFn then pure (some (← get).env) else pure none
   let (v, _) ← withErasedIf erasedFn (eval fuel' false body hint)
   wholeReturned v
   -- D104: the result is held across the pop at the call's type, the declared type of the position
   -- it is headed for (the body's run is untyped and has none of its own)
-  pushTempAt ((← topIdx) - 1) v B "runBodyCore"
-  popFrame fuel'
+  let r ← popBody fuel' start v B "runBodyCore"
   modify fun s => { s with depth := d }
-  popTemp
+  pure r
 termination_by structural fuel
 
 /-- [Call] of the head and the `n` arguments held as the last temporaries of the top frame
@@ -4928,12 +4950,13 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   -- D53 (b): the body of a function whose calls are erased is an erased term
   -- (tracked with or without D53: K2/K3 read it too)
   let bodyCopies ← pure ((← fnClass fuel' piTy) != 0)
+  -- D142: and its effects do not outlive the check of the body: the frame's pop sees Ω as it was
+  -- here (`popBody`)
+  let start ← if bodyCopies then pure (some (← get).env) else pure none
   withErasedIf bodyCopies <| checkTail fuel' body fun v T => do
     wholeReturned v
     bodyReturns fuel' s!"{self.name} returns it" v T [] ""
-    pushTempAt ((← topIdx) - 1) v (some T) "checkFix"
-    popFrame fuel'
-    discard popTemp
+    discard (popBody fuel' start v (some T) "checkFix")
     let g := (← get).goal.getD .bot
     trace fun _ => s!"[Def] {self.name}: path ends with type {T} against goal {g}"
     unless ← conv fuel' T g do

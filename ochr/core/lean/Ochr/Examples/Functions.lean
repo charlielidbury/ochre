@@ -807,6 +807,99 @@ ochr ErasedLets uses Nats {
   def HSeqLemCap (n : Nat) : Nat := GSeqLemCap(n)
 }
 
+/-! ## An erased function's body leaves no effect behind its frame's pop (D142)
+
+A proof run as a statement runs on a private copy of the state, so its effects vanish (`Dc`), but
+a lemma's body was checked on the real state, and the frame's pop saw its effects: `Lc`, the same
+proof term as a lemma's body, was rejected because its move out of `*x` was seen when the borrow
+parameter ended. Since D142 the body of a function whose calls are erased (a proof's, or a type
+function's) leaves no effect behind: its frame's pop sees Ω as it was when the body started, at
+the generic check and at every call (a type function's body runs at its calls, as a statement).
+What the pop tests (a borrow parameter ending whole, D53 (h), and repacked, [Repack]) protects the
+caller's places after a call, and an erased function's call never changes them: a proof's call
+does not run, and a type function's runs as a statement. What a caller takes from it, the value at
+its declared type, is decided by the body's run and its comparison with the goal, as before.
+Every test the pop makes, broken by a lemma's body: a borrow parameter's content moved out, by path
+and by parameter (`Lc` … `LcEx`), and left open (`LieL`); each now accepted, with callers, generic
+and closed. A local's borrow ends inside the body, at its `let`'s scope, so its test stays (`LLoc`);
+a lemma returns `⋆` or a type, which holds no borrow, so the pop's test of a local borrowed by the
+result cannot be reached. Type functions (`TF` …) are accepted with callers that compute their
+value (`UseTFM1`); those that write through their borrow leave the caller's place as it was
+(`UseTWC`). Unchanged: rejections inside the body (`LRe`), a goal about the borrowed content at the
+entry (`LW5`), and data functions (`Dd`, `DLie`). -/
+ochr ErasedBodies uses Nats {
+  inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))
+  inductive Void : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  -- the proof lane's pairs: a lemma's body and the same proof as a statement
+  def Lc (x : &Nat) : True := (*x; refl)
+  def Dc (x : &Nat) : Unit := (let h : True = (*x; refl); ())
+  def La (x : &Pair(Nat, Nat)) : True := (let z = (*x).0; refl)
+  def Da (x : &Pair(Nat, Nat)) : Unit := (let h : True = (let z = (*x).0; refl); ())
+  def Lb (x : &Nat) : True := (*x := 5; let e : Eq(Nat, *x, 5) = refl; refl)
+  def L9 (n : Nat) : True := (n := 5; refl)
+  -- a borrow parameter ends with its content moved out (D53), by path, by parameter
+  def LcM (x : &Nat) : True := match *x { Z => refl, S(p) => (p; refl), }
+  def LcGoal (x : &Nat) : Eq(Nat, *x, *x) := (let y = *x; refl)
+  def LcPi (x : &Nat) : (Π(n : Nat). True) := (*x; λ(n : Nat) : True => refl)
+  def LcRec (x : &Nat) : True by x := match *x { Z => refl, S(p) => (LcRec(&p); *x; refl), }
+  def LcTwo (x : &Nat) (y : &Nat) : True := (*x; *y; refl)
+  def LcEx (x : &Nat) (e : Ex) : True := match e { Wit(w, h) => (*x; refl), }
+  -- a borrow parameter ends open ([Repack])
+  def LieL (v : &V) : True := (match *v { MkV(n, x) => n := Z, }; refl)
+  def LieLOk (v : &V) : True := (match *v { MkV(n, x) => n := n, }; refl)
+  -- callers, generic and closed
+  def UseLc (y : Nat) : Unit := (let h = Lc(&y); ())
+  def UseLc2 (y : Nat) : Nat := (Lc(&y); y)
+  def UseLcClosed : Eq(Nat, (let y = 3; Lc(&y); y), 3) := refl
+  def UseLieL (v : V) : Unit := (let h = LieL(&v); ())
+  def AfterLc (n : Nat) : Eq(Nat, n, n) := (let r = &n; LcGoal(r); refl)
+  -- a λ of the proof class, and of the type class, called
+  def LamP (y : Nat) : Unit := (let f = (λ(x : &Nat) : True => (*x; refl)); ())
+  def LamPCall (y : Nat) : Nat := (let f = (λ(x : &Nat) : True => (*x; refl)); f(&y); y)
+  def LamT (y : Nat) : Nat := (let f = (λ(x : &Nat) : Type => (*x; Nat)); let T = f(&y); Z)
+  -- type functions: their bodies' effects, and their calls (run as statements)
+  def TF (x : &Nat) : Type := (*x; Nat)
+  def TFc (x : &Nat) : Type := (let z : Type = (*x; Nat); z)
+  def TFM (x : &Nat) : Type := match *x { Z => Nat, S(p) => (p; Unit), }
+  def TFLie (v : &V) : Type := (match *v { MkV(n, x) => n := Z, }; Nat)
+  def UseTF (y : Nat) : Nat := (let T = TF(&y); Z)
+  def UseTF2 (y : Nat) : Nat := (let T = TF(&y); let z : T = 3; z)
+  def UseTFClosed : Eq(Type, (let y = 3; TF(&y)), Nat) := refl
+  def UseTFM (y : Nat) : Nat := (let T = TFM(&y); Z)
+  def UseTFM0 : Eq(Type, (let y = 0; TFM(&y)), Nat) := refl
+  def UseTFM1 : Eq(Type, (let y = 1; TFM(&y)), Unit) := refl
+  def UseTFLie (v : V) : Nat := (let T = TFLie(&v); Z)
+  def TM (x : &Nat) : Type := (*x; Nat)
+  def UseTM (n : Nat) : Nat := (let T = TM(&n); n)
+  def UseTMC : Eq(Nat, UseTM(4), 4) := refl
+  def TW (x : &Nat) : Type := (*x := 5; Nat)
+  def UseTW (n : Nat) : Nat := (let T = TW(&n); n)
+  def UseTWC : Eq(Nat, UseTW(0), 0) := refl
+  def UseTWAnn (n : Nat) : Nat := (let z : TW(&n) = 3; n)
+  def UseTWAnnC : Eq(Nat, UseTWAnn(0), 0) := refl
+  -- a J's motive, run in place by the typed J
+  def JL (n : Nat) (h : Eq(Nat, n, 0)) : Nat := J(Nat, n, 0, λ(k : Nat) : Type => (let q = k; Nat), h, 7)
+  def JLC : Eq(Nat, JL(0, refl), 7) := refl
+  -- unchanged: a local's borrow ends inside the body; a rejection inside the body; a goal about
+  -- the borrowed content at the entry; data functions
+  reject def LLoc (x : Nat) : True := (let c = S(Z); let r = &c; *r; refl)
+  reject def LRe (x : &Nat) : True := (*x; let y = *x; refl)
+  def LW (x : &Nat) : Eq(Nat, *x, *x) := (*x := 5; refl)
+  reject def LW5 (x : &Nat) : Eq(Nat, *x, 5) := (*x := 5; refl)
+  reject def Dd (x : &Nat) : Unit := (*x; ())
+  reject def DLie (v : &V) : Unit := (match *v { MkV(n, x) => n := Z, }; ())
+}
+
+#guard (run "ErasedBodies" ErasedBodies).rejectedWith [
+  ("LLoc", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("LRe", "[Read] *x was moved out or its borrow ended (reading ⊥)"),
+  ("LW5", "the body of LW5 has type ⊤, but the goal is Eq(Nat, σ0, 5)"),
+  ("Dd", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("DLie", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Void")]
+
 /-! ## A call's arguments stay in Ω until the callee binds them (D115)
 
 No value the machine holds lives only in the checker's own variables while anything runs or maps
