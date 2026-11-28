@@ -14,6 +14,15 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE MATCH: `TailAt` RESTATED (D248); THE SPLIT AT THE END OF A BODY (lead41, 2026-11-28, `spine-lead41`; docs/31 D248, D249)
+
+- `TailAt` as first stated: FALSE (kernel-checked in its two halves, composed by reading) at a tail-shaped term the table reads as a proof (`MatchAtk.L9`, `P10`). RULED (P1), BUILT: `TailConcl` (erased form `TailOutE` always; `TailOutK` where not a proof).
+- `TStepMatchNat`: PROVED (`MasterMatch.tStepMatchNat_of`) from 12 facts, all OPEN: `TailMatchNatInv` (checker, unread, guarded in part), `JoinContInv` (checker, read true), `MatchFlagsT` (table, read true), `ProofJoinG` (table + checker, read true, probed `L11`), `MatchTagG`, `WorldRefineG`, `JoinContG`, `GenTailG` (mixed, unread), `MatchReaccessM`, `MatchReaccessE`, `ProofArmM` (model, read true), `ValsCongrA` (model).
+- The known match not at the end of a body: `MatchEntryG`, `JoinDropG` STATED (mixed, unread); `JoinLendG` in prose; the step not assembled.
+- Not stated in Lean: `TStepMatchInd` (plan in D249), `split f in u` (needs `SealedMemG`: a sealed program of the goal means a member of its result type), the match on a proof in `EvalAt` (D229/D231's witness step).
+- Owed by (P1) for the other tail steps: the reference's `let` drop right after its push passes (model; for `TStepLetIn` at a proof).
+- INCOMPLETENESS of the checker (sent): a lemma whose body moves out of a borrow parameter inside its proof is rejected at the pop, its `let` form accepted (`MatchAtkV.Lc`/`Dc`).
+
 ## THE INDUCTION THROUGH A CALL; THE DEFERRED HINT; THE KNOT AT `R` (lead40, 2026-11-28, `spine-lead40`; docs/31 D243 to D247)
 
 - `hintM` reads D124's deferred hint as the deferred codomain (D243, RULED and BUILT); `paramTy_congrA` PROVED.

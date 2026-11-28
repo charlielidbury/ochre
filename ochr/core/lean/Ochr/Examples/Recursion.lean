@@ -552,7 +552,7 @@ private def sealedSelf (e : String) : String := s!"the ascribed term has type �
   ("OutIn", localRec "go" "y"), ("OutIn2", localRec "go" "y"), ("OutInSel", localRec "go" "y"),
   ("InnerRuns", localRec "go" "y"),
   ("Nest", localRec "outer" "y"),
-  ("ConvFn", "the ascribed term has type ⊤, expected Eq(Π(u : Unit). Nat, fix _ (u : Unit) : Nat := κ1(clone(κ2.0)) where κ1 = ConvFn, κ2 = 1,"),
+  ("ConvFn", "the ascribed term has type ⊤, expected Eq(Π(u : Unit). Nat, fix _ (u : Unit) : Nat := ConvFn(clone(κ1.0)) where κ1 = 1,"),
   ("ConvLoop", recAt "ConvLoop" "FF, σ1"),
   ("BLoop", recAt "BLoop" "FF, borrow_0 σ1"), ("BSel", sealedSelf "let c1 = 0; BSel(&c1)⌉, 0)"),
   ("PLoop", recAt "PLoop" "FF, σ1"), ("TLoop", recAt "TLoop" "FF, σ1"),
@@ -673,6 +673,161 @@ private def notInScope (f : String) : String :=
   ("Self4", notInScope "go"), ("Self5", notInScope "go"), ("InOut", notInScope "outer"),
   ("Knot1", "a closure or Π-type captures the borrow r (closures capture no borrows")]
 
+
+/-! ## A function being checked is named by its global in a closure's code (D139)
+
+A recursive definition may call itself from a λ formed in its body (fix L1: it occurs there only
+as the head of a call). The λ does not keep the function among its captures: its code names it by
+its global, `CL0(j, …)`, and its captures, their declared types and its Π-type's captures leave it
+out. A Π-type naming it (its codomain, a λ's parameter type) is formed the same way. The variable
+that held it is still taken as every capture is, so forming the closure moves it as before (`MV`).
+The consistency proof reads a function under check as "some function good on smaller arguments",
+which is not a member of its declared type: it can be called, not held as a value at that type.
+
+The rows: each route by which the function came to rest in the state inside a closure or a Π-type
+(the hunt of D139: a λ called, a λ calling it from its own body, nested λs, a λ in a type, a
+Π-type, a λ's parameter type or codomain, a field, an argument of a higher-order function or of
+the function itself, a deferred type, a generalisation record, a sealed re-run, a comparison of
+function values, a λ inside a stuck block's arm), with closed runs; the function as a value other
+than a call's head, rejected by fix L1 (`HO1` … `HO10`); and the printed code and types that show
+the rule (`…Code`, `…Ty`). `NL`, a λ nested in a λ calling the function, was rejected before
+(D53: the inner λ moved the outer one's capture of the function) and is accepted now. A stuck
+block still takes the function as a parameter (`BL`): that is left to the decision on blocks. A
+guard over every state the block's checks record, at every call depth and inside private copies,
+asserts that no closure or Π-type keeps a function under check, and that no capture binding holds
+one or carries its mark. -/
+
+ochr NamedByGlobal uses Nats {
+  inductive Bx (A : Type) := MkBx(x : A)
+  def Ap1 (f : Π(j : Nat). Nat) (a : Nat) : Nat := f(a)
+  def Ap2 (f : Π(a : Nat) (b : Nat). Nat) (a : Nat) (b : Nat) : Nat := f(a, b)
+  -- a λ called; a λ calling it from its own body; nested λs (rejected by D53 before)
+  def CL0 (m : Nat) (n : Nat) : Nat by n := (let g = (λ(j : Nat) : Nat => match n { Z => Z, S(k) => CL0(j, clone(k)), }); g(m))
+  def CL0Runs : Eq(Nat, CL0(3, 2), 0) := refl
+  def CLIn (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(j : Nat) : Nat => (let x = CLIn(j, clone(k)); x)); g(m)), }
+  def CLInRuns : Eq(Nat, CLIn(3, 2), 0) := refl
+  def NL (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(u : Unit) : Nat => (let d = clone(k); let h = (λ(j : Nat) : Nat => NL(j, clone(d))); h(Z))); g(())), }
+  def NLRuns : Eq(Nat, NL(3, 2), 0) := refl
+  -- in a type: λs as the sides of an equation, a Π-type, a λ's parameter type and codomain, a
+  -- Π-typed annotation
+  def TyL (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let e : Eq(Π(j : Nat). Nat, λ(j : Nat) : Nat => TyL(j, clone(k)), λ(j : Nat) : Nat => TyL(j, clone(k))) = refl; TyL(m, k)), }
+  def PiC (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let T = (Π(j : Nat). Eq(Nat, PiC(j, clone(k)), Z)); PiC(m, k)), }
+  def LP (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(e : Eq(Nat, LP(clone(m), clone(k)), Z)) : Nat => Z); Z), }
+  def LC (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(j : Nat) : Eq(Nat, LC(j, clone(k)), LC(j, clone(k))) => refl); LC(m, k)), }
+  def PiH (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let h : Π(j : Nat). Eq(Nat, PiH(j, clone(k)), PiH(j, clone(k))) = (λ(j : Nat) : Eq(Nat, PiH(j, clone(k)), PiH(j, clone(k))) => refl); PiH(m, k)), }
+  -- held: in a field, as an argument of a higher-order function and of the function itself
+  def BX (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let b = MkBx(λ(j : Nat) : Nat => BX(j, clone(k))); match b { MkBx(f) => f(m) }), }
+  def BXRuns : Eq(Nat, BX(3, 2), 0) := refl
+  def HoL (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => Ap1(λ(j : Nat) : Nat => HoL(j, clone(k)), m), }
+  def HoLRuns : Eq(Nat, HoL(3, 2), 0) := refl
+  def FA (f : Π(j : Nat). Nat) (n : Nat) : Nat by n := match n { Z => f(Z), S(k) => (let c = clone(k); FA(λ(j : Nat) : Nat => FA(λ(i : Nat) : Nat => i, clone(c)), k)), }
+  def FARuns : Eq(Nat, FA(λ(i : Nat) : Nat => S(i), 2), 0) := refl
+  -- a deferred type, a generalisation record, a sealed re-run, a comparison of function values
+  def DT (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(j : Nat) : Nat => DT(j, clone(k))); let h = (λ(u : Unit) : Nat => (let r = g(Z); r)); h(())), }
+  def DTRuns : Eq(Nat, DT(3, 2), 0) := refl
+  def GR (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(j : Nat) : Nat => match j { Z => GR(Z, clone(k)), S(q) => Z, }); let r = g(clone(m)); match r { Z => Z, S(q) => Z, }), }
+  def SR (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(j : Nat) : Nat => match j { Z => SR(Z, clone(k)), S(q) => Z, }); let r = g(clone(m)); match m { Z => r, S(q) => Z, }), }
+  def CV (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let e : Eq(Π(j : Nat). Nat, λ(j : Nat) : Nat => CV(j, clone(k)), λ(j : Nat) : Nat => (let z = CV(j, clone(k)); z)) = refl; Z), }
+  -- the function's own sealed call, generalised by a split (a call's head: the rule's own form)
+  def SG (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let r = SG(m, clone(k)); match r { Z => Z, S(q) => Z, }), }
+  -- the binding the λ took is moved, as before
+  reject def MV (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(j : Nat) : Nat => MV(j, clone(k))); MV(m, k)), }
+  -- a λ inside a stuck block's arm: the λ names the global; the block takes the function as a
+  -- parameter (left to the decision on blocks)
+  def BL (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let r = match m { Z => Z, S(p) => (λ(j : Nat) : Nat => BL(j, clone(k)))(p), }; r), }
+  -- the function as a value other than a call's head (fix L1): an argument of a higher-order
+  -- call, of a λ, a `let`, `clone`, a borrow, an assignment, an ascribed head, a field, a side of `Eq`
+  reject def HO1 (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => Ap2(HO1, m, k), }
+  reject def HO2 (m : Nat) (n : Nat) : Nat by n := (let h = HO2; Z)
+  reject def HO3 (m : Nat) (n : Nat) : Nat by n := (λ(f : Π(a : Nat) (b : Nat). Nat) : Nat => Z)(HO3)
+  reject def HO4 (m : Nat) (n : Nat) : Nat by n := (let h = clone(HO4); Z)
+  reject def HO5 (m : Nat) (n : Nat) : Nat by n := (let h = &HO5; Z)
+  reject def HO6 (m : Nat) (n : Nat) : Nat by n := (HO6 := (λ(a : Nat) (b : Nat) : Nat => a); Z)
+  reject def HO7 (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (HO7 : Π(a : Nat) (b : Nat). Nat)(m, k), }
+  reject def HO8 (m : Nat) (n : Nat) : Nat by n := (let b = MkBx(HO8); Z)
+  reject def HO9 (m : Nat) (n : Nat) : Nat by n := (let e : Eq(Π(a : Nat) (b : Nat). Nat, HO9, HO9) = refl; Z)
+  -- the printed code and types: the function by its name, not a capture `κ`
+  reject def CL0Code (m : Nat) (n : Nat) : Nat by n := (let g = (λ(j : Nat) : Nat => match n { Z => Z, S(k) => CL0Code(j, clone(k)), }); let e : Eq(Π(j : Nat). Nat, g, λ(j : Nat) : Nat => Z) = refl; Z)
+  reject def CL0Ty (m : Nat) (n : Nat) : Nat by n := (let g = (λ(j : Nat) : Nat => match n { Z => Z, S(k) => CL0Ty(j, clone(k)), }); (g : Nat))
+  reject def NLCode (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(u : Unit) : Nat => (let d = clone(k); let h = (λ(j : Nat) : Nat => NLCode(j, clone(d))); let e : Eq(Π(j : Nat). Nat, h, λ(j : Nat) : Nat => Z) = refl; Z)); g(())), }
+  reject def PiCode (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let T = (Π(j : Nat). Eq(Nat, PiCode(j, clone(k)), Z)); let e : Eq(Prop, T, True) = refl; Z), }
+  reject def FACode (f : Π(j : Nat). Nat) (n : Nat) : Nat by n := match n { Z => f(Z), S(k) => (let c = clone(k); let r = FACode(λ(j : Nat) : Nat => FACode(λ(i : Nat) : Nat => i, clone(c)), k); let e : Eq(Nat, r, Z) = refl; Z), }
+  reject def BXCode (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let b = MkBx(λ(j : Nat) : Nat => BXCode(j, clone(k))); (b : Nat)), }
+  reject def LPCode (m : Nat) (n : Nat) : Nat by n := match n { Z => Z, S(k) => (let g = (λ(e : Eq(Nat, LPCode(clone(m), clone(k)), Z)) : Nat => Z); (g : Nat)), }
+}
+
+private def notHead (f : String) : String :=
+  s!"[Rec] {f} occurs in its own body other than as the head of a call (fix L1)"
+
+#guard (run "NamedByGlobal" NamedByGlobal).rejectedWith [
+  ("MV", "[Read] MV was moved out or its borrow ended (reading ⊥)"),
+  ("HO1", notHead "HO1"), ("HO2", notHead "HO2"), ("HO3", notHead "HO3"), ("HO4", notHead "HO4"),
+  ("HO5", notHead "HO5"), ("HO6", notHead "HO6"), ("HO7", notHead "HO7"), ("HO8", notHead "HO8"),
+  ("HO9", notHead "HO9"),
+  ("CL0Code", "the ascribed term has type ⊤, expected Eq(Π(j : Nat). Nat, fix _ (j : Nat) : Nat := match κ1 { Z => 0, S _ => CL0Code(j, clone(κ1.0)) } where κ1 = σ1, fix _ (j : Nat) : Nat := 0)"),
+  ("CL0Ty", "the ascribed term has type Π(j : Nat). Nat where κ1 = σ1, expected Nat"),
+  ("NLCode", "the ascribed term has type ⊤, expected Eq(Π(j : Nat). Nat, fix _ (j : Nat) : Nat := NLCode(j, clone(κ1)) where κ1 = σ2, fix _ (j : Nat) : Nat := 0)"),
+  ("PiCode", "the ascribed term has type ⊤, expected Eq(Prop, Π(j : Nat). Eq(Nat, PiCode(j, clone(κ1.0)), 0) where κ1 = S(σ2), ⊤)"),
+  ("FACode", "the ascribed term has type ⊤, expected Eq(Nat, ⌈FACode(fix _ (j : Nat) : Nat := FACode(fix _ (i : Nat) : Nat := i, clone(κ1)) where κ1 = σ3, σ3)⌉, 0)"),
+  ("BXCode", "the ascribed term has type Bx(Π(j : Nat). Nat where κ1 = S(σ2)), expected Nat"),
+  ("LPCode", "the ascribed term has type Π(e : Eq(Nat, LPCode(clone(κ1), clone(κ2.0)), 0)). Nat where κ1 = σ0, κ2 = S(σ2), expected Nat")]
+
+namespace Ochr.Examples.NamedByGlobal
+open Ochr
+
+/-- D139: some closure or Π-type inside `v` (at any depth: captures, code, sealed programs, fields)
+keeps one of the functions `fs` among its captures. -/
+def keeps (fs : List String) (v : Value) : Bool :=
+  v.anyAtom fun
+    | .clo cs _ _ | .tPi cs _ _ => cs.any fun | .gfn f => fs.contains f | _ => false
+    | _ => false
+
+/-- D139: in the state `st` (with the value in flight, if any), a closure or Π-type keeps a function
+under check (the function of an entry of the [Rec] stack), or a capture binding holds one or
+carries an entry's mark. Every part of the state that holds values is read. -/
+def stateKeeps (st : MState) (flight : Option (Value × Option Value)) : Bool :=
+  let fs := st.recStack.filterMap fun c => match c.fn with | .gfn f => some f | _ => none
+  let uids := st.recStack.map (·.uid)
+  let k := keeps fs
+  let kT : Option Value → Bool := fun T? => T?.any k
+  st.env.any (fun fr =>
+      fr.binds.any (fun b => k b.val || kT b.ty || b.lazyTy.any (fun (P, ws, _) => k P || ws.any k)
+        || (b.cap && ((match b.val with | .gfn f => fs.contains f | _ => false) || b.recUid.any uids.contains)))
+      || fr.temps.any k || fr.tempTys.any kT)
+    || st.absTy.any k || st.refs.any (k ·.2) || st.etaRefs.any (k ·.2) || kT st.goal
+    || st.convStack.any (fun (a, b) => k a || k b) || st.neutrals.any (k ·.1)
+    || st.callTyLater.any (fun (P, ws) => k P || ws.any k)
+    || flight.any (fun (v, T?) => k v || kT T?)
+
+/-- Every state the checks of the block's rows record (located terms at call depth 0, every
+evaluation above it, private copies included): how many, and how many of them break D139, with
+how many hold a function under check in a closure's code (so the guard is not vacuous). A
+function, so that no executable importing this module runs it when it starts. -/
+def census (_ : Unit) : Nat × Nat × Nat := Id.run do
+  let cfg : Config := { recordStates := true, recordDeep := true, recordDeepPrivate := true }
+  let r := Ochr.Test.runWith (some Prelude) "NamedByGlobal" NamedByGlobal cfg (located := true)
+  let mut n := 0
+  let mut bad := 0
+  let mut code := 0
+  for row in r.rows do
+    for e in row.trace do
+      let some (st, fl) := (match e with
+        | .state _ _ fl st => some (st, fl)
+        | .deep _ fl st => some (st, fl)
+        | _ => none) | continue
+      n := n + 1
+      if stateKeeps st fl then bad := bad + 1
+      let fs := st.recStack.filterMap fun c => match c.fn with | .gfn f => some f | _ => none
+      let inCode := fun (v : Value) => v.anyAtom fun
+        | .clo _ t _ => t.anyAtom fun | .gfn f => fs.contains f | _ => false
+        | _ => false
+      if st.env.any (·.binds.any (inCode ·.val)) then code := code + 1
+  pure (n, bad, code)
+
+-- states are recorded, some hold a closure whose code names a function under check, none breaks it
+#guard let (n, bad, code) := census (); n > 1000 && code > 100 && bad == 0
+
+end Ochr.Examples.NamedByGlobal
 
 /-! ## Proof functions are copies, and a proof function's own binding is a proof (D100)
 

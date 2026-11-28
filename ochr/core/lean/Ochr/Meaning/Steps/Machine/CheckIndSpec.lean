@@ -66,6 +66,29 @@ theorem Runs.grows_bind' {α β : Type} {x : M α} {k : α → M β} {s s' : MSt
   obtain ⟨a, s₁, b₁, h₁, h₂⟩ := Runs.bind_inv h
   exact ⟨a, s₁, b₁, Runs.grows (growsM_of_growsIn hx) h₁, h₁, h₂⟩
 
+/-- **`firstOrderTerm` passing at a call**: the called global is found, with a stored type that is a written
+Π-type whose codomain is a sort (`firstOrderTerm`'s call clause). With D140 (`runs_checkInd_heads`) the sort
+is `Prop` or `Type`. -/
+theorem runs_firstOrder_call {nest : NestTable} {n : String} {np k : Nat} {f : String} {as : List Term} {hd : Bool}
+    {s s' : MState} {b : Nat}
+    (h : Runs (firstOrderTerm nest n np k (.call (.const f) as hd)) s b true s') :
+    ∃ g, s.globals.find? (·.name == f) = some g ∧
+      ∃ cs hs ds l rd, g.ty = .tPi cs (.pi hs ds (.sort l)) rd := by
+  rw [firstOrderTerm, runs_get_bind] at h
+  split at h
+  · rename_i g hg
+    refine ⟨g, hg, ?_⟩
+    split at h
+    · rename_i cs hs ds cod rd hty
+      split at h
+      · rename_i l
+        exact ⟨cs, hs, ds, l, rd, hty⟩
+      all_goals first
+        | (simp only [if_neg (by simp)] at h; cases (runs_pure_inv h).1)
+        | (rw [if_neg (by simp)] at h; cases (runs_pure_inv h).1)
+    · cases (runs_pure_inv h).1
+  · cases (runs_pure_inv h).1
+
 set_option maxHeartbeats 8000000 in
 theorem runs_checkInd_peel {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs (checkInd d) st b () st') :
     (st.inds.any fun e => e.name == d.name || e.ctors.any (·.1 == d.name)) = false ∧ DataModel.Exists.Knot.TeleOk d := by
@@ -99,6 +122,7 @@ theorem runs_checkInd_peel {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs (
   obtain ⟨_, s₇, b₇, hg₇, hTP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₇b, b₇b, hg₇b, hUP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈, b₈, hg₈, hUF, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨_, s₈b, b₈b, hg₈b, hHD, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨ps, s₉, b₉, hg₉, hPs, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₁₀, b₁₀, hg₁₀, hFL, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   -- the [Ind] loop: every field's later references are empty
@@ -144,7 +168,9 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
       DataModel.Exists.Knot.foB (DataModel.Exists.Knot.declEnv st.inds d') (DataModel.Exists.Knot.ownNest st.inds d')
           d.name d.params.length FT = true ∧
         DataModel.Exists.Knot.rvB (DataModel.Exists.Knot.declEnv st.inds d') (DataModel.Exists.Knot.readsOf d' c) FT = false ∧
-        sortNestViolation (sortTableOf st.inds d') d.name d.sort FT = none := by
+        sortNestViolation (sortTableOf st.inds d') d.name d.sort FT = none ∧
+        (∀ f as hd, FT = .call (.const f) as hd → ∃ g, st.globals.find? (·.name == f) = some g ∧
+          ∃ cs hs ds l rd, g.ty = .tPi cs (.pi hs ds (.sort l)) rd) := by
   have hET : ∀ (G : Tab) (f : Nat) (t : Term), GrowsIn G (Ochr.evalType f t) := fun G f => (machineGrows f).evalType
   have hFT : ∀ (G : Tab) (f : Nat) (d : IndDecl) (ps : List Value) (c : Nat) (val : Nat → Value → M Value),
       (∀ i v, GrowsIn G (val i v)) → ∀ upto, GrowsIn G (Ochr.fieldTele f d ps c val upto) :=
@@ -176,6 +202,7 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
   obtain ⟨_, s₇, b₇, hg₇, hTP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₇b, b₇b, hg₇b, hUP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₈, b₈, hg₈, hUF, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨_, s₈b, b₈b, hg₈b, hHD, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨ps, s₉, b₉, hg₉, hPs, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨_, s₁₀, b₁₀, hg₁₀, hFL, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
   obtain ⟨-, hallC⟩ := runs_forIn_all (fun a b => growsM_of_growsIn fun G => by grows_goI)
@@ -185,7 +212,7 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
       exact ⟨_, (runs_pure_inv hr).1⟩) hFL
   have hs2 : s₂.inds = s₁.inds := hg₂.inds
   have hT9 : s₉.inds = s₁.inds ++ [{ d' with ctors := [], nestable := [], declaring := true }] := by
-    rw [hg₉.inds, hg₈.inds, hg₇b.inds, hg₇.inds, hg₇a.inds, hg₆.inds, hg₅.inds, hg₄.inds, hg₃.inds]
+    rw [hg₉.inds, hg₈b.inds, hg₈.inds, hg₇b.inds, hg₇.inds, hg₇a.inds, hg₆.inds, hg₅.inds, hg₄.inds, hg₃.inds]
     show s₂.inds ++ _ = _
     rw [hs2]
   intro c cn fields hc j fname FT hj
@@ -232,6 +259,18 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
     funext m' j'
     simp only [DataModel.Exists.Knot.ownNest, hs2]
     rfl
+  have hFOC : ∀ f as hd, FT = .call (.const f) as hd → ∃ g, s₁.globals.find? (·.name == f) = some g ∧
+      ∃ cs hs ds l rd, g.ty = .tPi cs (.pi hs ds (.sort l)) rd := by
+    intro f as hd hFTc
+    have hFO' := hFO
+    rw [hfj, hFTc] at hFO'
+    obtain ⟨g, hg, rest⟩ := runs_firstOrder_call hFO'
+    have hG : s₉'.globals = s₁.globals := by
+      rw [h9, hg8.globals, h7, hT₅.globals, h3', hT₁.globals, hg₉.globals, hg₈b.globals, hg₈.globals,
+        hg₇b.globals, hg₇.globals, hg₇a.globals, hg₆.globals, hg₅.globals, hg₄.globals, hg₃.globals]
+      exact hg₂.globals
+    rw [hG] at hg
+    exact ⟨g, hg, rest⟩
   rcases runs_ite_inv hC with ⟨-, hC⟩ | ⟨-, hC⟩
   · exact (runs_err_bind_false hC).elim
   rcases runs_ite_inv hC with ⟨-, hC⟩ | ⟨-, hC⟩
@@ -255,7 +294,7 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
       rcases sv with _ | m'
       rotate_left
       · exact (runs_err_bind_false hC).elim
-      exact ⟨hFOB, by rw [← hRS]; exact (readViolation_rvB _).1 _ hRV, by rw [← hsv, hs2]; rfl⟩
+      exact ⟨hFOB, by rw [← hRS]; exact (readViolation_rvB _).1 _ hRV, by rw [← hsv, hs2]; rfl, hFOC⟩
     · exact (runs_err_bind_false hC).elim
   · have hRS : s₁₀'.inds = DataModel.Exists.Knot.declEnv s₁.inds d' := by rw [h10, hI9]
     revert hC; rw [hfj]; intro hC
@@ -267,7 +306,130 @@ theorem runs_checkInd_fields {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs
     rcases sv with _ | m'
     rotate_left
     · exact (runs_err_bind_false hC).elim
-    exact ⟨hFOB, by rw [← hRS]; exact (readViolation_rvB _).1 _ hRV, by rw [← hsv, hs2]; rfl⟩
+    exact ⟨hFOB, by rw [← hRS]; exact (readViolation_rvB _).1 _ hRV, by rw [← hsv, hs2]; rfl, hFOC⟩
+
+set_option maxHeartbeats 8000000 in
+/-- **D140's loop passing** (merged by exists13): of every field whose whole type is a parameter, that parameter is
+written `Prop` or `Type`; of every field whose whole type is a call of a global, given what `firstOrderTerm` found
+(`hcall`: the global with a written Π-type into a sort), the sort is `Prop` or `Type`. Read off the run of
+`checkInd`'s D140 loop, kept by a peel as `runs_checkInd_peel` keeps its steps. -/
+theorem runs_checkInd_heads_mem {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs (checkInd d) st b () st')
+    (hcall : ∀ cn fields, (cn, fields) ∈ d.ctors → ∀ fname f as hd, (fname, Term.call (.const f) as hd) ∈ fields →
+      ∃ g, st.globals.find? (·.name == f) = some g ∧ ∃ cs hs ds l rd, g.ty = .tPi cs (.pi hs ds (.sort l)) rd) :
+    (∀ cn fields, (cn, fields) ∈ d.ctors → ∀ fname v, (fname, Term.place (.var v)) ∈ fields → (hv : v < d.params.length) →
+      ∃ l, l ≤ 1 ∧ (d.params[d.params.length - 1 - v]'(by omega)).2 = .sort l) ∧
+    (∀ cn fields, (cn, fields) ∈ d.ctors → ∀ fname f as hd, (fname, Term.call (.const f) as hd) ∈ fields →
+      ∃ cs hs ds l rd, l ≤ 1 ∧ (st.globals.find? (·.name == f)).map (·.ty) = some (.tPi cs (.pi hs ds (.sort l)) rd)) := by
+  have hET : ∀ (G : Tab) (f : Nat) (t : Term), GrowsIn G (Ochr.evalType f t) := fun G f => (machineGrows f).evalType
+  have hFT : ∀ (G : Tab) (f : Nat) (d : IndDecl) (ps : List Value) (c : Nat) (val : Nat → Value → M Value),
+      (∀ i v, GrowsIn G (val i v)) → ∀ upto, GrowsIn G (Ochr.fieldTele f d ps c val upto) :=
+    fun G f => (machineGrows f).fieldTele
+  unfold checkInd at h
+  dsimp (config := { proj := false }) only at h
+  obtain ⟨c, s₁, b₁, hd, h⟩ := Runs.bind_inv h
+  obtain ⟨hc, hs₁⟩ := runs_declared_inv hd
+  subst hs₁
+  clear hd
+  cases c
+  case true =>
+    rw [if_pos rfl] at h
+    obtain ⟨_, _, _, he, _⟩ := Runs.bind_inv h; exact (runs_err_false he).elim
+  rw [if_neg Bool.false_ne_true] at h
+  obtain ⟨_, s₂, b₂, hg₂, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+  by_cases hsort : d.sort > 1
+  · rw [if_pos hsort] at h
+    obtain ⟨_, _, _, he, _⟩ := Runs.bind_inv h; exact (runs_err_false he).elim
+  rw [if_neg hsort] at h
+  rw [runs_get_bind, runs_get_bind, runs_modify_bind] at h
+  obtain ⟨_, s₃, b₃, hg₃, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+  obtain ⟨_, s₄, b₄, hg₄, hL, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨_, s₅, b₅, hg₅, h⟩ := Runs.grows_bind (fun G => by grows_goI) h
+  obtain ⟨x, s₆, b₆, hg₆, hTel, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨sc, ns, l⟩ := x
+  obtain ⟨_, s₇a, b₇a, hg₇a, h128, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨_, s₇, b₇, hg₇, hTP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨_, s₇b, b₇b, hg₇b, hUP, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨_, s₈, b₈, hg₈, hUF, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨_, s₈b, b₈b, hg₈b, hHD, h⟩ := Runs.grows_bind' (fun G => by grows_goI) h
+  obtain ⟨-, hallC⟩ := runs_forIn_all (fun a b => growsM_of_growsIn fun G => by grows_goI)
+    (fun a b s bh y s' hr => by
+      obtain ⟨_, _, _, _, hr⟩ := Runs.bind_inv hr
+      exact ⟨_, (runs_pure_inv hr).1⟩) hHD
+  have hG8 : s₈.globals = s₁.globals := by
+    rw [hg₈.globals, hg₇b.globals, hg₇.globals, hg₇a.globals, hg₆.globals, hg₅.globals, hg₄.globals, hg₃.globals]
+    exact hg₂.globals
+  have hG8 : s₈.globals = s₁.globals := by
+    rw [hg₈.globals, hg₇b.globals, hg₇.globals, hg₇a.globals, hg₆.globals, hg₅.globals, hg₄.globals, hg₃.globals]
+    exact hg₂.globals
+  refine ⟨fun cn fields hc fname v hf hv => ?_, fun cn fields hc fname f as hd hf => ?_⟩
+  all_goals
+    obtain ⟨_, s₁', bh₁, y, s₂', hT₁, hB⟩ := hallC (cn, fields) hc
+    obtain ⟨_, s₃', b₃', hI, -⟩ := Runs.bind_inv hB
+    obtain ⟨-, hallF⟩ := runs_forIn_all (fun a b => growsM_of_growsIn fun G => by grows_goI)
+      (fun a b s bh y s' hr => by
+        dsimp only at hr
+        repeat' (first | rw [runs_get_bind] at hr | split at hr)
+        all_goals first
+          | exact ⟨_, (runs_pure_inv hr).1⟩
+          | (obtain ⟨_, _, _, he, _⟩ := Runs.bind_inv hr; exact (runs_err_false he).elim)) hI
+    obtain ⟨_, s₄', bh₄, y4, s₅', hT₄, hF⟩ := hallF _ hf
+    have hG4 : s₄'.globals = s₁.globals := by rw [hT₄.globals, hT₁.globals, hG8]
+    dsimp only at hF
+  · rw [dif_pos hv] at hF
+    rcases runs_ite_inv hF with ⟨hc', -⟩ | ⟨-, hF⟩
+    · split at hc'
+      · rename_i heq; exact ⟨0, by omega, heq⟩
+      · rename_i heq; exact ⟨1, by omega, heq⟩
+      · cases hc'
+    · exact (runs_err_bind_false hF).elim
+  · obtain ⟨g, hfind, cs, hs, ds, l, rd, hty⟩ := hcall cn fields hc fname f as hd hf
+    rw [runs_get_bind, hG4, hfind] at hF
+    dsimp only at hF
+    rw [hty] at hF
+    dsimp only at hF
+    refine ⟨cs, hs, ds, l, rd, ?_, by rw [hfind]; simp [hty]⟩
+    rcases runs_ite_inv hF with ⟨hc', -⟩ | ⟨-, hF⟩
+    · split at hc'
+      · rename_i heq; cases heq; omega
+      · rename_i heq; cases heq; omega
+      · cases hc'
+    · exact (runs_err_bind_false hF).elim
+
+/-- **The heads of an accepted declaration's field types are small, from what is written** (exists13; the
+checker's D140 with `firstOrderTerm`'s call clause): a parameter that is a field's whole type is declared at a
+written `Prop` or `Type`; a global whose call is a field's whole type has, at the state the declaration is
+checked from, a stored type that is a written Π-type into `Prop` or `Type`. `Assembly.FieldHeads` is this at
+the program's items. -/
+theorem runs_checkInd_heads {d : IndDecl} {st st' : MState} {b : Nat} (h : Runs (checkInd d) st b () st') :
+    (∀ c i v, fieldTerm d c i = some (.place (.var v)) → v < d.params.length →
+      ∃ l, l ≤ 1 ∧ DataModel.Exists.Knot.paramTerm d (d.params.length - 1 - v) = .sort l) ∧
+    (∀ c i f as hd, fieldTerm d c i = some (.call (.const f) as hd) →
+      ∃ cs hs ds l rd, l ≤ 1 ∧ (st.globals.find? (·.name == f)).map (·.ty) = some (.tPi cs (.pi hs ds (.sort l)) rd)) := by
+  have hF := runs_checkInd_fields h
+  have hcall : ∀ cn fields, (cn, fields) ∈ d.ctors → ∀ fname f as hd, (fname, Term.call (.const f) as hd) ∈ fields →
+      ∃ g, st.globals.find? (·.name == f) = some g ∧ ∃ cs hs ds l rd, g.ty = .tPi cs (.pi hs ds (.sort l)) rd := by
+    intro cn fields hc fname f as hd hf
+    obtain ⟨c, hc'⟩ := List.mem_iff_getElem?.1 hc
+    obtain ⟨j, hj⟩ := List.mem_iff_getElem?.1 hf
+    exact (hF c cn fields hc' j fname _ hj).2.2.2 f as hd rfl
+  obtain ⟨hP, hC⟩ := runs_checkInd_heads_mem h hcall
+  have hft : ∀ c i FT, fieldTerm d c i = some FT → ∃ cn fields fname, (cn, fields) ∈ d.ctors ∧ (fname, FT) ∈ fields := by
+    intro c i FT hFT
+    unfold fieldTerm at hFT
+    obtain ⟨⟨fname, FT'⟩, h1, h2⟩ := Option.map_eq_some_iff.1 hFT
+    obtain ⟨⟨cn, fields⟩, h3, h4⟩ := Option.bind_eq_some_iff.1 h1
+    simp only at h2
+    subst h2
+    exact ⟨cn, fields, fname, List.mem_of_getElem? h3, List.mem_of_getElem? h4⟩
+  refine ⟨fun c i v hFT hv => ?_, fun c i f as hd hFT => ?_⟩
+  · obtain ⟨cn, fields, fname, hc, hf⟩ := hft c i _ hFT
+    obtain ⟨l, hl, he⟩ := hP cn fields hc fname v hf hv
+    refine ⟨l, hl, ?_⟩
+    unfold DataModel.Exists.Knot.paramTerm
+    rw [List.getElem?_eq_getElem (by omega)]
+    exact he
+  · obtain ⟨cn, fields, fname, hc, hf⟩ := hft c i _ hFT
+    exact hC cn fields hc fname f as hd hf
 
 /-- **`CheckIndGivesChecks`, PROVED** (machine10's plan, assembled by exists12): an accepted `checkInd`
 appends the entry `d'` (`d` with its nestable set) passing `Knot.IndChecks` at the declarations
@@ -295,7 +457,7 @@ theorem runs_checkInd_checks {d : IndDecl} {st st' : MState} {b : Nat} (hr : Run
     subst h2
   · exact (hF c cn fields h3 i fname FT' h4).1
   · exact (hF c cn fields h3 i fname FT' h4).2.1
-  · exact (hF c cn fields h3 i fname FT' h4).2.2
+  · exact (hF c cn fields h3 i fname FT' h4).2.2.1
 
 theorem checkIndGivesChecks : DataModel.Exists.Knot.CheckIndGivesChecks := by
   intro d st st' fuel hrun

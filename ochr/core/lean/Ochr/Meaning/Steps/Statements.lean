@@ -288,8 +288,7 @@ def ckBlockCaps (fuel : Nat) (mt : Term) : M (List Place × List (Place × Nat))
     unless ← Ochr.copyRead fuel q do
       unless mv.any (placeEq · q) do mv := mv ++ [q]
   let (caps, _, _) ← Ochr.blockCaptures fuel mt net
-  let capsS := caps.qsort fun (a, _) (b, _) =>
-    a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
+  let capsS := blockCapOrder caps
   pure (mv, capsS.toList)
 
 /-- Two checker states the same up to what no decision reads (the move log and the [Split]
@@ -1741,7 +1740,7 @@ def capture_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) t = (false, false))
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd) st'),
+    (bh : Nat) (kept : List Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd, kept) st'),
     SimConcl K ρ φ π st st' s (fun ρ' => runT K ρ' φ false (.plain .err) t) (.clo cs t' rd)
 
 /-- A constructor (`evalCtor`, [Ctor]), in the simulation form with the type (docs/31 D80): the
@@ -1860,7 +1859,7 @@ hold `⊥` (the capture check), and a Π-closure captures no borrow (D48). -/
 def capture_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (cs : List Value) (t' : Term)
     (rd : List (DeclInfo × Value))
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd) st'),
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (kept : List Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd, kept) st'),
     ¬ (Value.clo cs t' rd).anyAtom Value.badCapture ∧ WF4 st'.env
 
 /-- Every step of `evalCore` keeps (WF6): names are allocated at and below the counters, which
@@ -1910,7 +1909,7 @@ def piShape_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (ht : t matches .pi .. | .fix ..)
-    (bh : Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd) st'),
+    (bh : Nat) (kept : List Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd, kept) st'),
     (run K ρ φ (.plain .err) t s).map (fun r => (r.1.1.asTy, r.1.2.m)) =
       (run K ρ noFuture (.plain .err) t'
         (stateOf 0 (capsState (capsVals K ρ noFuture cs) (capsTys K ρ noFuture rd)))).map

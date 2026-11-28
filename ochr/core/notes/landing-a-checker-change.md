@@ -73,3 +73,8 @@ Its final report, 2026-11-21.
 
 - **`lake env lean` runs the checker interpreted; add `--load-dynlib=.lake/build/lib/libochr_Ochr.so`** (the library's precompiled code, from `lake build`) and it runs native: a probe of one hash-map lemma went from 59 s to 5 s, and the whole unlocated dump (all 147 blocks) takes 82 s. The library must be built from the same sources (it is the branch's own checker).
 - **A surface change that rewrites the case study moves the paper's line counts.** `notes/hashmap-count-ochr.py` gives the hash map's row of the paper's size figure; run it on both sides and update the figure and the text that quotes it.
+
+## From the lane that landed D139
+
+- **A closed definition in an example module is evaluated at startup by every executable that imports it.** A state census written as a constant (`def census : … := …`) cost the bench, `tests` and `sweep` about 140M instructions each at startup, and showed as +0.7% on Arrays, which looked like a cost of the change. Write such things as functions (take a `Unit`), and when a cost appears that the change cannot explain, look at what the new test file computes at load.
+

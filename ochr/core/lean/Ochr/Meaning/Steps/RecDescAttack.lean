@@ -71,9 +71,10 @@ def valOf (Ω : List (String × Option Value × Value)) (x : String) : String :=
 #guard (holes "TB").map (valOf · "r") == ["borrow_2 ⌈let c1 = σ1; let r = TB(&c1); *r⌉"]
 #guard (holes "TB").map (valOf · "x") == ["borrow_0 S(⌈let c1 = σ1; let r = TB(&c1); *r := loan_2; c1⌉)"]
 -- a non-tail match on another argument: a stuck block taking the definition's own binding as a parameter at its
--- declared type, calling it at a part of another parameter, applied to the global. UNTIL MAIN'S D139 (ruled on D232:
--- a sealed block's text names the function under check by its global; its binding of itself is never a block's
--- parameter): the merge flips these three guards
+-- declared type, calling it at a part of another parameter, applied to the global. Main's D139 as landed (merged by
+-- exists13) changed closures and Π-types only and left stuck blocks to a later decision ("Left to the decision on
+-- blocks", D139 in DECISIONS.md), so these three guards still hold; they flip when a block's text names the function
+-- under check by its global (D232's ruling, the experiment `exp-block-text`)
 #guard (holes "MB0").map (valOf · "r") ==
   ["⌈(fix _ (MB0 : Π(m : Nat) (n : Nat). Nat) (m : Nat) (n : Nat) : Nat := match m { Z => 0, S _ => match n { Z => 0, S _ => MB0(m.0, n.0) } })(MB0, σ0, σ1)⌉"]
 #guard (holes "MB").map (valOf · "r") ==

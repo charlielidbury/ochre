@@ -22,6 +22,64 @@ def Place.steps : Place → Nat × List Step
   | .proj j p => let (i, s) := p.steps; (i, s ++ [.proj j])
   | .field g p => let (i, s) := p.steps; (i, s ++ [.field g])
 
+/-- A step's code, for ordering places: `*` first, then `.i` by `i`, then a constructor's field by
+constructor and index. -/
+def Step.code : Step → List Nat
+  | .deref => [0, 0, 0]
+  | .proj i => [1, i, 0]
+  | .field g => [2, g.ctor, g.idx]
+
+/-- The order of a stuck block's captures: by the position of their root, the oldest binding (the
+largest index) first, then by length, the shorter first, then by path (`Step.code`, read
+lexicographically). Until 2026-11-28 the captures were sorted by root and length only, with
+`Array.qsort`, so two captures of the same root and length (two fields of one place) came in the
+order `qsort`'s pivoting left them in; the path decides it now (a note under D26). -/
+def Place.capLt (a b : Place) : Bool :=
+  b.root < a.root || (a.root == b.root &&
+    natsLt (a.steps.2.length :: a.steps.2.flatMap Step.code) (b.steps.2.length :: b.steps.2.flatMap Step.code))
+
+theorem Place.capLt_asymm (a b : Place) : a.capLt b = true → b.capLt a = false := by
+  unfold Place.capLt
+  simp only [Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true, beq_iff_eq, Bool.or_eq_false_iff,
+    decide_eq_false_iff_not, Bool.and_eq_false_iff, beq_eq_false_iff_ne, ne_eq]
+  intro h
+  rcases h with h | ⟨h1, h2⟩
+  · exact ⟨by omega, Or.inl (by omega)⟩
+  · exact ⟨by omega, Or.inr (natsLt_asymm _ _ h2)⟩
+
+theorem Place.capLt_ntrans (a b c : Place) : a.capLt b = false → b.capLt c = false → a.capLt c = false := by
+  unfold Place.capLt
+  simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not, Bool.and_eq_false_iff, beq_eq_false_iff_ne, ne_eq]
+  intro ⟨h1a, h1b⟩ ⟨h2a, h2b⟩
+  refine ⟨by omega, ?_⟩
+  by_cases hac : a.root = c.root
+  · have hab : a.root = b.root := by omega
+    have hbc : b.root = c.root := by omega
+    rcases h1b with h | h
+    · exact absurd hab h
+    rcases h2b with h' | h'
+    · exact absurd hbc h'
+    exact Or.inr (natsLt_ntrans _ _ _ h h')
+  · exact Or.inl hac
+
+/-- A stuck block's captures in their order (`Place.capLt`), by the insertion sort `sortBy`: the
+one place they are ordered (`Machine.blockEntry`, `Machine.closeBlock`). -/
+def blockCapOrder (caps : Array (Place × Nat)) : Array (Place × Nat) :=
+  (sortBy (fun a b => a.1.capLt b.1) caps.toList).toArray
+
+/-- The ordered captures are the captures (a permutation). -/
+theorem blockCapOrder_perm (caps : Array (Place × Nat)) :
+    (blockCapOrder caps).toList.Perm caps.toList := by
+  unfold blockCapOrder
+  simpa using sortBy_perm _ caps.toList
+
+/-- The ordered captures are sorted by `Place.capLt`: none comes before an earlier one. -/
+theorem blockCapOrder_sorted (caps : Array (Place × Nat)) :
+    (blockCapOrder caps).toList.Pairwise (fun a b => b.1.capLt a.1 = false) := by
+  unfold blockCapOrder
+  simpa using sortBy_sorted (fun a b : Place × Nat => a.1.capLt b.1)
+    (fun a b => Place.capLt_asymm a.1 b.1) (fun a b c => Place.capLt_ntrans a.1 b.1 c.1) caps.toList
+
 /-- One step of a path: `*` goes into the content of a borrow, `.i` into field `i` of a value
 of a type with one constructor (D81: the checker admits `.i` only there, so the value's
 constructor is its type's first and only one) or into the predecessor of `S v` (`.0` of a

@@ -254,6 +254,7 @@ import Ochr.Meaning.DataModel.Exists.Step2
 import Ochr.Meaning.DataModel.Exists.Piece3
 import Ochr.Meaning.DataModel.Exists.FrameLocalCE
 import Ochr.Meaning.DataModel.Exists.FactsCE
+import Ochr.Meaning.DataModel.Exists.DecStableCE
 import Ochr.Meaning.DataModel.Exists.FieldLevel
 import Ochr.Meaning.DataModel.Exists.GlobalCalls
 import Ochr.Meaning.DataModel.Exists.GlobalCallsHard
@@ -334,6 +335,8 @@ import Ochr.Meaning.Steps.UnderCheck
 import Ochr.Meaning.Steps.UnderCheckAttack
 import Ochr.Meaning.Steps.ParamCellAttack
 import Ochr.Meaning.Steps.ProofFieldAttack
+import Ochr.Meaning.Steps.MatchAttack
+import Ochr.Meaning.Steps.MasterMatch
 import Ochr.Meaning.Steps.CallInPlaceFrame
 import Ochr.Meaning.Steps.CallStartInv
 import Ochr.Meaning.Steps.CallStep

@@ -128,7 +128,7 @@ theorem tStepOther (hT : TailOtherInv) (K : RunCtx) (φ : Future) : TStepOther K
   have hO := (ih m (by omega) Δ ρ).1 t st₀ st₁ true st.goal v (some T) s π (hm.of_modeEq hme₀)
     (fun _ => htn₀.trans htn) (by rw [← ColumnC.size_of_erase hk₀.env]; exact hne)
     (Or.inl (htd₀.trans htd)) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv hab₀ hgb hnh (fun e => by cases e) hD₁ b₁ hev
-  refine ⟨st₁, v, T, ⟨b₂, st₂, hkr⟩, ?_, (Kept.of_kern hk₀ hme₀).trans hO.2⟩
+  refine TailConcl.of_K ⟨st₁, v, T, ⟨b₂, st₂, hkr⟩, ?_, (Kept.of_kern hk₀ hme₀).trans hO.2⟩
   rw [runT_tl_indep t ht true st₀.tailNext]
   exact Out.of_kern hk₀ (Kern.rfl' _) hO.1.out
 

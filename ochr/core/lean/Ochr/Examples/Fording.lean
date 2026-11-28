@@ -523,43 +523,43 @@ ochr WrittenSorts uses Lists {
   ("IdFntF", "[D55] B is written where a type is expected, but its declared type is not a sort"),
   ("ParamtF", "[D55] B is written where a type is expected, but its declared type is not a sort"),
   ("LetuF", "[D128] the parameter B of LetuF is declared at "),
-  ("LetuFW", "field x of MkLetuFW: its type must be in Prop or Type"),
+  ("LetuFW", "[D140] field x of MkLetuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("LetuN", "[D128] the parameter B of LetuN is declared at "),
   ("Let0uF", "[D128] the parameter B of Let0uF is declared at "),
-  ("Let0uFW", "field x of MkLet0uFW: its type must be in Prop or Type"),
+  ("Let0uFW", "[D140] field x of MkLet0uFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("Let0uN", "[D128] the parameter B of Let0uN is declared at "),
   ("LetNuF", "[D128] the parameter B of LetNuF is declared at "),
-  ("LetNuFW", "field x of MkLetNuFW: its type must be in Prop or Type"),
+  ("LetNuFW", "[D140] field x of MkLetNuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("LetNuN", "[D128] the parameter B of LetNuN is declared at "),
   ("SequF", "[D128] the parameter B of SequF is declared at "),
-  ("SequFW", "field x of MkSequFW: its type must be in Prop or Type"),
+  ("SequFW", "[D140] field x of MkSequFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("SequN", "[D128] the parameter B of SequN is declared at "),
   ("SeqAuF", "[D128] the parameter B of SeqAuF is declared at "),
-  ("SeqAuFW", "field x of MkSeqAuFW: its type must be in Prop or Type"),
+  ("SeqAuFW", "[D140] field x of MkSeqAuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("SeqAuN", "[D128] the parameter B of SeqAuN is declared at "),
   ("LetSuF", "[D128] the parameter B of LetSuF is declared at "),
-  ("LetSuFW", "field x of MkLetSuFW: its type must be in Prop or Type"),
+  ("LetSuFW", "[D140] field x of MkLetSuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("LetSuN", "[D128] the parameter B of LetSuN is declared at "),
   ("LetSAuF", "[D128] the parameter B of LetSAuF is declared at "),
-  ("LetSAuFW", "field x of MkLetSAuFW: its type must be in Prop or Type"),
+  ("LetSAuFW", "[D140] field x of MkLetSAuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("LetSAuN", "[D128] the parameter B of LetSAuN is declared at "),
   ("MatchLuF", "[D128] the parameter B of MatchLuF is declared at "),
-  ("MatchLuFW", "field x of MkMatchLuFW: its type must be in Prop or Type"),
+  ("MatchLuFW", "[D140] field x of MkMatchLuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("MatchLuN", "[D128] the parameter B of MatchLuN is declared at "),
   ("MatchNuF", "[D128] the parameter B of MatchNuF is declared at "),
-  ("MatchNuFW", "field x of MkMatchNuFW: its type must be in Prop or Type"),
+  ("MatchNuFW", "[D140] field x of MkMatchNuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("MatchNuN", "[D128] the parameter B of MatchNuN is declared at "),
   ("MatchWuF", "[D128] the parameter B of MatchWuF is declared at "),
-  ("MatchWuFW", "field x of MkMatchWuFW: its type must be in Prop or Type"),
+  ("MatchWuFW", "[D140] field x of MkMatchWuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("MatchWuN", "[D128] the parameter B of MatchWuN is declared at "),
   ("LetMuF", "[D128] the parameter B of LetMuF is declared at "),
-  ("LetMuFW", "field x of MkLetMuFW: its type must be in Prop or Type"),
+  ("LetMuFW", "[D140] field x of MkLetMuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("LetMuN", "[D128] the parameter B of LetMuN is declared at "),
   ("MatchLetuF", "[D128] the parameter B of MatchLetuF is declared at "),
-  ("MatchLetuFW", "field x of MkMatchLetuFW: its type must be in Prop or Type"),
+  ("MatchLetuFW", "[D140] field x of MkMatchLetuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("MatchLetuN", "[D128] the parameter B of MatchLetuN is declared at "),
   ("LetMatchSuF", "[D128] the parameter B of LetMatchSuF is declared at "),
-  ("LetMatchSuFW", "field x of MkLetMatchSuFW: its type must be in Prop or Type"),
+  ("LetMatchSuFW", "[D140] field x of MkLetMatchSuFW: its type is the parameter B, declared at Type₁: a parameter heading a field's type is written Prop or Type"),
   ("LetMatchSuN", "[D128] the parameter B of LetMatchSuN is declared at "),
   ("AscuF", "[D55] B is written where a type is expected, but its declared type is not a sort"),
   ("CalluF", "[D55] B is written where a type is expected, but its declared type is not a sort"),
@@ -567,6 +567,97 @@ ochr WrittenSorts uses Lists {
   ("IdFnuF", "[D55] B is written where a type is expected, but its declared type is not a sort"),
   ("ParamuF", "[D55] B is written where a type is expected, but its declared type is not a sort"),
   ("MatchMixF", "[D55] B is written where a type is expected, but its declared type is not a sort")]
+
+/-! ## The head of a field's type has a small result, read from what is written (D140)
+
+A field's type headed by a parameter (the field's whole type is `B`) or by a call of a global (the
+field's whole type is `G(ā)`) is checked from what is written, before anything runs: the parameter
+is written `Prop` or `Type`, and the global is declared with the codomain `Prop` or `Type` written.
+The consistency proof's model of the data types rests on that fact (`FieldHeads`); before D140 it
+could be read only off a run (the level check at the generic telescope, `sortOf`). Every program it
+rejects was rejected before: a parameter written `Type₁` or `Type₂`, or a call of a global into
+`Type₁`, by the level check or as computing to a sort; a parameter written as a hole or a match
+with no arms by its evaluation; a global whose codomain is `let z = 0; Type` or `(); Type` by an
+internal error (the pre-pass read its call as erased, the run did not). Each rewrites to the
+spelling it names: `Type` or `Prop` written. A head whose declared type does not read as a sort
+keeps D55's message, one that reads as a sort through a `let`, a `;` or a match D128's, and one
+nested in an inductive's argument (`HBox(B)`) is typed there, as before. -/
+
+ochr FieldHeads {
+  inductive HBox (A : Type) := MkHBox(x : A)
+  def HTT : Type₁ := Type
+  def HIdT (X : Type₁) : Type₁ := X
+  -- a parameter heading a field's type
+  inductive PType (B : Type) := MkPType(x : B)
+  inductive PProp (B : Prop) := MkPProp(x : B)
+  reject inductive PT1 (B : Type₁) := MkPT1(x : B)
+  reject inductive PT2 (B : Type₂) := MkPT2(x : B)
+  reject inductive PT1Prop (B : Type₁) : Prop := MkPT1Prop(x : B)
+  reject inductive PT1Dep (B : Type₁) := MkPT1Dep(n : Nat, x : B)
+  reject inductive PT1Two (B : Type₁) := MkPT1Two | MkPT1Two2(x : B)
+  inductive PT1None (B : Type₁) := MkPT1None
+  reject inductive PMatch0 (e : False) (B : match e {}) := MkPMatch0(x : B)
+  reject inductive PHole (B : ?) := MkPHole(x : B)
+  -- ... each other spelling, rejected as before (D128, D55), and one nested (typed in place)
+  reject inductive PLet (B : (let z = 0; Type)) := MkPLet(x : B)
+  reject inductive PSeq (B : ((); Type)) := MkPSeq(x : B)
+  reject inductive PMatchEq (n : Nat) (B : match n { Z => Type, S(m) => Type }) := MkPMatchEq(x : B)
+  reject inductive PAsc (B : (Type : Type₁)) := MkPAsc(x : B)
+  reject inductive PAlias (B : HTT) := MkPAlias(x : B)
+  reject inductive PFn (B : HIdT(Type)) := MkPFn(x : B)
+  reject inductive PMatchMix (n : Nat) (B : match n { Z => Type, S(m) => Prop }) := MkPMatchMix(x : B)
+  reject inductive PEarlier (U : Type₁) (B : U) := MkPEarlier(x : B)
+  reject inductive PT1Nest (B : Type₁) := MkPT1Nest(x : HBox(B))
+  -- a global heading a field's type
+  def GT (n : Nat) : Type := Nat
+  def GP (n : Nat) : Prop := Eq(Nat, n, n)
+  def G1 (n : Nat) : Type₁ := Type
+  def G2 (n : Nat) : Type₁ := match n { Z => Type, S(p) => Prop, }
+  def G3 (A : Type₁) : Type₁ := A
+  def GL (n : Nat) : (let z = 0; Type) := Nat
+  def GS (n : Nat) : ((); Type) := Nat
+  def GA (n : Nat) : HTT := Nat
+  def GF (n : Nat) : HIdT(Type) := Nat
+  inductive WGT (k : Nat) := MkWGT(x : GT(k))
+  inductive WGP (k : Nat) := MkWGP(h : GP(k))
+  reject inductive WG1 := MkWG1(x : G1(Z))
+  reject inductive WG1k (k : Nat) := MkWG1k(x : G1(k))
+  reject inductive WG2 (k : Nat) := MkWG2(x : G2(k))
+  reject inductive WG2Z := MkWG2Z(x : G2(Z))
+  reject inductive WG3 := MkWG3(x : G3(Type))
+  reject inductive WG3B (B : Type₁) := MkWG3B(x : G3(B))
+  reject inductive WGL := MkWGL(x : GL(Z))
+  reject inductive WGS := MkWGS(x : GS(Z))
+  -- ... each other spelling, rejected as before (D55), and one nested
+  reject inductive WGA := MkWGA(x : GA(Z))
+  reject inductive WGF := MkWGF(x : GF(Z))
+  reject inductive WG1Nest := MkWG1Nest(x : HBox(G1(Z)))
+}
+
+private def paramHead (n f B : String) : String :=
+  s!"[D140] field x of Mk{n}: its type is the parameter B, declared at {B}: a parameter heading a field's type is written Prop or Type"
+private def callHead (n f G cod : String) : String :=
+  s!"[D140] field {f} of Mk{n}: its type is a call of {G}, declared to return {cod}: a function heading a field's type is declared to return Prop or Type"
+private def notSort (B : String) : String :=
+  s!"[D55] {B} is written where a type is expected, but its declared type is not a sort"
+
+#guard (run "FieldHeads" FieldHeads).rejectedWith [
+  ("PT1", paramHead "PT1" "x" "Type₁"), ("PT2", paramHead "PT2" "x" "Type₂"),
+  ("PT1Prop", paramHead "PT1Prop" "x" "Type₁"), ("PT1Dep", paramHead "PT1Dep" "x" "Type₁"),
+  ("PT1Two", paramHead "PT1Two2" "x" "Type₁"),
+  ("PMatch0", paramHead "PMatch0" "x" "match e {  }"), ("PHole", paramHead "PHole" "x" "hole"),
+  ("PLet", "[D128] the parameter B of PLet is declared at let z = 0; Type"),
+  ("PSeq", "[D128] the parameter B of PSeq is declared at (); Type"),
+  ("PMatchEq", "[D128] the parameter B of PMatchEq is declared at match n { Z => Type, S _ => Type }"),
+  ("PAsc", notSort "B"), ("PAlias", notSort "B"), ("PFn", notSort "B"), ("PMatchMix", notSort "B"),
+  ("PEarlier", notSort "B"),
+  ("PT1Nest", "the parameter A of HBox has type Type₁, expected Type"),
+  ("WG1", callHead "WG1" "x" "G1" "Type₁"), ("WG1k", callHead "WG1k" "x" "G1" "Type₁"),
+  ("WG2", callHead "WG2" "x" "G2" "Type₁"), ("WG2Z", callHead "WG2Z" "x" "G2" "Type₁"),
+  ("WG3", callHead "WG3" "x" "G3" "Type₁"), ("WG3B", callHead "WG3B" "x" "G3" "Type₁"),
+  ("WGL", callHead "WGL" "x" "GL" "let z = 0; Type"), ("WGS", callHead "WGS" "x" "GS" "(); Type"),
+  ("WGA", notSort "GA(0)"), ("WGF", notSort "GF(0)"),
+  ("WG1Nest", "the parameter A of HBox has type Type₁, expected Type")]
 
 /-! ## The inductive model's probes (notes/inductive-model.md)
 
