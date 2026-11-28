@@ -3380,6 +3380,10 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   modify fun s => { s with depth := d + 1 }
   let pf ← paramFlags fuel' cs rd ds
   let (pds, cd) ← paramDecls fuel' cs rd hs ds c
+  -- D151: a call has one argument per parameter, wherever its body runs (a typed call, an untyped
+  -- one that wants its type and one that does not; a global, a closure, an embedded closure, a
+  -- sealed program's re-run): the frame binds exactly the parameters
+  if ws.size != ds.length then err s!"arity: {ds.length} parameters, {ws.size} arguments"
   -- D80: a stuck block records its parameters' readings, the places it takes (`closeBlock`)
   let pds := if rd.length > cs.length then (rd.drop cs.length).map (·.1) else pds
   -- D82: every binding has its declared type, each parameter's evaluated in the frame of the

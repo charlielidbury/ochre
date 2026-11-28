@@ -231,6 +231,17 @@ def DeclInfo.throughMatch : DeclInfo → DeclInfo
   | d@(.ind ..) => .alt [d]
   | d => d
 
+/-- D151: a function's and a function type's binder lists, its parameter names `hs` and its parameter
+types `ds`, have one length. The two lists are read together only by `telescope` and by `sortOf` (a
+Π-type's sort), each walking them in step and failing here when one ends before the other:
+`telescope` reads every `fix` and `Π` of a declaration before anything runs (D55's pass), a function
+or function type as it is formed and checked (`checkFix`, `piSort`), and every frame that binds a
+function's parameters (`paramDecls`: a call's run and type, a comparison of Π-types). So no reader
+pairs them short; before, they were zipped, `(fix _ (y) [Nat, Nat] : Nat := y)(1, 2)` was accepted,
+and two Π-types whose second domains differ were convertible. -/
+def bindersDiffer {α : Type} (hs : List Hint) (ds : List Term) : M α :=
+  err s!"[D151] a function's binder lists differ in length: {hs.length} parameter names, {ds.length} parameter types"
+
 -- the declared-type readers are mutually recursive, on fuel (all checker code is total)
 mutual
 
@@ -416,10 +427,15 @@ def sortOf (fuel : Nat) (T : Value) : M Nat := do
     let mut sc := capSc
     let mut ns : List String := cs.map fun _ => "κ"
     let mut l := 0
-    for (h, d) in hs.zip ds do
+    -- D151: the names and the types in step, ending together
+    let mut rest := ds
+    for h in hs do
+      let d :: more := rest | bindersDiffer hs ds
+      rest := more
       l := max l (← declSort fuel' sc ns d)
       sc := (← typeDecl fuel' false sc ns d) :: sc
       ns := h.name :: ns
+    unless rest.isEmpty do bindersDiffer hs ds
     let lb ← declSort fuel' sc ns c
     pure (if lb == 0 then 0 else max l lb)
   | _ => err s!"{T} is not a type"
@@ -691,10 +707,15 @@ def telescope (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) 
   let mut sc := sc
   let mut ns := ns
   let mut l := 0
-  for (h, d) in hs.zip ds do
+  -- D151: the names and the types in step, ending together
+  let mut rest := ds
+  for h in hs do
+    let d :: more := rest | bindersDiffer hs ds
+    rest := more
     l := max l (← typePos fuel' chk sc ns d)
     sc := (← typeDecl fuel' chk sc ns d) :: sc
     ns := h.name :: ns
+  unless rest.isEmpty do bindersDiffer hs ds
   pure (sc, ns, l)
 termination_by structural fuel
 

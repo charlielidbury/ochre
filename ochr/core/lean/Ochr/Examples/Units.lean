@@ -537,3 +537,91 @@ example : firstLiveLoanOnPath #[] (.ind "Box" 0 ⟨"MkBox"⟩ [] [.zero]) [Step.
 example : firstLiveLoanOnPath #[] (.sealed .zero) [Step.proj 0] = none := rfl
 
 end Ochr.Units
+
+/-! ## A call has one argument per parameter, and a function's binder lists one length (D151)
+
+The resolver writes a call with as many arguments as its function has parameters, and a function
+or function type with one name per parameter type; the core took both on trust. A typed call, and
+an untyped one that wanted the call's type, checked the count (`callType`, D134), but an untyped
+run that did not want it ran the body with the arguments it had: `T3()` read the frame's earlier
+binding (the own-name slot, `()`), and `T3(TA, TA)` dropped the extra one. The names and the types
+were zipped, so a frame bound the shorter list: `(fix _ (y) [Nat, Nat] : Nat := y)(1, 2)` was
+accepted, and two Π-types that differ only in the domain the names leave out were convertible
+(`Eq(Type, Π(y)[Nat, Unit]. Nat, Π(y)[Nat, Nat]. Nat)` by `refl`). Since D151 the count is checked
+where a body's frame binds its parameters (`runBodyCore`), and the lengths wherever the two lists
+are read together (`telescope` and `sortOf`, which walk them in step, `bindersDiffer`). Pinned on hand-built terms: the
+guards on malformed terms below fail against the checker before D151, the controls hold. -/
+
+namespace Ochr.Units
+
+#guard_msgs (drop warning) in
+ochr CallShape uses Nats {
+  inductive Tri := TA | TB | TC
+  def T3 (t : Tri) : Nat := match t { TA => 0, TB => 1, TC => 2, }
+}
+
+/-- The state after `CallShape` (a function, as `stArm`). -/
+def stShape (_ : Unit) : MState :=
+  let p := Ochr.Test.libOf {} 2000000 CallShape ++ CallShape.decls
+  let (g, i) := globalsAfter {} (p.filterMap fun d => (resolveProgram p d).toOption)
+  { globals := g, inds := i }
+
+/-- The verdict of a definition made by hand, checked after `CallShape`. -/
+def shapeVerdict (d : Def) : String :=
+  match runM (checkDef d) (stShape ()) with
+  | .ok () => "accepted"
+  | .error m => m
+
+/-- An untyped run: `body` as the body of a global `G (t : Nat) : Nat` made by hand, called `G(0)`;
+the call `T3(…)` in it does not want its type. -/
+def runShape (body : Term) : String :=
+  let fx : Term := .fix ⟨"G"⟩ [⟨"t"⟩] [.nat] .nat none body
+  let G : GDef := { name := "G", ty := .tPi [] (.pi [⟨"t"⟩] [.nat] .nat) [], fn? := some fx, val := .gfn "G" }
+  match runM (do pure (← Ochr.eval 1000 false (.call (.const "G") [.zero] false) none).1)
+      (let s := stShape (); { s with globals := s.globals ++ [G] } : MState) with
+  | .ok v => s!"{v}"
+  | .error m => m
+
+def shTA : Term := .ctor "Tri" 0 ⟨"TA"⟩ [] []
+def shTB : Term := .ctor "Tri" 1 ⟨"TB"⟩ [] []
+/-- `fix _ (hs) [ds] : Nat := body` -/
+def shLam (hs : List String) (ds : List Term) (body : Term) : Term := .fix ⟨"_"⟩ (hs.map (⟨·⟩)) ds .nat none body
+def shId : Term := shLam ["y"] [.nat] (.place (.var 0))
+def shConst (cod body : Term) : Def := { name := "X", hs := [], doms := [], cod := cod, body := body }
+def arityMsg (n m : Nat) : String := s!"arity: {n} parameters, {m} arguments"
+def bindersMsg (n m : Nat) : String := s!"[D151] a function's binder lists differ in length: {n} parameter names, {m} parameter types"
+
+-- (a) the count, in an untyped run that does not want the call's type: a global, a closure, an
+-- embedded closure (before D151: `()`, `0`, `()`, `1`, `()`)
+#guard runShape (.call (.const "T3") [shTB] false) == "1"
+#guard runShape (.call (.const "T3") [] false) == arityMsg 1 0
+#guard runShape (.call (.const "T3") [shTA, shTA] false) == arityMsg 1 2
+#guard runShape (.call shId [numT 1] false) == "1"
+#guard runShape (.call shId [] false) == arityMsg 1 0
+#guard runShape (.call shId [numT 1, numT 2] false) == arityMsg 1 2
+#guard runShape (.call (.val (.clo [] shId [])) [] false) == arityMsg 1 0
+-- ... and typed, as before (`callType`)
+#guard shapeVerdict (shConst .nat (.call (.const "T3") [] false)) == arityMsg 1 0
+
+-- (b) the binder lists: a closure called, typed and untyped; a definition's own; a Π-type in an
+-- equation, written and embedded; a closure in an arm no run reaches (before D151: all accepted,
+-- and the untyped run gave `1`)
+def shTwo : Term := shLam ["y"] [.nat, .nat] (.place (.var 0))
+#guard shapeVerdict (shConst .nat (.call shTwo [numT 1, numT 2] false)) == bindersMsg 1 2
+#guard runShape (.call shTwo [numT 1, numT 2] false) == bindersMsg 1 2
+#guard runShape (.call (.val (.clo [] shTwo [])) [numT 1, numT 2] false) == bindersMsg 1 2
+#guard shapeVerdict { name := "X", hs := [⟨"t"⟩, ⟨"u"⟩], doms := [.nat], cod := .nat, body := .place (.var 0) } ==
+  bindersMsg 2 1
+def shPiNU : Term := .pi [⟨"y"⟩] [.nat, .unit] .nat
+def shPiNN : Term := .pi [⟨"y"⟩] [.nat, .nat] .nat
+#guard shapeVerdict (shConst (.eq (.sort 1) shPiNU shPiNN) reflT) == bindersMsg 1 2
+#guard shapeVerdict (shConst (.eq (.sort 1) (.val (.tPi [] shPiNU [])) (.val (.tPi [] shPiNN []))) reflT) == bindersMsg 1 2
+#guard shapeVerdict (shConst .nat (.letIn ⟨"z"⟩ .zero (.matchNat (.var 0) (numT 0) (.call shTwo [numT 1, numT 2] false)))) ==
+  bindersMsg 1 2
+-- the same, well formed: called, and the two Π-types not convertible
+#guard shapeVerdict (shConst .nat (.call (shLam ["y", "z"] [.nat, .nat] (.place (.var 1))) [numT 1, numT 2] false)) == "accepted"
+#guard runShape (.call (shLam ["y", "z"] [.nat, .nat] (.place (.var 1))) [numT 1, numT 2] false) == "1"
+#guard shapeVerdict (shConst (.eq (.sort 1) (.pi [⟨"y"⟩, ⟨"z"⟩] [.nat, .unit] .nat) (.pi [⟨"y"⟩, ⟨"z"⟩] [.nat, .nat] .nat)) reflT) ==
+  "the body of X has type ⊤, but the goal is Eq(Type, Π(y : Nat) (z : Unit). Nat, Π(y : Nat) (z : Nat). Nat)"
+
+end Ochr.Units
