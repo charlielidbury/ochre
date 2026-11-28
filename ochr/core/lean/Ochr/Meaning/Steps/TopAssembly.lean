@@ -47,9 +47,8 @@ section
 variable (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (fuel : Nat)
 
 /-- **The context grows by the definition's meaning** (MIXED; PROVED for the constant of `def one : Nat := 1`,
-`Top.One.globGrow_one`; for a function unread at any program but by reading at `R`, docs/31 D259: its `fixEq` part
-computed there, its closure tools `Top.RT.closureAt_nat_congr` and `GG_R` proved, `ty`, `fn`, `accepted`, `retKind`
-not assembled). After an accepted definition, every
+`Top.One.globGrow_one`; for a function PROVED at `R` but for `retKind` at an arbitrary forming state, `Top.RT.globGrow_R`,
+docs/31 D259). After an accepted definition, every
 global of the next stage meets `GlobalsOk`'s clauses at the context of every later check. Its parts: (i) the earlier
 globals' clauses carry from this stage's contexts to the next's (one more global, the decisions of a later state): the
 code runs alike there (the names an item mentions are the stage's, `NamesFact`; the decisions on a code are stable at
