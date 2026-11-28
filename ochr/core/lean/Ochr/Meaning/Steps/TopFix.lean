@@ -210,16 +210,113 @@ def FixMeanAt (P : ProgState) (d : Def) (st' : MState) : Prop :=
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D Γ st') d (.tPi [] (.pi d.hs d.doms d.cod) []) = some m ∧
       m.1 ∈ₛ[dm.read] m.2.m
 
+
+/-- **The function type's parts run at every member tuple** (`PartsRun`; MIXED, read true: (II) at `checkFix`'s own
+evaluations of the parameter types and the codomain at the generic arguments, then (I); docs/31 D257). Its failure
+makes the stored type mean `err`, which has no member. FixFitsAt's sort-0 clause is an instance. -/
+def FixPartsAt (P : ProgState) (d : Def) (st' : MState) : Prop :=
+  PiOk dm.read (psG (P.ctx dm D Γ st') (fun _ => .err) noFuture d.doms) [] (outG (P.ctx dm D Γ st') (fun _ => .err) noFuture d.doms d.cod)
+
+/-- **A global's code is closed** (RESOLUTION, read true: a top-level definition's resolved `fix` term has no free
+variable). -/
+def FixClosedAt (d : Def) : Prop := (Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body).freeVars = []
+
+/-- **The table reads the `fix` term as a proof only at sort `0`** (DECISIONS, read true: the proof flag and `piSort`
+both read the codomain's declared sort). -/
+def FixFlagAt (P : ProgState) (d : Def) (st' : MState) : Prop :=
+  ((P.ctx dm D Γ st').D.flags (scopeOf (emptyState 0)) (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body)).2 = true →
+    lG (P.ctx dm D Γ st') d.hs d.doms d.cod = 0
+
 /-- **A function's links, about its own check**: an accepted function at a stage meeting the invariant has a witness
-meeting all six. -/
+meeting all eight (`FixMeanAt` is derived from the last three, `fixMeanAt_of`, docs/31 D257). -/
 def FixG (items : List Item) : Prop :=
   ∀ (P : ProgState) (d : Def) (st' : MState), AtStage dm D Γ fuel items P (.defn d) → d.doms ≠ [] →
     (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st' →
     StageOk dm D Γ P → DataFaithful dm D Γ P → (∀ d' ∈ Γ, dm.covers d') → P.inds <+: Γ →
     ∃ w : FixWit, FixCheckAt P d st' w ∧ FixFitsAt dm D Γ P d st' ∧ FixStartAt dm D Γ P d st' w ∧
-      BodyCongrAt dm D Γ P d st' ∧ FixLeafAt dm D Γ P d st' w ∧ FixMeanAt dm D Γ P d st'
+      BodyCongrAt dm D Γ P d st' ∧ FixLeafAt dm D Γ P d st' w ∧ FixPartsAt dm D Γ P d st' ∧ FixClosedAt d ∧
+      FixFlagAt dm D Γ P d st'
 
 end
+
+/-! ## `FixMeanAt` derived (docs/31 D257): the round trip of codes is definitional -/
+
+/-- **The stored Π-type's meaning is the `.pi` term's run at the forming state**: `piTyAt` at the parts when they run
+(`PiOk`). -/
+theorem globalTyS_tPi (K : RunCtx) (hs : List Hint) (ds : List Term) (c : Term)
+    (hok : PiOk K.dm.read (psG K (fun _ => .err) noFuture ds) [] (outG K (fun _ => .err) noFuture ds c)) :
+    globalTyS (fun _ => .err) K (.tPi [] (.pi hs ds c) []) =
+      .plain (piTyAt K.dm.read (lG K hs ds c) (psG K (fun _ => .err) noFuture ds) (outG K (fun _ => .err) noFuture ds c)) := by
+  unfold globalTyS Value.tyS
+  rw [meanV_eq_mean]
+  have h1 : meanV K (fun _ => .err) (fun _ => .err) (.plain .err) (.tPi [] (.pi hs ds c) []) =
+      (match run K (fun _ => .err) (fun _ => .err) (.plain .err) (.pi hs ds c) (stateOf 0 []) with
+        | some ((v, _), _) => Sem.ty v.asTy
+        | none => .ty TyM.err) := by
+    classical
+    show (if CapsOk K.dm.read (capsVals K (fun _ => .err) (fun _ => .err) []) (capsTys K (fun _ => .err) (fun _ => .err) []) then
+        match run K (fun _ => .err) (fun _ => .err) (.plain .err) (.pi hs ds c)
+          (stateOf 0 (capsState (capsVals K (fun _ => .err) (fun _ => .err) []) (capsTys K (fun _ => .err) (fun _ => .err) []))) with
+        | some ((v, _), _) => Sem.ty v.asTy
+        | none => .ty TyM.err
+      else .ty TyM.err) = _
+    rw [capsVals, capsTys, if_pos (show CapsOk K.dm.read [] [] from trivial)]
+    rfl
+  have hok' : PiOk K.dm.read (runDoms K (fun _ => .err) (fun _ => .err) (stateOf 0 []) ds) []
+      (codOf K (fun _ => .err) (fun _ => .err) (stateOf 0 []) (bindsOf K (fun _ => .err) (fun _ => .err) (stateOf 0 []) ds)
+        (ds.map Term.isRefTy) c) := hok
+  rw [h1, run, run_pi_def, if_pos hok']
+  rfl
+
+/-- A strict test that passes. -/
+theorem strictS_some (R : DataRead) (x : Sem × TyS) (s : SState) (h : x.1 ∈ₛ[R] x.2.m) :
+    SM.strictS R (fun s' => some (x, s')) s = some (x, s) := by
+  simp only [SM.strictS, if_pos h]
+
+/-- **`FixMeanAt` from `PartsRun`** (kernel-checked; standard axioms): a function's recorded meaning is a member of its
+stored type, given the parts of that type running at every member tuple (`PartsRun`, `PiOk`: (II) at `checkFix`'s
+evaluations of the parameter types and the codomain, then (I)), the code closed (a resolution fact), and the table's proof
+flag on the fix term only at sort `0` (both decisions read the codomain's declared sort). -/
+theorem fixMeanAt_of (dm : DataModel) (D : MState → Decisions) (Γ : List IndDecl) (P : ProgState) (d : Def) (st' : MState)
+    (hd : d.doms ≠ []) (hclosed : FixClosedAt d) (hparts : FixPartsAt dm D Γ P d st') (hflag : FixFlagAt dm D Γ P d st') :
+    FixMeanAt dm D Γ P d st' := by
+  intro hmem
+  unfold FixFlagAt at hflag
+  have hA := globalTyS_tPi (P.ctx dm D Γ st') d.hs d.doms d.cod hparts
+  have hcap : capOrder (Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body) = [] := by
+    have hc : (Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body).freeVars = [] := hclosed
+    unfold capOrder; rw [hc]; rfl
+  have hne : d.doms.isEmpty = false := by
+    cases h : d.doms with
+    | nil => exact absurd h hd
+    | cons _ _ => rfl
+  unfold defMeaning
+  have hfm : fixMoves (P.ctx dm D Γ st') (Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body) (emptyState 0) = emptyState 0 := by
+    unfold fixMoves; rw [hcap]; rfl
+  have he0 : (emptyState 0 : SState) = stateOf 0 [] := rfl
+  rw [hne, if_neg Bool.false_ne_true, run, run_fix_def, hcap, hfm, hA]
+  simp only [FoldOk, if_true, he0]
+  simp only [psG, outG, lG, GG, formG, fbG] at hmem hflag
+  rw [he0] at hflag
+  generalize hfl : (P.ctx dm D Γ st').D.flags (scopeOf (stateOf 0 [])) (Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body) = fl at hflag ⊢
+  obtain ⟨b1, b2⟩ := fl
+  rw [strictS_some]
+  · cases b2 with
+    | false =>
+      cases b1
+      · exact ⟨_, rfl, hmem⟩
+      · exact ⟨_, rfl, hmem⟩
+    | true =>
+      have hl : lG (P.ctx dm D Γ st') d.hs d.doms d.cod = 0 := hflag rfl
+      have hl' : (P.ctx dm D Γ st').D.piSort (scopeOf (stateOf 0 [])) (Term.pi d.hs d.doms d.cod) = 0 := hl
+      simp only [SM.erasedIf, if_true, hl', closureAt]
+      refine ⟨_, rfl, ?_⟩
+      have h0 := hmem
+      simp only [hl', closureAt] at h0
+      show Sem.proof ∈ₛ[dm.read] piTyAt dm.read (lG (P.ctx dm D Γ st') d.hs d.doms d.cod) _ _
+      rw [hl]
+      exact h0
+  · exact hmem
 
 section
 variable {dm : DataModel} {D : MState → Decisions} {Γ : List IndDecl} {fuel : Nat}

@@ -103,7 +103,8 @@ theorem stageOk_defn
       obtain ⟨g, hg, hgn, -⟩ := hck.2.2.2.2.2.2.2.2.1
       refine ⟨const_member hsteps hsorts items hL.const P d st' hin hd hP hfaith hcov hΓP hr, ⟨g, by rw [hg]; simp, hgn⟩,
         fun h => absurd hd h⟩
-    · obtain ⟨w, hck, hfit, hst, hcg, hlf, hmn⟩ := hL.func P d st' hin hd hr hP hfaith hcov hΓP
+    · obtain ⟨w, hck, hfit, hst, hcg, hlf, hpa, hcl, hfl⟩ := hL.func P d st' hin hd hr hP hfaith hcov hΓP
+      have hmn := fixMeanAt_of dm D Γ P d st' hd hcl hpa hfl
       refine ⟨fix_member hsteps hsorts P d st' hP w hck hfit hst hcg hlf hmn,
         ⟨fnEntry d w.model, by rw [hck.2.2.2.2.2.2.2.2.1]; simp, rfl⟩,
         fun _ ρ φ => fnGoodAt_of_knot hsteps hsorts P d st' hP w hck hfit hst hcg hlf ρ φ⟩
