@@ -910,6 +910,29 @@ def callPi (piTy : Value) (n : Nat) :
   if ds.length != n then err s!"arity: {ds.length} parameters, {n} arguments"
   pure (cs, hs, ds, c, rd)
 
+/-- D143: a codomain that is a sort is written as one. Made where a codomain `c` is evaluated for a
+typing check, at its generic parameters, to the value `G` (a definition's or a λ's goal, `checkFix`;
+a function type's codomain, [T-Pi]'s `piSort`), with `cd`, the codomain's declared reading
+(`paramDecls`). The class of a function's calls is read from the written codomain (`fnClass`: a
+written sort returns types), the pre-pass reads each call by `cd`, and its results are values of
+`G`; so a codomain whose value is a sort (`let z = 0; Type`, `(Type : Type₁)`, a constant or a
+type function computing `Type`) or whose reading is one (a match whose arms all return the sort,
+stuck at the generic parameters) is a sort written as one, or the three disagree: the pre-pass
+erased the call of `def GL (n : Nat) : (let z = 0; Type) := Nat` and the run did not ("INTERNAL
+[pre-pass]"), and `(Type : Type₁)` made a function returning types whose calls are data. D128's
+rule for a parameter's declared type, at a codomain. A codomain that is an embedded value (a stuck
+block's function, whose class is given at its call) is not written, and not tested. `what` names
+the function, `ns` the names of the codomain's scope. -/
+def codomainWritten (what : String) (c : Term) (ns : List String) (G : Value) (cd : DeclInfo) : M Unit := do
+  if c matches .sort _ | .val _ then return
+  let S? := match G, cd with
+    | .sort l, _ => some (l, "is")
+    | _, .sort l => some (l, "reads as")
+    | _, _ => none
+  if let some (l, how) := S? then
+    let S := (Term.sort l).pp []
+    err s!"[D143] the result type of {what} is declared at {c.pp ns}, which {how} the sort {S} without being written as one: a function returning types has its result type written as a sort (write {S} there)"
+
 -- the machine is one `mutual` block, and compiling it (LCNF) outgrew the default heartbeats
 set_option maxHeartbeats 1000000 in
 mutual
@@ -1940,7 +1963,7 @@ def piSort (fuel : Nat) (T : Value) : M Nat := do
   privately do
     pushFrame
     pushCaps fuel' cs rd
-    let (pds, _) ← paramDecls fuel' cs rd hs ds c
+    let (pds, cd) ← paramDecls fuel' cs rd hs ds c
     let mut l := 0
     for ((d, h), pd) in (ds.zip hs).zip pds do
       let A ← evalType fuel' d
@@ -1948,7 +1971,10 @@ def piSort (fuel : Nat) (T : Value) : M Nat := do
       let gv ← genericValue fuel' A pd
       let pd' ← refineDecl pd
       pushBind h (some A) gv pd'.isProof pd'
-    let lb ← sortOf fuel' (← evalType fuel' c)
+    let G ← evalType fuel' c
+    -- D143: a codomain that is a sort is written as one
+    codomainWritten s!"the function type {T}" c (hs.reverse.map (·.name) ++ cs.map fun _ => "κ") G cd
+    let lb ← sortOf fuel' G
     pure (if lb == 0 then 0 else max l lb)
 termination_by structural fuel
 
@@ -4921,6 +4947,8 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
           | .abs σ => if A == .tNat || (A matches .tInd ..) then some σ else none
           | _ => none)
   let goal ← evalType fuel' c
+  -- D143: a codomain that is a sort is written as one
+  codomainWritten (match fv with | .gfn f => f | _ => "a λ") c (hs.reverse.map (·.name) ++ cs.map fun _ => "κ") goal cd
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
   let F1 ← popFrameRaw
   let piTy := Value.tPi cs (.pi hs ds c) rd
