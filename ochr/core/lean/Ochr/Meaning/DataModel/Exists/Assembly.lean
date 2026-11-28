@@ -9,6 +9,8 @@ import Ochr.Meaning.Steps.Machine.CheckItem
 import Ochr.Meaning.Steps.Machine.CheckIndSpec
 import Ochr.Meaning.DataModel.Exists.FieldLevel
 import Ochr.Meaning.DataModel.Exists.GlobalCalls
+import Ochr.Meaning.DataModel.Exists.Names
+import Ochr.Meaning.Steps.Machine.NamesSpec
 
 /-!
 # The assembly: the induction's invariant, and the existence of the data model (exists8–exists10)
@@ -28,13 +30,16 @@ an accepted definition, `inv_defn`; an accepted inductive declaration of either 
 with `inv_ind_faithful`), `exists_of_inv`, `globalCallLevels` (exists12, `GlobalCalls.lean`), and
 `exists_dataModel_facts`, which assumes the facts in `DataFacts` (docs/34 §18.16 and §18.17 give each
 one's exact statement and status):
-* about the checker: `NamesFact` (read true for resolved items) and `VaryValFact` (read true since
-  main's D128; not derived: its `.any` case at an inductive's type parameter is decided by a run,
-  `FactsCE.dVS`); `ItemFacts` is PROVED (`itemFacts`, exists12: `CheckIndGivesChecks` assembled,
+* about the checker: `NamesConstTy` (a constant's stored type names only the stage's names: the one part
+  of `NamesFact` that is not syntax; read true, not derived) and `VaryValFact` (read true since main's
+  D128; not derived: its `.any` case at an inductive's type parameter is decided by a run,
+  `FactsCE.dVS`); `NamesFact` but that part is PROVED (`namesFact`, exists13, from D118's
+  `undeclaredCheck`); `ItemFacts` is PROVED (`itemFacts`, exists12: `CheckIndGivesChecks` assembled,
   `Steps/Machine/CheckIndSpec.lean`); `FieldHeads` is PROVED (`fieldHeads`, exists13, from main's D140:
   `Steps.Machine.runs_checkInd_heads`);
-* about resolution: `NoValFact` (no embedded value in an inductive item's types), PROVED for the items a
-  program resolves to (exists12, `Steps.Machine.noVal_runResolve`); a separate hypothesis of
+* about resolution: `NoValFact` (no embedded value in an inductive item's types) and `DefsNoVal` (none in
+  a definition's types and body), PROVED for the items a program resolves to (exists12,
+  `Steps.Machine.noVal_runResolve`; exists13, `noValDef_runResolve`); separate hypotheses of
   `exists_dataModel_facts`, discharged by `Consistency.exists_dataModel` from the resolution;
 * an obligation on the checker's decisions: `DecStable` (at the states the checker reaches). Frame
   locality's obligation `DecLocal` is `exists_dataModel_facts`'s own hypothesis, all four parts PROVED at
@@ -405,7 +410,8 @@ def DecStable : Prop :=
         run { K with D := D st' } ρ noFuture (.plain (TyM.univ 2)) (Knot.paramTerm d' j) (Params.frameP d' (K.dm.paramTy d') (D st') mask ps))
 
 /-- **The names an accepted item's code mentions are the stage's** (about the checker: resolution
-and D118, `undeclaredCheck`; not derived): an accepted definition's body, its `fix` term and its stored
+and D118, `undeclaredCheck`; PROVED but for a constant's stored type, `namesFact` below, exists13,
+which takes that part as `NamesConstTy`): an accepted definition's body, its `fix` term and its stored
 type name only the stage's declarations and globals; an accepted inductive declaration's field types
 name only the stage's declarations and itself (as an applied type), its constructors only the stage's
 declarations', and its globals the stage's; its parameter types only the stage's. Stated at any model
@@ -468,6 +474,294 @@ theorem fieldHeads : FieldHeads fuel items := by
   rw [hT1]
   exact ⟨fun c i v h1 h2 => hP c i v h1 h2, fun c i f as hd h1 => hC c i f as hd h1⟩
 
+/-! ## `NamesFact` from D118, but a constant's stored type (exists13)
+
+D118's `undeclaredCheck` runs on every item's written terms before anything runs; `Names.nok_of_undeclared`
+turns what it checked into the name tests `NamesFact` asks, given that resolution put no embedded value in the
+terms (`NoValFact`, `DefsNoVal`), that every global of a stage has a meaning (`stage_globals_means`), and that
+a field type names no constructor of the type being declared (K4, `Names.foB_ctorFree`). A constant's stored
+type is not written: it is the goal VALUE `checkDef` evaluates, and is left as `NamesConstTy`. -/
+
+theorem undeclaredList_mem {okC okT : String → Bool} : ∀ {ts : List Term}, Term.undeclaredList okC okT ts = none →
+    ∀ t ∈ ts, t.undeclared okC okT = none
+  | [], _, t, ht => absurd ht List.not_mem_nil
+  | u :: us, h, t, ht => by
+    unfold Term.undeclaredList at h
+    obtain ⟨h1, h2⟩ := Names.orElse_none h
+    rcases List.mem_cons.1 ht with rfl | ht
+    · exact h1
+    · exact undeclaredList_mem h2 t ht
+
+theorem find_isSome_of_mem {α : Type _} {p : α → Bool} {l : List α} {a : α} (ha : a ∈ l) (hp : p a = true) :
+    (l.find? p).isSome = true := by
+  cases h : l.find? p with
+  | some _ => rfl
+  | none => rw [List.find?_eq_none] at h; exact absurd hp (h a ha)
+
+section
+variable (D : MState → Decisions) (fuel : Nat) (items : List Item)
+
+/-- The run of the `k`-th item, accepted, when it is a definition (`runs_checkDef_names` at the stage's state). -/
+theorem verdict_defn {k : Nat} {hk : k < items.length} {st' : MState} {d : Def}
+    (hv : verdict fuel items k hk = .ok () st') (hit : items[k] = .defn d) :
+    (stSt fuel items k).globals.any (·.name == d.name) = false ∧
+    Term.undeclaredList (fun m => (stSt fuel items k).globals.any (·.name == m))
+      (fun m => none == some m || (none != some m && (stSt fuel items k).inds.any (·.name == m)))
+      (d.doms ++ [d.cod, d.body]) = none ∧
+    ∃ g : GDef, st'.globals = (stSt fuel items k).globals ++ [g] ∧ g.name = d.name ∧
+      (d.doms.isEmpty = false → g.ty = .tPi [] (.pi d.hs d.doms d.cod) []) := by
+  unfold verdict at hv
+  have hr := Steps.Machine.runs_of_runMachine_fst hv
+  rw [hit] at hr
+  unfold checkItem at hr
+  obtain ⟨_, s₁, b₁, hs, hc⟩ := Steps.Runs.bind_inv hr
+  obtain ⟨hg, hi⟩ := Steps.Machine.runs_seedHoles_tables hs
+  obtain ⟨h1, h2, g, h3, h4, h5⟩ := Steps.Machine.runs_checkDef_names hc
+  rw [hg] at h1 h3
+  rw [hg, hi] at h2
+  exact ⟨h1, h2, g, h3, h4, h5⟩
+
+/-- The run of the `k`-th item, accepted, when it is an inductive declaration. -/
+theorem verdict_ind {k : Nat} {hk : k < items.length} {st' : MState} {d : IndDecl}
+    (hv : verdict fuel items k hk = .ok () st') (hit : items[k] = .ind d) :
+    Term.undeclaredList (fun m => (stSt fuel items k).globals.any (·.name == m))
+      (fun m => none == some m || (some d.name != some m &&
+        ((stSt fuel items k).inds ++ [{ d with ctors := [], nestable := [], declaring := true }]).any (·.name == m)))
+      (d.params.map (·.2)) = none ∧
+    Term.undeclaredList (fun m => (stSt fuel items k).globals.any (·.name == m))
+      (fun m => some d.name == some m || (none != some m &&
+        ((stSt fuel items k).inds ++ [{ d with ctors := [], nestable := [], declaring := true }]).any (·.name == m)))
+      (d.ctors.flatMap (·.2.map (·.2))) = none ∧
+    st'.globals = (stSt fuel items k).globals ∧
+    st'.inds = (stSt fuel items k).inds ++
+      [{ d with nestable := nestableSet (nestTableOf (stSt fuel items k).inds) (sortTableOf (stSt fuel items k).inds d) d }] := by
+  unfold verdict at hv
+  have hr := Steps.Machine.runs_of_runMachine_fst hv
+  rw [hit] at hr
+  unfold checkItem at hr
+  obtain ⟨_, s₁, b₁, hs, hc⟩ := Steps.Runs.bind_inv hr
+  obtain ⟨hg, hi⟩ := Steps.Machine.runs_seedHoles_tables hs
+  obtain ⟨h1, h2⟩ := Steps.Machine.runs_checkInd_undeclared hc
+  obtain ⟨h3, h4⟩ := Steps.Machine.runs_checkInd_tables hc
+  rw [hg, hi] at h1 h2
+  rw [hg] at h3
+  rw [hi] at h4
+  exact ⟨h1, h2, h3, h4⟩
+
+/-- **Every global of a stage has a meaning** (a stage invariant): an accepted definition appends one global,
+named after it (`verdict_defn`), and one meaning, under its name; an accepted declaration appends neither. -/
+theorem stage_globals_means (dm : DataModel) : ∀ k, k ≤ items.length → ∀ g ∈ (stage D fuel items dm k).globals,
+    ((stage D fuel items dm k).means.find? (·.1 == g.name)).isSome = true
+  | 0, _, g, hg => by simp [stage, progMeaning, progMeaningFrom] at hg
+  | k + 1, hk, g, hg => by
+    have ih := stage_globals_means dm k (by omega)
+    have e := stage_succ_eq D fuel items dm k (by omega)
+    have hG := (stage_sig D fuel items dm k).1
+    revert hg
+    rw [e]
+    cases hv : verdict fuel items k (by omega) with
+    | ok u st' =>
+      intro hg
+      simp only at hg ⊢
+      split
+      · rename_i d hit
+        obtain ⟨-, -, g0, h3, h4, -⟩ := verdict_defn fuel items hv hit
+        rw [h3] at hg
+        rcases List.mem_append.1 hg with hg | hg
+        · have := ih g (by rw [hG]; exact hg)
+          cases hf : (stage D fuel items dm k).means.find? (·.1 == g.name) with
+          | none => rw [hf] at this; cases this
+          | some x => rw [List.find?_append, hf]; rfl
+        · rw [List.mem_singleton] at hg
+          subst hg
+          refine find_isSome_of_mem (List.mem_append_right _ (List.mem_singleton_self _)) ?_
+          simp [h4]
+      · rename_i d hit
+        obtain ⟨-, -, h3, -⟩ := verdict_ind fuel items hv hit
+        rw [h3] at hg
+        exact ih g (by rw [hG]; exact hg)
+    | fail f => intro hg; exact ih g hg
+    | exhausted m => intro hg; exact ih g hg
+
+/-- **A definition's types and body hold no embedded value** (about resolution, as `NoValFact` for
+inductive items; PROVED for a resolved program, `Steps.Machine.noValDef_runResolve`). -/
+def DefsNoVal : Prop :=
+  ∀ d, Item.defn d ∈ items → (∀ x ∈ d.doms, x.anyAtom (fun _ => true) = false) ∧
+    d.cod.anyAtom (fun _ => true) = false ∧ d.body.anyAtom (fun _ => true) = false
+
+/-- **What `NamesFact` asks that is not syntax: a constant's stored type** (about the checker; not derived).
+`checkDef` stores a constant (a definition with no parameters) at its goal VALUE, `evalType d.cod` run at
+the stage's state, not at a written type; that this value names only the stage's declarations and globals
+is an invariant of the whole machine (evaluation builds only names it finds in Σ or in the term it runs). -/
+def NamesConstTy : Prop :=
+  ∀ (dm : DataModel) (k : Nat) (hk : k < items.length) (st' : MState),
+    verdict fuel items k hk = .ok () st' → ∀ d, items[k] = .defn d → d.doms = [] →
+      Knot.Value.nok (stageNames (indsOf {} fuel items) (stage D fuel items dm k))
+        (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = true
+
+theorem nokList_of_forall {N : Knot.NameOk} : ∀ {ts : List Term}, (∀ t ∈ ts, Knot.Term.nok N t = true) →
+    Knot.Term.nokList N ts = true
+  | [], _ => by simp [Knot.Term.nokList]
+  | t :: ts, h => by
+    simp only [Knot.Term.nokList, Bool.and_eq_true]
+    exact ⟨h t (List.mem_cons_self ..), nokList_of_forall fun u hu => h u (List.mem_cons_of_mem _ hu)⟩
+
+/-- **`NamesFact` but a constant's stored type** (PROVED from D118, exists13): given that resolution put no
+embedded value in the items (`NoValFact`, `DefsNoVal`), `NamesFact` holds whenever its one part that is not
+syntax does (`NamesConstTy`). -/
+theorem namesFact (hNV : NoValFact items) (hDV : DefsNoVal items) (hCT : NamesConstTy D fuel items) :
+    NamesFact D fuel items := by
+  intro dm k hk st' hv
+  have hPG : (stage D fuel items dm k).globals = (stSt fuel items k).globals := (stage_sig D fuel items dm k).1
+  have hPI : (stage D fuel items dm k).inds = (stSt fuel items k).inds := (stage_sig D fuel items dm k).2
+  have hpre : (stage D fuel items dm k).inds <+: indsOf {} fuel items := by
+    rw [stage_inds]; exact Steps.Machine.indsOf_take_prefix {} fuel items k
+  have hC : ∀ m, (stSt fuel items k).globals.any (·.name == m) = true →
+      (stageNames (indsOf {} fuel items) (stage D fuel items dm k)).gl m = true := by
+    intro m hm
+    obtain ⟨g, hg, hgm⟩ := List.any_eq_true.1 hm
+    have := stage_globals_means D fuel items dm k (by omega) g (by rw [hPG]; exact hg)
+    rw [beq_iff_eq.1 hgm] at this
+    exact this
+  have hTI : ∀ m, (stSt fuel items k).inds.any (·.name == m) = true →
+      (stageNames (indsOf {} fuel items) (stage D fuel items dm k)).ty m = true ∧
+      (stageNames (indsOf {} fuel items) (stage D fuel items dm k)).rc m = true := by
+    intro m hm
+    rw [← hPI] at hm
+    obtain ⟨e, he, hem⟩ := List.any_eq_true.1 hm
+    refine ⟨?_, hm⟩
+    simp only [stageNames, hm, Bool.true_and]
+    exact find_isSome_of_mem (hpre.subset he) hem
+  refine ⟨fun d hit => ?_, fun d0 d' hit hI => ?_⟩
+  · -- a definition: its written types and body by D118; its stored type when it has parameters
+    obtain ⟨hfr, hud, g, hgl, hgn, hgty⟩ := verdict_defn fuel items hv hit
+    have hmem : Item.defn d ∈ items := hit ▸ List.getElem_mem hk
+    obtain ⟨hvd, hvc, hvb⟩ := hDV d hmem
+    have key : ∀ t ∈ d.doms ++ [d.cod, d.body], t.anyAtom (fun _ => true) = false →
+        Knot.Term.nok (stageNames (indsOf {} fuel items) (stage D fuel items dm k)) t = true := by
+      intro t ht hvt
+      refine Names.nok_of_undeclared _ _ _ (fun _ => true) hC (fun m hm => ?_) (fun m hm _ => ?_) t
+        (undeclaredList_mem hud t ht) hvt (Names.nok_ctorsOnly_true t hvt)
+      all_goals
+        simp only [show (none == some m) = false from rfl, show (none != some m) = true from rfl,
+          Bool.false_or, Bool.true_and] at hm
+      · exact (hTI m hm).1
+      · exact (hTI m hm).2
+    have hdoms : Knot.Term.nokList (stageNames (indsOf {} fuel items) (stage D fuel items dm k)) d.doms = true :=
+      nokList_of_forall fun t ht => key t (List.mem_append_left _ ht) (hvd t ht)
+    have hcod := key d.cod (by simp) hvc
+    have hbody := key d.body (by simp) hvb
+    refine ⟨hbody, ?_, ?_⟩
+    · simp only [Knot.Term.nok, Bool.and_eq_true]
+      exact ⟨⟨hdoms, hcod⟩, hbody⟩
+    · by_cases hd0 : d.doms = []
+      · exact hCT dm k hk st' hv d hit hd0
+      · have hne : d.doms.isEmpty = false := by
+          cases h : d.doms with
+          | nil => exact absurd h hd0
+          | cons _ _ => rfl
+        have hf : st'.globals.find? (·.name == d.name) = some g := by
+          rw [hgl, List.find?_append]
+          have : (stSt fuel items k).globals.find? (·.name == d.name) = none := by
+            rw [List.find?_eq_none]
+            intro x hx hxn
+            have := List.any_eq_false.1 hfr x hx
+            exact this hxn
+          rw [this]
+          simp [hgn]
+        rw [hf]
+        simp only [Option.map_some, Option.getD_some, hgty hne, Knot.Value.nok, Knot.Value.nokList,
+          Knot.Value.nokRd, Knot.Term.nok, Bool.true_and, Bool.and_true, Bool.and_eq_true]
+        exact ⟨hdoms, hcod⟩
+  · -- an inductive declaration: its field and parameter types by D118's two checks
+    obtain ⟨hup, huf, -, hinds⟩ := verdict_ind fuel items hv hit
+    have hmem : Item.ind d0 ∈ items := hit ▸ List.getElem_mem hk
+    obtain ⟨hfv, hpv⟩ := hNV d0 hmem
+    -- the stored entry is `d0` with its nestable set, and it passes `IndChecks` (`itemFacts`)
+    have hv' := hv
+    unfold verdict at hv'
+    obtain ⟨d'', h1, hchk, -, -, -⟩ := (itemFacts _ _ _ _ hv').1 d0 hit
+    rw [hPI] at hI
+    obtain ⟨-, he⟩ := List.append_inj' (hinds.symm.trans hI) rfl
+    obtain ⟨-, he'⟩ := List.append_inj' (h1.symm.trans hI) rfl
+    simp only [List.cons.injEq, and_true] at he he'
+    subst he
+    subst he'
+    -- the entry is a prefix member of the program's list
+    have hS1 : (stage D fuel items dm (k + 1)).inds = st'.inds := by
+      rw [stage_succ_eq D fuel items dm k hk, hv]
+    have hpre1 : st'.inds <+: indsOf {} fuel items := by
+      rw [← hS1, stage_inds]; exact Steps.Machine.indsOf_take_prefix {} fuel items (k + 1)
+    have hEin : ((indsOf {} fuel items).find? (·.name == d0.name)).isSome = true :=
+      find_isSome_of_mem (hpre1.subset (by rw [hI]; exact List.mem_append_right _ (List.mem_singleton_self _)))
+        (by simp)
+    -- the stub's name
+    have hstub : ∀ m, (((stSt fuel items k).inds ++ [{ d0 with ctors := [], nestable := [], declaring := true }]).any
+        (·.name == m)) = true → (stSt fuel items k).inds.any (·.name == m) = true ∨ m = d0.name := by
+      intro m hm
+      rw [List.any_append] at hm
+      rcases Bool.or_eq_true_iff.1 hm with hm | hm
+      · exact .inl hm
+      · right; simp only [List.any_cons, List.any_nil, Bool.or_false, beq_iff_eq] at hm; exact hm.symm
+    refine ⟨fun c i FT hFT => ?_, fun j => ?_⟩
+    · -- a field type
+      have hFT0 : fieldTerm d0 c i = some FT := hFT
+      have hmemF : FT ∈ d0.ctors.flatMap (·.2.map (·.2)) := by
+        unfold fieldTerm at hFT0
+        obtain ⟨⟨fname, FT'⟩, h1, h2⟩ := Option.map_eq_some_iff.1 hFT0
+        obtain ⟨⟨cn, fields⟩, h3, h4⟩ := Option.bind_eq_some_iff.1 h1
+        simp only at h2
+        subst h2
+        exact List.mem_flatMap.2 ⟨(cn, fields), List.mem_of_getElem? h3,
+          List.mem_map.2 ⟨(fname, FT'), List.mem_of_getElem? h4, rfl⟩⟩
+      have hvt := hfv c i FT hFT0
+      have hfo := hchk.fo c i FT hFT
+      refine Names.nok_of_undeclared _ _ (fieldNames (indsOf {} fuel items) (stage D fuel items dm k) _) (· != d0.name)
+        (fun m hm => hC m hm) (fun m hm => ?_) (fun m hm hR => ?_) FT
+        (undeclaredList_mem huf FT hmemF) hvt (Names.foB_ctorFree _ _ _ _ FT hfo hvt)
+      all_goals
+        simp only [show (none != some m) = true from rfl, Bool.true_and] at hm
+        rcases Bool.or_eq_true_iff.1 hm with hm | hm
+      · -- the declared type itself
+        have hm' : d0.name = m := beq_iff_eq.1 hm
+        subst hm'
+        simp only [fieldNames, Bool.and_eq_true]
+        exact ⟨by simp, hEin⟩
+      · rcases hstub m hm with hm | rfl
+        · simp only [fieldNames, Bool.and_eq_true, List.any_append, Bool.or_eq_true]
+          rw [hPI]
+          exact ⟨.inl hm, ((hTI m hm).1 |> fun h => by simp only [stageNames, Bool.and_eq_true] at h; exact h.2)⟩
+        · simp only [fieldNames, Bool.and_eq_true]
+          exact ⟨by simp, hEin⟩
+      · have hm' : d0.name = m := beq_iff_eq.1 hm
+        subst hm'
+        simp at hR
+      · rcases hstub m hm with hm | rfl
+        · exact (hTI m hm).2
+        · simp at hR
+    · -- a parameter type
+      show Knot.Term.nok _ (Knot.paramTerm d0 j) = true
+      have hvt := hpv j
+      unfold Knot.paramTerm at hvt ⊢
+      cases hj : d0.params[j]? with
+      | none => rfl
+      | some hp =>
+        rw [hj] at hvt
+        simp only [Option.map_some, Option.getD_some] at hvt ⊢
+        have hmemP : hp.2 ∈ d0.params.map (·.2) := List.mem_map.2 ⟨hp, List.mem_of_getElem? hj, rfl⟩
+        refine Names.nok_of_undeclared _ _ _ (fun _ => true) hC (fun m hm => ?_) (fun m hm _ => ?_) hp.2
+          (undeclaredList_mem hup _ hmemP) hvt (Names.nok_ctorsOnly_true _ hvt)
+        all_goals
+          simp only [show (none == some m) = false from rfl, Bool.false_or, Bool.and_eq_true] at hm
+          obtain ⟨hne, hm⟩ := hm
+          rcases hstub m hm with hm | rfl
+        · exact (hTI m hm).1
+        · simp at hne
+        · exact (hTI m hm).2
+        · simp at hne
+
+end
+
 /-- **A global whose stored codomain is `Prop` or `Type` calls to level-0 type values** (the
 model's part of exists10's `FieldLevels`; about the model; PROVED, `globalCallLevels` below, exists12).
 At every stage, at every model's read, every call through the stage's meaning of such a global gives
@@ -503,8 +797,9 @@ whole: all four of its parts are PROVED at the chain's decisions (`inv`, `rep`: 
 `Array.qsort`), and `Consistency.exists_dataModel` supplies them. -/
 
 /-- **The facts the existence of the data model rests on**, together (`exists_dataModel_facts`): about
-the checker, `NamesFact`, `VaryValFact`; an obligation on the checker's decisions, `DecStable`. No longer
-fields (exists13): `FieldHeads`, proved from main's D140 (`fieldHeads`); `DecCaps` (`DecLocal`'s `caps`
+the checker, `NamesConstTy`, `VaryValFact`; an obligation on the checker's decisions, `DecStable`. No longer
+fields (exists13): `NamesFact`, proved from D118 but for a constant's stored type (`namesFact`), which is
+the field `namesConst`; `FieldHeads`, proved from main's D140 (`fieldHeads`); `DecCaps` (`DecLocal`'s `caps`
 part), proved at the chain's decisions (`Steps.Machine.decLocal_caps_chain`), so `DecLocal` whole is
 `exists_dataModel_facts`'s own hypothesis. No longer fields (exists12): `ItemFacts`, proved
 (`itemFacts`); the fact about the model, `GlobalCallLevels`, proved (`globalCallLevels`); the fact about
@@ -513,7 +808,7 @@ which `exists_dataModel_facts` takes as its own hypothesis and `Consistency.exis
 from the resolution. -/
 structure DataFacts : Prop where
   varyVal : VaryValFact fuel items
-  names : NamesFact D fuel items
+  namesConst : NamesConstTy D fuel items
   decStable : DecStable D fuel items
 
 /-! ## The step's bookkeeping (exists10) -/
@@ -1043,12 +1338,14 @@ embedded value (`NoValFact`, true of a resolved program: `Consistency.noValFact_
 `DecLocal` (true of the chain's decisions: `Steps.Machine.decLocal_inv_chain`, `decLocal_join_chain`,
 `decLocal_rep_chain`, `decLocal_caps_chain`); the stage prefix fact
 is machine10's PROVED `Steps.Machine.indsOf_take_prefix`. -/
-theorem exists_dataModel_facts (hNV : NoValFact items) (hDL : ∀ st, FrameLocal.DecLocal (D st)) (hF : DataFacts D fuel items) :
+theorem exists_dataModel_facts (hNV : NoValFact items) (hDV : DefsNoVal items) (hDL : ∀ st, FrameLocal.DecLocal (D st))
+    (hF : DataFacts D fuel items) :
     ∃ dm : DataModel,
       (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel items).Covered dm ∧
       ∀ k, k ≤ items.length → DataFaithfulU dm D (indsOf {} fuel items)
         (progMeaning dm D (indsOf {} fuel items) (fun _ => .err) {} fuel (items.take k)) :=
-  exists_dataModel' D fuel items itemFacts hNV hF.varyVal hF.names (fieldHeads fuel items) (globalCallLevels D fuel items)
+  exists_dataModel' D fuel items itemFacts hNV hF.varyVal (namesFact D fuel items hNV hDV hF.namesConst)
+    (fieldHeads fuel items) (globalCallLevels D fuel items)
     hDL hF.decStable
     (fun k _ => Steps.Machine.indsOf_take_prefix {} fuel items k)
 

@@ -308,4 +308,42 @@ theorem noVal_runResolve (p : List SDecl) (sd : SDecl) (fuel : Nat) (record : Bo
     show runResolve p sd fuel record = _
     rw [← h])
 
+/-! ## No embedded value in a definition's types and body (exists13, for `NamesFact`) -/
+
+/-- What `NamesFact` asks of a definition item: no embedded value in a parameter type, the codomain or the body. -/
+def DefNoVal (it : Item) : Prop := ∀ d, it = .defn d → (∀ x ∈ d.doms, NoValT x) ∧ NoValT d.cod ∧ NoValT d.body
+
+theorem noValDef_resolveDecl (sd : SDecl) (fuel : Nat) : RRet DefNoVal (resolveDecl sd fuel) := by
+  unfold resolveDecl Surface.binders Surface.resolve
+  have hF := noVal_resolveF fuel
+  split
+  · dsimp only
+    repeat (any_goals first
+      | exact RRet.throwBind
+      | exact RRet.pure' (fun d h => by cases h)
+      | (refine RRet.bind' fun _ => ?_)
+      | (apply RRet.ite' <;> intro _)
+      | (split)
+      | (dsimp only))
+  · dsimp only
+    split
+    · exact RRet.throwBind
+    · refine RRet.bind_of (hF.2 _ _) fun r hr => ?_
+      refine RRet.bind_of (hF.1 _ _ _) fun cod hcod => ?_
+      apply RRet.ite' <;> intro _
+      all_goals
+        refine RRet.bind_of (hF.1 _ _ _) fun body hbody => RRet.bind' fun dec => RRet.pure' ?_
+        intro d hd
+        cases hd
+        exact ⟨hr, hcod, hbody⟩
+
+/-- **A resolved definition holds no embedded value** in its parameter types, codomain or body. -/
+theorem noValDef_runResolve (p : List SDecl) (sd : SDecl) (fuel : Nat) (record : Bool) {it : Item}
+    (h : (runResolve p sd fuel record).1 = .ok (.ok it)) : DefNoVal it := by
+  have := noValDef_resolveDecl sd fuel
+  unfold RRet at this
+  exact this (Tables.ofProgram p) { record := record } it (runResolve p sd fuel record).2 (by
+    show runResolve p sd fuel record = _
+    rw [← h])
+
 end Ochr.Meaning.Steps.Machine
