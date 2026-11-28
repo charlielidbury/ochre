@@ -559,13 +559,16 @@ def wholeBorrowArgs (ws : Array Value) (what : String) : M Unit := do
       if u.hasHole then
         err s!"[D53] argument {i + 1} of {what} is a borrow whose content is partly moved out ({u})"
 
-/-- D78 [Rec]: for each variable a closure formed from `t` captures, in `capture`'s order
-(oldest binding first), the mark of the binding it captures: whether it is some function's
-binding of itself, or a capture of one. Read from the bindings themselves, never from their
-values: capturing a function value that is not a copy moves it, leaving `⊥` behind, but the
-binding keeps its mark. -/
-def capMarks (t : Term) : M (Array (Option Nat)) := do
-  let fvs := (t.freeVars.toArray.qsort (· > ·)).toList
+/-- D78 [Rec]: for each variable a closure keeps as a capture (`capture`'s list, oldest binding
+first), the mark of the binding it captures: whether it is some function's binding of itself, or a
+capture of one. Read from the bindings themselves, never from their values: capturing a function
+value that is not a copy moves it, leaving `⊥` behind, but the binding keeps its mark. Since D139
+a function under check is never kept as a capture, and the only bindings that carry a mark are
+functions' bindings of themselves (D136's amendment), which only a recursive function's body can
+name (D31), where it holds the function under check, and captures marked from them; so every mark
+read here is `none` (measured at D139's landing), and the marks decide nothing a comparison of
+names would not. Kept, as D139 says. -/
+def capMarks (fvs : List Nat) : M (Array (Option Nat)) := do
   let top := (← get).env.back!
   pure (fvs.toArray.map fun o => (top.binds[top.binds.size - 1 - o]?).bind (·.recUid))
 
@@ -590,8 +593,8 @@ def markLastRec (uid : Nat) : M Unit := do
     else { fr with binds := fr.binds.modify (fr.binds.size - 1) ({ · with recUid := some uid }) }
 
 /-- D78 [Rec]: the frame mark of a call's head, when the head is a variable: the
-`Binding.recUid` of the binding it names (a function's binding of itself, or a closure's
-capture of it), else `none`. -/
+`Binding.recUid` of the binding it names (a function's binding of itself; a closure's capture of
+it, before D139), else `none`. -/
 def callRecUid (f : Term) : M (Option Nat) := do
   match f with
   | .place (.var x) =>
@@ -602,16 +605,17 @@ def callRecUid (f : Term) : M (Option Nat) := do
 
 /-- D78 [Rec]: is a call of `fv`, made through a binding marked `uid?`, a recursive call of
 the function `ctx` is checking? The one place that decides it. It is read from syntax: the
-call's head is the name the function binds for itself, or a closure's capture of that name
-(`Binding.recUid`). Comparing function values cannot decide it: a refinement, an [End] or a
+call's head is the name the function binds for itself (`Binding.recUid`), or, since D139, the
+global by which a closure's code names it (a closure keeps no capture of a function under check,
+`capture`, so no capture binding is marked). Comparing function values cannot decide it: a refinement, an [End] or a
 re-normalisation substitutes inside a local function's captured values (its own binding of
 itself included) but not inside the frame, so after `match n {…}` on a captured `n` the
 refined closure no longer equals the one being checked and its recursive calls went
 unchecked (rec-model's `CapSplit`, a closed proof of `False`). Value equality is kept only
 as a fail-safe that can add a check, never remove one. Since D136 a local function is not
 recursive and every frame is a top-level definition's, whose value is its name, so the mark and
-the value agree at every call that is made (measured over the suite at D136's landing: no call
-had the mark without the value). -/
+the value agree at every call that is made (measured over the suite at D136's landing, and again
+at D139's: no call had the mark without the value). -/
 def recFrameOf (ctx : RecCtx) (fv : Value) (uid? : Option Nat) : Bool :=
   uid? == some ctx.uid || ctx.fn == fv
 
@@ -621,8 +625,8 @@ call of an unknown function does (`callFn`, the one place a body is run), and it
 once its definition is accepted, as in Lean, where the function being defined does not unfold
 inside its own body. Since D136 the stack holds top-level definitions only, so this compares
 names: a global function value is its name, which no refinement or [End] changes, whichever route
-reaches the call (by its name; a sealed program's head call, re-run after a split; a λ's capture
-of it, run untyped; a sealed program's typing, `sealedType?`). (D135 compared code, a closure's
+reaches the call (by its name; a sealed program's head call, re-run after a split; a λ's code,
+which names it by its global since D139, run untyped; a sealed program's typing, `sealedType?`). (D135 compared code, a closure's
 `fix` term without its embedded values, for local recursive functions, whose values a refinement
 changes; a local function being checked cannot be called during its check, D136.) -/
 def underCheck (fv : Value) : M Bool := do
@@ -1942,13 +1946,28 @@ termination_by structural fuel
 closures capture no borrows (RULES §1). Each capture is recorded with what its binding's
 declared type says (D51, D80: the closure's body reads it so, as copy or not, on every path),
 and with that declared type itself, its binding's stored type (D82: the closure's body runs with
-every binding typed by declaration). -/
-def capture (fuel : Nat) (t : Term) : M (List Value × Term × List (DeclInfo × Value)) := do
+every binding typed by declaration). Also returned: the variables kept as captures, oldest first
+(`capMarks` reads their [Rec] marks).
+
+D139: a function whose check is under way (`underCheck`: since D136 the top-level definition being
+checked, whose value is its global) is never kept as a capture. The closure's code names it by its
+global (`.val (.gfn f)`, the head of a call: fix L1 lets the function occur in its body only so),
+and its captures, their readings and its Π-type's captures leave it out. The variable that held it
+is still taken as every capture is (accessed, and moved if its type is not a copy), so the state
+after forming the closure is unchanged; only what the closure keeps is. Every route by which a
+value of the function under check came to rest in the state other than as the head of a call went
+through here (a λ's or a Π-type's captures, and what holds them: a binding, a field, an argument,
+a deferred type, a record of generalisation, a comparison), except a stuck block's parameter,
+which `closeBlock` makes. The consistency proof reads a function under check as "some function
+good on smaller arguments", which is not a member of its declared type, so it can be called but
+not held as a value at that type. -/
+def capture (fuel : Nat) (t : Term) : M (List Value × Term × List (DeclInfo × Value) × List Nat) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let fvs := (t.freeVars.toArray.qsort (· > ·)).toList   -- oldest binding first
-  let m := fvs.length
   let mut vals := #[]
   let mut rd := #[]
+  let mut kept : Array Nat := #[]          -- the variables kept as captures, oldest first
+  let mut selfs : Array (Nat × Value) := #[]   -- D139: those holding a function under check
   let top0 := (← get).env.back!
   for o in fvs do
     -- [Fix] captures no borrow, a stuck block's borrow parameter included (D63, rule-audit
@@ -1969,10 +1988,15 @@ def capture (fuel : Nat) (t : Term) : M (List Value × Term × List (DeclInfo ×
       if (← get).typing then
         if let some T := T0 then
           repackCheck fuel' s!"a closure or Π-type captures {b0.hint.name}" v T
-      vals := vals.push v
       let some T := T0
         | err s!"INTERNAL [Capture] {b0.hint.name} has no stored type (D82: every binding has its declared type; please report)"
-      rd := rd.push (b0.decl, T)
+      -- D139: a function under check is named by its global, not kept
+      if ← underCheck v then
+        selfs := selfs.push (o, v)
+      else
+        vals := vals.push v
+        rd := rd.push (b0.decl, T)
+        kept := kept.push o
       -- D53: a runtime closure moves the variables it captures whose types are not copies
       if !(v matches .proof) then
         if v.hasHole then err "[D53] a closure captures a place that was partly moved out"
@@ -1981,19 +2005,24 @@ def capture (fuel : Nat) (t : Term) : M (List Value × Term × List (DeclInfo ×
             err s!"[D53] a closure's body moves a captured value ({← ppPlace p}) into a closure; clone it"
           logEffect p "moves"
           setPlace p .bot
-  let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
-  let mut t' := t.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
+  -- D139: the function under check's reads (call heads, fix L1) become its global
+  let t1 := selfs.foldl (fun u (o, fv) => u.inlineReads o (.val fv) 0) t
+  if let some (o, fv) := selfs.find? (fun (o, _) => t1.freeVars.contains o) then
+    err s!"INTERNAL [D139] {fv} occurs in a closure's code other than as a read (fix L1 allows only the head of a call; variable {o}; please report)"
+  let m := kept.size
+  let idx (o : Nat) : Nat := (kept.findIdx? (· == o)).getD 0
+  let mut t' := t1.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
   -- a captured proof keeps its type: its reads are inlined as `(⋆ : T)` (a proof's value
   -- is ⋆, so the type is all there is to record). "A proof" is the binding's declared
   -- flag, never its value (finding P3: `g(0)` may be ⋆ at an instance only)
   let top := (← get).env.back!
-  for (o, k) in fvs.zipIdx do
+  for (o, k) in kept.toList.zipIdx do
     let b := top.binds[top.binds.size - 1 - o]!
     if b.proof then
       if let some (_, T) := rd[k]? then
         t' := t'.inlineReads (m - 1 - k) (.ascribe (.val .proof) (.val T)) 0
   relocate t t'     -- the editor: the rebuilt body keeps its source ranges
-  pure (vals.toList, t', rd.toList)
+  pure (vals.toList, t', rd.toList, kept.toList)
 termination_by structural fuel
 
 -- ### Conversion (P1, v1.5 D30)
@@ -2574,7 +2603,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .pi _ ds c =>
     borrowParamCheck ds c
     -- a type former is erased: even its captures (which access places) run on a copy
-    let (cs, t', rd) ← inStatement (capture fuel' t)
+    let (cs, t', rd, _) ← inStatement (capture fuel' t)
     let T := Value.tPi cs t' rd
     if !typed then return (T, ← if want then (some ∘ Value.sort) <$> sortOf fuel' T else pure none)
     -- [T-Pi] runs the parameter types and the codomain (typing); the decisions read the same
@@ -2589,9 +2618,9 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .fix _ hs ds c _ _ =>
     borrowParamCheck ds c
     -- a closure whose calls are erased is itself erased by the pre-pass (its captures copy)
-    -- D78: the captured bindings' [Rec] marks, read before `capture` moves them
-    let capRec ← capMarks t
-    let (cs, t', rd) ← capture fuel' t
+    let (cs, t', rd, kept) ← capture fuel' t
+    -- D78: the [Rec] marks of the bindings it keeps as captures (a move leaves a binding's mark)
+    let capRec ← capMarks kept
     let v := Value.clo cs t' rd
     let T := match t' with
       | .fix _ _ ds' c' _ _ => Value.tPi cs (.pi hs ds' c') rd
@@ -3043,8 +3072,9 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
   let argDecls ← as.toArray.mapM fun a => withLive true (declOf fuel' false [] [] a)
   let fills := argDecls.map (· == .ref .unit)
   modify fun s => { s with headEval := true }
-  -- D78 [Rec]: a call made through a function's binding of itself (or a capture of it) is
-  -- a recursive call of that function, read from the head's syntax (`recFrameOf`)
+  -- D78 [Rec]: a call made through a function's binding of itself (or, D139, through the global a
+  -- closure's code names it by) is a recursive call of that function, read from the head's syntax
+  -- (`recFrameOf`)
   let recUid? ← callRecUid f
   -- D53 (e): a call does not consume the function it calls (read in place)
   if f matches .place _ then modify fun s => { s with inPlace := true }
@@ -4881,7 +4911,8 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   pushFrame
   pushCaps fuel' cs rd
   -- D78: a capture of an enclosing function's binding of itself keeps its mark, so a
-  -- recursive call of that function from this closure's body is still recognised by name
+  -- recursive call of that function from this closure's body is still recognised by name (since
+  -- D139 no closure captures a function under check, so no capture carries a mark: `capMarks`)
   markCapRec capRec
   pushBind self (some piTy) fv false (.pi cd)
   markLastRec uid
