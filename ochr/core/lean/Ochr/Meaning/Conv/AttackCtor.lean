@@ -144,3 +144,31 @@ ochr ConvAtkCode uses Nats, Fixtures {
 
 #guard (run "ConvAtkCode" ConvAtkCode).rejectedWith [
   ("SE3", "the body of SE3 has type Eq(Nat, ⌈App(Two, σ0)⌉, ⌈App(Idn, σ0)⌉), but the goal is False")]
+
+/-! **Π-types and functions at constructor values** (`ConvAtkPi`; `PremPi`, `PremFn`): domains that are inductive
+types applied to an earlier parameter compare at the generic argument (`Pi1`: `NB(n)` and `NB(Add(Z, m))`, true,
+accepted), with parameters convertible by the unit laws (`Pi3`), through a type function (`Pi5`, true; `Pi6`,
+false, rejected); two functions returning a constructor value whose parameter one writes and the other takes from
+the codomain (`F12`, true, accepted); a function returning its argument against one returning a constant (`F13`,
+false, rejected). -/
+
+ochr ConvAtkPi uses Nats, Fixtures {
+  inductive Bool := false | true
+  inductive Ph (A : Type) := MkPh(n : Nat)
+  inductive NB (n : Nat) := MkNB(x : Nat)
+  inductive PB (P : Prop) := MkPB(n : Nat)
+  def TF (n : Nat) : Type := match n { Z => Bool, S _ => Nat }
+  def ZAdd (x : Nat) : Nat := Add(Z, x)
+  def Pi1 : Eq(Type, Π(n : Nat) (x : NB(n)). Nat, Π(m : Nat) (y : NB(ZAdd(m))). Nat) := refl
+  def Pi3 : Eq(Type, Π(x : PB(And(True, True))). Nat, Π(x : PB(True)). Nat) := refl
+  def Pi5 : Eq(Type, Π(n : Nat) (x : TF(n)). Nat, Π(n : Nat) (x : TF(ZAdd(n))). Nat) := refl
+  reject def Pi6 : Eq(Type, Π(n : Nat) (x : TF(n)). Nat, Π(n : Nat) (x : TF(S(n))). Nat) := refl
+  def F1 (A : Type) (x : Ph(A)) : Ph(A) := MkPh[A](Z)
+  def F2 (B : Type) (y : Ph(B)) : Ph(B) := MkPh(Z)
+  def F12 : Eq(Π(A : Type) (x : Ph(A)). Ph(A), F1, F2) := refl
+  def F3 (A : Type) (x : Ph(A)) : Ph(A) := x
+  reject def F13 : Eq(Π(A : Type) (x : Ph(A)). Ph(A), F1, F3) := refl
+}
+
+#guard (run "ConvAtkPi" ConvAtkPi).rejectedWith [
+  ("F13", "the body of F13 has type ⊤, but the goal is Eq(Π(A : Type) (x : Ph(A)). Ph(A), F1, F3)")]

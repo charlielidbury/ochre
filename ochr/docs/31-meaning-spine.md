@@ -3466,6 +3466,14 @@ No conflict; the whole default target green (607 jobs). `checkInd`'s inversion g
 
 **Found** (attacks, `ConvAtkCtor`, `ConvAtkMoved`): no convertible pair with different meanings, no refuted true equation. Incompletenesses: D64 blocks injectivity at a proof field that mentions an earlier field (`F2`); an η-refinement by a field access does not re-read a goal or hypothesis formed before it (`H1`, `H2`). For the statement: `Id` compares PARTLY MOVED owners (`M1`, `M2`, non-dependent values with a field moved out), so the `Id` step needs N3 for `Eq` at partly moved sides too (today's claim asks `⊥` or a member); a partly moved dependent value is never observed ([Repack], `M3`–`M6`), so no equation over a partly moved value stays stuck.
 
+### D283. [Eq-inj] at the equation's type only: the proposal built end to end; `FieldTysOk`'s length half PROVED (conversion lane `conv2`, 2026-11-28; `spine-conv2`, branch `conv2-eqargs`)
+
+**Proved**: `Conv/FieldLen.machPremises_len` (every field-type premise of the machine's instance is at parameters of the declaration's length: `fieldTele` errors otherwise), so `ComposeFO.mkEqM_sound_fo` asks only the meaning half of D282's `FieldTysOk` (`FieldTysSoundT`).
+
+**Proposal, built on the side branch `conv2-eqargs`** (worktree `../ochre-conv2-probe`; not for `spine` without main's decision): `Machine.mkEqM` takes [Eq-inj]'s parameters only from the equation's type `D(ā)`, as the paper's appendix `eq` clause is written, and leaves the equation stuck at any other type (fail-safe). `Ochr` + `OchrExamples` green with every verdict unchanged, `OchrMeaning` green with `Rules.eqArgs` the same (`eqArgs_ind`), `RefineEq` untouched, and `CtorEq.eqTo_fo`/`ComposeFO.mkEqM_sound_fo` WITHOUT `IndAt` and `InjAtInd`: N3 at constructor values then asks nothing of the sides but `NoProp`, the fit and the level (6 facts for `mkEqM`).
+
+**Attacked** (`Conv/AttackCtor.lean`, `ConvAtkPi`, `ConvAtkCode`): Π-types with inductive domains at earlier parameters, unit-law parameters and type functions; functions returning constructor values; stuck calls and closures with convertible function arguments; D64 at index fields only convertible (taken apart soundly). No identification of different things.
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass
