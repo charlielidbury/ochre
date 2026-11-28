@@ -1,11 +1,13 @@
-// The principles the Ochr checker's correctness rests on: a ledger of every recorded decision and
-// fault by the principle it restores, each principle's audit against the code, and the redesign
-// that would make it hold by construction. Written to replace docs/18's section on principles.
+// Why the Ochr checker is correct: the current theory, stated once.
+// Where the theory stands; the design decisions awaiting the owner; the principles; the theorem
+// and the named theorems it rests on, each with one current argument and its status; the
+// evidence as tables of programs; the ledger of decisions by principle.
 // Standalone: compile with
 //   typst compile ochr/docs/18-principles.typ
 // Notation macros are copied from the top of 18-consistency-proof-plan.typ (which copies the paper's).
+// The passes that produced this document (seven authors, six referees) are in git history.
 
-#set document(title: [Why the Ochr checker is correct: its principles])
+#set document(title: [Why the Ochr checker is correct])
 
 #let dark-mode = false
 #let ink = if dark-mode { white } else { black }
@@ -15,6 +17,8 @@
 #let expl-rule = if dark-mode { rgb("#7fa3cc") } else { rgb("#5b7fa6") }
 #let warn-fill = if dark-mode { rgb("#33201d") } else { rgb("#fbefe9") }
 #let warn-rule = rgb("#c0604a")
+#let dec-fill = if dark-mode { rgb("#2a2a1d") } else { rgb("#f7f4e4") }
+#let dec-rule = rgb("#a8953c")
 #let status-ink = black
 #set text(font: "New Computer Modern", size: 10pt, fill: ink)
 #set page(paper: "us-letter", margin: (x: 2.0cm, y: 2.2cm), fill: if dark-mode { rgb("#1e1e21") } else { white }, numbering: "1")
@@ -40,7 +44,7 @@
 #let refrun(t) = $upright("Run") lr(( #t ))$
 // Dereference of a place, as the paper writes it.
 #let dr = $ast$
-// The set a sort means in the set model (Carneiro's U): `Prop` the two truth values, `Type_i` a stage V_(κ_i).
+// The set a sort means in the set model (Carneiro's U).
 #let univ(s) = $cal(U)_(#s)$
 // The stage of the cumulative hierarchy at the i-th inaccessible.
 #let vk(i) = $V_(kappa_(#i))$
@@ -48,149 +52,1159 @@
 #let fam(d) = $cal(M)_(#d)$
 // The meaning of a field type b with the declared type's own occurrences read through the family x.
 #let ftm(b, x) = $lr(⟦ #b ⟧)^(#x)$
-// The data model of the first k items' declarations.
-#let dmodel(k) = $cal(M)^(#k)$
 // The stage operator of a data-sorted declaration d.
 #let stageop(d) = $Phi_(#d)$
-// The typed domain of a declaration's parameters.
-#let pardom(d) = $"Par"_(#d)$
+// The detached state of an observation at frame o.
+#let detached(o) = $Omega^(#o)$
 
-// A principle, numbered on its own counter: P1, P2, ...
+// A principle, numbered on its own counter.
 #let pcount = counter("principle")
-#let principle(name, body) = block(width: 100%, above: 1em, below: 0.9em, breakable: true, [
+#let principle(name, body) = block(width: 100%, above: 1em, below: 0.6em, breakable: true, [
   #pcount.step()
   *Principle #context pcount.display() (#name).* _#body _
 ])
-// Status tags for audit rows.
+// Status tags.
 #let tagc(c, s) = box(inset: (x: 3pt, y: 1.5pt), radius: 2pt, fill: c, text(size: 7.5pt, weight: "bold", fill: status-ink, s))
 #let s-cons = tagc(rgb("#cfe8cf"), [by construction])
 #let s-check = tagc(rgb("#e6dcf2"), [by a named check])
 #let s-not = tagc(rgb("#f6cfcf"), [NOT ENFORCED])
-#let s-open = tagc(rgb("#f2f2c4"), [not audited])
-// Status tags for the steps of the argument in two halves and of the frame property.
 #let a-full = tagc(rgb("#cfe8cf"), [argued in full here])
 #let a-lean = tagc(rgb("#d4e4f4"), [proved in Lean])
 #let a-red(x) = tagc(rgb("#fbe5c0"), [reduced to #x])
-#let a-none = tagc(rgb("#f6cfcf"), [not argued])
 #let a-claim = tagc(rgb("#f2f2c4"), [claimed])
 #let a-np = tagc(rgb("#f6cfcf"), [NOT proved])
+#let standing = tagc(rgb("#f6cfcf"), [standing objection])
 // A program that was run, with its measured verdict.
 #let measured(body) = block(width: 100%, inset: 7pt, stroke: (left: 2pt + expl-rule), fill: expl-fill, above: 0.7em, below: 0.7em, breakable: true, [#set text(size: 9pt); #body])
-// A predicted fault: the prediction, the program, and what happened.
-#let fault(body) = block(width: 100%, inset: 7pt, stroke: (left: 2pt + warn-rule), fill: warn-fill, above: 0.7em, below: 0.7em, breakable: true, [#set text(size: 9pt); #body])
-#let why(body) = block(above: 0.6em, below: 0.8em, inset: (left: 0.8em), text(size: 9pt, fill: muted-ink, style: "italic")[Why: #body])
+// A decision awaiting the owner.
+#let decision(body) = block(width: 100%, inset: 8pt, stroke: (left: 2pt + dec-rule), fill: dec-fill, above: 0.8em, below: 0.8em, breakable: true, [#set text(size: 9.4pt); #body])
+// A standing objection, at the place it applies.
+#let stand(who, body) = block(width: 100%, inset: 7pt, stroke: (left: 2pt + warn-rule), fill: warn-fill, above: 0.7em, below: 0.7em, breakable: true, [#set text(size: 9pt); #standing *(#who)* #body])
 
 #align(center, text(size: 16pt, weight: "bold")[Why the Ochr checker is correct])
-#align(center, text(size: 11pt)[A small set of principles of the design, the decisions and faults each explains, where the code enforces each, and where it does not])
+#align(center, text(size: 11pt)[The current theory: where it stands, the decisions it waits on, its principles, its named theorems and their arguments, and the programs that test them])
 #v(0.3em)
-#align(center, text(size: 9pt, fill: muted-ink)[Draft by the agents `theory1` (ledger, audits), `theory2` (first argument, revision), `theory3` (the theorem restated, the argument in two halves), `theory4` (the frame property) `theory5` (resolved determination, the frame property against Lean, exclusive access, N3, N7, N8) `theory6` (the observation's design, a proof's data fields, the frame property against `RunFrameI`) and `theory7` (N1, the data model), 27 November 2026 · to replace the section "The principles the checker enforces" of docs/18])
+#align(center, text(size: 9pt, fill: muted-ink)[Consolidated by `theory8` on 28 November 2026 from the passes of seven authors (`theory1` to `theory7`) and six adversarial referees (`referee1` to `referee6`), and the lanes' measurements (`checker13`, `checker14`, `exists12`, `lead37`). Every program shown was run on the checker of `main` (217e22529, whose checker sources are those of b3f6a3854) unless its block says otherwise.])
 #v(0.6em)
-
-#align(center, box(width: 92%, align(left)[
-  *Summary.* The checker has accepted closed proofs of `False` eight times since October, and about 135 decisions record a rule added or tightened after a counterexample. Each fix was local. This document states the reasons the design is correct as twelve principles, each one sentence about the design, and tests them two ways. Against the history: every decision and every known proof of `False` is classified by the principle it restores (@sec-ledger), which found five principles nobody had written down (@sec-residue). Against the consistency argument: a first argument from the principles alone (@sec-argument, now superseded) was refereed (@sec-referee), and the referee showed it to be a reduction, not a proof: four of its principles were the proof's open theorems in disguise, and its induction was in a form that fails at the end of a borrow. So the theorem is now stated honestly (@sec-theorems): consistency holds _if_ six named theorems hold (a model of the data types exists; conversion is sound for code; the frame property; every step preserves exclusive access; the checker's decisions are the reference's; [Repack] is sound at a read), a seventh being proved in Lean (the model's fundamental lemma). @sec-twohalves gives the argument in the form the mechanisation uses, two halves over a structured reference state, and redoes every case in it, riskiest first, saying of each step whether it is argued in full or reduced to a named theorem. @sec-frame states the frame property once more, after a second referee (@sec-referee2) showed the previous proof did not exist, and argues it clause by clause against the model's definitions; it needs three changes to the model, names the uses that are not its instances (the block lemma N8), and lists what is not proved. Neither found a place where the design is wrong; the checker rule that a function under check is never run (D135, now on `main`) removes the one step the first argument could not justify. @sec-rd states and proves _resolved determination_, the property that the caller's places, once the right borrows end, determine what a callee wrote through a borrow (without it a statement `Id` proved at a function's own check could be false at a call site), attacks it on the checker without finding a failure, and says which borrows an observation must end; doing so found three faults of type safety, none of consistency. @sec-frame now states the frame property as Lean's `RunFrameI`, hypothesis for hypothesis (@sec-frame-lean); @sec-excl argues every clause of exclusive access; @sec-clo-fix, @sec-n3, @sec-n7 and @sec-n8 argue a closure's fixpoint equation, conversion on code, [Repack] and the block lemma. @sec-obs measures five places where a callee's observation tests its caller (each an accepted function whose call at a known argument is rejected), states exactly a design in which an observation never looks below its own frame and compares, for each borrow lent from below, what was last written through it, attacks it (no wrong acceptance found), and compares it on one page with today's observation and with the patch of @sec-rd-ends; it recommends that design, which removes resolved determination from every call site. @sec-proof-fields says what the model must read at a proof's data fields (a witness) for the simulation to hold, and what "a proof is irrelevant" then means. @sec-n1 states N1, that a model of the data types exists, exactly; proves it on paper by the construction (a least fixed point per declaration over its parameters, built from the field types the reference run computes, truth first for propositions), naming the check of the checker each step uses; and places each of the eight facts the Lean theorem assumes, the model fact with a hard case (a function from `Type₁` heading a field's type) argued true with the three Lean steps it needs. @sec-n1-attack attacks the checks of a declaration with 193 programs, one per way a declaration could have no model: nothing wrong is accepted. @sec-n3t gives N3 at a type, rule by rule, from N1 and N3 for values. For each principle, @sec-audits gives the cases that consume it, its enforcement, the audits of principles 4, 3 and 5 from the code, and the redesign that would make it hold by construction.
-]))
-#v(0.4em)
 #outline(depth: 2, indent: auto)
 #pagebreak()
 
-= What a principle is <sec-what>
+= Where the theory stands <sec-stand>
 
-A _principle_ here is one sentence about the design, not about a line of code, with three properties. The consistency argument uses it at a point that can be named: types mean sets, `False` means the empty set, and every accepted definition must mean a member of its type; a principle is what one step of that argument needs. If it failed, some wrong program would be accepted, or some step of the argument would break, and we can say which. And the checker makes it true either _by construction_, for a structural reason it cannot be violated (the module that makes decisions does not import the machine, so no decision can read a run), or _by checks_ at a list of sites that can be enumerated. A site where a principle could fail and nothing makes it hold is _not enforced_; the audits (@sec-audits) look for these by reading the code, predict the fault each would allow, and run the smallest program that should show it.
+*What is claimed.* The checker is _consistent_ (no accepted definition without parameters has a type that evaluates to `False`) _if_ eight named theorems hold (@sec-theorem). Types mean sets; a _strict reference run_ gives each term a meaning and fails wherever a value would be put at a type it is not a member of; (I) a strict run that succeeds returns members; (II) every successful run of the checker makes the strict run succeed with the same meanings. So an accepted definition means a member of its type, and `False` has none.
 
-Every program in this document is self-contained and was run with `lake env lean` on the checker of `main` at 105021637 (the same checker as the proof line's base, `ochre-checker10-base`); its verdict is the one measured. "With the `Nat` prelude" means the block `uses Nats` (`Ochr/Examples/Nat.lean`).
+*Proved in Lean's kernel:* (I) (N2); a model of the data types exists, for the Lean model on codes and programs up to `Type₁`, from five facts about the checker read true and not derived (N1); conversion sound for values without code (N3); the frame property's operation lemmas and its clauses for a match and a call's fixes (part of N4); (II) for a fragment (numbers, variables, `let`, sequencing, borrows), for four single definitions under a few facts each, and assembled from 32 step statements it assumes. *Argued on paper and refereed:* the rest of N3, N4 (but three clauses), N5 to N9, and the nine cases of (II). *Open:* (II) in general; N5 to N9 in Lean; the five facts; four model changes specified and not built.
+
+*What the adversaries found.* Six referees and seven authors, in alternation; *no pass found an accepted definition of an empty type*, a declaration without a model, or a large elimination from a non-subsingleton. The faults were _in proofs_ (the first argument was a reduction; the frame property was stated and refuted six times; an invariant, resolved determination, a descent clause and a well-formedness clause were false as stated), _in the model_ (an accepted definition with an empty type, `G1`; two of three model changes wrong; a proof's data fields read as `•`; a stuck block read as a function of every value, `NTr`, `MB0r`) and _in the documents_ (the paper's [Close] at a `Unit` place, D137; its match on a proof, D138; this document's account of both).
+
+*Faults of the checker found, all of type safety or precision:*
++ An observation tests its caller's state: five accepted functions whose calls at a known argument are rejected (`S1Z` to `S5Z`), and `CallI`. Standing: decision (a).
++ A function under check ran its own body (`Loop` undecided; `Sel`'s verdict followed that run). Fixed: D135.
++ Two stuck blocks compared as functions reject a true statement (`ConvBlocks`). Standing: decision (b).
++ A dead arm is never checked, though its moves feed the join (`DeadIll`, `DeadMoves`). Standing.
++ A term of type `⊤` reading as data runs its effects (`W2`); not a route to `False`. Standing.
++ A deferred parameter type with an `Id` over an ended borrow is weaker than the checked one (by reading). Standing under (A).
++ Incomplete: `Fst0Gen`, `InFrameMoved`, `VF`, `B10`, `FsHs`, `SwapCall2`.
+
+*How much to believe.* Kernel-checked: the Lean items above, nothing else. Attacked by at least one referee: every paper argument of @sec-theorem but those marked otherwise, and every verdict of @sec-evidence (each re-run by a later pass; the blocks marked _re-run_, for this document). One author only: this consolidation, the settlement of `Leak` (@sec-proof-fields), (II) as the mechanisation states it (@sec-halves), and the case for blocks as text (measured, not refereed). The design has held against every attack; the proof has been wrong, and repaired, at least once in every part.
+
+#pagebreak()
+
+= The design decisions awaiting the owner <sec-decide>
+
+Each is stated as a decision: the question, the options, what was measured, the recommendation and whose it is, and what would change in the paper. The programs named are in @sec-evidence with their verdicts; the shortest is quoted here.
+
+== (a) What an `Id` observation ends and compares <sec-dec-obs>
+
+#decision[
+*The question.* `Id(A, t, u)` runs each side on a private copy, ends borrows, and compares what is left. Today (A) it ends _every_ borrow of the whole state, tests each end (D98: the content whole; [Repack] in a typed run), and compares the _owners_ of the places the sides write, wherever they are, the caller's frames included. So a callee's observation reads and tests its caller's state.
+
+*The options.*
+- (A) Today's checker.
+- (B) The patch: still end every borrow, but test only those held in the observing frame or with a sealed fill among their sites (the fourth referee's restriction, without which an unchecked end puts a non-member into a fill inside a formed type: `Bad`), and [Repack] only owners in the observing frame. About twenty lines.
+- (C) The _detached_ observation (the owner's proposal, specified by `theory6`): build, on the private copy, a state of two frames, a cell for each borrow the observing frame holds that is lent from below (or has no site at all), then the observing frame; nothing below exists. Compare the result, the frame's own places, and each such borrow by its _final_, what was last written through it, exactly as a function's own check compares its cells.
+- (C+) As (C), but every borrow the frame holds gets a cell, an internal one through an identity fill `⌈loan⌉`; no loan is ever followed outward.
+
+*What was measured* (`checker13`, branch `exp-obs-detach` at 016d19439, never merged; one switch, its `today` value reproducing `main`'s 5,475 rows exactly).
+#table(columns: (24%, 38%, 38%), table.header([], [*(C)*], [*(C+)*]),
+  [Suite and case studies], [13 rows change: 4 accepted → rejected (`ReturnedBorrows.Inj`, `QOk`, `QFOk`, and `BoomOk` which calls `QOk`), 9 messages only, 0 rejected → accepted], [15 rows: the same, and 2 more messages (`BadD18`, `DetourHide`)],
+  [The five sites and their twins], [all accepted], [all accepted],
+  [Every attack on `G5`, `Q`, `QU`, `PEx`, `ATag*`], [still rejected], [still rejected],
+  [Newly rejected that a user would write], [`Inj`-style lemmas, not repairable; `Lift` (repairable by one `rewrite`: `LiftR`); `SwapCall2Ok`], [the same, and `ConsW`, `ConsM` (an `Id` over a local borrow whose lender a side later writes)],
+  [Newly accepted], [the five sites, `Bad` (a function from `False`; `Bad(Z, refl)` rejected), `SwapCall2`, `OwnRF`], [the same, and `IdxSame`, `IdxDiff`, `OwnRxF`, `BothF`],
+  [Cost], [−0.01% to 0.0% instructions], [the same],
+  [Size], table.cell(colspan: 2)[+138 / −12 lines in 4 files, both variants behind one switch],
+)
+The shortest lost lemma, with `L (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e`:
+```
+def Inj (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, (let r = g(x); *r := 0), (let r = g(x); *r := 1))) : False := (let r = g(x); L(r, e))
+```
+Accepted today; rejected under (C) and (C+): the hypothesis compares `x`'s cell through `g`'s fill, the lemma's parameter type compares `r`'s own final, and bridging them needs `g`'s backward function injective, which nothing in Ochr proves.
+
+*What each option removes from the proof, or adds.*
+- (A) owes resolved determination at every call point (@sec-rd), with three exclusions (no proof owner, ancestors holding whole members, item 11 for the function under check), (X5) over the caller's state, N1's injectivity relation $R$ for every backward function, the frame property's separate `Id` clause (OBS) with order-independence over the caller's labels, (M3) restricted, and a gap for a deferred parameter type read late. Five type-safety faults stand.
+- (B) owes all of (A)'s, plus resolved determination through ancestors holding moved or open contents, and N3 for open and moved caller owners; leaves `S4Z`.
+- (C) removes resolved determination at call points, OBS, the order lemma over caller labels, (M3)'s restriction, the deferred-type gap; keeps resolved determination within one frame (for the block lemma's `Id` row, through a stuck call's fill: `BlkFill1`), with $R$ and (X5) there. Adds the detach lemma DL, which needs the frame property restated over two lists of labels (V3).
+- (C+) removes all of that, and $R$ and (X5) altogether: no injectivity of a backward function is used anywhere; D44 and D137 become choices about `'static` borrows, not conditions of soundness. Adds DL (with V3's restatement) and exceptions for identity fills in principle 7 and in N3 for code.
+
+*The recommendation.* (C+), `theory6`'s, agreed by the fifth referee as sound for consistency with no restriction, and by me: it makes the observation a function of its own frame, so principle 6 holds for observations by construction, a statement read at a call site is the function's own statement by construction, and the most delicate lemma of the argument goes. It is not free. The owner should accept, knowing them, three costs: `Inj`-style lemmas (a fact about an abstract borrow-returning function that is true only because the model makes its backward function injective) become unprovable; an induction hypothesis lifted through a stuck call's returned borrow needs a `rewrite`; and inside a body `Id` compares what was last written through each borrow of the frame, whether or not a continuation can still see it (`ConsW`), which changes what `Id` means.
+
+*What would change in the paper.* §5's definition of `Id` and the appendix's [Obs] (the places compared: the result, the frame's owned places, each borrow of the frame by its final); RULES §4; the frame property loses its `Id` exclusion; D44 and D137 are re-justified by what `Id` says, not by soundness. Before landing: a wider hunt at the implementation's own choices (`checker13`'s decisions 2, 5, 6), and the deep sweeps.
+]
+
+== (b) What a stuck block is <sec-dec-block>
+
+#decision[
+*The question.* A stuck match that is not the last thing in a body is closed off as a _block_. Today a block is an anonymous function of the places its arms use, applied to them: a closure value with a parameter list, a function type and a binding of itself.
+
+*The options.* (i) Today's. (ii) The small repairs ruled as D139: the block names a function under check by its global, not as a parameter, and a block's re-run binds a placeholder for its own name. (iii) _Blocks as text_: a sealed block binds each captured value in a cell at the declared type and reading of the place it took, and then _is_ the match itself; a new term former made only by closing off, run only by a re-run; nothing in it is a function. For `NTr`: `⌈(fix _ (n : Nat) (m : Nat) : Nat := match m { Z => clone(n), S _ => clone(n.0) })(S(σ2), σ1)⌉` becomes `⌈let n = S(σ2); let m = σ1; match m { Z => clone(n), S _ => clone(n.0) }⌉`.
+
+*What was measured* (`checker14`, branch `exp-block-text` at 600bcc5b5, never merged). Of 5,478 rows one verdict changes, rejected → accepted (`ConvBlocks`, a true statement the suite's own comment calls wrongly rejected), and eight messages change in how a block is printed; nothing goes from accepted to rejected, in the suite, the probes or the proof lane's 659 rows. Four more probes become accepted, all of one kind: two sealed blocks whose texts differ only in convertible embedded values are now convertible, compared by text as sealed calls already are (`EqJ`, `IdJ`, `DJ`, `SJ`); their false twins stay rejected. Code: +206, −88 lines; two proofs about the checker repaired with nothing left unproved; cost within 0.3%.
+
+*What it removes from the proof.* Four faults of the block as a function (`lead37`, docs/31 D232 to D234), three gone by construction and one by naming the global: (1) a block takes the function under check as a parameter at its declared type, where the knot's stage is not a member (`MB0r`, kernel-checked: the reference reads its leaf as an error where the direct run gives `0`); (2) the model reads a block as a closure over every value, which fails where the checker checked it only at its captured value (`NTr`: its arm reads `n.0`, which exists only at a successor); so CloFix (b) is false for blocks; (3) a block's re-run binds the block as `self`, whose meaning is an error; (4) a block's closure and a program's closure being one kind of value makes a block-aware reading not invariant under substitution. Also gone: conversion observing two blocks as functions, and the typed run of a sealed block. The block lemma N8 becomes definitional for the model's reading. _Adds:_ a `.block` clause in the model's run and its case in every induction over terms (sized at about twenty files, against the closure-style clause D234 began).
+
+*The recommendation.* (iii), the orchestrator's, with `lead37`'s analysis behind it; I agree: the small repairs (ii) remove two of four faults and keep the representation that produced all four.
+
+*What would change in the paper.* The appendix's [Block] and [App-close] (the block's head is a term, not a call; [Close]'s table unchanged, with the block's text for the call); [Conv-cong] for blocks; RULES §3 "Stuck blocks"; `notes/closeoff-model.md` C10.
+]
+
+== (c) Landed and awaiting acknowledgement: D135, D136, D137, D138 <sec-dec-landed>
+
+#decision[
+- *While a function is checked, a call of it closes off* (D135, on `main`). Before it, a typed recursive call ran the body under check in place, where calls no [Rec] test saw were run (`Loop` ended undecided instead of rejected) and a statement's verdict followed what that run computed (`Sel` accepted, `Q2` rejected, differing only in what the `Z` arm returns). _Cost to a user:_ a definition whose own body needs its own recursive call to compute, `Sel`, is rejected; the same equation stated after the definition holds (`SelAfter`). Nothing in the suite did this; the landing's hunt wrote fifteen such programs. _Removes:_ every claim about runs of unchecked code; the outer induction never needs the function's meaning above its stage.
+- *A local function is not recursive* (D136, on `main`; three commits to be reverted together or not at all). _Cost:_ a recursive helper can no longer close over its surroundings; it is written at the top level with what it used as parameters (`AddZ` is rejected; `AddZH` and `AddZ2` are its lifted form), and one that calls the enclosing definition back takes that call as a function argument. Five rows of `Examples/Recursion.lean` changed; no case study. Lean's kernel has no local recursion either (`let rec` and `where` are lifted by the elaborator), and Ochr can get the feature back the same way, as surface sugar. _Removes:_ the closed proof of `False` of October (`CapSplit`), the recognition of a function by its code, the nested induction for local recursion, and CloDesc: a closure's fixpoint equation becomes immediate (@sec-frame-fix).
+- *A `Unit` place's fill keeps its hole in [Close]'s borrow row* (D137): the checker always did; the paper and RULES said otherwise, and under their rule `QU` would refute a type safe Rust inhabits. A correction of the documents.
+- *A match on a proof binds its data fields as locals of the arm* (D138): the checker always did; the paper said they were written at the scrutinee, under which `Nest` would be rejected. A correction of the documents; the model is to mirror the locals (@sec-proof-fields).
+]
+
+== (d) Checks on declarations stricter than a model needs <sec-dec-decl>
+
+#decision[
+*The question.* The sixth referee's Y2: nine declarations rejected today each have a least model by the paper's construction. Should the checks that reject them stay, and on what grounds?
+
+#table(columns: (16%, 30%, 27%, 27%), table.header([*Program*], [*Rejected by*], [*The model it has*], [*What the check serves*]),
+  [`D2`, `LD`, `NBD`], [D120: a variable mentions what its declared type mentions], [finite chains; finite trees], [Lean's kernel rule; the Lean model's records (`KnotCE`)],
+  [`B11`, `B12`], [D121: a nested occurrence passes only through its own sort], [$emptyset$], [Lean's rule; the Lean records (`PropNestCE`, `CrossSortCE`)],
+  [`B6`], [the declared type not in an equation (D36)], [$emptyset$], [the syntactic form of positivity],
+  [`TBD`], [a parameter passed to an equation is not nestable], [finite chains], [the same],
+  [`Q11`], [the type's constructors unreadable while it is declared (D107)], [finite chains], [the simulation: before it a zero-arm match on the type being declared was vacuous],
+  [`NT` (against `DPF`, accepted)], [a field type that is a Π at the generic telescope (D36)], [as `DPF`'s], [nothing the model distinguishes],
+)
+Two checks serve neither the construction nor Lean's rules but other parts of the proof: no borrow in a parameter or field type serves N5's "a borrow is the whole value of a binding or temporary", and D105 (where a constructor's parameter is inferred) serves the simulation's agreement with the checker. The checks the construction does need, and where one notch weaker breaks it, are listed in @fig-n1-checks.
+
+*The two syntactic checks the Lean lane proposes* (`exists12`, not made, not measured): in `checkInd`, a parameter heading a field's type must be written `Prop` or `Type`, and a global heading a field's type must have a written codomain `Prop` or `Type`. Today both facts are decided by the run-based `sortOf` check, so deriving `FieldHeads` in Lean needs type preservation; with the checks it becomes a postcondition of `checkInd`, and the spine case of `VaryValFact` (a reading `.any` excluded only by the parameter loop's run) closes too. By reading they reject only heads whose sort is hidden behind a computation, which the run-based check already rejects; whether any accepted row changes is not measured.
+
+*The recommendation* (mine, after the sixth referee and `exists12`). Keep D120 and D121: they are Lean's, and the Lean model, which the consistency proof uses, needs them; relaxing either needs the Lean records rebuilt first. Record each check with what it serves (@fig-n1-checks does), so that a later relaxation does not remove a load-bearing check or keep a dead one. Adopt the two syntactic checks after measuring them.
+
+*What would change in the paper.* The appendix's [Ind-decl] gains the two checks; its note on positivity can say which conditions are the model's and which are Lean's.
+]
+
+== (e) Redesigns "by construction" proposed and not measured <sec-dec-redesign>
+
+#decision[
+Each would make a principle hold by structure instead of by checks at listed sites. None has been built or measured.
+- *A certificate for an untyped run* (principle 4). `callFn` runs a body only given a `Checked` record that only `checkFix` can make; a closure carries its λ's. Since D135 and D136 the same effect is one test in `callFn` by name; the certificate would make it a type error to forget. Deletes: the need to find D135's routes one by one.
+- *One evaluator* (principle 4). `typed` becomes a parameter that may only guard checks and type computations; `checkTailAt` becomes `evalCore` with the goal checked at the end; every branch that changes control, state or hints goes behind one function both modes call. Cost: a refactor of `Machine.lean`'s largest functions. Deletes: D119's, D124's and D125's patches as separate rules, and the class "an accepted function whose call is rejected", which recurred five times.
+- *Check every arm* (principle 4). Check an arm of a match on a known constructor at its declared types, as Lean and Rust do. Reverses the ruling recorded in D118. Deletes: D94's rejection at the join, D101's check, D118's special walk, the model's obligation to give ill-typed arms a meaning (`DeadIll`, `DeadMoves`).
+- *Flags as parameters; values in flight on the evaluator's stack* (principle 5). The one-shot flags and the results passed back through the state become arguments and return values of `eval`, and `eval` leaves its result on the temporaries. Deletes: D130 and D132 as rules (each becomes impossible to write), and the D115 hunt as a method.
+- *One grammar of declarations shared with the model* (principle 1). The Lean lane wrote the conditions once as decidable predicates (`Knot/Grammar.lean`: `GrammarOk`, with `grammar_of_checks`); `checkInd` would call only that module. Deletes: the drift between the model's grammar and the checker's tests (how D120's (B2) stayed open), and makes `CheckIndGivesChecks` hold by construction.
+- *Smaller ones:* hints of a type of their own, not `Value` (principle 7's one maker, N9); a block's capture modes from declared readings only (N6); a reading that is a function of the type (principle 3: either complete the reader through a type function's body and assert reading against type in `evalAt`, or reject a hidden sort where a type's sort is read).
+]
+
+#pagebreak()
 
 = The principles <sec-principles>
 
-Twelve principles, revised by `theory2` against the argument of @sec-argument: each is stated in the form the argument uses, and a clause the argument does not use is marked as type safety's or as the adequacy of `Id`'s (a target dropped on 13 November). The numbers of the first draft are kept, so the ledger's numbers still apply, with one exchange: the borrow half of the first draft's principle 5 is now principle 12, _access is exclusive_, and the first draft's principle 12 (_undecided decides nothing_) is now a clause of principle 5. @sec-revision lists every change and the case of the argument that forced it. Each principle is stated once here; @sec-audits gives each its consumers in the argument, its enforcement, its audit and its redesign.
+A _principle_ is one sentence about the design, not about a line of code, such that the consistency argument uses it at a point that can be named, a wrong program would be accepted (or a step of the argument would break) if it failed, and the checker makes it true either _by construction_ (a structural reason it cannot be violated) or _by checks_ at sites that can be listed. A site where a principle could fail and nothing makes it hold is _not enforced_. The principles are the design's half; what must be _proved_ about the checker or the model is a named theorem (@sec-theorem), which rests on them. Twelve principles explain the 139 recorded decisions and eight accepted proofs of `False` (the ledger, @sec-ledger); five of them were written for the first time by this theory, found in the residue of decisions no earlier principle explained. Each is stated with what in the argument uses it ("cases" are those of (II), @sec-cases), how it is enforced, and what its audit found.
 
-_Second revision (`theory3`), after the referee's objection O1._ A principle is a property of the design that the checker makes true, by construction or by checks at sites one can list, and that the argument merely cites. Four of the twelve, as `theory2` stated them, also asserted a theorem: principle 1 that a model exists, principle 2 that conversion is sound, principle 6 the frame property, and principle 12 that every step keeps the borrows a forest. Each is now split. The principle keeps the design half, which the checker enforces; the theorem moves to the list of named theorems (@sec-theorems), stated with its status and with the principles it rests on. The numbers are unchanged, so the ledger and the audits still apply.
+#principle[Declarations are in the model's grammar][Every accepted declaration satisfies, by its syntax, the conditions under which the model builds a meaning for it: fields positive and first-order, nested only at nestable parameters, read through only what the model can follow; a type parameter written as a sort and the declaration's own name only in its fields; borrows only of `Type₀`; a match on a proof produces data only from a subsingleton; a function type that returns a borrow takes one.]
+A declaration with no model (a type that is its own negation) lets the checker accept a closed proof of `False` by typing alone, before anything runs. _Used by:_ N1, and through it every case. _Enforced:_ by checks, all in `Check.checkInd`, each on syntax and the earlier declarations before the declaration is stored (@fig-n1-checks), and elsewhere: subsingleton elimination at every match on a proof (D45), `&A` only for `A : Type₀` (D66), a borrow result with a borrow parameter (D44), `&` only at the top of a written type (D48; the surface rejects `&Nat` as an argument), constructor parameters inferred only where the model reads them back (D105). _Audit_ (`theory7`, attacked by the sixth referee): every site a named check, but one #s-not, unreachable: a value argument at a parameter whose own type reads a nestable parameter (D120's (B2); `NF`, `DF` accepted, as by Lean). The construction reads an applied declaration loosely and never tests that argument, and a value that varies would have to name the declared type, read a field of it, or take its parameter from a hint, each rejected. Several checks are stricter than the construction needs and serve Lean's records or the simulation instead (decision (d)).
 
-#principle[Declarations are in the model's grammar][Every declaration the checker accepts satisfies, by its syntax, the conditions under which the set model builds a meaning for it: its fields are positive and first-order, nested only at nestable parameters, one sort per knot, read through only what the model can follow; a type parameter is written as a sort and the declaration's own name occurs only in its fields; borrows are only of `Type₀` and every universe but `Prop` is predicative; a match on a proof produces data only from a subsingleton; and a function type that returns a borrow takes one.]
-_Design half only._ That a model exists for every program so declared is the named theorem N1 (@sec-theorems), and that every accepted function returning a borrow has an injective backward function is part of membership, proved in the argument (@sec-tw-types). What follows is `theory2`'s text, which stated both as one principle "meanings exist". The set model is the ground of the argument: types mean sets, `False` the empty set, and every accepted definition must mean a member of its type. A declaration with no model (a type that is its own negation, as in Curry's paradox) lets the checker accept a closed proof of `False` by typing alone. The model is built declaration by declaration, so what it needs of the checker is a syntactic condition on each: strict positivity (D36), nesting at the greatest set of nestable parameters (D64, D107), no value of the type read off a field's spine (D120), one sort per knot (D121), a type parameter written as a sort (D128), the declaration's own name only in its fields (D133), predicativity of `Type₀` (D48, D66), subsingleton elimination (D45), and constructor parameters inferred only where the model can follow (D105). The last clause is the model's relation R (paper A.6): Ochr proves of every abstract `g : Π(x : &Nat). &Nat` that writing `0` and writing `1` through `g(x)` leave different states, which is true only of functions whose backward functions are injective, so the model must contain only those; a returned borrow always derives from a borrow argument (D44), and @sec-arg-id proves every accepted function is one.
+#principle[Identifications are made only by structure][Conversion is the least relation closed under its rules, so a comparison that needs itself answers "not convertible"; functions and Π-types are compared by running their generic calls, with their class and borrow flag; `Eq` decides only by convertibility, injectivity and disjointness of constructors, and on `⊥` as a value of its own; `J` computes only at convertible endpoints; an impossible arm is stuck, never a value; and a record is looked up by its exact key.]
+Conversion is how a checked term moves from one type to another, so an identification that fails at some instance transports a member of one set into another. _Used by:_ N3 and every "≡" premise (cases 2, 3, 4, 6 and the step to the theorem). _Enforced:_ by construction, by the definition of conversion (D30, D48, D54, D56, D58, D84, D103, D108). _Audit:_ the checker's `eq` returns `False` at two places only, two constructor values of different constructors and `⊥` against a value, so it never refutes an equation between two type values, whatever their formers (the sixth referee, by reading `mkEqM`). The comparison of code rests on every sealed program having [Close]'s shape (principle 7).
 
-#principle[Identifications are made only by structure][Conversion is the least relation closed under its rules, so a comparison that needs itself answers "not convertible"; functions and Π-types are compared by running their generic calls, with their class and borrow flag; `Eq` decides only by convertibility, by injectivity and disjointness of constructors and on `⊥` as a value of its own; `J` computes only at convertible endpoints; an impossible arm is stuck, never a value; and a record is looked up by its exact key.]
-_Design half only._ That every identification so made means an equality under every assignment of the unknowns, for two sides well typed inside at one type, is the named theorem N3 (@sec-theorems), proved in Lean for values that hold no code; the typing hypothesis is the referee's O5 (b). What follows is `theory2`'s text. Conversion is how a checked term moves from one type to another, so an identification that fails at some instance transports a member of one set into another. The history's faults are of two kinds: an identification that holds at the generic run and fails at an instance (closures compared by their results only, D30; a borrow result observed without writing through it, D38; two values that had each lost a moved part, `Same`, D83 and D84), and one that breaks typing in open contexts (equality reflection by `J` under a false hypothesis, D56; an unreachable arm giving a value at the wrong type, D58). Keys need exact equality, not conversion's (D108); and since a decision can read an embedded value's reading, conversion of code relies on the shape principle 7 gives sealed programs (@sec-arg-conv).
+#principle[Readings are true where they replace a value][Whatever the checker reads about a term from syntax and declared types, and acts on by replacing a value with a canonical one (`⋆` for a proof, `()` for `Unit`, its constructor for a one-constructor type, nothing for an erased type), is true of the term's type; and a type is read off a value only where the value says its type.]
+Decisions are made from _readings_, facts read off syntax and declared types; principle 4 makes them the same on every run, this one makes them right where a value is replaced. _Used by:_ cases 3, 5, 7, 8 (only this direction). _Enforced:_ by one reader of declared types (`Decide.typeDecl`, `declOf`) made syntactic (D55, D77, D80, D86, D96, D100, D116, D128), and by checks where a reading meets a type: D131's at every binding a typed run makes, D55's in [T-Pi], D128's at a declaration's parameters, and for a type read off a value D110's strong update, D112's leaf fields. _Audit:_ one #s-not site: a term that is not bound (a statement, an argument, an arm's result) is never compared with its type, so a term of type `⊤` whose sort hides behind a call reads as data and runs with its effects (`W2`, beside `WP2`, which is erased). Not a route to `False`: the reading is the same on every path, and conversion cannot identify the two motives, whose classes differ (D54). It means "a term is a proof exactly when its type is a proposition" is false; "a binding is" is true. One site predicted by the two-paths census (its site 7: a binding whose declared type is a type function whose arms are Π-types of different classes) is closed by D77, which rejects such a binding (`theory2`'s `PT`, `L`, `L2`, measured at 105021637). Redesign in decision (e).
 
-#principle[Readings are true where they replace a value][Whatever the checker reads about a term from syntax and declared types and acts on by replacing a value with a canonical one (`⋆` for a term read as a proof, `()` for a value read as `Unit`, its constructor for a value of a type with one constructor, nothing for an erased type) is true of the term's type; and a type is read off a value only where the value says its type.]
-Most decisions are made from _readings_, facts read off syntax and declared types (D28, D35, D55, D77, D80); principle 4 makes them the same on every run, and this principle makes them right where rightness matters to the meaning: a replaced value keeps its meaning only if its type has that one element. The history: two notions of proposition (D54, D55), a Π-type's sort read as `Type₀` (D86), copy-ness against erasure (D100), `clone` missing from a table (D116), two tests for "is a type" (D128), a sort hidden behind a call (D131); and, for types read off values, a field typed by a content that does not say its type (D110, D112 and its amendment). Only this direction is used: a term whose type is a proposition but reads as data is run with its effects on every path (the first draft's `W2`, @sec-a3), which is harmless to consistency, though a type-directed compiler would assume the converse.
+#principle[One code, two runs][Every decision that changes what a run computes (whether a term is erased; a function type's class and [Close] row; copy or move; η; the places a match moves and their grain; which borrows end where and what a result is lent; the parameters a constructor records; the hint handed down) is a function of the code and the declared types, computed alike by the code's typed check, by every untyped run of it and by its meaning.]
+A definition is checked once, by a typed run at unknowns, and afterwards run untyped, in place or sealed; the argument gives the code one meaning and shows each run computes it, which holds only if every run decides as the meaning does. The oldest instance is the generic call against an instance (D28 to D40, D54, D84, D90); the newest the typed check against an untyped run (D124, D125, D134, D135). _Used by:_ cases 1, 3, 4, 6, 7, 8 and N6. _Enforced:_ by construction for decisions made in `Decide.lean`, which does not import the machine (D74), writes no cache (D95), and reads unknowns by frozen readings (D96); by construction with listed obligations for borrow ends (D90's fills and marks, D99's fresh result label, D93); by checks for hints (D124's sites, each consulting `readsHint`) and for a deferred call's head test (D134); by one test where every run of a body starts, for "only checked code runs" (D135: a call of the function under check closes off, recognised by name since D136). _Audit:_ every place an untyped run starts runs checked code (since D135); two #s-not classes. (1) A static decision read from an arm no run takes reads unchecked code: places and names are checked (D94, D101, D118), anything else is not (`DeadIll` accepted, `DeadMoves` rejected by its dead arm's capture). Not a route to `False`: a dead arm's moves only add to the join. (2) Tests made only by untyped runs: one is shared (`callPi`, D134); nothing structural stops another. And one difference of decision, an incompleteness: whether an unknown of a one-constructor type is refined in place or the run is stuck is decided differently by the typed check and an untyped run's field access (`Fst0Gen`); the join's drop does refine. _For type safety, not consistency:_ "an untyped run runs only checked code, can run every form the check accepts, and makes the check's tests". At an observation the principle fails today (principle 6 below).
 
-#principle[One code, two runs][Every decision that changes what a run computes (whether a term is erased; a function type's class and [Close] row; copy or move; η; the places a match moves and their grain; which borrows end where, and what a result is lent; the parameters a constructor records) is a function of the code and the declared types, computed alike by the code's typed check, by every untyped run of it (in place, sealed, at unknowns or at values) and by its meaning.]
-A definition is checked once, by a typed run at unknowns, and afterwards run untyped, in place or sealed; the argument gives the code one meaning and shows each run computes it, which holds only if every run decides as the meaning does. The history's _two paths_ (the generic call against an instance, paper §6.3) are the oldest instance (D28 to D40, D54, D84, D90); last week's faults are the typed-against-untyped instance (D124, D125, D134, D135). _For type safety, not consistency_ (@sec-arg-unused): an untyped run runs only code whose check has finished, can run every form the check accepts, and makes the tests the check made; their faults made accepted functions uncallable.
+#principle[The state is the whole truth][Every value the checker holds while anything runs is at a position of its state with a stored type; nothing outside that state decides a step (no flag, cache or record outlives the evaluation it was made for); and every step that succeeds is an instance of a rule: no failure is turned into a value, and running out of fuel is undecided.]
+The argument reads every success of the checker as a derivation of the rules at the state the rules describe, and its invariant is a predicate on that state. _Used by:_ the first move of every case; the meaning of a state; a call's arguments held where an end reaches them (case 1). _Enforced:_ by checks at each site found: every value in flight is a typed temporary (D104, D115's sites), D106 rejects ending a borrow a temporary holds, D111 asserts no borrow below a root, D92 and D117 keep scaffolding frames from holding a loan twice; by construction for one-shot flags (consumed at `evalAt`'s entry, D130) and private runs (`restoreKeep`, `restoreNames`). Fuel exhaustion is its own exception, outside what `catchStuck` catches. _Audit:_ two #s-not sites, both harmless: `J`'s endpoint values held in Lean variables while its motive runs (everything then runs on private copies), and the `inPlace` flag between its set and its read (a nested re-run there restores the whole state; predicted fault `T5` refuted). Redesign in decision (e).
 
-#principle[The state is the whole truth][Every value the checker holds while anything runs is at a position of its state with a stored type, nothing outside that state decides a step (no flag, cache or record outlives the evaluation it was made for), and every step that succeeds is an instance of a rule: no failure is turned into a value, and running out of fuel is undecided.]
-The argument's first move at every step reads the checker's success as a derivation of the paper's rules at the state the rules describe, and its invariant is a predicate on that state. A value held in a variable of the checker's Lean code while other code runs is invisible to the invariant (a borrow with no holder, D115); a fact kept in the state that is not about the program (a cache, D95; a one-shot flag left set, D130; a record a private copy throws away, D132) makes the next step depend on something the rules do not describe; and a caught failure with a default turns "something is wrong" into a value. The last clause is the first draft's principle 12, the standards "no catch-and-default" and "all checker code is total" of `ochr/core/CLAUDE.md`. Its borrow half is now principle 12.
+#principle[Effects stay local][A running body names only its own frame and reaches anything below only through the loans its borrows hold, so every borrow it can end is its own frame's; a call exchanges only its arguments and its result; a closure captures no borrow; and a private run (a statement, a type, a proof, a comparison, scaffolding) restores the state but fresh names and facts that mean the same in every state.]
+_Used by:_ the frame property N4 (the equation between a body run in place and its run in its own frame), cases 1, 4, 7. _Enforced:_ by construction for what survives a private run: two functions decide it (`restoreKeep`; `restoreNames` for comparisons, D103); statements go through `Env.inStatement`, scaffolding through `Env.privately`; six further sites save and restore directly (`nfSealed`, `stuckScrutinee`, `checkFix` with `restoreKeep`; `conv`, `convPi`, `convFn` with `restoreNames`). _Audit:_ #s-not at an observation, five sites: the observation's `endAll` ends every borrow of the whole state, and D98 and [Repack] then test the caller's borrows' contents, and `idType` tests every owner it compares, the caller's included. Each gives an accepted function whose call at a known argument is rejected (`S1Z` to `S5Z`); and with no borrow parameter at all, any callee that forms an `Id` cannot be called while its caller holds a borrow partly moved (`CallI`). Type safety only. Decision (a).
 
-#principle[Effects stay local][A running body names only its own frame (a variable resolves in the top frame), and reaches anything below only through the loans its borrows hold, so every borrow it can end is its own frame's; a call exchanges only its arguments and its result; a closure captures no borrow; and a run the checker makes privately (a statement, a type, a proof, a comparison, its own scaffolding) restores the state but fresh names and facts that mean the same in every state.]
-_Design half only._ The equation between two runs that the argument needs, a body run in place agrees with the function's meaning applied, is the frame property, the named theorem N4, proved on paper in @sec-frame. What follows is `theory2`'s text. This is docs/18's locality (L1 to L7) and the erasure half of its "erasure and captures" (E1, E3 to E5), and it is the frame property: a callee's meaning, read off a run of its body in a fresh frame, is the body's run in place. Faults: a Π-type reading its free variables at the call site (D13), proofs writing outer places (D14, D20), a record kept from a private copy naming the wrong program (D37) or an unknown of an empty type (D103).
-
-#principle[Closing off rebuilds the call][A call stuck on an unknown, and a stuck match or `J` as a call of its captures, is replaced by sealed programs that rebuild the call exactly from what it was passed and capture every place any arm uses at least as strongly as the arm does; nothing else makes or changes a sealed program held in the state but substitution and re-running, which happens exactly when an input it embeds changes, everywhere it occurs, never re-closes its head, and never runs a program that holds a borrow's hole.]
-_Restated by `theory3` (the referee's O5 (a)):_ "held in the state" is new. One other sealed value exists, the deferred hint `⌈⋄hint P w̄⌉` (D124's `hintLater`), and it is never held in the state: it is the expected-type argument of an evaluation, forced by `forceHint` where `readsHint` says it is read, and no rule stores an evaluation's expected type (by reading, at every site; not structural: the redesign is to give hints a type of their own).
-This is docs/18's closing off (C1 to C9) with the capture rules (K1, K3): a block takes, as a function takes its arguments, everything any arm uses, at least as strongly as any arm uses it. Faults: re-closing the head (D9, D39), a write to a scrutinee unseen by the captures (D32), a hole lost by a generalisation (D29), a hole read by a nested run (D97). The clause "nothing else makes or changes a sealed program" is new: the comparison of code needs every sealed program to have [Close]'s shape (@sec-arg-conv).
+#principle[Closing off rebuilds the call][A call stuck on an unknown, and a stuck match or `J`, is replaced by sealed programs that rebuild it exactly from what it was passed, capturing every place any arm uses at least as strongly as the arm does; nothing else makes or changes a sealed program held in the state but substitution and re-running, which happens exactly when an input it embeds changes, everywhere it occurs, never re-closes its head, and never runs a program that holds a borrow's hole.]
+_Used by:_ cases 3 and 4; N3 for code (every sealed program held in the state has [Close]'s shape). _Enforced:_ by construction: `closeCall` makes the sealed programs of the state; blocks go through `closeBlock`, which computes captures (`blockCaptures`) and calls `closeCall`; `nfSealed` re-runs, refusing a text with a hole (D97); substitution and re-normalisation share `Env.mapState`. _Audit:_ one other sealed value exists, the deferred hint `⌈⋄hint P w̄⌉` (`hintLater`, D124), an evaluation's argument read only by `forceHint`; it is never stored (by reading, at every site; two passes agree) but nothing structural prevents it. Under the observation design (C+) the identity fills are a second exception, made and filled on the observation's copy. Under blocks as text the block's head is a third term form, made only by `closeBlock`.
+#stand[the first referee's O5 (a)]["Nothing else makes a sealed program" holds of the deferred hint by reading, not by construction, and the hint's meaning enters (II)'s (E4) (the second referee's R8), which N9 argues. Redesign: give hints a type distinct from `Value`.]
 
 #principle[Worlds are exclusive][A fact established while checking one arm of a split, and depending on the arm's constructor, is visible in that arm and its sub-worlds only, and entering an arm substitutes its refinement into every position of the state.]
-docs/18's worlds (X1 to X4). Faults: an η-refinement kept after its arm (`EtaBoom`, D79); generalisation records rewound with a copy (D37).
+_Used by:_ cases 3, 4 and the step to the theorem (every assignment takes one arm; a record is a path condition). _Enforced:_ by construction: every arm runs in `Env.inWorld`, whose exit restores every component of the state but those listed, so a new component is dropped by default (eleven sites). _Audit:_ held; its historical faults are `EtaBoom` (D79) and records rewound with a copy (D37). One known exception, harmless: an erased match's arm unknowns can appear in the type of what leaves the arm (`Leak`, @sec-proof-fields).
 
 #principle[Whole where relied on][A value may be open (break its type's telescope, or hold a moved part) only while the code that opened it runs; wherever it passes to code that relies on its type it is whole, at every future of the parts still lent; and whatever produces an unknown of a dependent type has checked whole the value it stands for.]
-docs/18's wholeness (W1, W2); W3, a type read off a value, is in principle 3. Faults: an index field lent past a whole-again point (`GetN`, D73, the fault the clause "at every future" names), a stuck block's or `J`'s arm not checked at its end (D72, D75), a proof field assigned while its index is lent (D64 amended), a borrow with a moved-out content handed on (D127).
+_Used by:_ case 5, N7, and every strict end of a borrow. _Enforced:_ by construction for returns: `closeBlock` runs its arms itself and calls `bodyReturns`, the function `checkFix` calls, at each arm's end (D76); by checks elsewhere: [Repack] at whole reads, borrows, captures and observations, a lent part checked as an unknown of its borrow's type (D73), the `⊥` tests at read, borrow, capture and end (D53, D98, D127). _Audit:_ held. Its historical faults: `GetN` (D73), `JLie` (D75), `LieLent` (D64 amended).
 
 #principle[Recursion descends][Every call the check of a definition makes is of an earlier accepted definition, of a value, or of the definition itself, recognised by the name it binds for itself and checked to be on a strict part of the entry value as refined so far.]
-docs/18's recursion, without R3 ("check before running"), which @sec-arg-call shows is a matter of termination. The first clause (docs/18's R4, "one order") is the order the outer induction of the argument runs in. Faults: a non-structural argument (D17), recursive calls missed after a split rewrote a captured function value (`CapSplit`, D78).
+_Used by:_ the outer induction and case 9. _Enforced:_ by construction for recognition (`recFrameOf`, by a mark on the binding; only top-level definitions recurse, D136); by checks for descent (`recCheck` at every typed call, in nested functions and block arms too); a call of the definition under check closes off (D135); a global enters Σ before its check and is kept only if accepted. _Audit:_ held. "Only on a `Type₀` inductive" is redundant with the strict-subterm test (`qe`). Historical faults: `CapSplit` (D78), recursion on overwritten parts (`L`).
 
-#principle[Observation names every owner][The places `Id` observes are read from the syntax of its two sides, which run on independent copies, and each place is traced to every one of its owners.]
-What the argument uses of docs/18's observation (O1, O3's roots, O4): a statement proved at a definition's generic call is true at a call site, and the converse for a hypothesis, only if the two observations name corresponding places and every owner of a loan is observed (@sec-arg-id). Faults: one owner observed of several (D18); a write through a pattern variable unseen (D32). _For the adequacy of `Id`, not consistency_ (@sec-arg-unused): the observed places include every place a continuation could read (O3's sufficiency), the sides leave the same moves and borrows ([Id-typestate], D84, D114), where re-pointed borrows point is observed ([Obs-ref], D38, D113), and the conjunction comes in one order (O5, completeness).
+#principle[Observation names every root][The places `Id` observes are read from the syntax of its two sides, which run on independent copies; today each place is traced to every one of its owners; under the observation design (C) or (C+), each root of the observing frame is compared at itself or at its cell, and no loan is followed below the frame.]
+_Used by:_ case 2 (computing `Id`; a statement used at another state). _Enforced:_ by construction: `Obs.footprint` takes roots from the sides' terms, `Obs.owners` follows every occurrence of a loan or a mark outward, and one function, `obsResult`, observes for `Id` and [Conv-fun]. _For the adequacy of `Id`, not consistency:_ the sides leave the same type-state ([Id-typestate], D84, D114), re-pointed borrows are observed ([Obs-ref], D38, D113), conjuncts come in a canonical order. _Audit:_ held; a known gap of adequacy: where a re-pointed borrow of `Unit` points.
 
-#principle[Access is exclusive][Every access first ends the borrows that lend what it touches, so nothing reads, copies, matches, overwrites or drops a live loan; no access or drop ends a borrow that a value in flight holds; a borrow ends only over a whole content; and a borrow is only ever the whole value of a binding or a temporary.]
-_Design half only, the checks each step makes._ That every step therefore keeps the state well formed (each live borrow has one holder and lends exactly the places that hold its loan, fill or mark, never its own holder's content; holes are placed injectively; no live loan lies on a written path) is the named theorem N5, swept and not proved. What follows is `theory2`'s text, which stated the invariant as part of the principle. This is Aeneas's discipline and the machine's [Access] (paper §4.1: "this is the whole of the borrow checker"), the borrow half of the first draft's principle 5. The argument uses it more than any other: it makes the meaning of a state a function of a future, it keeps every context around a live loan injective, which is what lets a hypothesis proved at a call site be used by the callee and what makes every accepted backward function injective (@sec-arg-id), it makes a write at a field find its path at every future (@sec-arg-dep), and it gives [Close] closed texts (@sec-arg-close). Faults: a dangling borrow and the frame property's implicit exclusivity (D19), a borrow of a local returned through a block (D65 amended), a borrow recorded in a type (D71) or stored in data (D110's `Leak`), one borrow held twice in a copy (D92), an access ending a borrow a value in flight holds (D106), a borrow below a root (D111), a loan held twice in the field-type frame (D117).
+#principle[Access is exclusive][Every access first ends the borrows that lend what it touches, so nothing reads, copies, matches, overwrites or drops a live loan; no access or drop ends a borrow a value in flight holds; a borrow ends only over a whole content; and a borrow is only ever the whole value of a binding or a temporary.]
+This is Aeneas's discipline and the machine's [Access]: the borrow checker is a consequence of running the program. _Used by:_ N5, which every case uses; the end of a borrow as an equality of reference states; injectivity of contexts (only under today's observation). _Enforced:_ by checks: [Access] (`accessPath`, `accessInside`, `accessNeutralHead`); every end of a borrower goes through `endTopLoan`, which rejects ending a borrow a value in flight holds (D106); [End] requires a whole content (D98); D111's assertions at overwrite, drop and read; `closeCall` asserts loan-free inputs. _Audit:_ held; the invariant it keeps (N5) is argued per operation and swept on 2,137,352 states, not proved.
 
-== The theorem, and the named theorems it rests on <sec-theorems>
+#pagebreak()
 
-_Written by `theory3`; N4 restated, N8 and N9 added by `theory4`._ The principles are what the checker enforces. They do not prove consistency by themselves: the proof needs a few facts about the model and about every run of the checker, which are theorems to be proved, not properties a check can enforce. Here they are, by name. Each is stated precisely, with its status (_proved in Lean_; _argued on paper here_; _open_), what it would take to prove, and the principles it rests on. The argument of @sec-twohalves uses them and nothing else beyond the principles.
+= The theorem and the named theorems <sec-theorem>
 
-#table(columns: (13%, 40%, 25%, 22%), align: left, table.header([*Name*], [*Statement*], [*Status*], [*Rests on; what it would take*]),
-  [N1 _A model exists_], [For every accepted, hole-free program there is a data model of its declarations (@sec-n1-stmt): for each declaration a family on its parameters, of small sets of trees (data) or of truth values (`Prop`), the least one closed under its constructors with the field types the reference run computes, monotone in its nestable parameters, and stable as the program grows. With it constructors are injective and disjoint, every element is a tree of finite depth, and every type value an accepted program forms means a set in its universe: `False` means $emptyset$, a proposition $emptyset$ or ${bullet}$, and a function type returning a borrow only functions whose backward functions are injective (the plan's relation $R$).], [*Argued on paper* (@sec-n1), by the construction, from the checks of [Ind-decl] (@fig-n1-checks), with no bound on universe levels; every step in full but the other type formers, which are the plan's. *Proved in Lean under eight named facts* (`Assembly.exists_dataModel`, the bundle `DataFacts`), each placed in @fig-n1-facts: the model fact with a hard case (a global with a domain in `Type₁` heading a field's type, the referee's `WT`) is true, argued on paper, with the three Lean steps it needs; six are read true against the code and not derived; one is proved but for one assembly. The checker never refutes an equation between two types, so the model may identify them. Attacked with 193 programs (@sec-n1-attack): nothing found.], [Principle 1. To prove in Lean: `GlobalCallLevels` by its three steps; the six read facts derived from the checker's code; `CheckIndGivesChecks`'s assembly.],
-  [N2 _The fundamental lemma_, half (I)], [From a good reference state (every position an open member of its stored type at every typed future, one holder per label, records members), a strict reference run that succeeds returns a good result and leaves a good state; a proof that runs proves a true proposition.], [*Proved in Lean* (`fund_all`, on `spine`, every clause of the strict run, nothing beneath it unproved; its context has a kernel-checked instance; applied to seven concrete runs).], [N1 only. Not covered: the frame operations of a call run in place (push, pop), which are N4's.],
-  [N3 _Conversion is sound_], [If $v equiv w$ at a state the checker reaches, and both are well typed inside at one type, then they mean the same under every assignment; if `Eq` computes to $P$ on two sides that are `⊥` or whole members, $P$ means that the sides mean the same; and the same for open members compared field by field, `⊥` as a value of its own, which an observation meets at a caller's owner under the repair of @sec-rd-ends, whether the caller left it open or the side opened it (the fourth referee's F5; under the finals design of @sec-obs no caller owner is compared, and this extension is not needed).], [*Proved in Lean for values that hold no code* (branch `rules-trial`, both halves composed, under named hypotheses). *Argued on paper for code* (@sec-n3): sealed programs by their [Close] shape and the model's congruence, closures and [Conv-fun] by (II) for the generic calls' untyped runs and FR's C1 and C6, Π-types by (II) under (M1); attacked, nothing found. *At a type* (@sec-n3t): argued from N1 and N3 for values, Π-types and sealed type programs reduced as for code; the two facts of the data layer the Lean proof assumes (the library's connectives, the unit laws) follow from N1; attacked, nothing found.], [Principles 2, 3, 4, 7. To prove: the comparison of code, from "every sealed program held in the state has [Close]'s shape" (principle 7; swept on 625,140 sealed programs, not proved).],
-  [N4 _The frame property_], [Theorem FR of @sec-frame: a body run in place, its frame pushed on the caller's, and the same body run in the function's own frame with a cell for each borrow parameter, from related states that are both good and local, both fail or both succeed with the same result and related states. Its uses are corollaries: a call in place computes `callOf` (C1, with the fixpoint equation, which RecDesc gives: a body depends on its own binding only below the call's rank); a statement read at a call site means what the model's domain means (C2); a closure's value and the start's parameter types (C3, C4, by definition under (M1), (M2)); a sealed program's re-run and the step from (II) to the theorem (C5, C6: the renaming lemma RL, FR's case with no caller).], [*Argued on paper* in @sec-frame for every clause of the strict run but two (a Π-type formed in the body, and a closure's own types, need (M2) widened, D220; a `let`'s binding needs an invariant neither statement has), stated as Lean's `RunFrameI` hypothesis for hypothesis (@sec-frame-lean: the start state after the push, (H12) the renaming's range, (H13) sites at bindings, a parked result, (H7) in place only, `Id` over a parameter excluded), over the model with (M1) made; `Id` over a parameter in lemma OBS, reduced to resolved determination, which @sec-rd proves from N5's (X5) under the fourth referee's hypotheses; a closure's fixpoint equation immediate under D136; C3 and a deferred parameter type read after the call point #a-np. *Lean:* stated (`RunFrameI` with `FrameInv`; `FixEqG`, `RecDescG`, `run_counter_indep`, `run_frame_obs`, the last false as stated); proved: [Access] by commutation (`frameRel_access`), [End] (`frameRel_endLabel`, `frameRel_foldEnd`), the write, fresh labels, pushes, moves, drops, reads (`Steps/FrameOps`), the clause for a match (`runFrameI_matchNat`, `runFrameI_matchInd`), a call's fixes (`frameRel_mapFix`, `frameRel_callData`), the label-free fragment (`run_frameS_lf`), the fixpoint equation for one function (`fixEq_R`). Under the finals design of @sec-obs, `Id` would be an ordinary clause.], [Principles 4, 5, 6, 10, 12, N1 and N5. To prove: the remaining lemmas of @sec-frame-proof in Lean, the start lemma, C3; the model changes made.],
-  [N8 _The block lemma_], [A match run directly agrees with `callOf` of the block it would close off as, at the captured places: the same result up to its label, each place taken by `&` holding the block's final for it (@sec-frame-block). Not an instance of N4: no frame is pushed on the direct side, and the places taken by `&` are borrows on one side only.], [*Reduced* to N4 (C1) and the place-renaming lemma PR, which @sec-n8 writes out (the relation, and one lemma per operation, argued in full); its hypothesis that the captured values decode at the block's domains added; not mechanised.], [Principles 4, 7, 12. To prove: PR's relation as a definition and its lemma per operation.],
-  [N9 _Hints are inert_], [A body run in place at the deferred hint of its codomain (`hintLater`), or at none where `readsHint` says its tails read no hint, runs as at its codomain, and the deferred hint means the codomain (the second referee's R8).], [*Argued on paper* (@sec-n9), by reading `readsHint` against `evalCore` and `forceHint`; probed. Lean: `HintIndep` stated, for bodies whose tails read no hint.], [Principle 4. To prove: `readsHint`'s agreement with the run, and the hint's meaning.],
-  [N5 _Exclusive access is preserved_], [Every step of the checker keeps its state well formed: (WF1) to (WF16) of the plan, among them one holder per live borrow, every loan bound, loans acyclic, no live loan on a written path, fills only of [Close]'s two shapes or marks, holes placed injectively, and the typing of places (a place declared a borrow type holds a borrow, `⊥`, a loan or a mark, and a place that holds a borrow is declared a borrow type).], [*Open.* Swept on 2,137,352 states; the checker asserts (WF1) and (WF2) at every overwrite, drop and read (D111). *Argued on paper*, every clause per operation, (WF11) and (WF12) included, and (X5) in the form resolved determination needs (resolution injective in the live labels' finals) (@sec-excl, @sec-rd-proof); not mechanised.], [Principle 12. To prove: one lemma per operation (borrow, end, access, assignment, drop, closing off, capture, lend).],
-  [N6 _The decisions are aligned_], [At every state the checker reaches, each decision it makes (erasure, a function type's class and [Close] row, copy or move, η, the places a match moves and their grain, a block's captures and their modes, a match's entry, a constructor's recorded parameters, the expected type handed down) is the one the reference run reads from syntax and declared types.], [*By construction* for the decisions made in `Decide.lean`, which cannot run the machine; their agreement across fuels is proved in Lean. For a block's captures, *argued by reading* (case 4: the value reads agree with the declared readings on every state, by three checks), not by construction.], [Principle 4. To prove: compute capture modes from declared readings only (the redesign of @sec-a4), or derive them from N5's typing of places, as @sec-tw-split does.],
-  [N7 _[Repack] is sound at a read_], [A whole value that is an open member of its type and passes [Repack] is a member of it.], [*Argued on paper* (@sec-n7), by induction on the value, from open membership (proof and leaf fields fit by the invalidation and checked re-assignment of D64 and D112; strongly updated tree fields by [Repack] and N3), lent parts at every future; attacked, nothing found; not mechanised.], [Principles 3 and 9. To prove: an induction over the value, at its telescope.],
+== The statement <sec-statement>
+
+*Theorem (consistency, conditional).* Assume ZFC with one inaccessible cardinal per universe level used. Let the model be changed as @sec-frame-model and @sec-proof-fields say ((M1), built; (M2) widened; (M3) restricted or, under the observation design (C) or (C+), the detached observation; the proof-field locals; the model's [Obs-ref]). If N1, N3, N4, N5, N6, N7, N8 and N9 hold, then for every accepted, hole-free program no definition without parameters has a type that evaluates to `False`. In Lean this is `Ochr.Consistency.consistency`, about the checker at every fuel; the mechanisation aims first at `consistencyBounded`, for programs writing no sort above `Type₁`.
+
+_Proof._ By (II) (@sec-halves), every successful typed run of the checker is matched by a successful strict reference run from a related reference state. By (I) (N2) that run's result is a member of the type it returns. At a leaf of a definition's case tree [Def] compared that type with the goal, so by N3 the result is a member of the goal under every assignment (@sec-concl). A parameterless definition is checked from the empty state, which has one assignment; a member of `False` would be a member of $emptyset$. $square$
+
+#figure(table(columns: (12%, 38%, 30%, 20%), align: left, table.header([*Name*], [*Statement*], [*Status*], [*Rests on*]),
+  [N1 _A model of the data types exists_], [For every accepted, hole-free program there is a data model of its declarations: per declaration a family, least, closed under its constructors with the field types the reference run computes, monotone in its nestable parameters, stable as the program grows (@sec-n1).], [#a-lean for the Lean model on codes, programs up to `Type₁`, from five facts read true (`exists_dataModel`); the set-level construction argued in full given three properties of a run on sets; attacked with 193 + 90 programs, nothing found.], [Principle 1.],
+  [N2 _The fundamental lemma_, (I)], [From a good reference state a strict run that succeeds returns a good result and leaves a good state; a proof that runs proves a true proposition.], [#a-lean (`fund_all`, every clause of the strict run; its context has a kernel-checked instance).], [N1.],
+  [N3 _Conversion is sound_], [If $v equiv w$ at a reached state, both well typed inside at one type, they mean the same under every assignment; `Eq` computed on `⊥` or whole members means equality of meanings (@sec-n3).], [#a-lean for values without code; argued for code and at a type; attacked, nothing found.], [Principles 2, 3, 4, 7; N1.],
+  [N4 _The frame property_], [A body run in place and the same body run in its own frame with a cell per borrow parameter, from related good states, both fail or both succeed with the same result and related states (@sec-frame).], [Argued clause by clause but three; parts #a-lean; the whole open.], [Principles 4, 5, 6, 10, 12; N1, N5.],
+  [N5 _Exclusive access is preserved_], [Every step keeps the state well formed: one holder per live borrow, every loan bound, lending acyclic, arguments exclusive, no live loan on a written path, the typing of places, types hold no loan, fills only of [Close]'s shapes (@sec-excl).], [Argued per operation; swept on 2,137,352 states; not mechanised.], [Principle 12.],
+  [N6 _The decisions are aligned_], [Each decision the checker makes is the one the reference run reads from syntax and declared types (@sec-n6).], [By construction in `Decide.lean` (agreement across fuels #a-lean); a block's captures by reading at three sites.], [Principle 4.],
+  [N7 _[Repack] is sound at a read_], [A whole open member that passes [Repack] is a member (@sec-n7).], [Argued; attacked; not mechanised.], [Principles 3, 9; N3.],
+  [N8 _The block lemma_], [A match run directly agrees with `callOf` of the block it would close off as (@sec-n8).], [Reduced to C1 and the place renaming PR, argued; under blocks as text, definitional for the model.], [Principles 4, 7, 12.],
+  [N9 _Hints are inert_], [A body run at the checker's hint runs as at its codomain, and the deferred hint means the codomain (@sec-n9).], [Argued by reading; Lean's `HintIndep` stated for bodies whose tails read no hint.], [Principle 4.],
+), caption: [The named theorems.]) <fig-named>
+
+Two further lemmas have the status of named theorems though the argument derives them: _resolved determination_ (RD, @sec-rd), needed only under today's observation, and the _renaming lemma_ RL (a run is unchanged by shifting the label counter, @sec-frame-stmt). Under the observation design (C) or (C+) the frame property's `Id` clause needs the _detach lemma_ DL (@sec-idclause) instead of RD.
+
+== The two halves <sec-halves>
+
+*An assignment* γ of a checker state Ω gives each unknown Ω still refers to (in a value, a stored or deferred type, the goal, a record in force) a member of its type's meaning, in the order the unknowns were made, meeting the _path conditions_ of the current world: a refinement $sigma := r$ in force fixes γ(σ) to $r$'s meaning, a generalisation $n := sigma$ to the meaning of the sealed program $n$. An unknown function ranges over every set function.
+
+*A reference state* $S$ is a structure, not a set of values: the checker's frames, bindings and temporaries, each position with a _meaning_ (a function of the _future_, which gives labels values), a stored type as a _code_, and its declared reading; which position holds each label (one at most); for each live label where it is _lent_ (each site a loan or a fill) and its _record_, a whole member of its content's type; a label counter. A future is _typed_ when it agrees with the run's off the live labels and gives each live label a whole member of its record's type.
+
+*The strict reference run* $refrun(t)$ runs the machine's rules on a reference state, except that a call applies its callee's meaning and never runs a body (a callee returning a borrow lends the new label wherever its borrow arguments are lent); an access ends the live borrows lent at, over or under the place; a match reads its scrutinee's tag, so nothing splits; `Id`, `Eq` and `J` mean as in the model. It fails wherever a value is put at a type it is not a member of (an annotation, a constructor's field, a closure's formation, a borrow, an assignment, a read, a call's borrow argument), at a write at a field unless the path exists at every typed future, and at the end of a borrow unless its holder's content is a whole member at every typed future. A read is taken at the typed future that gives each live label its record. *Good:* at every typed future each binding holds an _open member_ of its stored type (defined field by field, with completions of moved earlier fields: the plan's), each holder an open member of its label's record type, each record a member, each label one holder.
+
+*The relation.* $S$ simulates Ω under γ and a renaming π of labels at φ when (R1) they have the same frames and bindings in order, types of the same code and the same readings; (R2) π is one to one on the live labels into labels $S$ issued; (R3) at every typed future each binding means under γ what the reference's means, and holders match through π; (R4) each live borrow is lent at the same places, fill or loan alike; (R5) each live label of $S$ has a record. It holds at the start, steps compose, and it survives a private copy (`Rel.start`, `sim_seq`, `Rel.private_copy`: #a-lean).
+
+*(I), the fundamental lemma,* is N2.
+
+*(II), the simulation, as the mechanisation states it* (`EvalAt` for a run of `eval`, `TailAt` for `checkTail`; one strong induction on fuel, `master` #a-lean assuming 32 step statements). Let the checker run $t$ from Ω, typed (to $v$, $A$, Ω') or untyped (a body in place, a sealed program's re-run; to $v$, Ω'). Hypotheses: (E1) Pre(Ω, γ): γ an assignment; the context is Ω's (its declarations, a data model of them, each global's meaning a member of its type, but the definition under check, whose meaning is its stage, a member of the weakened type; the decision table the checker's); the typing of places; Ω well formed (N5). (E2) $S$ good and simulating Ω. (E3) $t$'s embedded values good, its unknowns Ω's, no hole. (E4) _Untyped runs only:_ the strict run of $t$ from $S$ succeeds, at the checker's hint (which N9 relates to the codomain). (E5) The plain mode: not copying, not in place, no head evaluation (in copying mode the checker's read leaves a place the strict run moves: `let x = S(Z); let y = clone(x); x`, at the read inside `clone`; such sub-runs have their own steps). (E6) The reading handed down is none or the decision table's. (E7) The hint names only Ω's unknowns. (E8) A frame exists; a typed run starts outside tail position. (E9) The decision table is aligned at the run's end, not its start. Conclusions, for some γ' and π' extending γ and π at what the run made: (C1) the strict run of $t$ succeeds, in tail position exactly when the checker's is, with result $r$, type $T$, state $S'$; (C2) $r$ means $v$ at the future the run is read at; (C3) typed runs: $T$ means $A$; (C4) Pre(Ω', γ') holds and the states with the results held as temporaries are related; (C5) the run keeps its mode, its number of frames and its top frame's readings; (C6) a deferred call type reads as the reference's result type; (C7) a promised type that is missing reads as an error.
+
+_What is not in (II):_ no clause says a value the checker holds is a member of its type. Membership is (I)'s, about the strict run; (C2) and (C3) carry it to the checker. This is what answered the first referee (the form that carried membership on the checker's side failed when mechanised: a value in flight had no type, a return check did nothing at `Unit`, an untyped run bound positions at types it never checked). _Why the relation survives the end of a borrow:_ an end is an operation on reference states, not a choice of future: the holder becomes _moved_ and every position that read the label reads the holder's content, on both sides alike, with equality at every typed future. Its strict test passes because the checker ends a borrow only over a whole content (D98) and a whole open member that passed [Repack] is a member (N7). #a-lean for the fragment's leaves.
+
+*Open in (II)'s statement:* that a successful run ends with the deferral flag clear (`DeferClearG`, read true, unproved); (C2) is proved at one future, (R3) asks every typed future.
+
+== The induction <sec-induction>
+
+*Outer:* on the position $k$ of $d_k$ in the program and, for a recursive $d_k$, on a bound $b$ on the rank of its decreasing argument. An earlier global's meaning is its own, a member (the outer hypothesis); $d_k$'s is its _stage_ $b$, a member at every argument of rank below $b$. Under D135 nothing during $d_k$'s check runs $d_k$'s body: every call of it closes off, so the outer hypothesis is used only through the meaning of such a sealed call, the stage applied. The step $k$ establishes, in this order (`lead37`, correcting D213): (II) for $d_k$'s check; membership of $d_k$'s meaning (the knot's goodness, `FnGoodG`); the descent clause (`RecDescG`, restated); the fixpoint equation (`FixEqG`), which uses membership. _Inner:_ (II) by strong induction on fuel; a callee's body and a sealed program's re-run run at less fuel than what caused them. _Nested:_ a function formed in a body (non-recursive since D136) and a stuck block's function are checked at their own nodes, by the same two halves; their membership, and the injectivity of a returned borrow's backward function where the model needs it, is proved there.
+
+== From (II) to the theorem <sec-concl>
+
+At the root of $d_k$'s check the generic state, read as a reference state, is good and simulates itself. Each assignment reaches exactly one leaf $(Omega', v, A)$: at each split its value of the scrutinee has one tag and selects one arm (principle 8). By (II) along the path the strict run of the body succeeds with $v$'s meaning and $A$'s; by (I) the result is a member of $A$; [Def] checked $A equiv G'$, the goal refined on the path, so by N3 (whose typing hypothesis (I) supplies: a value whose meaning fits a type is well typed inside at it, `hwt_of_fit` #a-lean) $A$ and $G'$ mean the same, and $G'$ is $G$ under the path's refinements, which the assignment meets. The cells are compared by (R3) and are whole at the leaf ([Return], principle 9). This is an instance of the frame property (C6, @sec-frame-stmt): the generic state as the in-place side, its frame of cells as the caller's frames.
+
+_Injectivity of a returned borrow's backward function._ As long as the model's function types hold only functions whose backward functions are injective (the relation $R$; under every option but (C+)), membership has one more clause: a $d_k$ that returns a borrow has an injective backward function. Its cells' contents are contexts around the result's loan, built only by steps that place a loan (a borrow, a reborrow, a stuck call's fill, a call's mark, the end of a borrow whose content holds the loan) and touched by nothing else while the loan is live (principle 12); each such step is injective jointly over the places it fills, and composition keeps that: _holes are placed injectively_, N5's (X5). A borrow of $d_k$'s own local cannot be returned (it is a value in flight when the local dies: D106). Under (C+) the model drops $R$ and this clause with it. #a-red[N5]
+
+== N1: a model of the data types exists <sec-n1>
+
+*Which statement* (settled in this pass, as the sixth referee and `exists12` recommend). The consistency proof is Lean's: `exists_dataModel` gives a model on codes, `consistency_rel` uses it, and nothing reads a set model. So _the paper should state N1 for the Lean model on codes_ (families on codes, trees that record their parameters, parameters ranging over codes), for programs that write no sort above `Type₁`, and give the set-level construction below as its explanation, each step with its Lean counterpart named. The set model's extra identifications (`Ph(Nat)` with `Ph(Bool)` for a phantom parameter, any two empty data types, any two true propositions) are then not claimed, and nothing is lost: consistency never reads them. The alternative, keeping the set model as the statement, needs a bridge theorem (a decoding of codes to sets that commutes with the run at every node of the field-type grammar), about the size of the congruence and locality lemmas together, and buys only unbounded universe levels.
+
+*The Lean theorem.* `Assembly.exists_dataModel` (on `spine-exists12` at 73f1a1075): for every resolved list of items and every fuel, a data model covering every declaration, faithful at every stage, from five facts: `NamesFact`, `VaryValFact`, `FieldHeads` (about the checker; derivable, but the first needs a whole-machine names invariant for a constant's stored value, the other two need type preservation through the run-based `sortOf` check, or the two syntactic checks of decision (d)), `DecCaps` (a block's captures are rooted at the term's free places; blocked by Lean's `Array.qsort`, which has no lemmas) and `DecStable` (a field type runs the same at every later reached state; false at an arbitrary state, `FactsCE`). Proved since the last pass: `GlobalCallLevels` (the hard case, a global with a domain in `Type₁` heading a field type, by a stage invariant on a global's type, the telescope of a written Π with a sort codomain, and a new lemma tracking `telL`'s terminal code, the sixth referee's Y3), `ItemFacts` (with `CheckIndGivesChecks` assembled), `NoValFact` (from the program's resolution), and `DecLocal`'s other parts.
+
+*The construction, as explanation* (`theory7`; refereed by the sixth referee, who found its logic right). Universes mean Carneiro's: `Prop` the two truth values, `Type_i` the stage $vk(i)$. A data value means a tree: its declaration, its constructor, its fields' meanings. Per declaration, by recursion on the program (S1), the field types form a grammar (S2): `Nat`, `Unit`, a parameter, an applied earlier declaration, the declaration itself, a call of an earlier type function, an equation over first-order data; its _spine_ is the field type and, inside an applied declaration, its arguments at type parameters. Off the spine nothing varies with the family being defined (S3a); on it everything is monotone and preserves unions of increasing chains, own nesting included ($X(X(A)) subset.eq Y(Y(A))$ by $Y$'s monotonicity, S3b); every field type is small (S4); a data declaration means the union of its ω stages, a least fixed point among monotone families (S5); a proposition its least truth by Knaster and Tarski on monotone predicates (S6); the result is faithful to the strict run wherever that is defined (S7) and stable (S8); so constructors are injective and disjoint, trees have finite depth and ranks decrease through any field, and a subsingleton's arm is determined by its proposition (S9 (1) to (3)). The other type formers (S9 (4): Π-types as dependent products, cut to $R$ for a borrow result; `Eq`, `Id` as truth values; $\&T$ as $T$) are the plan's, #a-claim. On sets, S1, S3a, S4 and S7 hold _given three properties of a run on sets_ (the sixth referee's Y1): (P1) congruence (a node means the same under two models that agree at the names it mentions); (P2) locality (it reads its frame only at the variables it mentions; on codes this needed `DecLocal`, and a run on sets needs the same of its decisions); (P3) calls typed at their codomain. On codes these are the Lean lemmas `runT_congrN`, `runT_qset` and `GlobalCallLevels`. _Corrections folded in:_ S0's closure under tuples holds of $vk(i)$, not of `Prop`; S6 needs monotonicity only in the nestable `Prop` parameters; a function's meaning is the typed function cut at its codomain (S4's), not "its body's reference run" (S1 said both); the ω-union and its leastness are Kleene's, not taken from Carneiro's §6.2.1 (which has no stages); taken from the thesis are the universes and `Prop` of §6.2, the truth-value reading of ∀, and Remark 1, and nothing of §5's reduction or its unfinished §5.4.
+
+*Where Ochr goes beyond Lean's metatheory*, each covered by the construction: nesting at an earlier declaration's and at the declaration's own parameter with a varying argument (`DD(A) := DLeaf | DNode(x : DD(DD(A)))`, which Lean's kernel rejects); recursion at other values of value parameters, families Forded through equation fields (`Vec`, `EvV`), including a value-indexed declaration nested at a field variable (`VL`, which Lean rejects); field types computed by running code (`AV` writes a local through a borrow); propositions nested at their own `Prop` parameter (`N2`, `PN`); data holding functions at instances of its field types, borrow-returning ones included (`DPF`, `DPB`), whose relation $R$ is part of S9 (4).
+
+#figure(table(columns: (30%, 14%, 56%), align: left, table.header([*Check (decision, function)*], [*Serves*], [*Without it, or one notch weaker*]),
+  [Fresh names; constructors distinct within a declaration ([Ind-decl], `declared`)], [construction], [two arms named alike make one tree, while `distinctCtors` tells them apart by index],
+  [Fields a telescope (D64, `fieldRefs`)], [construction], [no dependent sum (`LateEq`)],
+  [First-order fields: no Π over the declared type; no Π at all (D36, `firstOrderTerm`)], [construction], [`Bad := MkBad(f : Π(x : Bad). False)`: Curry; a positive Π into the type (`WT := … WNode(f : Π(n : Nat). WT)`) makes ω stages too few],
+  [… and no call computing to a Π at the generic telescope], [nothing], [`NT` rejected, `DPF` accepted: alike to the model],
+  [The declared type on the spine at calls (D36, `firstOrderArgs`, `firstOrderCallArgs`)], [construction], [`B1`, `B2`: negativity behind a type function],
+  [… and not in an equation or a value argument], [positivity's syntax], [`B6` means $emptyset$],
+  [Nesting only at nestable parameters, the greatest set, own occurrences included (D107, `nestableSet`)], [construction], [`PositivitySelf.Q`: Curry's paradox, a closed proof of `False` before D107],
+  [… a parameter passed to an equation or a value is not nestable], [positivity's syntax], [`TBD` has a least model],
+  [A variable mentions what its declared type mentions (D120, `readViolation`, `deepVars`)], [Lean records (`KnotCE`); Lean's rule], [`D2`, `LD`, `NBD` have least models],
+  [One sort per knot (D121, `sortNestViolation`)], [Lean records (`PropNestCE`, `CrossSortCE`); Lean's rule], [`B11`, `B12` mean $emptyset$],
+  [The type's constructors unreadable while it is declared (D107, the declaring entry)], [(II)], [`Q11` has a least model; before it a zero-arm match on the type being declared was vacuous, so the checker's field type differed from the strict run's],
+  [Field levels; sorts syntactic (D55); a type parameter written as a sort (D128)], [construction], [`U1` to `U10`, `T1` to `T5`; `TL`'s `B` ranges over $vk(1)$, so DM5 fails],
+  [Names declared and earlier; own name in fields only (D118, D133, `undeclaredCheck`)], [construction], [S1's recursion; `Q3` ran the checker out of memory],
+  [No borrow in a parameter or field type (D71, `typeHasRef`)], [N5], [(WF1): a borrow is the whole value of a binding or temporary],
+  [A constructor's parameter inferred only where the model reads it back (D105)], [(II)], [a tree does not depend on what is inferred; the run's agreement does],
+  [_Elsewhere:_ subsingleton elimination in every position (D45)], [construction], [`IsL`, `D1` to `D15`],
+  [_Elsewhere:_ recursion only on a `Type₀` inductive ([Rec])], [nothing (redundant)], [`recCheck` already fails a parameter with no entry value (`qe`)],
+  [_Elsewhere:_ borrows only of `Type₀` (D66); a borrow result needs a borrow parameter (D44)], [S9 (4)], [`Impred` (Hurkens); `QF`, `QU`],
+), caption: [The checks of a declaration and what each serves: the paper's construction, Lean's records or rules, the simulation (II), or N5 (after the sixth referee's Y2).]) <fig-n1-checks>
+
+*The standing assumption.* A model that identifies two type values the checker tells apart is wrong. Neither model is: the checker's `eq` refutes only two constructor values of different constructors and `⊥` against a value, never a type value (the sixth referee, by reading `mkEqM`); every other place it compares two types (conversion in [Eq-refl], [J], a goal, [Rec]; a record's exact lookup) gives `True` or stuck, accepts or rejects, never wrong. So no equation between any two type values, whatever their formers, is refuted (`EE`, `PT`, `EP`, `NoTEq` rejected, each stuck). The earlier justification "a type is a copy, so a place that holds one is never moved" is false: a type at a place declared at a type parameter is moved (`MoveTy`).
+
+*Status.* Lean: proved on codes up to `Type₁` from five facts read true. Paper: S0 to S9 argued, S1 to S7 given (P1) to (P3), S9 (4) claimed. Attacks: 193 programs by `theory7` and 90 more by the sixth referee, re-run: no accepted declaration without a model, no large elimination from a non-subsingleton, no accepted empty type. Incompletenesses: `VF`, `B10`.
+
+== N2: the fundamental lemma <sec-n2>
+
+From a good reference state, a strict run that succeeds returns a good result and leaves a good state, and a proof that runs proves a true proposition. #a-lean: `fund_all`, on `spine`, every clause of the strict run, nothing unproved beneath it; its context has a kernel-checked instance; applied to seven concrete runs. It was found vacuous, then false at a write to a field, then too wide for the simulation, and changed each time; its typed futures give each live borrow a whole member, and the end of a borrow is a strict point. Not covered: the frame operations of a call run in place (push, pop), which are N4's.
+
+== N3: conversion is sound <sec-n3>
+
+*For values that hold no code:* #a-lean (`conv_sound_T`, `mkEqM_sound_T`, branch `rules-trial`), under the typing hypothesis (both sides well typed inside at one type; without it `Eq(Nat, And(True, Nat), Nat)` against `Eq(Nat, Nat, Nat)` refutes it, and no accepted program forms the first). (I) supplies the hypothesis at every use.
+
+*For code* (`theory5`; refereed by the fourth). By induction on the derivation of $v equiv w$, which is finite since the relation is the least one. CV1 [Conv-refl]: invariance under renaming of bound variables, #a-full. CV2 data: #a-lean. CV3 sealed programs equal but for convertible embedded values mean the same: a sealed program means the strict run of its text, which depends on embedded values through their meanings (`RunCongr`) and through their _readings_, which convertible values need not share (`F (n : Nat) : Unit := ()` and `H (n : Nat) : TF(Z) := ()` are convertible, and a call's result is copied for one, moved for the other: `TwiceH`); but every sealed program held in the state has [Close]'s shape (principle 7), where a reading is read at three points only, the head's class and row (equal by [Conv-pi]), η at `Unit` (sends a member to itself), and the head's codomain as `r`'s stored type in the borrow row (which nothing reads to decide). It needs every embedded value to be a member (true today; false under the unrestricted patch (B), the fourth referee's F1). #a-red[principle 7, `RunCongr`] CV4 closures by the fast path: CV1. CV5 [Conv-fun]: two functions with convertible Π-types and captures and convertible observations at the generic call mean the same, since a function's only effects are its result and its borrowed places and its meaning is that observation at every argument list; the generic runs are cases of (II) whose (E4) is the functions' membership. #a-red[(II), FR (C1, C6)] CV6 [Conv-pi]: under (M1) the model's domains and codomain are runs in exactly the generic state. #a-red[(II), (M1)] CV7: every "not convertible" fails safe; read coinductively, [Conv-fun] would identify any two closures stuck at their generic calls and `J` would prove `Eq(Nat, S(Z), Z)` (`G12` rejected). #a-full
+
+*At a type* (`theory7`; refereed by the sixth). TC1 sorts and [Conv-refl]; TC2 $ty("D")(overline(v)) equiv ty("D")(overline(w))$: a family is a function of its parameters' meanings; TC3 $\&T$ and `Eq`; TC4 the unit laws, from N1 at the library's `True`, `False`, `And`, which also keep typing (a match on either side decides by its own stored type's head); TC5 [Eq-inj], [Eq-disj], [Eq-refl] from N1's consequence 1; TC6 [Conv-pi] as CV6; TC7 neutral types as CV3. [Conv-cong] on two Π-closures with the same code and convertible captures (the checker's fast path), missing from that list, is CV3's congruence. The two hypotheses the Lean proof for values took about the data layer (the library's connectives mean conjunction, truth and falsity; the unit laws keep typing) follow from N1 (TC4, TC5); on the Lean model through its least truths (`truth_exists`). #a-full given N3 for values.
+
+*Attacks:* 13 programs on code, 23 at types, re-run by two referees: no pair of convertible values with different meanings. One incompleteness: two convertible functions with stuck bodies, `Fs (n : Nat) : Unit` and `Hs (n : Nat) : TF(Z)`, give a stuck `Eq(Unit, (), ⌈Hs(σ0)⌉)`, since η reads the head's declared codomain.
+
+== N4: the frame property <sec-frame>
+
+A function's body runs in two ways. The checker runs it _in place_: a frame pushed on the caller's state, each borrow parameter holding the caller's borrow. The model reads the function's _meaning_ off a run of the same body in its _own_ state: its captured values and, per borrow parameter, a fresh borrow whose loan sits in a _cell_ below the body's frame, which ends holding the parameter's final content. The frame property says the two runs agree. Every call run in place rests on it, and so do a statement read at a call site, a sealed program's re-run and the step from (II) to the theorem. It was stated six times and refuted six times, each by a state the statement admitted and no call makes; every refutation is now a hypothesis, with the program or lemma that forced it.
+
+=== The model it is about <sec-frame-model>
+
+- *(M1) A function type's later parameter types and codomain are read with a cell per borrow parameter* (forced by the second referee's `G1`: with no cell, the model read `G1 (x : &Nat) (e : Id(Unit, (*x := 0; let z = x; ()), (*x := 1; let z = x; ()))) : False`'s second domain as `True`, so an accepted definition had an empty type). This is what [Def], [Conv-pi] and [Conv-fun] do. _Built in Lean_ (docs/31 D210).
+- *(M2) A closure formed in a body runs from its captures, in a frame laid out like the forming top frame* (structural form; it replaces a circular definition, the third referee's T3). The `.fix` clause accesses each capture, reads each captured position as a constant, and runs the original body from that frame at counter 0. A Π-type's captures are read on a copy, with no access and no move, as the checker forms them (T2: built like `.fix`, `PiMove` and `PiLentEq` would lose their meaning). _Widened_ (D220): the type runs of a Π-type, and of a closure's own parameter types and codomain, read the whole forming state, so (M2) must host them too. Not built.
+- *(M3) An end inside an observation is a strict point exactly when its label is held in the observing frame* (the third referee's repair: unrestricted, it made the frame property false at a call with no borrow parameter, `CallI`). Not built. Under the observation design (C) or (C+) every end in the detached state is the side's own, and the unrestricted form is right.
+
+=== The statement <sec-frame-stmt>
+
+*Theorem FR* (Lean `RunFrameI` over `FrameInv`, hypothesis for hypothesis; stated, open as a whole). Over the model with (M1). Let the context meet the fundamental lemma's conditions; let $s_0$, the state just _after_ the callee's frame is pushed, and its parameter labels `ks` meet the start conditions (S1) the caller reads no label at or above the counter, (S2) the parameter labels are below it and distinct, (S3) the caller holds none of them (true only after the push: at the call point the caller's temporaries still hold the arguments, D115), (S4) the caller's borrows are lent only in the caller's frames; let $t$'s embedded values be good and $t$ form no `Id` when there are parameter labels; let a renaming σ (closure labels to in-place ones) relate $s$ and $s'$ (`FrameRel`: (F1) σ injective and fresh to fresh; (F2) frames; (F3) the caller's frames keep their types, readings and holders; (F4) each caller position reads what it read at the call with each $k_i$ given cell $i$'s current meaning; (F5) the top frames hold the same bindings with meanings related through σ; (F6) holders correspond; (F7) content types and records agree but at parameter labels; (F8) the top frames' sites correspond; (F9) closure labels go to parameter labels or above the counter). With:
+
+#table(columns: (34%, 66%), table.header([*Hypothesis*], [*Forced by*]),
+  [(H1), (H2) both states good], [a caller binding holding `err` makes the whole-state test fail in place only (D113); a junk binding in frame 0 makes it fail in the closure only (D201)],
+  [(H3) locality: positions read only live labels, a holder only labels above its own; no top-frame position reads a parameter label], [a run reads a meaning at one future; a variable reading label 0 in the closure and 5 in place reads differently off the live labels (D129)],
+  [(H4) frame 0 holds the cells first, one per parameter label], [with no cell, a parameter label's end changes a caller position and nothing in the closure (D203)],
+  [(H5) every recorded holder is a position], [[End] finds a holder by search (D209)],
+  [(H6) lending well founded], [two labels each lent at the other's holder, ended in two orders, leave different sites (D215)],
+  [(H7) in place, a parameter label is lent in the callee's frame only as a fill], [`relend` of a loan site is not associative at an empty path (D211, D215)],
+  [(H8) parameter labels' preimages lie below every other closure label, and σ is monotone on the others], [ends go in label order; σ may reverse two parameter labels (`P4`); D208's monotonicity is true and insufficient, its premise that a parameter label has no site in the callee's frame is false (`P2`, `P4`)],
+  [(H9) the in-place counter is at or above $s_0$'s], [fresh labels correspond],
+  [(H12) σ sends every closure label, dead ones too, to a parameter label or past $s_0$'s counter], [[Entry]'s lending acts on a match's result label even when it is dead, and a call's fixes on a consumed one (D219, D220)],
+  [(H13) every site in the callee's frame is at a binding], [lending a parked result further would close a cycle (D219)],
+)
+Then the strict runs of $t$ from $s$ and $s'$ both fail, or both succeed with the same result (its label renamed), related final states again meeting the hypotheses, and a live result label held by a temporary of the callee's frame (`ResAtTemp`, D219). _Beside FR, needed by the argument and not in Lean:_ (H10) site faithfulness (a position reads a live label only where it is lent; argued by reading every operation; used by the closure clause under (M2) and by resolved determination); and for a `let`'s binding, that every site in the callee's frame is at an existing binding (D220, true by reading, in neither statement).
+
+*The invariant* the proof carries, replacing (P) ("a parameter label is lent only at its cell", false: `P2`'s [Entry] lends a parameter label at a callee place, which an access then ends). (I1) No callee position reads a parameter label, and in place none reads a label the caller holds (#a-lean per operation). (I2) A live label with a site in the callee's frame is held there and is in σ's image. (I3) A parameter label is lent at the caller's frames (in place) or a cell (in the closure, not necessarily its own: `P5`), and at callee places only as fills. (I4) Two ends commute as states when neither holder reads the other's label, lending is well founded and a site of either at the other's holder is a fill; two strict ends commute in their tests (`endLabel_comm_state`, `perm_fold`: #a-lean).
+
+*The proof,* by induction on $t$ as the strict run is defined. Operation lemmas: typed futures correspond on live labels (O1, restated after the second referee's R5; #a-lean at an end); a read (O2), [End] (O3, including a label the body made, through (F4)), [Access] by commutation of ends (O4), a write (O5), a fresh label (O7), bindings and temporaries (O8): #a-lean; the whole-state test after a write at a field (O6, using goodness of the caller frames and frame 0 inside a clause, the per-operation reasoning of N2's proof) and D112's invalidation (O9): #a-full. Clauses: places, `let`, `;` without labels #a-lean; with labels, borrows, field paths, `J`, erased terms, constructors, embedded values: #a-full; a match #a-lean (`runFrameI_matchNat`, `runFrameI_matchInd`, with (H12), (H13)); a call's fixes #a-lean, its borrow result, head and arguments #a-full; a body reading its own binding #a-full (equal selves, D202); a closure formed in the body #a-full under (M2) widened and (H10); a Π-type formed in the body, and a closure's own types #a-np (need (M2) widened, not built); `Id` with parameter labels: outside FR (@sec-idclause).
+#stand[the second referee's R2, narrowed by D220][The model runs a Π-type's parameter types and codomain, and a closure's own, from the whole forming state under a fresh bottom frame, so in place they see the caller's frames and in the closure frame 0, and the relation cannot relate the two runs. The clause holds once (M2) hosts those runs in its structural frame, captures read on a copy; (M2) is not built.]
+
+=== The call in place, the fixpoint equation, closures <sec-frame-fix>
+
+*The start:* at a good call point, $s_0$ and the closure state `fixBodyAt` builds (captures under (M2), own name $G$ at its true type, a cell per borrow parameter) are related and meet every hypothesis, each from the call point's goodness, the arguments' decoding at the domains (case 2, through C2), N5's acyclic lending, and the arguments being loan-free temporaries (#a-full; #a-lean on one program, `frameJ2_holds`). *The pop:* both sides end the same labels, in orders differing only among parameter labels, which commute; after the ends (F4) reads the caller at the cells' finals, which is `callOf`'s fixes (#a-full, given the fixpoint equation).
+
+*The descent clause and the fixpoint equation* (`lead37`, docs/31 D234). `RecDescG` as Lean first stated it is false (it asked no membership of the two selves, and the whole-state test reads `self`); restated: for two meanings of the own name that are closures over the domains, good functions, agreeing at member arguments below the call's rank, the body's runs give the same output. `FixEqG` is stated at the global's forming state only, and needs the global's function good everywhere (`FnGoodG`, the knot's output), so membership comes before the equation. `FixEqDesc.fixEqG_of`, the fixpoint equation from `RecDescG` and `FnGoodG`, is #a-lean. For a global, `RecDescG` comes from (II) for its own check and the fact that every sealed call of it in that check carries a decreasing argument of rank below the entry's (D135 makes every such call close off at a site the [Rec] test saw); no circle, since under D135 the check never runs the body. Establishing `RecDescG` and `FnGoodG` in Lean is blocked, for globals whose blocks call them, by decision (b).
+
+#stand[`lead37`, item 39][The paper's [App] binds a function's own name in its frame only when it declares `by`; the checker's `runBody` binds and marks it for every function (unread without `by`; the proof's relation reads the mark, D136's amendment). The paper should say what the checker does; for a block the binding is fault (3) of decision (b).]
+*A closure's fixpoint equation* (CloFix). Under D136 a closure declares no `by`, binds no own name in its body, and has rank 0, so its body does not read its own binding: (b) its meaning is a member of its type (by the nested induction where the typed check formed it, by (E4) of the case that made an untyped run otherwise); (a) its fixpoint equation follows by OwnIrr, a run does not read a binding its term does not name (read (b) first: (a)'s whole-state test uses it). #a-full. *False for a block's closure* (`NTr`: the model reads the block as a function of every value, the checker checked it at its captured value): decision (b).
+
+*The uses, as corollaries.* (C1) A call in place: from FR, the start, the pop and the fixpoint equation, the run in place succeeds exactly when `callOf` does, with the same result and state. #a-red[FR, FixEq] (C2) A statement read at a call site, under (M1): FR for a type term run on a copy. #a-red[FR] _At a call point only_ (the third referee's T4): the checker evaluates borrow parameters' types at the call point and defers the others; a deferred type keeps the arguments as passed and finds the same owners while their labels live; one with an `Id` over a borrow parameter whose label has ended before it is read finds no owner and is weaker than the model's. #a-np for that case (no program known; an untyped run does not read a proof parameter's stored type); repair under today's observation: evaluate such types at the call point; under (C) or (C+) closed by construction.
+#stand[the third referee's T4][Case 1's push rests on C2, which says nothing of a deferred parameter type read after its borrow argument's label has ended.] (C3) A closure value means what the strict run formed: a renaming of variables and positions undoing `capture`'s inlining. #a-np
+#stand[the third referee's T3][C3 is a lemma, not a definition, and is not proved; case 3's [T-Fix] and resolved determination's producer of a closure's fill rest on it.] (C4) The start's parameter types: by definition under (M1) and (M2). (C5) A sealed program's re-run: by RL. (C6) The step from (II) to the theorem: an instance of FR (frame 0 of cells as the caller's frames; (F4) the identity). *RL* (a run is unchanged by shifting the counter, for bindings that read no future and carry no label; Lean `run_counter_indep`, false as first stated, open): FR's argument with the caller's clauses deleted, a separate proof.
+
+*Not proved, in words:* the `Id` clause (by RD under today's observation, by DL under the detached one); C3; the block lemma's place renaming PR; a deferred parameter type read after its borrow has ended; the clauses that need (M2) widened; the `let` invariant; and FR itself in Lean.
+
+== N5: exclusive access is preserved <sec-excl>
+
+Every step keeps the state well formed. The clauses, in the forms the argument uses:
+- (X1) each label has at most one borrow, the whole value of a binding or temporary, never inside data, a sealed program, a closure, a type or a record; one exception: a deferred parameter type's record keeps the call's arguments as passed, a borrow argument with its content at the call (`lazyTy`), read only by `paramTypes` on a private copy after taking the live borrow from its holder (`takeArgBorrow`), and lent nowhere once the label has ended (the fourth referee's F6; the sweep scans values, not these records);
+- (X2) every loan or mark has its borrow (but an inert loan inside a sealed program's run); outside sealed programs a label occurs as a loan at most once;
+- (X3) lending is acyclic;
+- (X4) at every call point each argument is loan-free or a borrow of loan-free content;
+- (X5) _resolution is injective:_ the map from the live labels' final contents (independent whole members) to the meanings of the positions holding no borrow is injective under every assignment (needed only under (A), (B), (C));
+- (X6) after a write's access no live loan or mark lies on the written path;
+- (X7) the typing of places: a place declared a borrow type holds a borrow, `⊥`, a loan or a mark, and a place holding a borrow is declared a borrow type;
+- (WF11) no stored or deferred type, type of an unknown, goal or record holds a live loan; (WF12) under a live fill only borrows filled there; (WF4), (WF15), (WF16) captures hold no borrow and no `⊥`, sealed programs are closed and end in a read whose meaning does not depend on its type.
+
+*One argument per operation* (`theory3`, completed by `theory5`; refereed by the fourth). [Borrow]: after the access the place holds no live loan; one temporary holds the fresh borrow; its loan is one occurrence; the identity context keeps resolution injective. [End]: the holder becomes `⊥`; the content replaces the loan or fills the holes, in values only (no type holds the label); loans inside it move with it, their contexts composed (jointly injective maps compose); where the site was a fill its loans become holes of that fill (WF12). [Access], [Drop], the join's drop, a `let`'s end: sequences of ends; a drop that would end a borrow a value in flight holds is an error (D106). Reads: data read after its access is loan-free; a moved borrow passes to a temporary; a partly moved place or a borrow over one is not read (D127). [Assign]: the access ends the loans in the part the place owns (D67); (X7) in a typed run by conversion, in an untyped run because a term's declared type reads as a borrow exactly when its value is one. [Close]: inputs loan-free (asserted), holders consumed, each loan becomes a fill of the call's text, the hole in every fill, the fills jointly the callee's backward function (injective by its membership), a `Unit` place's fill keeping its hole in the borrow row (D137). [Lend] and [Entry]'s lending: marks, jointly but not singly injective, which is why every owner is observed. [Split], refinement, generalisation: no label touched; a sealed program generalised only after its holes' borrows ended (D29, D90). A sealed program's re-run: only with no hole (D97). Capture, private copies, observations: captures read after access; a private run keeps names and records only, which hold no loan. Forming a type: on a private copy from loan-free reads; a dependent field's type in a frame binding what each earlier field stands for (D117), a tree field whose content does not have that type taking its content's (D112): so (WF11). A call's push and pop: arguments move to bindings; the deferred record is (X1)'s exception. D112's invalidation: writes `⊥` after ending a lent leaf's borrows. And one correction (the fourth referee's F4): a step can change the value around a live site, a write to a sibling field or the invalidation of a leaf beside a lent field, but only at a disjoint path, which keeps a constructor context around the site, so (X5) is kept. #a-full by reading; the sweep holds every clause on every recorded state (`RdWhileFilled`, `TwoParts` probe (WF11), (WF12)). Not mechanised.
+
+== N6: the decisions are aligned <sec-n6>
+
+At every reached state each decision the checker makes (erasure, a function type's class and row, copy or move, η, the join's places and grain, a block's captures and modes, a match's entry, a constructor's recorded parameters, the hint) is the one the reference run reads from syntax and declared types. _By construction_ for decisions made in `Decide.lean`; their agreement across fuels is #a-lean (but the captures). _For a block's captures, by reading at three sites:_ `blockCaptures` counts a variable a borrow variable when its stored type is a borrow type _or its value is a borrow_, and splits a capture by its content's constructor; the two readings agree on every state because a binding's type is deferred only for a `let` of a call whose declared result is not a borrow (`callFn`'s deferral) and for a parameter whose declared type is not a borrow (`runBodyCore` evaluates borrow parameters' types eagerly), and a split by constructor is only through a value of a one-constructor type. The first referee's shape (a borrow ended before a borrow-typed match, assigned whole in an arm the run does not take) agreed. #a-full by reading; the redesign "modes from declared readings only" would make it structural.
+#stand[the first referee's O9; the fourth referee's F7][N6 for captures holds by checks at three sites, not by construction. And whether the core (not the surface, which cannot write it) admits a borrow type at a type parameter, which would give a binding with a deferred type a borrow, is not tested.]
+
+== N7: [Repack] is sound at a read <sec-n7>
+
+A whole value that is an open member of $T$ at every typed future and passes [Repack] (each lent part replaced by an unknown of its borrow's type) is a member of $T$ at every typed future. By induction on the value: with no dependent constructor inside, no strong update was made, so every field fits; otherwise each field fits its declared shape or is a tree open at its own record whose type [Repack] compares (N3), and a proof or leaf field, which [Repack] cannot test, fits because a write through an index invalidates it and re-assigning it is checked at the current contents with lent parts unknown (D64 amended, D112); a lent part takes any member of its borrow's type at a future, and the unknown stood for exactly that. #a-red[N3] _Sites:_ principle 9's whole-again points; at `Id`'s owners only in the observing frame (a caller's owner holds the caller's state with the side's writes put in, open by either's doing: the fourth referee's F5). _Attacked:_ a proof field made true while an index it reads is lent (`ReSnd` accepted: the proof reads a part the result does not point at; `ReFst` rejected; `ReFill` rejected through a stuck call's fill; `GetN` rejected). Not mechanised.
+
+== N8: the block lemma <sec-n8>
+
+A match not in tail position, after its [Entry], whose tag selects arm $i$: the direct run (the arm, the join's drop, a borrow-typed match's lending) and `callOf` of the block's function at the arguments [Args] takes both fail or both succeed with the same result and state, up to the result's label. Hypothesis: each captured value decodes at the block's domain for it (the third referee's T7; supplied in case 4, where the checker closed the block off). _Reduction:_ `callOf` is the block's function run in place (C1, no captures, no recursion); that run is the direct run by the place-renaming lemma PR. *PR:* a relation between the direct state $D$ and the block's state $B$: (P1) below the frame and outside the captures, the same; each capture holds a loan (`ref`), _moved_ (`mv`) or its entry value (`cp`) in $B$'s frame; (P2) $B$'s parameters hold $D$'s current contents at the captures; (P3) the arm's own positions correspond; (P4) the arm's labels correspond by the shift of the `ref` captures' labels, and for a borrow-typed match one more, the result's label its call reserves (D99; the fourth referee's F7); (P5) a place $q_j pi$ corresponds to $(dr z_j) pi$ or $z_j pi$ with the same reading; (P6) sites correspond. One lemma per operation: an access under a capture ends the same labels (after the [Entry] none is lent on the path but the arm's own); reads, writes, borrows, ends, drops, nested matches and calls act alike; an `Id` in the arm compares a different position for a `ref` capture with the same truth (in the model, the same proposition up to a reflexive conjunct; through a stuck call's fill internal to the frame, the same truth by that fill's injectivity, today; by constructors only under (C+)); at the arm's end the join and the pop give the same state. _Hints:_ the direct arm gets none out of tail position; the block's body gets its codomain, the arm's own checked type, so recorded parameters agree. #a-full; not mechanised. Under blocks as text (decision (b)) the model reads a block by running its text at its captured values, which is the direct run's shape, and N8 becomes definitional for the model's reading.
+
+== N9: hints are inert <sec-n9>
+
+A body run in place gets the deferred hint of its codomain (`hintLater`), the codomain computed at the call point when an argument is a borrow, or no hint where `readsHint` says its tails read none. (a) Where `readsHint` is false the run at no hint and at the codomain are the same run: `readsHint` follows `evalCore`'s reads of its hint (a constructor with unwritten parameters, an embedded value, `rewrite`, `clone`, `peek`, tails in tail position). (b) The deferred hint, forced at any later point, means what the codomain means: it keeps the arguments as passed, its evaluation reads nothing of the state but them, and the forcing's own records mean what they stand for. (c) So the runs mean the same. #a-full by reading (`UseMv`, `UseWr`, `UseTT` measured). It is a check, not a construction: a new form of `evalCore` that reads its hint must be added to `readsHint`. Not mechanised.
+
+== Resolved determination (needed under today's observation) <sec-rd>
+
+A statement `Id` over a borrow parameter is checked at the generic call, where the parameter's loan sits in a cell, and used at every call site, where its loan sits in the caller's places. The two readings agree only if the caller's places, once the borrows between them end, determine what was written through the parameter; otherwise `G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e`, accepted, could be called with `refl`.
+
+*RD* (stated by `theory5`, restricted after the fourth referee's F2 and F4). Let $K$ be live labels held in the top frame of a reached state Ω, $E(K)$ $K$ with its lending ancestors, and $W(K)$ the owners of $K$'s labels. If (a) every ancestor in $E(K)$ outside $K$ is held by a holder whose content is a whole member at every typed future, and (b) no position of $W(K)$ is a binding declared a proof, then for every assignment: if every position of $W(K)$ means the same after giving $K$ the finals $v$ and ending $E(K)$ as after giving it $v'$, then $v = v'$. _Hypothesis (a)_ holds wherever today's observation has passed, since it ends and tests each ancestor first. _Hypothesis (b)_ is vacuous in the checker: since D138 a proof's data fields are locals of the arm, so no proof binding is ever the owner of a written place (the fifth referee's V2). _Assumptions:_ (X5); every backward function a fill computes is injective on members, by producer: an earlier global by the outer hypothesis, an unknown function by the assignment, the definition under check by its stage and item 11 (its sealed calls carry decreasing arguments below the rank), a block's function by N8, a closure by CloFix and C3; site faithfulness; `eq` injective on whole members. *RD1* (readback): from (X5), upward closure of $E(K)$, site faithfulness and (a). #a-full *RD2* ((X5) kept by every step): @sec-excl. #a-full by reading. *Attacked* with a program for each way an owner could ignore a write (a pick, a dependent field's leaf and index, a borrow into a moved or overwritten value, through a partly moved borrow, two levels, a stuck call's fill, a proof's field, functions that overwrite after an inner call, `Unit` places, two parameters into one owner's fields, a fill inside a fill): no call of `G5` with `refl` is accepted (@sec-ev-obs).
+
+*Which borrows an observation must end.* With $O$ the observing frame: every label held in $O$ ($E_1$), their lending ancestors ($E_2$: the owners are positions holding no borrow, and between a parameter's label and its owners there may be caller borrows), and every label lent at a compared owner with its ancestors ($E_3$: the formed `Id` is a stored type and must hold no loan). Ending only $E_1$ is unsound: in `AAncWhole` the owner would hold `r`'s loan on both sides, compared as reflexive, and `G5(&(*r).0, refl)` would be accepted (predicted by reading). It must _test_ only what the side produced: $E_1$'s ends and $O$'s owners; testing the caller's is the type-safety fault of decision (a).
+
+== The `Id` clause of the frame property <sec-idclause>
+
+_Under today's observation (A) or the patch (B):_ *Lemma OBS* (Lean's `run_frame_obs` is false as stated: its `CellsDetermined` asks unresolved caller frames to tell the members apart, which a caller borrow reading the parameter label does while its resolution through a constant fill does not; by reading, not kernel-checked). Restated with RD at the call point and (M3) restricted, the in-place proposition holds exactly when the closure's does: after a side's run and every end no position reads a label; the callee frames compare alike (FR); the caller's labels end unchecked in place, in any order (*OI*: in an acyclic state ending live labels in any two orders gives the same meanings, #a-full; the strict half `perm_fold` #a-lean); and by RD the resolved caller frames are equal exactly when the finals are. #a-red[OI, RD]
+
+_Under the detached observation (C) or (C+):_ *Lemma DL* (detach is related). If $s$ and $s'$ meet FR's hypotheses, their detached states meet them again at C6's shape (frame 0 of cells, (F4) the identity), so the `Id` clause is FR's at that shape and OBS, OI over caller labels, RD at call points, (M3)'s restriction, `CellsDetermined`, `run_frame_obs` and `RunFrameI`'s `Id` exclusion are not needed. _What DL needs_ (the fifth referee's V3): FR restated over two lists of labels, the cells' and those the renaming may reorder or whose records may differ (`noParam`, `pfill`, `srange` and (H8) fail for the detached pair if stated over one), and, under (C) only, an invariant (I6) (a closure label has a site at a cell exactly when its image has one in a caller's frame). _What the checker must assert at the detach_ (V4): no position of the observing frame is a site of a label held below it (`endTopLoan` asserts it only outside private copies, and scaffolding frames break it inside some); otherwise a formed `Id` could keep an inert loan. `checker13` built the assertion; it never fired. #a-full by reading; not in Lean.
+#stand[the fifth referee's V3, V4, V5][For (C) or (C+) to discharge the `Id` clause: FR and `FrameStart` restated over two label lists; the detach's assertion landed with it; under (C+), a lemma that each position outside the footprint ends as the same function of the compared finals on both sides (today's footprint lemma changes form); and the identity fills excepted from principle 7 and from N3 for code.]
+
+== A proof's data fields, and what "a proof is irrelevant" means <sec-proof-fields>
+
+A match on a proof of a constructor with data fields (`Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))`) is decided by type (D45) and, `Ex` not being a subsingleton, is a declared proof run on a private copy. *The checker* (D138, `bindDataFields`) rewrites the arm: each data field becomes a local `let g = σ` with σ fresh, a proof field of a dependent constructor `let h = (⋆ : T)`, every place at or under the field's place in the arm (inside nested matches too) the local; the scrutinee stays `⋆`. So a nested match on the same proof sees the outer arm's writes (`Nest` accepted), a proof field's type is fixed when the arm starts (`Boom` rejected), and an `Id` over a field compares the local (`PExF`, `PIdSelf` accepted with type `False` inside the arm). *The model must mirror it:* its `.matchInd` clause at a proof tag runs the arm as rewritten, each data local holding a _witness_'s field (the constructor applied to a member of the proposition's untruncated carrier, chosen classically; one exists since the scrutinee is a member, so the proposition is true; with several constructors the reference runs an inhabited one's arm, and the checker's other arms relate to no assignment), each proof local `•`, and the assignment extended at the fresh unknowns by the witness's fields, as `evalMatchByType_step_stmt` already states. Goodness needs no new clause. (The earlier reading, a witness written at the scrutinee, relates no checker state and fails at `Nest`.) The alternative, rejecting every borrow, read and write of a proof's data field, would reject `PB`, `PExT`, `PIdSelf`; not measured.
+#stand[the fourth referee's F2, as corrected by the fifth's V2][Until the model's `.matchInd` clause mirrors the locals, the simulation has no reference run for `PB`, `PExT`, `PExF`: the model reads a field of `•` as `•` at the error type, and a borrow of it fails its strict test.]
+
+*What "a proof is irrelevant" means*, three things the argument uses. (1) Outside an erased match on it a proof is `⋆` and means `•`; any two proofs of one proposition are convertible (N3, [Def]'s `⋆` parameters, CV3, [T-Call-proof], case 7). (2) Inside such a match its data fields are unknowns, so what the arm proves it proves at every witness. (3) No _value_ computed from a witness leaves the arm: the arm is a declared proof unless the type is a subsingleton (all of whose fields are proofs), and its copy is discarded; records it makes are keyed by its fresh unknowns, never reissued.
+
+*The arm's unknowns can leave through a type* (the sixth referee's `Leak`, settled in this pass). `Leak (p : Pin) : True := (let q = match p { MkPin(b, e) => e }; refl)`, with `Pin : Prop := MkPin(b : Bool, e : Eq(Bool, b, true))`, is accepted, and `q`'s stored type is `Eq(Bool, σ, true)` with σ the arm's unknown for `b`. Measured (@sec-ev-proof): `q` cannot be used as the proof it names (`LShow`, `LPass` rejected), matched on (`LTwo`), or used to prove a goal it is rewritten into (`LRw`: `rewrite q in h` turns the goal `Eq(Bool, g(true), c)` into `Eq(Bool, g(σ3), c)`, and `h` no longer fits). _Why it is harmless:_ σ is constrained by nothing. An unknown is constrained only by a split, which needs a place holding it, or by a record, which constrains the record's own new unknown; σ is held by no place. So everything the checker accepts about σ holds for every value of it, the witness's included. In the simulation, (II)'s conclusion extends the assignment existentially at the unknowns a run made; choosing the witness's field there, _kept for the rest of the run_, satisfies it (point (3) above is about values, not types). _What could be done:_ nothing is needed for consistency. Lean's elaborator rejects the same program (a match's motive may not mention a pattern variable); the corresponding checker rule, "a match's type mentions no unknown its arm made", would make point (3) hold of types too, and loses nothing usable, by the measurements above; it is not built or measured against the suite.
+
+== The cases of (II) <sec-cases>
+
+Each case is a rule of the checker, argued against the strict run; each step is marked.
+
+*Case 1: a call that runs in place.* The checker evaluates head and arguments into temporaries, computes the call's type (case 2), makes the [Rec] test; the callee is an earlier global or a closure whose check has finished (a call of the function under check closes off, D135); it pushes the callee's frame, runs the body untyped, and pops. The strict run applies the callee's meaning. Steps: the arguments and the call point (Lean: `CallHeadArgsG` stated) #a-full; the push relates the checker's frame to the reference's, which under (M1) reads parameter types in the generic state with cells, so it rests on C2 (a deferred type read late #a-np) #a-red[C2]; (E4) for the body: the callee's meaning is a member and the arguments members of its domains, so its run in its own frame succeeds (with its fixpoint equation), and by FR so does the run in place, at the codomain, which N9 relates to the checker's hint #a-red[N4, N9]; the body by the induction hypothesis #a-full; the pop alike on both sides #a-full; the link to `callOf` by C1 #a-red[N4]. Measured on D135: `Sel`, `Q2`, `Q3` (an equation about the function's own call inside its body) rejected alike; `Loop`, `LC2` rejected.
+
+*Case 2: the call's type, `Id`, and a statement used at another state.* [Call-type] evaluates the parameter types and codomain in a frame binding the parameters to the arguments, on a copy. The strict call decodes each argument at the parameter type read in the generic state, and returns the codomain read there. Both directions follow from statement transfer, C2 under (M1). For a type with an `Id` over a borrow parameter, the conclusion direction is immediate (owners are functions of the finals); the hypothesis direction is RD today, by construction under (C) or (C+). _Computing `Id`:_ the sides are typed sub-runs on copies; the footprint's roots are read from syntax and their owners from where loans are lent, the same on both sides by (R4); the checker ends no borrow over a content with a hole (D98) and checks [Repack] (N7), so the strict ends pass. Two model repairs are owed: the model's observation does not yet read what a re-pointed borrow points to ([Obs-ref], D113; queued), and proof owners need the locals of @sec-proof-fields. _Other producers of returned borrows:_ a stuck match of borrow type and a closure returning a borrow are functions checked inside the derivation, whose membership (with injectivity where $R$ requires it) is proved at their own node (`QB`, `QB2` rejected). #a-red[N3, N4, N5; RD under (A)]
+
+*Case 3: closing off, re-running, generalising, functions formed in a body.* [Close] discards the partial run, consumes the borrow arguments, fills each loan with ⌈$L; C; c_i$⌉ and returns ⌈$L; C$⌉; a sealed program means the strict run of its text, which binds each cell to the borrowed content (a whole member: a borrow passed to a call is whole, D127, and N7) and applies the callee's meaning, so each fill means what `callOf` leaves there (principle 7). The callee's meaning is a member: an earlier global's, an unknown function's by γ, a block's or closure's by the nested induction, the definition under check's stage below its rank ([Rec]). A re-run after a split: the substituted text's strict run succeeds under every assignment meeting the refinement; a text with a hole never runs (D97), so no run meets a live hole and the paper's assumption of _hole parametricity_ (a fill's run never inspects its hole) is not needed; a head is never re-closed. Generalising: a record $n := sigma$ is a path condition found by exact equality (D108), alive only in its world (principle 8); a record whose text a later refinement changes no longer matches, and the call is a fresh neutral (sound, incomplete). A closure formed in a body: its [Def] is a sub-derivation. #a-red[N7]
+
+*Case 4: a split, a stuck block, the entry and the join.* Every assignment takes one arm and meets its refinement (principle 8); a tail match branches the case tree, each arm ending with the join (D119); an arm skipped on a known constructor is skipped at every assignment of that state, the scrutinee being that constructor there #a-full. A non-tail match closes off as a block after its entry; the strict run reads the tag, makes the same entry, runs the arm directly and drops the join's places. The entry ends the same borrows given the same captures (N6) #a-red[N6]; the block's function is a member (its arms are its case tree, each end checked as a return) #a-full; the block's run is the arm's run (N8) #a-red[N8]; the places moved are read from syntax (`Decide.jdMoves`), a borrow-typed match lends alike (D90) #a-red[N6].
+
+*Case 5: dependent fields.* Positions hold open members. A write or borrow through an index field invalidates the proof and leaf fields whose type mentions it, in both runs (D112); a write at a field finds its path at every typed future because no live loan lies on it after the access (N5's (X6), measured on 48,804 writes); typing by position, strong updates only by values whose content says their type (D110, D112) and checked writes of proof and leaf fields keep open membership; a whole read is a member by N7; a split of a neutral of a dependent type reads it as a whole member (an unknown by γ, a sealed program by case 3, a block by its arms' returns). One known difference: a tree field whose declared type computes to a leaf at the current index while holding a tree from before (no accepted program known). #a-red[N5, N7]
+
+*Case 6: conversion, `Eq`, `J`, `rewrite`, `split`.* Every "≡" premise is used as an equality of meanings (N3, typing hypothesis from (I)); the function rules' generic runs are cases of (II); `Eq` computes by injectivity, disjointness, convertibility, and on `⊥` as _moved_ alike on both runs (principle 4); `J` computes only at convertible endpoints, else it closes off as a block of its transported term; `rewrite` and `split f in t` never run (a `split`'s run runs its term, D125). #a-red[N3]
+
+*Case 7: erased terms, proofs, types formed once.* An erased term runs on a private copy in both runs, and the relation survives the copy (#a-lean); erasure is read from syntax (by construction); a proof the checker types has its strict run succeed, so it proves a true proposition; `⋆` replaces a term only when its declared type is a proposition (principle 3, one direction); a proof's data fields are the arm's locals (@sec-proof-fields); a type is formed once, closed over values. #a-full, given the locals in the model.
+
+*Case 8: places: reads, writes, borrows, ends, drops.* [Access] ends the same borrows (R4); each end is an equality of reference states, its strict test passed (D98, N7); a read takes the stored type; a write is checked against the place's type (N3) and finds its path (case 5); a drop that would end a borrow in flight is an error on both sides; copy or move is a decision of the code; η at `Unit` and at a one-constructor type keeps meaning (principle 3). #a-lean for the fragment; beyond it #a-red[N3, N7].
+
+*Case 9: recursion.* Every call recognised as recursive (by name, D78) passes a strict part of the entry value as refined; under γ, of smaller rank; under D135 it closes off, its meaning the stage applied; never on a proof. #a-full; the checker held against `L` (recursion on a part of an overwritten value: rejected; by syntax it would prove `Eq(Nat, Z, S(Z))`).
+
+#figure(table(columns: (32%, 24%, 44%), align: left, table.header([*Case*], [*Status*], [*Rests on*]),
+  [1 A call run in place], [#a-red[N4, N9]], [FR with start, pop, fixpoint equation; the push on C2 (a deferred type read late open); Lean: the call point stated],
+  [2 Call types; `Id`], [#a-red[N3, N4, N5]], [C2 under (M1); RD today, none under (C)/(C+); the model's [Obs-ref] and the proof-field locals owed],
+  [3 Closing off; re-runs; local functions], [#a-red[N7]], [—],
+  [4 Split, block, entry, join], [#a-red[N8, N6]], [PR; captures by reading],
+  [5 Dependent fields], [#a-red[N5, N7]], [no live loan on a written path; [Repack] at a read],
+  [6 Conversion], [#a-red[N3]], [conversion for code],
+  [7 Erased terms], [#a-full], [the locals in the model],
+  [8 Leaf rules], [#a-lean (fragment)], [beyond it N3, N7],
+  [9 Recursion], [#a-full], [—],
+  [From (II) to the theorem], [#a-full], [(I), N3; the injectivity clause N5 (not under (C+))],
+), caption: [The cases of (II) and what each rests on.]) <fig-cases>
+
+No step needed something the design does not provide.
+
+#pagebreak()
+
+= The evidence: programs <sec-evidence>
+
+One section per area. Each opens with one block of programs, self-contained with the `Nat` prelude (`uses Nats`, `Ochr/Examples/Nat.lean`, which defines `Add`, `AddM`, `AddMZero`, `TailM`), each definition written `reject` where it is rejected; each block also holds the control `Ctl`, rejected every time. The blocks marked _re-run_ were run for this document on `main` at 217e22529 with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` (files in the scratchpad's `t8/`); every verdict was as written. The table after each block says what each program shows and its verdict, today and under an experiment where one was measured ((C), (C+): the detached observation, `checker13`; text: blocks as text, `checker14`). Helpers are not listed in the tables.
+
+== Observations <sec-ev-obs>
+
+_Re-run_ (51 verdicts as written):
+#measured[
+```
+reject def Ctl : Eq(Nat, Z, S(Z)) := refl
+def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+def H (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
+def FJ2 (n : Nat) (x : &Nat) : Unit := match n { Z => (let h : Id(Unit, *x := 0, *x := 0) = refl; ()), S(m) => (), }
+def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x, S(m) => y, }
+def S1 (n : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; FJ2(n, &(*r).0); (*r).1 := z; ())
+reject def S1Z : Unit := S1(Z)
+def S1S : Unit := S1(S(Z))
+inductive Bit := B0 | B1
+def Payload (b : Bit) : Type := match b { B0 => Nat, B1 => Unit, }
+inductive TW := MkTW(b : Bit, x : Payload(b), w : Nat)
+def S2 (n : Nat) : Unit := (let t = MkTW(B0, 3, 5); match t { MkTW(b, x, w) => (b := B1; FJ2(n, &w); x := ()), })
+reject def S2Z : Unit := S2(Z)
+inductive Void : Type
+inductive One := O
+def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+inductive VW2 := MkVW2(n : Nat, x : Fin1(n), w : Nat)
+def S3 (n : Nat) : Unit := (let t = MkVW2(S(Z), O, 5); let r = &t; match *r { MkVW2(k, x, w) => (k := Z; FJ2(n, &w); k := S(Z)), })
+reject def S3Z : Unit := S3(Z)
+def PickP (n : Nat) (x : &Pair(Nat, Nat)) (y : &Pair(Nat, Nat)) : &Pair(Nat, Nat) := match n { Z => x, S(m) => y, }
+def S4 (n : Nat) (m : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let q : Pair(Nat, Nat) = Mk(3, 4); let r = PickP(m, &p, &q); *r := Mk(7, 8); let z = (*r).1; FJ2(n, &(*r).0); (*r).1 := z; ())
+reject def S4Z (m : Nat) : Unit := S4(Z, m)
+inductive VV := MkVV(n : Nat, x : Fin1(n))
+def S5 (n : Nat) : Unit := (let t = MkVV(S(Z), O); match t { MkVV(k, x) => (FJ2(n, &k); k := S(Z)), })
+reject def S5Z : Unit := S5(Z)
+def FI (n : Nat) : Unit := (let h : Id(Unit, (), ()) = refl; ())
+reject def CallI : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).0; FI(Z); (*r).0 := z; ())
+reject def InFrameMoved : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; let h : Id(Unit, (), ()) = refl; (*r).1 := z; ())
+reject def APick (n : Nat) : False := (let a = 0; let b = 0; let r = Pick(n, &a, &b); G5(r, refl))
+reject def AAncWhole : False := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; G5(&(*r).0, refl))
+reject def AFill (n : Nat) : False := (let a = n; let r = TailM(&a); G5(r, refl))
+reject def QU (g : Π(u : &Unit). &Nat) : False := (let u = (); G5(g(&u), refl))
+reject def Hide : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, y := &x, (y := &x; *y := 5)) = refl; ())
+def Honest : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, y := &x, y := &x) = refl; ())
+def Eat (r : &Nat) : Unit := ()
+def A1 (n : Nat) (x : &Nat) : Id(Unit, match n { Z => Eat(x), S(m) => (), }, match n { Z => Eat(x), S(m) => (), }) := refl
+def A1s : True := (let c = 0; A1(1, &c))
+def Lift (x : &Nat) : Id(Unit, (let r = TailM(&*x); AddM(&*r, 0)), (let r = TailM(&*x); ())) := (let r = TailM(&*x); AddMZero(r))
+def LiftR (x : &Nat) : Id(Unit, (let r = TailM(&*x); AddM(&*r, 0)), (let r = TailM(&*x); ())) := (let r = TailM(&*x); let c = clone(*r); let h = AddMZero(&c); rewrite ← h in refl)
+def L (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+def Inj (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, (let r = g(x); *r := 0), (let r = g(x); *r := 1))) : False := (let r = g(x); L(r, e))
+def ConsW : Unit := (let a = 0; let r = &a; let h : Id(Unit, (let r2 = r; a := 5), (let r2 = r; *r2 := 7; a := 5)) = refl; ())
+reject def IdxSame : Unit := (let t = MkVV(S(Z), O); match t { MkVV(k, x) => (let r = &k; let h : Id(Unit, *r := Z, *r := Z) = refl; ()), })
+def G7 (a : Nat) (b : Nat) (x : &Nat) (y : &Nat) (e : Id(Unit, (*x := clone(a); *y := clone(b)), (*x := clone(b); *y := clone(a)))) : Unit := ()
+reject def SwapCall2 (a : Nat) (b : Nat) (e : Eq(Nat, a, b) ∧ Eq(Nat, b, a)) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 5); G7(clone(a), clone(b), &p.1, &p.0, e))
+def SwapCall2Ok (a : Nat) (b : Nat) (e : Eq(Nat, b, a) ∧ Eq(Nat, a, b)) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 5); G7(clone(a), clone(b), &p.1, &p.0, e))
+reject def OwnR (x : &Nat) : Unit := (let r = TailM(x); let h : Id(Unit, *r := 0, *r := 1) = refl; ())
+def G1 (x : &Nat) (e : Id(Unit, (*x := 0; let z = x; ()), (*x := 1; let z = x; ()))) : False := e
+reject def CallG1 : False := (let a = 7; G1(&a, refl))
+def F (x : &Nat) : Unit := (let h : Id(Unit, *x := 0, *x := 0) = refl; ())
+def GT2 : Eq(Nat, (let c = 5; let r = TailM(&c); F(r); c), 5) := refl
+```
+]
+
+#table(columns: (16%, 46%, 19%, 19%), table.header([*Program*], [*What it shows*], [*Today*], [*(C) / (C+)*]),
+  [`S1`, `S1S`; `S1Z`], [Site 1: D98 at the end of a caller's borrow between the parameter and its owner. An accepted function whose call at a known argument is rejected.], [accepted; `S1Z` rejected, "a borrow ends while its content is partly moved out"], [`S1Z` accepted],
+  [`S2`; `S2Z`], [Site 2: [Repack] at a caller's owner the caller holds open.], [`S2Z` rejected, "Id observes it, but it is open"], [accepted],
+  [`S3`; `S3Z`], [Site 3: [Repack] at the end of a caller's borrow whose content the caller holds open.], [`S3Z` rejected], [accepted],
+  [`S4`; `S4Z`], [Site 4: D98 at a caller's borrow with a sealed fill among its sites; the patch (B) keeps this one.], [`S4Z` rejected], [accepted],
+  [`S5`; `S5Z`], [Site 5: [Repack] at a caller's owner the side itself opens through a borrow of an index field.], [`S5Z` rejected], [accepted],
+  [`FI`, `CallI`], [With no borrow parameter at all, a callee forming an `Id` cannot be called while the caller holds a borrow partly moved: the observation ends every borrow of the whole state (the third referee's T1).], [`CallI` rejected], [accepted],
+  [`InFrameMoved`], [The in-frame twin: an `Id` formed while the frame itself holds a borrow partly moved, which its sides never touch.], [rejected], [rejected under both],
+  [`G5`; `APick`, `AAncWhole`, `AFill`, `QU`], [Attacks on resolved determination: a borrow whose owners might ignore a write. Each hypothesis is a conjunction over every fill of the hole, or `False`. `QU` is D137's: a `Unit` place's fill keeps its hole.], [all rejected], [rejected, each with hypothesis type `False`],
+  [`Hide`, `Honest`], [D113: a write through a re-pointed borrow is observed.], [`Hide` rejected, `Honest` accepted], [the same],
+  [`A1`, `A1s`], [D114: a side may end a borrow it consumes, on every path; before it, `A1s` was rejected while `A1` was accepted.], [accepted], [the same],
+  [`Lift`, `LiftR`], [An induction hypothesis lifted through a stuck call's returned borrow.], [both accepted], [`Lift` rejected; `LiftR`'s `rewrite` repairs it],
+  [`Inj`], [A lemma about an abstract borrow-returning function, true only by the injectivity of its backward function.], [accepted], [rejected, not repairable],
+  [`ConsW`], [An `Id` over a local borrow whose lender a side writes after consuming the borrow: today the two sides are equal.], [accepted], [(C) accepted; (C+) rejected, type `False`],
+  [`IdxSame`], [An `Id` over a local borrow of an index field: today [Repack] rejects the owner it opens.], [rejected], [(C) rejected; (C+) accepted],
+  [`G7`; `SwapCall2`, `SwapCall2Ok`], [Today a statement read at a call site keeps its truth, not its form: its conjuncts follow the caller's owners.], [`SwapCall2` rejected, `SwapCall2Ok` accepted], [flipped],
+  [`OwnR`], [An `Id` over a borrow a call returned from a consumed parameter: today a stuck equation over the fill.], [rejected (stuck)], [rejected, type `False`],
+  [`G1`; `CallG1`], [The second referee's R1: accepted, its type `False` at the generic check; the model read its second domain as `True` with no cell, an empty type. Fixed in the model by (M1).], [`G1` accepted, `CallG1` rejected], [the same],
+  [`F`, `GT2`], [A body with an `Id` over its borrow parameter run in place, through `TailM`'s fill: the shape of the frame property's `Id` clause.], [accepted], [the same],
 )
 
-The theorem itself has two halves, (I) and (II), which meet only at "the strict reference run succeeds" (@sec-twohalves). (I) is N2. (II), the simulation, is _argued on paper_ in @sec-twohalves from N3 to N7 and the principles, case by case; in Lean it is proved for a fragment (numbers, variables, `let`, sequencing, borrows and writes through them) and for several single programs, and is open in general.
+The programs of resolved determination's attack (`theory5`, the fourth referee), measured on `main` at 662110042 and 0228b0283 and re-measured under (C) and (C+) by `checker13`, each beside a twin with the true statement, accepted: a pick (`APick`, `APickZ`), a dependent field's leaf and index (`ATagLeaf`, `ATagIdx`, rejected by [Repack] today and `False` under (C)), a borrow into a moved, overwritten or partly moved value (`AMoved`, `AOver`, `AOverPart`, `APart`), through a partly moved borrow (`AAnc`, rejected by D98 today; `False` under (C)), two levels (`ATwo`), a stuck call's fill and a fill inside a fill (`AFill`, `AFill2`, `APT`), functions that overwrite or re-point after an inner call (`KF`, `KR`, `KH`, `RB`), two parameters into one owner's fields (`AG6`), `Unit` places (`APU`, `QU` to `QUN`, `GUn`): no call of `G5` with `refl` is accepted, today or under either variant. The fourth referee's `Bad` (a hypothesis built through an unchecked end of a caller's borrow returned by a closed-off call) is rejected today and accepted under (C) and (C+) with hypothesis type `False`, so `Bad(Z, refl)` is rejected: not an empty type.
 
-*Theorem (consistency, conditional).* Assume ZFC with one inaccessible cardinal per universe level used, and the model as changed by (M1) to (M3) of @sec-frame-model. If N1, N3, N4, N5, N6, N7, N8 and N9 hold, then for every accepted, hole-free program no definition without parameters has a type that evaluates to `False`. In Lean this is `Ochr.Consistency.consistency`, about the checker at every fuel. Without (M1) the model gives an accepted definition, the second referee's `G1`, a type with no member, so the step from (II) to the theorem fails there (R1).
+== Blocks and closing off <sec-ev-block>
 
-_Proof._ By (II), argued in @sec-twohalves, every successful typed run of the checker is matched by a successful strict reference run from a related reference state. By (I) (N2) that run's result is a member of the type it returns. At a leaf of a definition's case tree, [Def] compared that type with the goal, so by N3 the result is a member of the goal under every assignment, and the definition means a member of its declared type (@sec-tw-concl). A parameterless definition is checked from the empty state, which has one assignment; a member of `False` would be a member of $emptyset$. $square$
+_Re-run_ (18 verdicts as written):
+#measured[
+```
+reject def Ctl : Eq(Nat, Z, S(Z)) := refl
+def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x, S(m) => y, }
+reject def Clear (x : &Nat) : Id(Unit, match *x { Z => (), S(p) => p := Z, }, ()) := refl
+reject def QB (n : Nat) (a : Nat) (b : Nat) : False := (let r : &Nat = match n { Z => &a, S(k) => &b, }; G5(r, refl))
+reject def PickEnds (n : Nat) : Unit := (let a = 0; let b = 0; let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S(m) => (), })
+def MB0r (m : Nat) (n : Nat) : Nat by n := (let r = match m { Z => Z, S(p) => match n { Z => Z, S(k) => MB0r(p, k), }, }; r)
+def NTr (n : Nat) (m : Nat) : Nat := match n { Z => Z, S(p) => (let r = match m { Z => clone(n), S(q) => clone(p), }; r), }
+reject def ConvBlocks (q0 : Nat × Nat) : Prop := (match q0 { Mk(a, b) => Id(Nat × Nat, (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => (q0 := Mk(clone(p1), p1); q0) } }), (match q0 { Mk(p15, p16) => match p16 { Z => (p16 := 0; (1, 0)), S _ => q0 } })), })
+def Blk4 (n : Nat) (x : &Nat) : Unit := (match n { Z => (let r = TailM(&*x); *r := 7), S(m) => (), }; ())
+def Blk4Gen (n : Nat) (x : &Nat) : Id(Unit, Blk4(clone(n), &*x), match n { Z => (let r = TailM(&*x); *r := 7), S(m) => (), }) := match n { Z => refl, S(m) => refl, }
+def Fst0 (x : &Pair(Nat, Nat)) : Unit := (*x).0 := 2
+reject def Fst0Gen (x : &Pair(Nat, Nat)) : Id(Unit, Fst0(&*x), (*x).0 := 2) := refl
+def DeadIll (x : &Nat) : Nat := (let k = Z; match k { Z => 0, S(j) => (let c = (λ(u : Unit) : Nat => clone(*x)); S(())), })
+reject def LiveIll (x : &Nat) : Nat := (let k = S(Z); match k { Z => 0, S(j) => (let c = (λ(u : Unit) : Nat => clone(*x)); S(())), })
+reject def DeadMoves (x : &Nat) : Nat := (let k = Z; let r = match k { Z => 0, S(j) => (let c = (λ(u : Unit) : Nat => clone(*x)); 0), }; *x := 5; r)
+def P2 (n : Nat) (x : &Nat) : Nat := (let q = 5; let r : &Nat = match n { Z => x, S(j) => &q, }; *r := 1; clone(q))
+def UseP2c : Eq(Nat, (let c = 3; P2(Z, &c); c), 1) := refl
+```
+]
 
-*What moved where.* Principle 1's "meanings exist" is now N1, with its syntactic half kept as principle 1. Principle 2's "identifications hold" is N3, principle 6's equation between runs is N4, principle 12's preservation is N5. N6 was hidden in principle 4's "computed alike by every run", which is true by construction for most decisions and is a theorem for one. N7 was hidden in principle 9. N8 was hidden in case 4's "the block's run is the arm's run", cited there as N4 (the second referee's R3 (b)); N9 in case 1's hypothesis (E4), which is at the checker's hint (R8). The renaming of labels the argument used unnamed (R3) is RL, a case of N4. Each named theorem rests only on principles and on earlier named theorems, and none on (II), except that (II) supplies the hypotheses N4 and N3 take at their uses (the typing hypothesis of N3; the goodness of both states and the resolved determination of the caller's frames in N4), and that the fixpoint equation of N4 for a global comes from (II) for that global's own check, which uses no fixpoint equation of it (D135).
+#table(columns: (16%, 46%, 19%, 19%), table.header([*Program*], [*What it shows*], [*Today*], [*Text*]),
+  [`Clear`], [The paper's overview: a write through a pattern variable is a write to the scrutinee, so the block takes `*x` by borrow (D32), and the false statement is rejected.], [rejected], [rejected],
+  [`QB`], [The first referee's O7: a borrow returned by a stuck match passed to `G5`: the hypothesis is over the block's fills.], [rejected], [—],
+  [`PickEnds`], [Borrow ends are static (D90): `r` borrows `a` and `b` whether `Pick` is stuck or runs, so reading `b` ends `r` on every path.], [rejected], [—],
+  [`MB0r`], [A block whose arm calls the function under check takes it as a parameter at its declared type, where the knot's stage is not a member (`lead37`, kernel-checked in the model).], [accepted], [accepted; the text names the global],
+  [`NTr`], [A block that reads `n.0`, checked only at its captured `S(σ2)`; read as a function of every value it has no meaning at `n = 0`.], [accepted], [accepted; text `⌈let n = S(σ2); let m = σ1; match m {…}⌉`],
+  [`ConvBlocks`], [Two blocks compared as functions at generic arguments, where a field of an abstract pair does not exist: a true statement rejected.], [rejected], [accepted],
+  [`Blk4`, `Blk4Gen`], [A block's re-run agrees with the direct run, by `refl` at each instance.], [accepted], [—],
+  [`Fst0`, `Fst0Gen`], [Incomplete: an untyped run's field access does not refine an unknown pair in place, so the call closes off where the typed side refines.], [`Fst0Gen` rejected], [—],
+  [`DeadIll`, `LiveIll`, `DeadMoves`], [A dead arm is never checked: its capture of a borrow is accepted, the live twin rejected, and its moves feed the join.], [`DeadIll` accepted, the others rejected], [—],
+  [`P2`, `UseP2c`], [[Entry]'s lending lends a parameter label at a callee place, which a later access ends: the second referee's refutation of the invariant (P).], [accepted], [—],
+)
+`BlkFill1` (a match's arm forming an `Id` over a borrow `Pick` returned inside the frame) is rejected today with a conjunction over the two fills and under (C+) with `False`: the block lemma's `Id` row, which under (C) still needs the fill's injectivity. `checker14`'s further probes under blocks as text: `EqJ`, `IdJ`, `DJ`, `SJ` (two `J` blocks with convertible motives of different code) rejected today, accepted under text; their false twins rejected under both.
 
-== What changed, and why <sec-revision>
+== Recursion <sec-ev-rec>
 
-#table(columns: (16%, 54%, 30%), align: left, table.header([*Principle*], [*Change from the first draft*], [*Forced by*]),
-  [1 Meanings exist], [Added: a function type's returned borrow derives from a borrow argument and has an injective backward function (the model's R).], [Case 1: the hypothesis direction at a call site, and membership of a borrow-returning definition.],
-  [2 Identifications hold], [Unchanged; its consumers named.], [Cases 1, 3, 5, 7 and the conclusion of the induction.],
-  [3 Readings are true], [Narrowed to the direction used (a reading that replaces a value is true of its type), with the type read off a value; "every reader gives the same answer" is principle 4's.], [Cases 2, 7, 8, 9; `W2` shows the converse is not used.],
-  [4 One code, two runs], [Restated as "every decision is a function of the code, computed alike by every run and by the meaning"; the hint kept, with its reason; "only checked code runs", "every accepted form runs" and "the same tests" marked as type safety's.], [Cases 1, 3, 4, 5, 7, 8, 9; D135 is termination (case 4).],
-  [5 The state is the whole truth], [Merged with the first draft's 12 (every success is an instance of a rule); its borrow half moved to 12.], [The first move of every case.],
-  [6 Effects stay local], [Unchanged.], [Cases 1, 3, 4, 5, 7, 8.],
-  [7 Closing off rebuilds the call], [Added: nothing else makes or changes a sealed program; the capture clause stated.], [Case 7 (comparison of code); cases 3 and 5.],
-  [8 Worlds are exclusive], [Unchanged.], [Cases 3, 5, 6 and the conclusion of the induction.],
-  [9 Whole where relied on], [Added: "at every future of the parts still lent".], [Case 2.],
-  [10 Recursion descends], [Added: every call the check makes is of something earlier, a value, or itself at a strict part (the order).], [Cases 4 and 6; the outer induction.],
-  [11 Observation names every owner], [Narrowed to the places read from syntax and every owner; sufficiency, type-state, [Obs-ref] and order marked as adequacy's or completeness's.], [Case 1.],
-  [12 Access is exclusive], [New: the borrow half of the first draft's 5, with "nothing touches a live loan" stated.], [Cases 1, 2, 3, 9.],
+_Re-run_ (20 verdicts as written):
+#measured[
+```
+reject def Ctl : Eq(Nat, Z, S(Z)) := refl
+inductive BB := TT | FF
+reject def Loop (p : BB) (n : Nat) : Nat by n := match p { TT => match n { Z => Z, S(m) => Loop(FF, m), }, FF => Loop(FF, n), }
+reject def Sel (n : Nat) : Nat by n := match n { Z => Z, S(m) => match m { Z => (let e : Eq(Nat, Sel(m), Z) = refl; Z), S(k) => Z, }, }
+def Sel2 (n : Nat) : Nat by n := match n { Z => Z, S(m) => match m { Z => Z, S(k) => Z, }, }
+def SelAfter : Eq(Nat, Sel2(Z), Z) := refl
+reject def Q3 (n : Nat) : Nat by n := match n { Z => S(Z), S(m) => match m { Z => (let e : Eq(Nat, Q3(m), S(Z)) = refl; Z), S(k) => Z, }, }
+reject def LC2 (p : BB) (n : Nat) : Nat by n := match p { TT => match n { Z => Z, S(m) => (let e : Eq(Π(u : Unit). Nat, λ(u : Unit) : Nat => LC2(FF, clone(m)), λ(u : Unit) : Nat => 0) = refl; Z), }, FF => LC2(FF, n), }
+reject def AddZ (n : Nat) : Eq(Nat, Add(clone(n), Z), n) := (fix go (y : Nat) : Eq(Nat, Add(clone(y), Z), y) by y := match y { Z => refl, S(p) => go(p), })(n)
+def AddZH (y : Nat) : Eq(Nat, Add(clone(y), Z), y) by y := match y { Z => refl, S(p) => AddZH(p), }
+def AddZ2 (n : Nat) : Eq(Nat, Add(clone(n), Z), n) := AddZH(n)
+reject def CapSplit (n : Nat) (x : Nat) : False := (fix go (y : Nat) : False by y := match n { Z => go(y), S(q) => go(y), })(x)
+reject def Shadow (n : Nat) : Nat by n := (fix Shadow (y : Nat) : Nat := Shadow(y))(n)
+def H1 (n : Nat) : Nat by n := match n { Z => Z, S(m) => (let f = (λ(u : Unit) : Nat => S(H1(clone(m)))); f(())), }
+def UseH1 : Eq(Nat, H1(3), 3) := refl
+reject def H1Bad (n : Nat) : Nat by n := match n { Z => Z, S(m) => (let k = clone(n); let f = (λ(u : Unit) : Nat => H1Bad(clone(k))); f(())), }
+reject def H3 (n : Nat) : Nat by n := match n { Z => Z, S(m) => (let g = H3; g(clone(m))), }
+reject def L (n : Nat) (h : Eq(Nat, n, S(Z))) : Eq(Nat, Z, S(Z)) by n := match n { Z => h, S(p) => (n := S(S(Z)); L(p, refl)), }
+inductive Q : Prop := MkQ(h : And(Q, True))
+reject def qe (x : Q) : False by x := (match x { MkQ(h) => match h { Intro(a, b) => qe(a) } })
+```
+]
+
+#table(columns: (18%, 60%, 22%), table.header([*Program*], [*What it shows*], [*Today*]),
+  [`Loop`], [D135: before it, the recursive call `Loop(FF, m)` ran the body under check, whose untested call ran for ever ("undecided").], [rejected by [Rec]],
+  [`Sel`; `Sel2`, `SelAfter`], [D135's cost: an equation about the function's own call inside its body is rejected (before D135 accepted, the verdict following what the run of the body computed); stated after the definition it holds.], [`Sel` rejected; the others accepted],
+  [`Q3`], [The first referee's O3: `Q2` and `Q3` differ only in their `Z` arm; before D135 `Q2` was rejected and `Q3` accepted.], [rejected],
+  [`LC2`], [A second route to the body under check, through comparing two closures; D135 sits where every run of a body starts.], [rejected],
+  [`AddZ`; `AddZH`, `AddZ2`], [D136's cost: a local recursive proof is rejected; its lifted form is accepted.], [`AddZ` rejected],
+  [`CapSplit`], [The October proof of `False` (D78): a local recursive function capturing a value it splits on; now rejected by D136 where its check starts.], [rejected],
+  [`Shadow`], [Without `by`, a function's name is not in scope in its body (D31).], [rejected],
+  [`H1`, `UseH1`; `H1Bad`], [A closure that calls the enclosing global: its calls are tested by [Rec] where the closure is formed.], [`H1Bad` rejected],
+  [`H3`], [The function under check occurs only as the head of a call.], [rejected],
+  [`L`], [Recursion on a part of an overwritten value: [Rec] compares with the entry value as refined; by syntax it would prove `Eq(Nat, Z, S(Z))`.], [rejected],
+  [`Q`, `qe`], [No recursion on a proof (redundant with the strict-subterm test).], [`qe` rejected],
 )
 
+== Inductive declarations and universes <sec-ev-decl>
 
-= The ledger <sec-ledger>
+These blocks were run by `theory7` (on `main` at 8153a6665) and the sixth referee (at 44a82dc84), whose checker sources are today's; the sixth referee re-ran all 193 of `theory7`'s verdicts at 44a82dc84, as written. They show what @fig-n1-checks claims, and the decisions of D107 (whose proof of `False` is `PositivitySelf.Q`: `inductive Q (A : Type) (n : Nat) := MkQ(z : Q(Q(A, n), 1), e : Eq(Nat, n, 0)) | Stop(f : Neg(A, n))` with `Neg(A, n)` `False` at zero and `Π(x : A). False` above, which made `Q(Unit, 0)` the type `Q(Unit, 0) → False`; rejected since D107).
 
-Every entry of `ochr/core/DECISIONS.md` (D1 to D134, with its amendments), the ruling D135 recorded in docs/32, and the eight accepted proofs of `False`, each in one row: the decision in words with its number after, what went wrong (or, for a design choice that fixed no fault, what it decides), the principle of @sec-principles it restores or establishes, and the principle written before 27 November that it fits, if any: docs/18's seven (locality, closing off, worlds, wholeness, erasure and captures, recursion, observation) or `CLAUDE.md`'s three standards (no catch-and-default, total code, decisions never read a run). "Design" marks a founding choice of the calculus and "feature" a decision that adds to the language without repairing anything; neither restores a principle, and neither is counted in the residue. Where a row has two principles, the first is the one the fix restores. The numbers are the revised list's (@sec-revision): rows about exclusive access, filed under 5 by the first draft, are under 12, and rows filed under the first draft's 12 (undecided decides nothing) are under 5.
+#figure(table(columns: (25%, 15%, 22%, 38%), align: left,
+  table.header([*Aim*], [*Programs*], [*Verdict*], [*If accepted: the model*]),
+  [A negative occurrence behind a type function], [`B1`, `B2`], [Rejected (D36: the declared type in a call's argument).], [—],
+  [… behind a parameter, a nested declaration], [`B3`, `B4`, `B14`; `NB`, `DP`, `HB`, `HA`], [`B3`, `B4`, `B14` rejected (not nestable, D107); the inner declarations accepted.], [`NB(A) = A ⊎ NB(A → Void)`, a family over #vk(0) in which `A` is not nestable; `HA`’s `A` is nestable (a whole field type), so `B13 = {MkB13(h)} ⊎ {E13}` with `h` in `HA(NegV, B13)`, a least fixed point.],
+  [… behind a function type's domain, at a parameter's own type (D120’s (B2))], [`NF`, `DF`, `DG`, `DH`; `NL`, `DL`, `DL2`; `NA`, `DA`, `DA2`; `VF`], [`NF`, `DF`, `NL`, `NA` accepted; the rest rejected.], [`DF = {LeafF} ⊎ {NodeF(p)}` with `p` in `NF(DF, 0, ()) = DF`’s trees: `NF` never reads its value parameter, and the value `()` is in `NegF(X, 0)` for every `X`. A value at a parameter whose type reads the nestable parameter would have to name the declared type (`DG`, `DL2`, `DA`), read a field of it (`DA2`), or take its parameter from a hint (`DL`): each rejected. A parameter typed by a Π over an earlier type parameter cannot be declared at all (`VF`), an incompleteness.],
+  [… behind an `Eq` or `Id` type], [`TE`, `B5`, `B6`, `B7`], [`TE` accepted; `B5` to `B7` rejected.], [`TE(T, a)` is `{MkTE}` (the equation is true); `T` is not nestable (passed to an equation).],
+  [… behind a dependent field's type, a match in a field type], [`B2`, `B4`, `B8`, `B9`; `SelfIx`], [Rejected.], [—],
+  [… a declaration at another sort], [`B11`, `B12`; `PP`, `Wrap`], [`B11`, `B12` rejected (D121).], [`PP(A)` is the truth of `A ≠ ∅`; `Wrap(P)` is `{MkWrap(•)}` or ∅.],
+  [A field one universe too high, hidden the same ways], [`U1` to `U10`, `T1` to `T5`, `FA`, `FAf`], [All rejected but `FA`.], [`FA (n : Nat) : TypeA(n) := Nat` is a data-class function returning the type `Nat`; `TypeA(n)` is a type of sort `Type₁` written as a codomain, legal (D55). It cannot head a field (`FAf`, D55) and its result cannot be bound (`FAuse`, D131). Its meaning is $n |-> NN$, a member of $NN -> vk(0)$.],
+  [An equation at a universe], [`TEq`, `te`, `TyEq`, `tyeq`], [Accepted.], [A proof field means $[a = b] subset.eq {bullet}$ at any type; a parameter in `Type₁` is recorded by no tree.],
+  [A two-constructor proposition into data: direct, through a nested proposition, through `J`, through a match in a type], [`IsL`, `IsLT`, `IsLP`, `InAnn`, `InArg`, `InEq`, `InId`, `TagO`, `TagF`, `TagFE`, `ViaSS`, `ViaWr`, `ViaJ`, `Proj`, `ProjM`, `ProjC`], [All rejected (D45), in types and value arguments alike.], [—],
+  [A `Prop`-sorted declaration whose data field a later field reads], [`ExB`, `ExP`, `Pin`, `IsTr`, `Imp`, `NestW`, `UseP`], [Accepted; `GetB`, `GetPin`, `Forge`, `exBbad` rejected.], [`ExB` is the truth of $exists b. thin deno(ty("BF"))(b) != emptyset$: true. No data leaves a proof (D45); a proof may split on the data field.],
+  [Fording with a computed index], [`EvV`, `HV`, `MV`, `AV`, `VD`, `Inj`, `EvNo`], [Accepted; `ev1`, `NoRefute` rejected.], [One family over the value parameter, the index fixed by an equation field: `EvV(n)` holds the trees whose last equation is true. An index computed by a call, a match or a local write is a steady value (S3a). Injectivity at an unconvertible index field stays stuck (`NoRefute`), never `False`.],
+  [The hard case `F (A : Type₁) : Type` heading a field: a constant, a match, the identity, through a declaration, into `Prop`, a domain in `Type₂`], [`WT`, `WM`, `WI`, `WB`, `WP`, `WF`, `W2`], [Accepted; `wtBad`, `wmBad`, `FId` rejected.], [`WT(A) = {MkWT(n) | n ∈ ℕ}` for every $A in vk(1)$: the family is a function from #vk(1) to #vk(0). `F`’s meaning sends every argument to a member of #vk(0), whatever its domain (`GlobalCallLevels`). `W2` writes `Type₂`, beyond the Lean model's bound but not the paper's.],
+  [The standing assumption: an equation between two applications of one type former refuted], [`R1` to `R4`, `Cast`], [`R1` to `R4` rejected (the equation is stuck, never `False`); `Cast` accepted, a stuck cast.], [The model identifies `Ph(Nat)` and `Ph(Bool)`; the checker neither proves nor refutes it.],
+  [A parameter read off the spine while it varies (D128’s readers)], [`T1` to `T8`], [`T1`, `T4` rejected by D128; `T2`, `T3`, `T5` by D55; `T6` to `T8` accepted.], [`T6`, `T7`: the parameter that varies is read by no field. `T8`: a written sort.],
+  [Parameters inferred at a higher universe (D105)], [`ti`, `tl`, `tw`], [`ti`, `tw` accepted, `tl` rejected.], [The parameter comes from the annotation, never from the fields.],
+  [Propositions whose least model is empty; recursion through them], [`Q`, `Acc1`, `N2`, `E1`, `E0`; `q`, `qn`, `qe`, `acc`], [Declarations accepted; every attempt to build or refute rejected.], [`Q`, `Acc1`, `E1` mean $emptyset$ (no base case); `N2` is the least truth of its rules. `Q` cannot be refuted either: no recursion on a proof (`qe`).],
+), caption: [The attacks on N1, by aim.]) <fig-n1-attack>
+
+*A negative occurrence, hidden.*
+#measured[
+```
+inductive Bool := false | true
+inductive Void : Type
+def NegV (X : Type) : Type := (Π(x : X). Void)
+def NegB (X : Type) (b : Bool) : Type := (match b { false => Unit, true => (Π(x : X). Void) })
+reject inductive B1 := MkB1(f : NegV(B1))
+reject inductive B2 := MkB2(b : Bool, f : NegB(B2, b))
+inductive NB (A : Type) := NBase(a : A) | NStep(r : NB(NegV(A)))
+reject inductive B3 := MkB3(x : NB(B3))
+inductive B3Ok := MkB3Ok(x : NB(Unit))
+inductive DP (A : Type) := MkDP(b : Bool, f : NegB(A, b))
+reject inductive B4 := MkB4(d : DP(B4))
+def NegF (X : Type) (n : Nat) : Type := (match n { Z => Unit, S _ => (Π(x : X). Void) })
+inductive NF (A : Type) (n : Nat) (f : NegF(A, n)) := MkNF(y : A)
+inductive DF := LeafF | NodeF(p : NF(DF, 0, ()))
+reject inductive DG := LeafG | NodeG(p : NF(DG, 1, λ(x : DG) : Void => match x { LeafG => LeafG, NodeG(q) => LeafG }))
+reject inductive DH := LeafH | NodeH(m : Nat, p : NF(DH, m, ()))
+inductive TE (T : Type) (a : T) := MkTE(e : Eq(T, a, a))
+reject inductive B5 := MkB5(t : TE(NegV(B5), λ(x : B5) : Void => match x { MkB5(t) => match t { MkTE(e) => λ(y : B5) : Void => y } }))
+reject inductive B6 := MkB6(b : B6, e : Eq(B6, b, b))
+reject inductive B7 := MkB7(e : Id(Unit, (), ()))
+reject inductive B8 := MkB8(b : Bool, f : (match b { false => Unit, true => (Π(x : B8). Void) }))
+reject inductive B9 := MkB9(f : (let T = Nat; T))
+def NatA : Type := Nat
+reject inductive B10 := MkB10(x : NatA)
+inductive PP (A : Type) : Prop := MkPP(x : A)
+reject inductive B11 := MkB11(q : PP(B11))
+inductive Wrap (P : Prop) := MkWrap(h : P)
+reject inductive B12 : Prop := MkB12(w : Wrap(B12))
+def App (G : Π(X : Type). Type) (A : Type) : Type := G(A)
+inductive HA (G : Π(X : Type). Type) (A : Type) := MkHA(x : A, y : App(G, Nat))
+inductive B13 := MkB13(h : HA(NegV, B13)) | E13
+inductive HB (G : Π(X : Type). Type) (A : Type) := MkHB(y : App(G, A))
+reject inductive B14 := MkB14(h : HB(NegV, B14)) | E14
+```
+The reasons: `B1`, `B2`, `B6` to `B10` "fields are first-order data" (D36); `B3`, `B4`, `B14` "occurs at the parameter A of …, which is not nestable" (D107); `DG`, `B5` "reads the constructors of …, which are not known while … is declared" (D107); `DH` "the parameter f of NF has type Unit, expected ⌈NegF(DH, σ0)⌉"; `B11`, `B12` "a nested occurrence passes only through declarations of its own sort" (D121). `B10` is an incompleteness: a constant that is a type is not admitted as a field type, while a call is.]
+*The site D120 left open, and parameters typed by a Π.*
+#measured[
+```
+inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
+inductive NL (A : Type) (l : List(A)) := MkNL(y : A)
+reject inductive DL := LeafL | NodeL(p : NL(DL, Nil))
+reject inductive DL2 := LeafL2 | NodeL2(p : NL(DL2, Nil[DL2]))
+reject inductive VF (A : Type) (g : Π(x : A). Nat) := MkVF(y : A)
+inductive VF0 (g : Π(x : Nat). Nat) := MkVF0(y : Nat)
+inductive NA (A : Type) (a : A) := MkNA(y : A)
+reject inductive DA := LeafA | NodeA(p : NA(DA, LeafA))
+reject inductive DA2 := LeafA2 | NodeA2(t : DA2, p : NA(DA2, t))
+```
+`DL`: "cannot infer the parameter A of Nil" (a bare constructor at a value argument has no hint); `DL2`: "fields are first-order data" (the argument names `DL2`); `DA`: the constructor `LeafA` "reads the constructors of DA" (D107); `DA2`: "the argument at the value parameter a of NA reads t, whose declared type DA2 mentions DA2" (D120). `VF` is rejected with "κ is not a type: its declared type is not a sort", for any Π-typed parameter whose type mentions an earlier type parameter (`VF (A : Type) (g : Π(x : A). Nat)`, likewise `Π(x : Nat). A`, `Π(x : A). B`, `Π(x : A). Type`); `VF0`, with no earlier parameter in it, is accepted. An incompleteness, and the message names a variable internal to the checker.]
+*A field one universe too high, hidden.*
+#measured[
+```
+inductive Bool := false | true
+reject inductive U1 := MkU1(x : Type)
+reject inductive U2 := MkU2(x : Prop)
+reject inductive U3 (A : Type₁) := MkU3(x : A)
+def TyF (n : Nat) : Type₁ := Type
+reject inductive U4 := MkU4(x : TyF(0))
+def TyM (b : Bool) : Type₁ := (match b { false => Type, true => Prop })
+reject inductive U5 := MkU5(b : Bool, x : TyM(b))
+def TyS (n : Nat) : Type₁ := (match n { Z => Type, S _ => Prop })
+reject inductive U6 := MkU6(n : Nat, x : TyS(n))
+def PiU (b : Bool) : Type₁ := (match b { false => Type, true => (Π(A : Type). A) })
+reject inductive U7 := MkU7(b : Bool, x : PiU(b))
+reject inductive U8 : Prop := MkU8(A : Type)
+def UU (n : Nat) : Type₁ := (match n { Z => Prop, S _ => Prop })
+def VV (n : Nat) : UU(n) := (match n { Z => True, S _ => True })
+reject inductive U9 := MkU9(h : VV(0))
+inductive Bx (A : Type) := MkBx(x : A)
+reject inductive U10 := MkU10(x : Bx(Type))
+inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
+def te : TEq(Type, Nat, Nat) := MkTEq[Type, Nat, Nat](refl)
+reject def teBad : TEq(Type, Nat, Unit) := MkTEq[Type, Nat, Unit](refl)
+inductive H2 (U : Type₂) := MkH2
+def h2 : H2(Type₁) := MkH2[Type₁]
+```
+`U1` to `U8`: "its type must be in Prop or Type" (`U6` at a stuck call, by its head's codomain; `U8` a proposition with a field in `Type₁`, which Lean allows); `U9`: D55; `U10`: "the parameter A of Bx has type Type₁, expected Type".]
+*A proposition with two constructors eliminated into data.*
+#measured[
+```
+inductive Bool := false | true
+inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
+inductive Tag (n : Nat) := MkTag
+reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true, Inr(q) => false }
+reject def IsLT (h : Or(True, True)) : Type := match h { Inl(p) => Nat, Inr(q) => Unit }
+reject def IsLP (h : Or(True, True)) : Prop := match h { Inl(p) => True, Inr(q) => False }
+reject def InAnn (h : Or(True, True)) : Unit := (let x : (match h { Inl(p) => Unit, Inr(q) => Unit }) = (); ())
+reject def InArg (h : Or(True, True)) : Type := Tag(match h { Inl(p) => 0, Inr(q) => 1 })
+reject def InEq (h : Or(True, True)) : Prop := Eq(Nat, match h { Inl(p) => 0, Inr(q) => 1 }, 0)
+reject def InId (h : Or(True, True)) : Prop := Id(Nat, match h { Inl(p) => 0, Inr(q) => 1 }, 0)
+reject inductive TagO (h : Or(True, True)) := MkTO(t : Tag(match h { Inl(p) => 0, Inr(q) => 1 }))
+reject inductive TagF := MkTF(h : Or(True, True), t : Tag(match h { Inl(p) => 0, Inr(q) => 1 }))
+reject inductive TagFE := MkTFE(h : Or(True, True), e : Eq(Nat, match h { Inl(p) => 0, Inr(q) => 1 }, 0))
+inductive SS : Prop := MkSS(o : Or(True, True))
+reject def ViaSS (s : SS) : Bool := match s { MkSS(o) => match o { Inl(p) => true, Inr(q) => false } }
+def ViaSSOk (s : SS) : Bool := match s { MkSS(o) => true }
+inductive Wr (P : Prop) : Prop := MkWr(x : P)
+reject def ViaWr (s : Wr(Or(True, True))) : Bool := match s { MkWr(o) => match o { Inl(p) => true, Inr(q) => false } }
+def InProof (h : Or(True, True)) : Eq(Nat, 0, 0) := match h { Inl(p) => (let k = 1; refl), Inr(q) => (let k = 2; refl) }
+inductive Ex : Prop := Wit(n : Nat, e : Eq(Nat, n, n))
+reject def Proj (x : Ex) : Nat := x.0
+reject def ProjM (x : Ex) : Nat := match x { Wit(n, e) => n }
+reject def ProjC (x : Ex) : Nat := match x { Wit(n, e) => clone(n) }
+reject def ViaJ (h : Or(True, True)) (b : Bool) : Type := J(Bool, match h { Inl(p) => true, Inr(q) => false }, b, λ(c : Bool) : Type => Nat, refl, Nat)
+```
+Every rejection is D45’s "a match on a proof of … returns a non-proof, but … is not a subsingleton", in a type, an annotation, an equation's side and an inductive declaration's field type as in code. `ViaSSOk` takes apart a subsingleton (one constructor, all fields proofs) and produces data that does not depend on its field.]
+*A proposition whose data field a later field reads.*
+#measured[
+```
+inductive Bool := false | true
+inductive Void : Type
+def BF (b : Bool) : Type := (match b { false => Nat, true => Void })
+def IsT (b : Bool) : Prop := (match b { false => False, true => True })
+inductive ExB : Prop := WitB(b : Bool, x : BF(b))
+inductive ExP : Prop := WitP(b : Bool, h : IsT(b))
+def exB : ExB := WitB(false, 3)
+def exP : ExP := WitP(true, refl)
+reject def exBbad : ExB := WitB(true, 3)
+def UseP (e : ExP) : Eq(Nat, 0, 0) := match e { WitP(b, h) => match b { false => match h {}, true => refl } }
+reject def GetB (e : ExP) : Bool := match e { WitP(b, h) => b }
+inductive Pin : Prop := MkPin(b : Bool, e : Eq(Bool, b, true))
+reject def GetPin (e : Pin) : Bool := match e { MkPin(b, h) => b }
+inductive IsTr (b : Bool) : Prop := MkIsTr(e : Eq(Bool, b, true))
+def FromIsTr (b : Bool) (h : IsTr(b)) : Nat := match h { MkIsTr(e) => 0 }
+def NestW (e : ExP) : Eq(Nat, 0, 0) := match e { WitP(b, h) => (b := true; match e { WitP(b2, h2) => (let q : Eq(Bool, b2, true) = refl; refl) }) }
+reject def Forge (e : ExP) : IsT(true) := match e { WitP(b, h) => h }
+inductive Imp : Prop := MkImp(n : Nat, e : Eq(Nat, S(n), 0))
+def ImpE (i : Imp) : False := match i { MkImp(n, e) => match e {} }
+```
+`GetPin` is rejected though `Pin`’s equation determines its data field: Ochr's subsingleton rule asks every field to be a proof, stricter than Lean's (no indices). `Forge` is rejected because the arm's `h` has type ⌈`IsT(σ0)`⌉, not `⊤`.]
+*Fording, with a computed index.*
+#measured[
+```
+def Double (n : Nat) : Nat by n := (match n { Z => Z, S k => S(S(Double(k))) })
+def Half (n : Nat) : Nat by n := (match n { Z => Z, S k => match k { Z => Z, S j => S(Half(j)) } })
+inductive EvV (n : Nat) := EZ(h : Eq(Nat, n, Double(0))) | ES(m : Nat, r : EvV(m), h : Eq(Nat, n, Double(S(m))))
+def ev2 : EvV(2) := ES(0, EZ(refl), refl)
+reject def ev1 : EvV(1) := ES(0, EZ(refl), refl)
+inductive HV (n : Nat) := HZ(h : Eq(Nat, n, 0)) | HS(m : Nat, r : HV(Half(m)), h : Eq(Nat, n, S(m)))
+inductive MV (n : Nat) := MZ(h : Eq(Nat, n, 0)) | MS(m : Nat, r : MV(match m { Z => Z, S k => k }), h : Eq(Nat, n, S(m)))
+inductive AV (n : Nat) := AZ(h : Eq(Nat, n, 0)) | AS(m : Nat, r : AV((let c = clone(m); AddM(&c, 1); c)), h : Eq(Nat, n, S(m)))
+def EvNo (r : EvV(1)) : False := match r { EZ(h) => match h {}, ES(m, q, h) => match m { Z => match h {}, S k => match h {} } }
+inductive VD (n : Nat) := VDN(h : Eq(Nat, n, 0)) | VDC(m : Nat, h : Eq(Nat, n, S(m)))
+reject def NoRefute (a : Nat) (b : Nat) (h1 : Eq(Nat, 3, S(a))) (h2 : Eq(Nat, 3, S(b))) (e : Eq(VD(3), VDC[3](a, h1), VDC[3](b, h2))) : False := match e {}
+inductive Tg (n : Nat) := MkTg
+reject inductive SelfIx := SL | SN(t : SelfIx, r : Tg(match t { SL => 0, SN(u, v) => 1 }))
+```
+`NoRefute`: "[Match] on e, whose type Eq(VD(3), VDC(σ0, ⋆), VDC(σ1, ⋆)) is not an inductive type": `m` is an index field, so injectivity waits for it (D64), and the equation is never `False`. With the cases on `a` and `b` written out, `a = b` is proved (`Inj`, accepted). `SelfIx`: D107.]
+*The hard case: a global with a domain in `Type₁` heading a field's type.*
+#measured[
+```
+inductive Bool := false | true
+def FT (A : Type₁) : Type := Nat
+inductive WT (A : Type₁) := MkWT(x : FT(A))
+def wt : WT(Type) := MkWT[Type](3)
+def wt2 : WT(Π(X : Type). X) := MkWT[Π(X : Type). X](4)
+reject def wtBad : WT(Type) := MkWT[Type](())
+def FM (A : Type₁) (b : Bool) : Type := (match b { false => Nat, true => Unit })
+inductive WM (A : Type₁) := MkWM(b : Bool, x : FM(A, b))
+def wm : WM(Prop) := MkWM[Prop](true, ())
+reject def wmBad : WM(Prop) := MkWM[Prop](true, 3)
+def FI (A : Type₁) (B : Type) : Type := B
+inductive WI (A : Type₁) (B : Type) := MkWI(x : FI(A, B))
+def wi : WI(Type, Nat) := MkWI[Type, Nat](5)
+reject def FId (A : Type₁) : Type := A
+inductive Big (U : Type₁) := MkBig(n : Nat)
+def FB (A : Type₁) : Type := Big(A)
+inductive WB (A : Type₁) := MkWB(x : FB(A))
+def wb : WB(Type) := MkWB[Type](MkBig[Type](1))
+def FP (A : Type₁) : Prop := Eq(Type₁, A, A)
+inductive WP (A : Type₁) := MkWP(h : FP(A))
+def wp : WP(Prop) := MkWP[Prop](refl)
+def FF (G : Π(X : Type₁). Type) : Type := G(Prop)
+inductive WF (G : Π(X : Type₁). Type) := MkWF(x : FF(G))
+def wf : WF(λ(X : Type₁) : Type => Nat) := MkWF[λ(X : Type₁) : Type => Nat](7)
+def F2 (A : Type₂) : Type := Nat
+inductive W2 (A : Type₂) := MkW2(x : F2(A))
+def w2 : W2(Type₁) := MkW2[Type₁](8)
+```
+Each declaration's family is a function from its parameters' universe to #vk(0): for every $A in vk(1)$, `WT(A)` holds the trees `MkWT(n)` for $n in NN$, `WB(A)` the trees `MkWB(MkBig(n))`, `WM(A)` the dependent sum of `FM(A, b)` over `b`, and `WF(G)` the trees whose field lies in `G`’s value at `Prop`. In each, the field's type is a call whose result the model places in #vk(0) because the global's codomain is `Type` (or `Prop`), whatever its domain.]
+*The identification of types, and the readers behind D128.*
+#measured[
+```
+inductive Bool := false | true
+inductive Big (U : Type₁) := MkBig
+inductive Ph (A : Type) := MkPh
+reject def R1 (h : Eq(Type, Big(Type), Big(Prop))) : False := match h {}
+reject def R2 (h : Eq(Type, Ph(Nat), Ph(Bool))) : False := match h {}
+reject def R3 (h : Id(Type, Ph(Nat), Ph(Bool))) : False := match h {}
+reject def R4 (h : Eq(Ph(Nat), MkPh[Nat], MkPh[Nat])) : False := match h {}
+def R4ok : Eq(Ph(Nat), MkPh[Nat], MkPh[Nat]) := refl
+def Cast (h : Eq(Type, Ph(Nat), Ph(Bool))) (x : Ph(Nat)) : Ph(Bool) := J(Type, Ph(Nat), Ph(Bool), λ(X : Type) : Type => X, h, x)
+def TyAlias : Type₁ := Type
+def SortF (X : Type) : Type₁ := Type
+reject inductive T1 (A : Type) (B : (let z = A; Type)) := MkT1(x : B)
+reject inductive T2 (A : Type) (B : TyAlias) := MkT2(x : B)
+reject inductive T3 (A : Type) (B : SortF(A)) := MkT3(x : B)
+reject inductive T4 (A : Type) (B : (match 0 { Z => Type, S _ => Type })) := MkT4(x : B)
+reject inductive T5 (A : Type) (B : (Type : Type₁)) := MkT5(x : B)
+inductive T6 (A : Type) (B : TyAlias) := MkT6(n : Nat)
+inductive T7 (A : Type) (B : SortF(A)) := MkT7(n : Nat)
+inductive T8 (A : Type) (B : (Type)) := MkT8(x : B)
+inductive TE (U : Type₁) (a : U) := MkTE(h : Eq(U, a, a))
+def ti : TE(Type, Nat) := MkTE(refl)
+reject def tl : Unit := (let x = MkTE(refl); ())
+def tw : TE(Type, Nat) := MkTE[Type, Nat](refl)
+```
+`R1` to `R3`: "[Match] on h, whose type Eq(Type, …, …) is not an inductive type": the equation is stuck; `R4`: its type is `True`, which has a constructor. `T1`, `T4`: D128; `T2`, `T3`, `T5`: "[D55] B is written where a type is expected, but its declared type is not a sort", the reader not seeing through a constant, a call or an ascription, where D128’s reader agrees, so `B` is a value parameter for both. `tl`: "cannot infer the parameter U of MkTE" (D105).]
+*Propositions whose least model is empty.*
+#measured[
+```
+inductive Bool := false | true
+inductive Q : Prop := MkQ(h : And(Q, True))
+reject def q : Q := MkQ(⟨q, refl⟩)
+reject def qn (n : Nat) : Q by n := (match n { Z => MkQ(⟨qn(n), refl⟩), S m => MkQ(⟨qn(m), refl⟩) })
+reject def qe (x : Q) : False by x := (match x { MkQ(h) => match h { Intro(a, b) => qe(a) } })
+inductive Acc1 : Prop := MkAcc1(h : Acc1)
+def fromAcc (a : Acc1) : Nat := (match a { MkAcc1(h) => 0 })
+reject def acc : Acc1 := MkAcc1(acc)
+inductive N2 (P : Prop) (n : Nat) : Prop := MkN2(z : N2(N2(P, n), 1), e : Eq(Nat, n, 0)) | StopN2(a : P)
+def n2 : N2(True, 0) := MkN2[True, 0](StopN2[N2(True, 0), 1](StopN2[True, 0](refl)), refl)
+reject def n2f : N2(False, 1) := StopN2[False, 1](refl)
+def TypeA (n : Nat) : Type₁ := Type
+def FA (n : Nat) : TypeA(n) := Nat
+reject def FAuse (n : Nat) : Nat := (let T = FA(n); 0)
+reject inductive FAf := MkFAf(x : FA(0))
+inductive E0 : Type
+inductive E1 := MkE1(e : E1)
+def e1f (x : E1) : False by x := (match x { MkE1(y) => e1f(y) })
+inductive TyEq (U : Type₁) (A : U) := MkTyEq(e : Eq(U, A, A))
+def tyeq : TyEq(Type, Nat) := MkTyEq[Type, Nat](refl)
+```
+`q`, `acc`: a definition does not name itself (D118); `qn`: [Rec], the recursive call is on `n`; `qe`: "the decreasing parameter must have an inductive type", a proof having no rank. `Q` and `Acc1` mean $emptyset$ in the least model, and the checker can neither build nor refute them; `E1` means $emptyset$ and `e1f`, accepted, is true there. `FAuse`: D131; `FAf`: D55.]
+*Checks stricter than the construction needs (the sixth referee's Y2; decision (d)).*
+#measured[With the `Nat` prelude, on `main` at 44a82dc84:
+```
+inductive Bool := false | true
+inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
+inductive Pt (A : Type) (a : A) := MkPt
+reject inductive D2 := D2Leaf | D2Node(x : D2, p : Pt(D2, x))
+reject inductive LD := LLeaf | LDNode(xs : List(LD), e : Eq(Nat, (match xs { Nil => 0, Cons(h, t) => 1 }), 1))
+inductive NA (A : Type) (a : A) := MkNA(y : A)
+inductive NB (A : Type) := MkNB(x : A, r : NA(A, x))
+reject inductive NBD := LNB | NNB(m : NB(NBD))
+inductive PP (A : Type) : Prop := MkPP(x : A)
+reject inductive B11 := MkB11(q : PP(B11))
+inductive Wrap (P : Prop) := MkWrap(h : P)
+reject inductive B12 : Prop := MkB12(w : Wrap(B12))
+reject inductive B6 := MkB6(b : B6, e : Eq(B6, b, b))
+inductive TE (T : Type) (a : T) := MkTE(e : Eq(T, a, a))
+inductive TB (T : Type) := MkTB(x : T, t : TE(T, x))
+reject inductive TBD := LTB | NTB(m : TB(TBD))
+reject inductive Q11 := L11 | N11(p : NA(Q11, L11))
+def PF (b : Bool) : Type := (match b { false => Nat, true => (Π(x : Nat). Nat) })
+inductive DPF := MkDPF(b : Bool, f : PF(b))
+def dpf : DPF := MkDPF(true, λ(x : Nat) : Nat => S(x))
+def NegT (X : Type) : Type := (Π(x : X). Bool)
+reject inductive NT := MkNT(x : NegT(Nat))
+```
+All 22 verdicts as written. `D2`, `LD`: D120 ("… reads x, whose declared type D2 mentions D2 …"); `NBD`: "NBD occurs at the parameter A of NB, which is not nestable in NB: a field of NB reads … a variable whose declared type mentions it" (D120); `B11`, `B12`: D121; `B6`: D36; `TBD`: "TB passes it to … an equation"; `Q11`: "the constructor L11 reads the constructors of Q11, which are not known while Q11 is declared (D107)"; `NT`: "NegT(Nat) computes to Π(x : κ1). Bool …, which is not first-order data, D36".]
+*The standing assumption (the sixth referee's Y4).*
+#measured[With the `Nat` prelude, on `main` at 44a82dc84:
+```
+inductive Bool := false | true
+inductive E1 : Type
+inductive E2 : Type
+inductive T2 : Prop := MkT2
+inductive Ph (A : Type) := MkPh
+reject def EE (h : Eq(Type, E1, E2)) : False := match h {}
+reject def PT (h : Eq(Prop, True, T2)) : False := match h {}
+reject def EP (h : Eq(Type, Ph(Nat), Ph(Bool))) : False := match h {}
+reject def MoveTy (U : Type₁) (a : U) : U := (let b = a; let c = a; b)
+def MoveTyOk (U : Type₁) (a : U) : U := (let b = a; b)
+reject def IdTy (U : Type₁) (a : U) (n : U) : Prop := Id(Unit, (let z = a; ()), (let z = a; a := n))
+inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
+reject def CT1 (y : TEq(Type, Ph(Nat), Ph(Nat))) : TEq(Type, Ph(Nat), Ph(Bool)) := y
+reject def NoTEq (t : TEq(Type, Ph(Nat), Ph(Bool))) : False := match t { MkTEq(h) => match h {} }
+```
+All 14 verdicts as written. `EE`, `PT`, `EP`, `NoTEq`: "[Match] on h (t.h), whose type Eq(…) is not an inductive type"; `MoveTy`: "[Read] a was moved out or its borrow ended (reading ⊥)"; `IdTy`: "[Id-typestate] the left side of Id moves a, the right side does not"; `CT1`: not convertible. In the model `TEq(Type, Ph(Nat), Ph(Bool))` is ${ty("MkTEq")(bullet)}$, inhabited, and the checker neither builds nor refutes it.]
+*Value-indexed nesting at a field variable; data holding borrow-returning functions (Y5).*
+#measured[With the `Nat` prelude, on `main` at 44a82dc84:
+```
+inductive Bool := false | true
+inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
+inductive VL (n : Nat) := VLeaf(e : Eq(Nat, n, 0)) | VNode(m : Nat, r : List(VL(m)), e : Eq(Nat, n, S(m)))
+def vl : VL(1) := VNode(0, Cons[VL(0)](VLeaf(refl), Nil[VL(0)]), refl)
+def PB (b : Bool) : Type := (match b { false => Nat, true => (Π(x : &Nat). &Nat) })
+inductive DPB := MkDPB(b : Bool, f : PB(b))
+def dpb : DPB := MkDPB(true, λ(x : &Nat) : &Nat => x)
+def UseDPB (d : DPB) (y : &Nat) : Unit := match d { MkDPB(b, f) => match b { false => (), true => (let r = f(y); *r := 0) } }
+```
+All 8 verdicts as written: every declaration and definition accepted.]
+*Places beyond Lean, attacked.*
+#measured[With the `Nat` prelude, on `main` at 44a82dc84:
+```
+inductive Bool := false | true
+inductive Void : Type
+inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
+def FD (b : Bool) : Type := (match b { false => Unit, true => Nat })
+inductive SelfD := L0 | N0(b : Bool, x : FD(b))
+def FE (n : Nat) (e : Eq(Nat, n, 0)) : Type := (match n { Z => Nat, S _ => (let k : Void = match e {}; Unit) })
+inductive DE := MkDE(n : Nat, e : Eq(Nat, n, 0), x : FE(n, e))
+def de : DE := MkDE(0, refl, 5)
+def Len (A : Type) (xs : List(A)) : Nat by xs := (match xs { Nil => Z, Cons(h, t) => S(Len(A, t)) })
+def TyOfLen (n : Nat) : Type := (match n { Z => Unit, S _ => Void })
+reject inductive NI2 := LN2 | NN2(xs : List(NI2), y : TyOfLen(Len(NI2, xs)))
+def Pick (b : Bool) (A : Type) (B : Type) : Type := (match b { false => A, true => B })
+inductive MP (A : Type) := MkMP(b : Bool, x : Pick(b, A, Nat))
+reject inductive MQ := LQ | NQ(m : MP(MQ))
+inductive PN (P : Prop) (n : Nat) : Prop := PA(z : PN(PN(P, n), 1), k : Nat) | PB(a : P, j : Nat)
+def pn : PN(True, 0) := PB[True, 0](refl, 3)
+reject def D1 (h : PN(True, 0)) : Bool := match h { PA(z, k) => true, PB(a, j) => false }
+reject def D2 (h : PN(True, 0)) : Bool := match h { PA(z, k) => match z { PA(z2, k2) => true, PB(a2, j2) => false }, PB(a, j) => false }
+def D3 (h : PN(True, 0)) : True := match h { PA(z, k) => (let q : Eq(Nat, k, k) = refl; refl), PB(a, j) => refl }
+reject def D4 (h : PN(True, 0)) : Nat := match h { PA(z, k) => k, PB(a, j) => j }
+reject def D5 (h : PN(True, 0)) : Type := J(Bool, match h { PA(z, k) => true, PB(a, j) => false }, true, λ(c : Bool) : Type => Nat, refl, Nat)
+inductive WP (P : Prop) : Prop := MkWP(w : P)
+def D6 (h : WP(PN(True, 0))) : Bool := match h { MkWP(w) => true }
+reject def D7 (h : WP(PN(True, 0))) : Bool := match h { MkWP(w) => match w { PA(z, k) => true, PB(a, j) => false } }
+reject def D9 (h : PN(True, 0)) : Bool := (let f = (λ(u : Unit) : Bool => (match h { PA(z, k) => true, PB(a, j) => false })); f(()))
+def PT (b : Bool) : Prop := (match b { false => True, true => PN(True, 0) })
+reject def D13 (b : Bool) (h : PT(b)) : Bool := match b { false => true, true => match h { PA(z, k) => true, PB(a, j) => false } }
+def D14 (h : And(True, PN(True, 0))) : Bool := match h { Intro(l, r) => true }
+reject def D15 (h : And(True, PN(True, 0))) : Bool := match h { Intro(l, r) => match r { PA(z, k) => true, PB(a, j) => false } }
+```
+All 29 verdicts as written. `NI2`: D36 (the call's argument is not first-order); `MQ`: "MQ occurs at the parameter A of MP, which is not nestable in MP"; `D1`, `D2`, `D4`, `D5`, `D7`, `D9`, `D13`, `D15`: "[D45] a match on a proof of PN returns a non-proof, but PN is not a subsingleton (it has 2 constructors)". `D3`, `D6`, `D14` accepted: a proof built from a data field bound as a local, and constant data from a subsingleton.]
+*Names, levels and borrows.*
+#measured[With the `Nat` prelude, on `main` at 44a82dc84:
+```
+inductive Bool := false | true
+reject inductive RZ := Z | S(x : RZ)
+reject inductive Q7 (n : Nat) (x : (match Z { Z => Nat, S(k) => (let w = MkQ7; Nat) })) := MkQ7
+reject inductive Q9 (b : Bool) (x : (match b { false => Nat, true => Q9(b, 0) })) := MkQ9
+inductive Box (A : Type) := MkBox(x : A)
+def SortF (X : Type) : Type₁ := Type
+reject inductive T10 (A : Type) (B : SortF(A)) := MkT10(x : Box(B))
+def PiAll : Type₁ := (Π(X : Type). X)
+reject def BorrowPi (x : &PiAll) : Unit := ()
+def TF1 (n : Nat) : Type₁ := (Π(X : Type). X)
+reject def BorrowCall (n : Nat) (x : &TF1(n)) : Unit := ()
+reject def BorrowProp (P : Prop) (x : &P) : Unit := ()
+reject def BorrowPiProp (x : &(Π(n : Nat). Eq(Nat, n, n))) : Unit := ()
+def IdT (A : Type₁) : Type₁ := A
+reject def BorrowIdT (x : &IdT(Type)) : Unit := ()
+inductive Big (U : Type₁) := MkBig
+def BorrowBig (x : &Big(Type)) : Unit := ()
+```
+All 17 verdicts as written. `RZ`: "(surface) Z is built in"; `Q7`, `Q9`: D133, the own name or its constructor in a dead arm of a parameter's type; `T10`: "[D55] B is written where a type is expected, but its declared type is not a sort" (a value parameter at a type argument; D55 and D128 are what keep one out, since `Term.nestOk` accepts a bare variable at a nestable position whatever its declared type reads, and only a type parameter written as a sort reads nothing); each `Borrow…` rejected: "[D66] … is not in Type₀", the Π over `Type` hidden behind a constant, a call and an identity at `Type₁`.]
+
+== Proofs, erasure and conversion <sec-ev-proof>
+
+_Re-run_ (44 verdicts as written):
+#measured[
+```
+reject def Ctl : Eq(Nat, Z, S(Z)) := refl
+def PropF (n : Nat) : Type₁ := Prop
+reject def V1 (k : Nat) : Unit := (let y = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); match k { Z => (let z = y; ()), S(j) => (), }; let w = y; ())
+def W2 (x : &Nat) : Unit := ((*x := 7; J(Nat, Z, Z, λ(z : Nat) : PropF(z) => ⊤, refl, refl)); ())
+def W2Runs : Eq(Nat, (let c = 0; W2(&c); c), 7) := refl
+def WP2 (x : &Nat) : Unit := ((*x := 7; J(Nat, Z, Z, λ(z : Nat) : Prop => ⊤, refl, refl)); ())
+def WP2Runs : Eq(Nat, (let c = 0; WP2(&c); c), 0) := refl
+def G5T (x : &Nat) : Prop := Id(Unit, *x := 0, *x := 1)
+def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))
+reject def PEx (e : Ex) : False := match e { Wit(w, h) => G5(&w, refl), }
+def PB (e : Ex) : True := match e { Wit(w, h) => (let r = &w; refl), }
+def PExF (e : Ex) : True := match e { Wit(w, h) => (let t : Prop = G5T(&w); let f = (λ(k : t) : Eq(Nat, Z, S(Z)) => match k {}); refl), }
+reject def PW (e : Ex) : True := match e { Wit(w, h) => (let q : Eq(Nat, w, 0) = refl; refl), }
+def Nest (e : Ex) : True := match e { Wit(w, h) => (w := 5; match e { Wit(w2, h2) => (let q : Eq(Nat, w2, 5) = refl; refl), }), }
+inductive Succ : Prop := MkSucc(n : Nat, m : Nat, h : Eq(Nat, n, S(m)))
+reject def Boom (e : Succ) : Eq(Nat, Z, S(Z)) := match e { MkSucc(n, m, h) => (n := Z; match e { MkSucc(n2, m2, h2) => match h2 {}, }), }
+inductive Bool := false | true
+inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
+reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true, Inr(q) => false }
+reject def ProjM (x : Ex) : Nat := match x { Wit(n, e) => n }
+inductive Pin : Prop := MkPin(b : Bool, e : Eq(Bool, b, true))
+def Leak (p : Pin) : True := (let q = match p { MkPin(b, e) => e }; refl)
+reject def LShow (p : Pin) : True := (let q = match p { MkPin(b, e) => e }; let t : True = q; refl)
+reject def LRw (g : Π(b : Bool). Bool) (c : Bool) (h : Eq(Bool, g(true), c)) (p : Pin) : Eq(Bool, g(true), c) := (let q = match p { MkPin(b, e) => e }; rewrite q in h)
+def UseEq (x : Bool) (h : Eq(Bool, x, true)) : True := refl
+reject def LPass (p : Pin) : True := (let q = match p { MkPin(b, e) => e }; UseEq(true, q))
+reject def LTwo (p : Pin) : True := (let q = match p { MkPin(b, e) => e }; let k : False = match q {}; refl)
+def TF (n : Nat) : Type := match n { Z => Unit, S(m) => Nat, }
+def F (n : Nat) : Unit := ()
+def H (n : Nat) : TF(Z) := ()
+def FH : Eq(Π(n : Nat). Unit, F, H) := refl
+def TwiceF (n : Nat) : Unit := (let r = F(n); let a = r; let b = r; ())
+reject def TwiceH (n : Nat) : Unit := (let r = H(n); let a = r; let b = r; ())
+def G1 (x : Nat) : Nat := match x { Z => Z, S(p) => S(Z), }
+def G2 (x : Nat) : Nat := match x { Z => Z, S(p) => Z, }
+reject def G12 : Eq(Π(x : Nat). Nat, G1, G2) := refl
+inductive Void : Type
+inductive One := O
+def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+inductive V := MkV(n : Nat, x : Fin1(n))
+reject def BoomF : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := refl; n := Z; let z : Void = match x {}; z), })
+def Keep (r : &One) : &One := r
+reject def A2 : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let r = Keep(&x); n := Z; let k : Void = x; k), })
+```
+]
+
+#table(columns: (18%, 60%, 22%), table.header([*Program*], [*What it shows*], [*Today*]),
+  [`PropF`, `V1`], [D131: a proof read as data behind a hidden sort; before it `V1` was accepted and `V1(Z)` rejected.], [`V1` rejected],
+  [`W2`, `W2Runs`; `WP2`, `WP2Runs`], [Principle 3's converse is false: a term of type `⊤` whose sort hides behind a call reads as data and writes `7`; with `Prop` written it is erased and writes nothing. Not a route to `False`.], [all accepted],
+  [`PEx`; `PB`, `PExF`; `PW`], [A proof's data fields are compared by the checker (as locals since D138): `PEx` would be a closed proof of `False` were they compared as `•`; `PExF` relies on the finer reading.], [`PEx`, `PW` rejected; `PB`, `PExF` accepted],
+  [`Nest`; `Boom`], [D138: a nested match on the same proof sees the outer arm's write; a proof field's type is fixed when the arm starts.], [`Nest` accepted, `Boom` rejected],
+  [`IsL`, `ProjM`], [Subsingleton elimination (D45).], [rejected],
+  [`Leak`; `LShow`, `LRw`, `LPass`, `LTwo`], [An erased match's arm unknown escapes through its type and can be used for nothing: settled harmless (@sec-proof-fields).], [`Leak` accepted; the rest rejected],
+  [`F`, `H`, `FH`, `TwiceF`, `TwiceH`], [Two convertible functions differ in a reading (copy against move of a call's result), which changes what a context written with the name may do, not what a value means.], [`TwiceH` rejected; the rest accepted],
+  [`G12`], [The least relation: two functions whose generic calls are both stuck are not identified.], [rejected],
+  [`BoomF`], [The proof of `False` of D110: `⋆` stored in a data field by a strong update, read at its declared type.], [rejected],
+  [`A2`], [The proof of `False` of D112's amendment: a field lent to a call's returned borrow read at its declared type.], [rejected],
+)
+
+*Conversion at a type* (N3t), run by `theory7` on `main` at 8153a6665, re-run by the sixth referee; 23 verdicts as written:
+#measured[With the `Nat` prelude, on `main` at 8153a6665:
+```
+inductive Bool := false | true
+inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
+inductive Box2 (P : Prop) := MkB2(h : P)
+def U1 (Q : Prop) (x : Box2(And(True, Q))) : Box2(Q) := x
+def U2 (Q : Prop) (x : Box2(Q)) : Box2(And(Q, True)) := x
+reject def U3 (Q : Prop) (x : Box2(And(Q, Q))) : Box2(Q) := x
+def S1 (h : And(True, Or(True, True))) : Bool := match h { Intro(l, r) => true }
+def S2 (h : Or(True, True)) : Bool := S1(h)
+reject def S3 (h : And(True, Or(True, True))) : Bool := match h { Intro(l, r) => match r { Inl(p) => true, Inr(q) => false } }
+def I1 (a : Nat) (b : Nat) (h : Eq(Pair(Nat, Nat), Mk(a, b), Mk(b, a))) : Eq(Nat, a, b) := match h { Intro(l, r) => l }
+def I2 (h : Eq(Bool, true, false)) : False := match h {}
+inductive UP (u : Unit) := MkUP
+def E1 (x : Unit) (y : UP(x)) : UP(()) := y
+def UU (n : Nat) : Type := (match n { Z => Unit, S _ => Nat })
+inductive UQ (n : Nat) (u : UU(n)) := MkUQ
+reject def E2 (u : UU(0)) (v : UU(0)) (y : UQ(0, u)) : UQ(0, v) := y
+inductive HT (f : Π(x : Nat). Type) := MkHT
+def F1 (y : HT(λ(x : Nat) : Type => Nat)) : HT(λ(z : Nat) : Type => Nat) := y
+reject def F2 (y : HT(λ(x : Nat) : Type => Nat)) : HT(λ(z : Nat) : Type => Unit) := y
+inductive Big (U : Type₁) := MkBig
+reject def B1 (y : Big(Type)) : Big(Prop) := y
+def PA : Type₁ := Prop
+reject def P1 (f : Π(x : Nat). Prop) : (Π(x : Nat). PA) := f
+```
+All 23 verdicts as written. The unit laws act inside a type argument (`U1`, `U2`) and nothing more (`U3`). `S2` passes a two-constructor proof where a subsingleton is declared, and `S1`’s result does not depend on it; taking `r` apart into data is rejected (`S3`, D45). η at `Unit` reaches a parameter declared `Unit` (`E1`) and not one that is `Unit` only by computation (`E2`). Function-valued arguments are compared by their generic calls (`F1`, `F2`). `B1` and `P1`: types the model identifies or that differ in class are not converted.]
+
+== The frame property's shapes <sec-ev-frame>
+
+_Re-run_ (38 verdicts as written):
+#measured[
+```
+reject def Ctl : Eq(Nat, Z, S(Z)) := refl
+def P4 (n : Nat) (x : &Nat) (y : &Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 6); let r1 : &Nat = match n { Z => x, S(j) => &p.0, }; let r2 : &Nat = match n { Z => y, S(j) => &p.1, }; *r1 := 1; *r2 := 2; let z = p; ())
+def UseP4a : Eq(Nat, (let a = 3; let b = 4; let ry = &a; P4(Z, &b, ry); a), 2) := refl
+def P5 (n : Nat) (x : &Nat) (y : &Nat) : Unit := (let r : &Nat = match n { Z => (let w = x; y), S(j) => x, }; *r := 1; ())
+def UseP5a : Eq(Nat, (let a = 3; let b = 4; P5(Z, &a, &b); b), 1) := refl
+def P8 (n : Nat) (x : &Nat) : Nat := (let q = 5; let r : &Nat = match n { Z => x, S(j) => &q, }; *r := 1; let f = (λ(u : Unit) : Nat => clone(q)); f(()))
+def UseP8 : Eq(Nat, (let c = 3; P8(Z, &c); c), 1) := refl
+def W2 (x : &Nat) : (*x := 7; Eq(Nat, *x, 7)) := refl
+reject def W3 (x : &Nat) (y : (*x := 7; Nat)) : Eq(Nat, *x, 7) := refl
+def W4 (x : &Nat) (y : (*x := 7; Nat)) : Unit := ()
+def UseW4 : Eq(Nat, (let c = 3; W4(&c, 0); c), 3) := refl
+def PiMove : Nat := (let a = 5; let T = (Π(u : Unit). Eq(Nat, a, 5)); a)
+def PiLentEq : Eq(Nat, (let a = 5; let r = &a; let T = (Π(u : Unit). Eq(Nat, a, 5)); *r := 6; a), 6) := refl
+reject def FixMove : Nat := (let a = 5; let f = (λ(u : Unit) : Nat => clone(a)); a)
+def PickF (n : Nat) (a : &(Π(x : Nat). Nat)) (b : &(Π(x : Nat). Nat)) : &(Π(x : Nat). Nat) := match n { Z => a, S(k) => b, }
+def Inc (x : Nat) : Nat := S(x)
+def T5 (n : Nat) : Nat := (let g = Inc; let h = Inc; let r = PickF(clone(n), &g, &h); match n { Z => (let a = g(0); g(1)), S(m) => 0, })
+def T5Z : Nat := T5(0)
+inductive Void : Type
+inductive One := O
+def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+inductive V := MkV(n : Nat, x : Fin1(n))
+reject def RdWhileFilled (v0 : V) : Unit := (let v = v0; match v { MkV(n, x) => (let r = TailM(&n); let y = x; let z : One = y; *r := Z; ()), })
+def PickP (n : Nat) (x : &Pair(Nat, Nat)) (y : &Pair(Nat, Nat)) : &Pair(Nat, Nat) := match n { Z => x, S(m) => y, }
+def TwoParts (n : Nat) : Nat := (let a : Pair(Nat, Nat) = Mk(1, 2); let b : Pair(Nat, Nat) = Mk(3, 4); let c : Pair(Nat, Nat) = Mk(5, 6); let r = PickP(n, &a, &b); let q1 = &(*r).0; let q2 = &(*r).1; r := &c; *q1 := 7; *q2 := 8; let z = a; let w = b; 0)
+reject def TwoPartsBad (n : Nat) : Nat := (let a : Pair(Nat, Nat) = Mk(1, 2); let b : Pair(Nat, Nat) = Mk(3, 4); let c : Pair(Nat, Nat) = Mk(5, 6); let r = PickP(n, &a, &b); let q1 = &(*r).0; let q2 = &(*r).1; r := &c; let z = clone(a.1); *q2 := 8; 0)
+def IsSuccN (n : Nat) : Prop := match n { Z => False, S(m) => ⊤, }
+def IsSuccFst (p : Pair(Nat, Nat)) : Prop := match p { Mk(a, b) => IsSuccN(a), }
+def IsSuccSnd (p : Pair(Nat, Nat)) : Prop := match p { Mk(a, b) => IsSuccN(b), }
+inductive PS := MkPS(p : Pair(Nat, Nat), h : IsSuccSnd(p))
+inductive PF2 := MkPF2(p : Pair(Nat, Nat), h : IsSuccFst(p))
+def Fst (x : &Pair(Nat, Nat)) : &Nat := &(*x).0
+def ReSnd : Unit := (let c = MkPS(Mk(0, 1), refl); match c { MkPS(p, h) => (let r = Fst(&p); h := refl; *r := 5; let z = c; ()), })
+reject def ReFst : Unit := (let c = MkPF2(Mk(1, 1), refl); match c { MkPF2(p, h) => (let r = Fst(&p); h := refl; *r := 0; let z = c; ()), })
+reject def GetN (v : &V) : &Nat := match *v { MkV(n, x) => &n, }
+inductive Tag (A : Type) (n : Nat) := MkTag
+def Wr (A : Type) (x : &Nat) : Tag(A, *x) := (*x := 0; MkTag)
+def UseWr : Eq(Tag(Nat, 5), (let c = 5; Wr(Nat, &c)), (MkTag : Tag(Nat, 5))) := refl
+```
+]
+
+#table(columns: (18%, 60%, 22%), table.header([*Program*], [*What it shows*], [*Today*]),
+  [`P4`, `UseP4a`], [One access ends two parameter labels in an order the renaming reverses; the states agree by commutation of ends (I4).], [accepted],
+  [`P5`, `UseP5a`], [A parameter label lent at another parameter's lender (the third referee's T7: (I3) in a detail).], [accepted],
+  [`P8`, `UseP8`], [A closure formed in the body over a place lent to a parameter: its capture's access ends the parameter's label.], [accepted],
+  [`W2`; `W3`; `W4`, `UseW4`], [(M1): a parameter type's run leaves nothing behind, as the generic state's does.], [`W3` rejected],
+  [`PiMove`, `PiLentEq`; `FixMove`], [A Π-type's captures are read on a copy (no access, no move); a closure's are real: why (M2)'s `.pi` is not `.fix`'s.], [`FixMove` rejected],
+  [`T5`, `T5Z`], [The `inPlace` flag survives a sealed re-run between its set and its read (`nfSealed` restores the state); prediction refuted.], [accepted],
+  [`RdWhileFilled`], [(WF11): a tree field read while its index is lent to a stuck call takes its content's type, which has no hole.], [rejected],
+  [`TwoParts`; `TwoPartsBad`], [(WF12): two parts of a returned borrow lent onward, then the borrow ended: reading one field of its lender ends both, on every path.], [`TwoPartsBad` rejected],
+  [`ReSnd`; `ReFst`; `GetN`], [N7 and principle 9: a proof field re-proved while an index is lent holds only if it reads no part the borrow may still write; a lent index read at a whole-again point (`GetN`, the proof of `False` of D73) is rejected.], [`ReSnd` accepted; the others rejected],
+  [`Wr`, `UseWr`], [N9: a body whose codomain mentions a borrow argument gets its hint at the call point, before the body writes.], [accepted],
+)
+
+#pagebreak()
+
+= Appendix <sec-appendix>
+
+== The ledger of decisions, by principle <sec-ledger>
+
+Every entry of `ochr/core/DECISIONS.md` (D1 to D134, with amendments), the rulings D135 to D138 recorded in docs/32, and the eight accepted proofs of `False` since October, each in one row: the decision in words with its number after, what went wrong (or, for a design choice that fixed no fault, what it decides), the principle of @sec-principles it restores or establishes, and the principle written before 27 November it fits, if any (docs/18's seven of 2 November: locality, closing off, worlds, wholeness, erasure and captures, recursion, observation; or `CLAUDE.md`'s three standards: no catch-and-default, total code, decisions never read a run). "Design" marks a founding choice and "feature" an addition that repairs nothing. Where a row has two principles, the first is the one the fix restores. Later rulings: D136 (local functions are not recursive) restores principle 10's order and removes the case D78 repaired; D137 and D138 correct the documents to the checker (principles 6 and 3); D139 (blocks name a function under check by its global, held for decision (b)) restores principle 4.
 
 #let L(..xs) = table(columns: (17%, 52%, 13%, 18%), align: left, table.header([*Decision*], [*What went wrong, or what it decides*], [*Principle*], [*Written before as*]), ..xs)
 
-== The early rounds: D1 to D44
+=== The early rounds: D1 to D44
 
 #L(
   [Normalisation by a symbolic machine (D1)], [Design: equality is "same normal form".], [design], [—],
@@ -238,7 +1252,7 @@ Every entry of `ochr/core/DECISIONS.md` (D1 to D134, with its amendments), the r
   [A function type returning a borrow must take one (D44)], [No owner for a returned borrow made `e`'s type `⊤`; with a leaking function, a closed `Empty`.], [6, 1], [locality],
 )
 
-== Uniform inductives to the switches' removal: D45 to D70
+=== Uniform inductives to the switches' removal: D45 to D70
 
 #L(
   [`Prop` inductives, subsingleton elimination, matching proofs by type (D45)], [General `Prop` inductives need Lean's rule for consistency with proof irrelevance.], [1, 4], [none],
@@ -273,7 +1287,7 @@ Every entry of `ochr/core/DECISIONS.md` (D1 to D134, with its amendments), the r
   [Switches and the counterfactual ledger removed (D70)], [Process: the theorem is about the checker at its defaults.], [5], [total code],
 )
 
-== Fording to the frozen readings: D71 to D96
+=== Fording to the frozen readings: D71 to D96
 
 #L(
   [Fording: value parameters, equation fields, non-uniform recursion (D71)], [Feature; its attack pass found a parameter of borrow type recorded in a type.], [1, 12], [none],
@@ -305,7 +1319,7 @@ Every entry of `ochr/core/DECISIONS.md` (D1 to D134, with its amendments), the r
   [A decision reads an unknown by its frozen reading (D96)], [Decisions read Δ, which refinement rewrites.], [4], [decisions never read a run],
 )
 
-== The proof's findings: D97 to D135
+=== The proof's findings: D97 to D135
 
 #L(
   [A sealed program holding a hole is never run (D97)], [A nested run wrote a hole whose borrow only the outer state holds.], [7, 5], [closing off],
@@ -349,7 +1363,7 @@ Every entry of `ochr/core/DECISIONS.md` (D1 to D134, with its amendments), the r
   [While a function is checked, a call of it closes off (D135, on `main` since f63e5a84)], [`Loop`: a typed recursive call ran the body under check, untested, for ever.], [4], [recursion (R3, unexplained)],
 )
 
-== The eight accepted proofs of `False` since October
+=== The eight accepted proofs of `False` since October
 
 #table(columns: (30%, 50%, 20%), align: left, table.header([*Proof of `False`*], [*Where it broke*], [*Principle*]),
   [An index field lent through a returned borrow (`GetN`, D73)], [A part still lent at a whole-again point was read at its current content.], [9 wholeness],
@@ -362,3119 +1376,16 @@ Every entry of `ochr/core/DECISIONS.md` (D1 to D134, with its amendments), the r
   [A dependent field lent to a call's returned borrow (D112 amended)], [A mark with no readable type, given the declared type.], [3 readings],
 )
 
-== The residue, and the principles missing from it <sec-residue>
-
-Of the 139 rows, 10 are design choices or features. Of the other 129, 67 fit a principle written before (docs/18's seven or the three standards) and 62 fit none. The 62 are not scattered: each falls into one of five groups (10 rows in the first, 10 in the second, 7 in the third, 23 in the fourth, 12 in the fifth, counting each row by its first principle; several rows have a second), and each group has one idea nobody wrote down. The idea is the missing principle.
-
-+ *Declarations that have no model* (D36, D44's leak, D45, D48 (1), D64's nesting, D66, D71's borrow parameter, D105, D107, D120, D121, D128, D133). docs/18's seven are about runs; none says anything about a declaration, and the model needs each declaration to denote before any run means anything. Three of these were accepted proofs of `False` or Hurkens-style paradoxes (D36, D48, D107). This is principle 1.
-+ *Identifications that fail at some instance* (D6, D16, D30, D47, D48 (3), D50, D52, D56, D58, D59, D83, and D84's `⊥`). The written principles constrain runs; this group constrains what the checker _equates_: conversion, `Eq`'s computation, `J`'s computation. Principle 2.
-+ *Readings that are the same everywhere but wrong* (D48 (2), D54, D55, D86, D100, D116, D128, D131, and D51's captured readings; D110 and D112, filed by docs/18 under wholeness's W3, are the same idea applied to a type read off a value). The standard "decisions never read a run" makes a decision the same on every run; nothing written required it to be _true_. Principle 3.
-+ *A run of checked code that is not the checked computation* (D12's design, D33, D62, D65, D84's amendment, D87, D88, D89, D90, D91, D93, D94, D99, D101, D114, D118, D119, D122, D124 (three entries), D125, D126, D129, D134, and D135, which docs/18 names as R3, "check before running", with no explanation). Principle 4.
-+ *Values outside the state, and state that is not the program's* (D21, D51, D65 amended, D82, D92, D104, D106, D111, D115, D117, D130, D132, and D71's borrow in a type). Principle 5. (The revision split this group: D65 amended, D71's borrow, D92, D106, D111 and D117 are about exclusive access, now principle 12.)
-
-*The hypothesis, tested.* The orchestrator's hypothesis was that last week's faults (D124, D125, D130 to D135) fit none of the seven and share two unstated ideas: (i) one code, two runs, and (ii) readings are sound. The ledger confirms it with two amendments.
-- D124, D125, D134 and D135 are (i): a run handed a hint its check did not, a form the check accepts that no run can run, a test made on one path of one operation and not the other, and a body run before its check finished. D131 is (ii).
-- D133 is neither: it is a declaration with no model, the first group. Its sibling D118, the check that names are declared, is (i): acceptance depended on which arms a run reaches.
-- D130 and D132 are not (i) or (ii) as stated, but a fifth idea, the state is the whole truth. D130 is a fact about one evaluation kept in the persistent state (a flag set for "the next call", read by whichever call came next); D132 is a result passed back through the state, which a private copy then threw away. Both were found by the proof because its invariant is a predicate on the state, and both are the mirror image of D104 and D115 (values the checker held outside the state). D132 is also (i), since its symptom was an accepted function its call could not run.
-- (i) is older than last week. D12 ("checking `f` is running `f`'s generic call") is its root, D33 (2026-09) its first instance, and every two-paths fault of the generic call against an instance (D28 to D40, D54, D84, D90) is the same idea with "the typed check at unknowns" for one run and "an instance" for the other. What changed last week is that the proof began to state the untyped run's step, which exposed the typed-against-untyped half that the generic-against-instance half had hidden.
-
-*Where the seven were right.* The seven explain most faults found before they were written (2 November). Of the faults since, the seven explain only these: `EtaBoom` (D79, worlds, which a referee found in the worlds principle itself), a sealed program run over a hole (D97, closing off), a comparison's leftover record (D103, locality), two of observation (D113, D114's first half) and two of wholeness (D98, D127). Every other fault since 2 November, the November proofs of `False` included, is in one of the five groups above: what one expects of a list that was complete for what it named and silent about the rest.
-
-= The principles audited <sec-audits>
-
-_How this section was written._ The audits of principles 4, 3 and 5, their predicted faults and their redesigns are the first draft's (`theory1`), from the code alone. Every "what consumes it" now opens with the cases of the argument (@sec-argument) that use the principle, written by `theory2` after reading the paper and the model notes; the first draft's reading of the history follows it, kept for its counterexamples. The section on principles 6 to 12 (@sec-a6) is `theory2`'s, its enforcement read against the code.
-
-Each principle in turn: what in the consistency argument consumes it, how the checker enforces it today, an audit of the sites where it could fail, and the redesign that would make it hold by construction. The audits of principles 4, 3 and 5 were done from the code (`ochr/core/lean/Ochr/Machine.lean`, `Env.lean`, `Decide.lean`, `Runtime.lean` at 105021637) and their predictions run; the others are shorter and say what was not audited. The status tags are #s-cons, #s-check, #s-not, and #s-open for a site this pass did not read.
-
-== Principle 4: one code, two runs <sec-a4>
-
-*What consumes it.* In the argument: every case that compares a run of checked code with the code's meaning, which holds only if the run decides as the meaning does: a statement's evaluation at a generic call and at a call site (@sec-arg-id), a sealed program's re-run (@sec-arg-close), a callee's body run in place, including the parameters a constructor records (@sec-arg-call), a block against the arm it stands for (@sec-arg-split), conversion's generic runs (@sec-arg-conv), erasure (@sec-arg-erase) and copy or move (@sec-arg-places). Its clauses about untyped runs as such (only checked code, every accepted form, the same tests) are not consumed by consistency (@sec-arg-unused). _The first draft's reading of the history:_ the meaning-preservation theorem relates the checker's _typed_ run of a definition (at its generic call, the unknowns standing for anything) to the model, and supplies every other run of the same code from that one: an untyped run of a body at a call, a sealed program's re-run, a direct arm on a known constructor, the runtime. The supply is the callee's membership (its meaning is a member of its function type) carried through the frame property, so it exists only for code whose typed check has finished, and it says something about the untyped run only if that run is the same computation as the checked one. "The same" means: the same decisions at corresponding points (D90's alignment property is the borrow part of it), and differences only in the values the unknowns stand for. The historical counterexamples are of two shapes. A wrong acceptance where the two paths decided differently, such as `Same` (D83, D84): at an unknown `n` a block took `x` by move because one arm moved it, at `n = 1` the arm that ran left it, so two observations were equal at the generic run and different at the instance. And an accepted function that cannot be called (D119, D125, D129, D131, D132), with the smallest of them:
-#measured[
-```
-inductive B := T | F
-def IsZ (n : Nat) : B := match n { Z => T, S(m) => F, }
-def V (b : B) : Type := match b { T => Nat, F => Unit, }
-def G (n : Nat) : V(IsZ(n)) := split IsZ(n) { T => Z, F => (), }
-def H : Nat := G(Z)
-```
-With the `Nat` prelude, both accepted today (D125, D126); before D125, `G` was accepted and `H` rejected ("split: only in tail position").]
-
-*How it is enforced today.* By construction for the decisions read from syntax: `Decide.lean` does not import the machine (D74), writes no cache (D95), and reads unknowns by frozen readings (D96), so erasure, a function type's class and row, copy or move, η at `Unit`, whether a statement argument runs in place, and the join's moved set (`Decide.jdMatch`, D84) are functions of syntax and declarations. By construction, with listed obligations, for borrow ends: D90's fills and marks make every run end the same borrows at the same points, under eight obligations D90 lists, and D99 gives a call's result one label on every path. By checks at enumerated sites for hints (D124's table of fourteen sites, each consulting `readsHint`) and for the test a deferred call makes (D134's shared `callPi`). For "an untyped run runs only checked code", by one test where every run of a body starts, since D135 landed on `main` (f63e5a84): a call of a function whose [Def] is under way, recognised by its code (a global by its name, a closure by its `fix` term), closes off at once, on every path (`underCheck`, `Value.sameCode`). _Correction by `theory3`:_ this paragraph and the table below were written when D135 was ruled and not landed; the statuses below are as re-read on `main` at 6d47f635, and the two faults below were re-run there.
-
-*The audit, part (a): every place an untyped run starts, and why its code was checked first.*
-#table(columns: (25%, 45%, 30%), align: left, table.header([*Site*], [*What guarantees the code was checked*], [*Status*]),
-  [A call of a known function (`callFn`, its `.gfn` and `.clo` cases, through `runBody`)], [A global enters Σ _before_ its own check (`Check.lean`: the definition is appended to `globals`, then `checkFix` runs), so during that check it is the one global in Σ not yet accepted; if the check fails, later declarations do not see it (D118). A closure was formed by a typed run, which checks a λ where it is formed (`checkFix` in `evalCore`'s `.fix` case), or by an untyped run of code so checked. The function whose check is running, reached through its binding of itself or its provisional entry in Σ, is a neutral since D135: its call closes off.], [#s-cons (since D135; before, #s-not for the function under check)],
-  [A sealed program's re-run (`nfSealed`)], [Its text is made by [Close] from a call in checked code (head as above) or by `closeBlock`, which checks every arm itself before it forms the block (D76). A sealed call of the function under check, re-run after a split in its own check, keeps its head a neutral (D135), so the re-run leaves it as it is.], [#s-cons],
-  [Conversion's generic call of a function value (`convFnRun` → `callFn`)], [As a call. The function's own name used as a value is refused by [Rec] ("occurs in its own body other than as the head of a call"); a closure that calls it reaches `callFn`, where the callee is recognised by its code and closes off (D135).], [#s-cons (since D135; `LC2` below)],
-  [A stuck block's call (`closeBlock` → `evalCall`)], [The block's arms were checked by `closeBlock` before the call.], [#s-cons],
-  [`J`'s transported term, and a match on a proof's arm, in an untyped run], [Parts of code being run, checked with it.], [#s-cons],
-  [The goal's stuck scrutinee for `split` (`stuckScrutinee`)], [A sealed program's text, as above.], [#s-cons],
-  [The runtime (`Runtime.closedCall`)], [Its caller passes the accepted globals; nothing in `runCall`'s type requires acceptance. Outside `checkProgram`, so outside the consistency theorem; it matters for type safety.], [#s-check by convention only],
-  [A static analysis that reads an arm no run takes (the join's moved set, `Decide.jdMoves`; a block's captures)], [Checked there: a moved field exists (D94, at the join's run), a dereference is of a declared borrow (D101), names are declared (D118). Everything else in an arm of a match on a known constructor is never checked, by the ruling recorded in D118.], [#s-not beyond places and names],
-)
-
-#fault[*Predicted:* the function under check runs its own body at a typed recursive call, so a call inside that run is never tested and the check does not end. *Run:*
-```
-inductive BB := TT | FF
-def Loop (p : BB) (n : Nat) : Nat by n := match p { TT => match n { Z => Z, S(m) => Loop(FF, m), }, FF => Loop(FF, n), }
-def Sel (n : Nat) : Nat by n := match n { Z => Z, S(m) => match m { Z => (let e : Eq(Nat, Sel(m), Z) = refl; Z), S(k) => Z, }, }
-```
-With the `Nat` prelude: `Loop` is "undecided (call depth exceeded)", where its `FF` arm's call is not decreasing and should be rejected; `Sel` is accepted, its statement proved by running `Sel`'s own body before its check finished. Both as D135 says.
-
-*Re-run by `theory3` on `main` at 6d47f635, with D135 landed:* `Loop` is rejected, "[Rec] at Loop(FF, σ1): the argument in the decreasing position is not a strict subterm of that parameter's entry value as refined so far"; `Sel` is rejected, "the ascribed term has type ⊤, expected Eq(Nat, ⌈Sel(0)⌉, 0)": the recursive call closes off, and the sealed call is not `Z`. The referee's `Q2` and `Q3` (O3), which differ from `Sel` only in their `Z` arm and their statement, are rejected alike, "expected Eq(Nat, ⌈Q2(0)⌉, 1)" and "expected Eq(Nat, ⌈Q3(0)⌉, 1)": no verdict follows the value a run of the body under check computes any more. With `Sel2`, `Sel` without the inner `let`, the statement `Eq(Nat, Sel2(Z), Z)` stated after it is accepted by `refl`.]
-
-#fault[*Predicted:* a second route to the same site, which D135's text does not name: conversion compares a closure that calls the function under check by running its generic call, which runs the body under check. *Run:*
-```
-inductive BB := TT | FF
-def LC2 (p : BB) (n : Nat) : Nat by n := match p {
-  TT => match n { Z => Z, S(m) => (let e : Eq(Π(u : Unit). Nat, λ(u : Unit) : Nat => LC2(FF, clone(m)), λ(u : Unit) : Nat => 0) = refl; Z), },
-  FF => LC2(FF, n), }
-```
-"undecided (call depth exceeded)". The closure's call `LC2(FF, m)` passes [Rec] where the closure is formed (`m` is a strict part of `n`); comparing the closures runs it, and the run reaches `LC2(FF, n)`, untested, for ever. (With the `FF` arm returning `Z`, the same definition is rejected because the closures differ, which is right.) *Consequence for D135's landing:* the rule must sit where every run of a body starts (`callFn`, or a certificate it requires, below), not at the typed call site, or the comparison route (and the re-normalisation of the function's own sealed call after a split) stays open.
-
-*Re-run by `theory3` on `main` at 6d47f635:* rejected, "the ascribed term has type ⊤, expected Eq(Π(u : Unit). Nat, fix _ (u : Unit) : Nat := κ1(FF, clone(κ2.0)) …, fix _ (u : Unit) : Nat := 0)". D135 sits in `callFn`, as predicted it must: the comparison's generic call of the closure reaches `LC2(FF, m)`, which closes off, so the two closures' observations differ (a sealed call against `0`) and the check ends.]
-
-#fault[*Predicted:* a static decision read from an arm no run takes changes what the live code may do, while the arm itself is never checked. *Run:*
-```
-def DeadIll (x : &Nat) : Nat := (let k = Z; match k { Z => 0, S(j) => (let c = (λ(u : Unit) : Nat => clone(*x)); S(())), })
-def LiveIll (x : &Nat) : Nat := (let k = S(Z); match k { Z => 0, S(j) => (let c = (λ(u : Unit) : Nat => clone(*x)); S(())), })
-def DeadMoves (x : &Nat) : Nat := (let k = Z; let r = match k { Z => 0, S(j) => (let c = (λ(u : Unit) : Nat => clone(*x)); 0), }; *x := 5; r)
-```
-With the `Nat` prelude: `DeadIll` accepted, with a closure that captures a borrow and `S(())` in its dead arm; `LiveIll` rejected ("closures capture no borrows"); `DeadMoves` rejected ("no such place `*x`"): the dead arm's illegal capture consumes `x` at the join, for the live code after it. Not a route to `False`: a static decision is the same on every path, and a dead arm's moves only add to the join's set, which only removes options. It is the class of D94, D101 and D118, which each closed one kind of unchecked thing (a field, a dereference, a name) the join reads. The model has to give the join of ill-typed code a meaning, which is the obligation D94 and D101 were landed to avoid.]
-
-*The audit, part (b): every kind of decision, and what makes the untyped run make the checker's.*
-#table(columns: (30%, 45%, 25%), align: left, table.header([*Decision*], [*Mechanism*], [*Status*]),
-  [Erasure, proof flags, a function type's class and [Close] row, copy or move, η at `Unit`, statement argument in place], [`Decide.lean`, which cannot run anything (D74, D95, D96); `evalAt` asserts the pre-pass against the run's own classification (`INTERNAL [pre-pass]`).], [#s-cons],
-  [What a match moves (the join), at which grain], [`Decide.jdMatch` from syntax and declared types (D84, D129); `movedPlace` resolves each place in the state, under D90's obligation 1.], [#s-cons, with an obligation],
-  [When a borrow ends and what it lends; a result's label], [Fills and marks (D90 rules 1 and 2), the block's entry before its arms (D91), D99's reserved label, no block for one-constructor matches (D93).], [#s-cons under D90's eight obligations],
-  [Tail position (D90's obligation 2)], [Read for every form `checkTailAt` recurses into: `let`, `;`, `split`, `rewrite`, both matches and a match on a proof pass `tailNext` in the untyped run; an ascription and `J` are not tail on either path.], [#s-check (by reading: consistent)],
-  [The hint a term is given], [D124's fourteen sites, each consulting `readsHint` (and `forceHint`).], [#s-check],
-  [The tests a step makes], [Typed-only checks only ever reject a definition. An untyped-only rejection makes an accepted function uncallable; the one shared test (`callPi`, D134) covers a call's head; nothing structural stops another.], [#s-not in general],
-  [The reading of a binding], [D131's net, at the bindings a typed run makes; the bindings only untyped runs make ([Close]'s cells, a block's parameters) are typed by construction from declared types.], [#s-check],
-)
-
-*The redesign.* Three structural changes would make principle 4 hold by construction, and delete most of the checks above.
-+ *Untyped evaluation takes a certificate only the typed check can produce.* A `Checked g` record (a Lean structure whose constructor is private to the module of `checkFix`) is put into Σ when a definition is accepted, and `callFn` runs a body only given the callee's certificate; a closure carries the certificate of the λ it was formed from. The function under check has none, so every route to running it (a typed call, a re-normalisation, conversion's generic call, a closure) closes off, as D135 rules, by one test in one place. Cost: a field in `GDef` and in closures; D135's loss (`Sel`). Deletes: the need to find D135's routes one by one.
-+ *One evaluator, with the typed mode as checks only.* Today `checkTailAt` and `evalCore` are two evaluators for the forms a body ends in, and `evalCore` branches on `typed` in about forty places, some of which change what runs (a hint handed, a split rejected or run, a flag set) rather than only add a check. The redesign makes `typed` a parameter that may only guard checks and type computations: every branch that changes control flow, state or hints is moved behind one function both modes call (the hint table of D124 becomes the definition, not a list of sites kept in agreement). `checkTailAt` becomes `evalCore` with the goal as a check at the end. Cost: a refactor of `Machine.lean`'s largest functions. Deletes: D119's, D124's and D125's patches as separate rules, and the class of "an accepted function whose call is rejected", which recurred five times.
-+ *Every arm is checked.* Check every arm of a match on a known constructor at its declared types, as Lean and Rust do, so that every static analysis reads checked code. Cost: reverses the ruling recorded in D118 (dead arms must be well typed; no program of the suite is known to rely on an ill-typed dead arm). Deletes: D94's run-time rejection, D101's check, D118's special walk (subsumed), and the model's obligation to interpret ill-typed arms.
-
-== Principle 3: readings are true <sec-a3>
-
-*What consumes it.* In the argument: every step that replaces a value by a canonical one, which keeps its meaning only if the reading is true of the type: `⋆` for a proof (@sec-arg-erase), `()` and η (@sec-arg-places), η at `Unit` inside a compared sealed program (@sec-arg-conv); and a dependent field typed by its content (@sec-arg-dep). Only that direction is used. _The first draft's reading:_ the strict reference run decides erasure, copy and move, and a function's class from the same readings the checker uses (it must, by principle 4), but the model gives each value a meaning by its _type_: a member of a proposition is a proof, irrelevant and without effect; a member of a sort is a type. The two agree only if every reading agrees with the type it reads. Where they disagree the run the model follows is not one the model can give a meaning to: an effect it does not erase, a proof it moves, a value it reads at the wrong type. Counterexamples: D54's `RunGGen(H)` (a closed `False`: a function read as a proof-class function writes), D55's two notions of proposition (closed proofs of `False`), D110's `BoomF` (`⋆` read as data of a field's declared type: a closed `False`), and D131's `V1`, re-run today:
-#measured[
-```
-def PropF (n : Nat) : Type₁ := Prop
-def V1 (k : Nat) : Unit := (let y = J(Nat, Z, Z, λ(x : Nat) : PropF(x) => ⊤, refl, refl); match k { Z => (let z = y; ()), S(j) => (), }; let w = y; ())
-```
-With the `Nat` prelude: rejected, "[D131] y is a proof (its type ⊤ is a proposition), but its declared type reads as data". Before D131 it was accepted and `V1(Z)` rejected.]
-
-*How it is enforced today.* By one reader of declared types (`Decide.typeDecl`, `declOf`) that every decision consults, made syntactic (D55, D77, D80, D86, D96, D100, D116, D128), and by checks where a reading meets a type: D131's net at every binding a typed run makes (`readingAgrees`: the `let` of an evaluation, `checkTailAt`'s `let`, `checkFix`'s parameters); the pre-pass assertion in `evalAt` (`INTERNAL [pre-pass]`), which compares the reading with the run's own classification of the same term but not with its type; D55's assertion in [T-Pi]; D128's check at a declaration's parameters; and, for a type read off a value, D110's `strongStorable`, D112's leaf fields and the census behind `depFieldType`'s internal error.
-
-*The audit.* Every place a reading is made or consumed, and whether it is tied to the type:
-#table(columns: (30%, 45%, 25%), align: left, table.header([*Reading*], [*What ties it to the type*], [*Status*]),
-  [A binding made by a typed run (`let`, a parameter, a λ's parameter)], [D131's `readingAgrees`: class of the reading, of the stored type and of the value.], [#s-check],
-  [A binding made only by untyped runs ([Close]'s cells, a block's parameters, a called body's parameters)], [Typed from declared types written by the checker; a cell's type is a borrow's content type, in `Type₀`.], [#s-cons],
-  [A pattern variable, a field], [Fields are first-order data (D36); a dependent field's type at its index is a data type or a leaf (D112).], [#s-cons],
-  [A capture], [Copies the captured binding's recorded reading (D80, D82), tested where the binding was made.], [#s-cons],
-  [A term that is not bound: a statement `t; u`, an argument, an arm's result, a value dropped], [The pre-pass asserts the reading equals the run's classification, both read from syntax; nothing compares either with the term's type.], [#s-not],
-  [A function type's class and row (from its codomain term)], [D54: part of the Π-type, compared by conversion; D55: a codomain's declared type is a sort. A codomain that _computes_ to a sort behind a call (`PropF(Z)`) reads as data, so its function's calls run.], [#s-not (same root as the row above)],
-  [The sort of a Π-type term], [Read from declared sorts (D86); [T-Pi] asserts it against evaluation.], [#s-check],
-  ["Is a type" for an inductive's parameter], [D128: written as a sort exactly when it reads as one.], [#s-check],
-  [Copy or move against erasure], [`declCopy` counts every proposition a copy (D100).], [#s-cons],
-  [A type read off a value in a dependent field], [D110, D112 and its amendment; the census of contents.], [#s-check],
-)
-
-#fault[*Predicted:* a term whose type is a proposition, not bound to a name, reads as data when its proposition hides behind a call, so it is not erased and its effects stay; the same term with the sort written is erased. *Run:*
-```
-def PropF (n : Nat) : Type₁ := Prop
-def W2 (x : &Nat) : Unit := ((*x := 7; J(Nat, Z, Z, λ(z : Nat) : PropF(z) => ⊤, refl, refl)); ())
-def W2Runs : Eq(Nat, (let c = 0; W2(&c); c), 7) := refl
-def WP2 (x : &Nat) : Unit := ((*x := 7; J(Nat, Z, Z, λ(z : Nat) : Prop => ⊤, refl, refl)); ())
-def WP2Runs : Eq(Nat, (let c = 0; WP2(&c); c), 0) := refl
-```
-With the `Nat` prelude: all accepted. The inner term `(*x := 7; J(…))` has type `⊤` in both; in `W2` it reads as data and writes `7`, in `WP2` it reads as a proof, runs on a private copy, and writes nothing. *Not a route to `False` found:* the reading is the same on every path (principle 4 holds), and conversion cannot identify the two motives, whose Π-types differ in class (D54). *What it breaks:* the paper's appendix sentence after D131 is careful to say "a binding is a proof exactly when its type is a proposition"; the stronger "a term is a proof exactly when its type is a proposition", which erasure arguments and a type-directed compiler would assume, is false, and the reference run must erase by reading, never by type.]
-
-*The redesign.* Make the reading a function of the type, so that it cannot disagree: either (a) complete the reader so that a call of a type function whose body is a sort reads as that sort (D131's "not done" third case of `typeFnDecl`), and then assert in `evalAt`, for every term a typed run evaluates, that the pre-pass class equals the class of its type, as it already asserts the pre-pass against the run's own classification; or (b) the converse restriction, cheaper and in D55's spirit: a type function whose body reads as a sort (`PropF`) may not be called where a type's sort is read (a codomain, a motive's codomain, an annotation), so the hidden-sort spellings are rejected where they are written. (a) deletes D131's net as a separate rule (it becomes an instance of the assertion); (b) deletes the case.
-
-== Principle 5: the state is the whole truth <sec-a5>
-
-*What consumes it.* In the argument: the first move of every case, which reads the checker's success as an instance of a rule at the state the rules describe (@sec-arg-induction), the meaning of a state, which exists only for values at its positions (@sec-arg-statement), and a call's arguments held where an end reaches them (@sec-arg-call). Its borrow half, exclusive access, is now principle 12. _The first draft's reading:_ the invariant every step of the simulation carries is a predicate on the checker's state: every position holds a member of its type (D104 made the temporaries positions), every live borrow is held once and lends exactly its places (the spine's (WF1), (WF2)), and nothing else in the state changes what the next step does. A value held only in a variable of the checker's Lean code is outside the predicate: a refinement or an [End] that maps over Ω does not reach it (it goes stale), and a borrow it holds has no holder (D115's 662,366 states with a loan of an ended borrow). A fact kept in the state that is not about the program is outside the predicate too: a cache (D95) or a one-shot flag left set (D130) makes the next step depend on something the invariant does not say. Counterexample with a closed `False`: D110's `ViaLoan`, a borrow stored inside a value, where no holder is looked for, and read back as data.
-
-*How it is enforced today.* By checks at each site found: D104 and D115 push every value in flight as a typed temporary (a call's head and arguments, a constructor's fields, an assignment's right-hand side, a borrow during [Open]'s invalidation, a result across the join, [Lend]'s renaming and a frame's pop, the generic arguments of [Conv-fun] and [Conv-pi]); D106 rejects ending a borrow a temporary holds, at the one place every access ends one (`endTopLoan`); D111 asserts no borrow below a root and no loan without its borrow; D92 and D117 keep scaffolding frames from holding a loan twice. By construction: one-shot flags are consumed in one update at `evalAt`'s entry (D130); mode flags (`copying`, `erasedDepth`, `modelDepth`, `typing`) are bracketed by `onFail`; every private computation restores the whole state but the names (`restoreKeep`, `restoreNames`).
-
-*The audit.*
-#table(columns: (30%, 45%, 25%), align: left, table.header([*Site*], [*What keeps it in the state, or out*], [*Status*]),
-  [A value in flight while other code runs], [Pushed as a typed temporary at each of D115's sites, found by a hunt; no structural rule forces the next site.], [#s-check],
-  [`J`'s endpoint values `av`, `bv` (typed `J`) held in Lean variables while the motive, the proof and `mkEqM` run], [Not in Ω. Harmless: everything that runs meanwhile runs on private copies (principle 6), so nothing maps over the real Ω.], [#s-not (harmless by locality)],
-  [One-shot flags (`tailNext`, `tailDecl`, `wantTy`, `deferCallTy`, `headEval`)], [Read and cleared in one update at `evalAt`'s entry (D130).], [#s-cons],
-  [`inPlace`, set before a call's head is read, consumed by the next `readPlace`], [Between the set and the read the head's access can end borrows and so re-run sealed programs, which read places. See the prediction below: [End]'s re-runs are private (`nfSealed` restores the whole state), so the flag survives them.], [#s-cons (by `nfSealed`'s restore)],
-  [Results passed back through the state: the erasure flags (`lastErased`, `lastProof`) and the deferred call's record (`callTyLater`)], [Each reader reads them right after the evaluation that set them, or saves and restores them around a drop; carried out of a private copy explicitly (flags) or not deferred across one (D132).], [#s-check],
-  [Caches written by decisions], [Removed (D95); the nestable sets are declaration data (D107).], [#s-cons],
-  [A borrow stored where no holder is looked for (inside a value, a type, a record)], [D48 and D110 keep a borrow out of data; types and records hold no loan ((WF11), swept, not proved); D111 asserts at overwrite, drop and read.], [#s-check],
-)
-
-#fault[*Predicted:* the `inPlace` flag, set before a call's head is read, is consumed by a read inside a sealed program that the head's own [Access] re-runs, so the head is read by move and a second call of the same function finds it moved, at the generic call and not at an instance. *Run:*
-```
-def PickF (n : Nat) (a : &(Π(x : Nat). Nat)) (b : &(Π(x : Nat). Nat)) : &(Π(x : Nat). Nat) := match n { Z => a, S(k) => b, }
-def Inc (x : Nat) : Nat := S(x)
-def T5 (n : Nat) : Nat := (let g = Inc; let h = Inc; let r = PickF(clone(n), &g, &h); match n { Z => (let a = g(0); g(1)), S(m) => 0, })
-def T5Z : Nat := T5(0)
-```
-With the `Nat` prelude: both accepted, so the prediction is refuted. Why: `nfSealed`, the only code that re-runs a sealed program at an [End], saves the state and puts it all back but the names (`restoreKeep saved`), so whatever the re-run consumed, the flag included, is restored. That is a by-construction protection, but an incidental one: a nested run that is not wrapped this way, started between a one-shot flag's set and its read, would consume it. The redesign below removes the class.]
-
-*The redesign.* Two changes would make principle 5 structural. (1) _Values in flight are the evaluator's stack, and the stack is in the state._ Every function of the machine that holds a value across a call to another function that can run code takes and returns it through `pushTemp`/`popTemp`, which a Lean type can force: give `eval` the type `M Unit` with its result left on the temporaries, so a value can only be held where the invariant sees it. Cost: a rewrite of every caller of `eval` (about sixty in `Machine.lean`); deletes the D115 hunt as a method. (2) _Control information is a parameter, never state._ The one-shot flags (`tailNext`, `wantTy`, `deferCallTy`, `inPlace`, `headEval`) and the results passed back through the state (`lastErased`, `lastProof`, `callTyLater`) become arguments and return values of `eval`, so nothing a nested run does can consume or clobber them and a private copy cannot discard them. Cost: wider signatures; deletes D130 and D132 as rules (each becomes impossible to write).
-
-== Principle 1: meanings exist <sec-a1>
-
-*What consumes it.* In the argument: the model itself (@sec-arg-statement), the meaning of a recursive function by stages (@sec-arg-rec), `Eq`'s injectivity and disjointness (@sec-arg-conv), the Σ-sets of dependent constructors (@sec-arg-dep), and, through its clause on backward functions, the hypothesis direction at a call site (@sec-arg-id). _The first draft's reading:_ the model's existence: every type of every accepted program means a set, built declaration by declaration, with `False` the empty set (docs/18's lemma that the model exists, and the eight named facts of the data model). It is consumed before any run: a step lemma about a definition is stated in the model of the declarations before it. Counterexample, re-run today:
-#measured[
-```
-def Neg (X : Type) (n : Nat) : Prop := (match n { Z => False, S _ => (Π(x : X). False) })
-inductive Q (A : Type) (n : Nat) := MkQ(z : Q(Q(A, n), 1), e : Eq(Nat, n, 0)) | Stop(f : Neg(A, n))
-```
-Rejected: "field z of MkQ : Q(Q(A, n), 1): Q occurs at the parameter A of Q, which is not nestable in Q". Before D107 it was accepted, and `Q(Unit, 0)` was `Q(Unit, 0) → False`, a closed proof of `False` by typing alone.]
-
-*How it is enforced today.* By checks in one function, `Check.checkInd`, each before the declaration enters Σ and each read from syntax and earlier declarations: first-order fields (D36), the nesting condition with the greatest set of nestable parameters stored with the declaration (D64, D107), no read of a value of the type off a field's spine (D120), one sort per knot (D121), a type parameter written as a sort (D128), the own name only in fields (D133), the declaration's own constructors unreadable while it is declared (D107); and elsewhere: `&A` only for `A : Type₀` (D66), subsingleton elimination (D45), inference of a constructor's parameters only where the model follows (D105).
-
-*The audit, by `theory7`, every site.* A site of principle 1 is a check that makes a declaration meet a condition of the model's construction. @fig-n1-checks lists them, each with the step of the construction (@sec-n1-proof) that uses it and the program that shows what goes wrong without it. Each is a named check in `checkInd`, made on syntax and the earlier declarations before the declaration is stored: #s-check for fresh names, the sort, the telescope (D64), first-order fields (D36), the declared type only on the spine (D71), nesting at the greatest set of nestable parameters, own occurrences included (D107), a variable mentioning what its declared type mentions (D120), one sort per knot (D121), the type's constructors unreadable while it is declared (D107), field levels with syntactic sorts and type parameters written as sorts (D55, D128), names declared and the own name only in the fields (D118, D133), and no borrows (D71). Elsewhere, #s-check for subsingleton elimination in every position, types and value arguments included (D45), recursion only on data ([Rec]), borrows only of `Type₀` (D66), a borrow result with a borrow parameter (D44), and parameters inferred only where the model reads them back (D105). One site is #s-not: a value argument at a parameter whose own type reads a nestable parameter, D120's condition (B2) (`NF (A : Type) (n : Nat) (f : NegF(A, n)) := MkNF(y : A)` with `DF := LeafF | NodeF(p : NF(DF, 0, ()))` is accepted, as by Lean). The construction does not need it: it reads an applied declaration loosely, without testing a value argument against its parameter's type (@sec-n1-stmt), and is faithful to the strict run wherever that is defined, as the Lean model is; a family never reads a value parameter its field types do not read; and a value argument is a meaning fixed by its own term (the reference, like the checker, gives it no hint, D172), so the argument stays fixed along the construction (S3). Nor can it be reached by a value that varies: a value of a type built from the declared type would have to name it, read a field of it, or take its parameter from a hint, and each is rejected (@sec-n1-attack, group H). Measured with the 193 programs of @sec-n1-attack: no route to a declaration without a model. Two incompletenesses were found on the way, neither a fault of consistency: a parameter typed by a Π over an earlier type parameter is rejected with a message naming the checker's internal variable κ (`VF`), and a constant that is a type is not admitted as a field type (`B10`).
-
-*The redesign.* The conditions are a grammar: declarations the model's construction accepts. The Lean side has written it once, as decidable predicates (`Knot/Grammar.lean`: `spineB`, `GrammarOk`, `PGrammarOk`, and the pure mirrors of `firstOrderTerm`, `readViolation` and `sortNestViolation` in `IndChecks`), with the construction proved against them (`grammar_of_checks`). Move that predicate into its own module of the checker (as `Decide.lean` is for decisions) and make `checkInd` call only it. Cost: restating the checks of @fig-n1-checks as one predicate; it deletes the drift between the model's grammar and the checker's tests (how D120's (B2) stayed open), and makes the one open part of `ItemFacts` (`CheckIndGivesChecks`) hold by construction.
-
-== Principle 2: identifications hold <sec-a2>
-
-*What consumes it.* In the argument: every ≡ premise, as an equality of meanings under every assignment: the leaf's type against the goal (@sec-arg-induction), conversion, `Eq` and `J` (@sec-arg-conv), the arms' types of a block (@sec-arg-split), a record's exact key (@sec-arg-close). _The first draft's reading:_ the soundness of conversion and of `Eq`'s computation (docs/18's conversion soundness, proved on a branch for values with no code): an identification moves a member of one type into another. Counterexample: D84's `Same`, where two observations each holding `⊥` were identified at the generic call and differed at an instance; and D30's closures compared by their results only.
-
-*How it is enforced today.* By the definition of conversion: functions and Π-types are compared by their generic calls (D30, D48), with their class and row (D54); `J` computes only at convertible endpoints (D56); an impossible arm is stuck (D58); `⊥` is a value of its own because moves are definite on every path (D84); keys are compared exactly (D108); a comparison keeps nothing but names (D103).
-
-*The audit, reframed by the argument.* The first draft asked of each identification site whether it is preserved by every refinement. The argument does not need that: an identification is a check made at one state, and what it needs is that the two sides mean the same under _every_ assignment of that state, which @sec-arg-conv argues rule by rule. One rule rests on another principle: the comparison of code (two sealed programs compared by their texts) is sound because every sealed program has [Close]'s shape, so the only decision in it that reads an embedded value's reading is η at `Unit` (principle 7 with principle 3). The one sealed value in the checker that is not [Close]'s, `hintLater` (@sec-a6), is a hint that is not stored; that it never reaches a comparison is open. The first draft's list of sites: the identification sites are `conv` and its consumers (`expectTy`, [Eq-refl] in `mkEqM`, `J`, `trans`, [Rewrite]'s occurrences, a goal), the record lookups (`neutralLookup`, `substV`), [Rec]'s strict subterms, and `convStack` (D83's and D108's audits list them). Each was audited in D83 and D108 for one fault class each (values with `⊥`; equality up to recorded parameters). What no audit has done is the general question this principle asks of each: is the identification preserved by every refinement of the unknowns? For conversion on code that rests on "every sealed program has the shape [Close] gives it", swept, not proved (docs/18's risks). #s-open
-
-*The redesign.* Identification by evaluation is what makes Ochr's equality useful, so it cannot be replaced; what can be made structural is its monotonicity under refinement. Conversion answers from normal forms in a world; it is sound for every instance if every step of normalisation commutes with refinement (principle 4 for conversion's own runs, at unknowns). The redesign is the same as principle 4's: conversion's generic calls are untyped runs, and a certificate and one evaluator make them the checked computation.
-
-== Principles 6 to 12 <sec-a6>
-
-For each: what in the argument consumes it, and how it is enforced, read by `theory2` against the code at 105021637 (`Machine.lean`, `Env.lean`, `Obs.lean`, `Decide.lean`); the first draft's claims came from docs/18 and had not been re-read. The historical counterexample of each, re-run by the first draft, is in its row.
-
-#table(columns: (14%, 26%, 42%, 18%), align: left, table.header([*Principle*], [*What consumes it*], [*Enforcement, as read in the code*], [*Open*]),
-  [6 Effects stay local], [The frame property: a call in place is its isolated run plugged in (@sec-arg-call); the same at a statement's call site (@sec-arg-id) and for a block's arm (@sec-arg-split); a function's meaning fixed by its generic observation (@sec-arg-conv); private copies and types formed once (@sec-arg-erase). Counterexample: D103's leftover record (`Units.CompareEmpty`).], [#s-cons for what survives a private run: two functions decide it, `restoreKeep` (names, the types of new unknowns, records) and `restoreNames` (names only, for comparisons, D103). Statements run through `Env.inStatement` (25 references) and scaffolding through `Env.privately` (22), both wrapping `onCopy`, private to `Env.lean`, which raises `privateDepth`. *Correction:* the claim that every discarded run is one of the two is false as stated. Six more save and restore the state directly: `nfSealed` and `stuckScrutinee` (a sealed program's re-run), `checkFix` (a λ checked where it is formed), with `restoreKeep`; `conv`, `convPi` and `convFn`, with `restoreNames`. These do not raise `privateDepth`, so `endTopLoan`'s assertion of (L4) stays armed inside them, and the first three restore on success or stuck only, not on an error, which ends the definition anyway (principle 5).], [The frame property itself is unproved for today's checker (docs/18: its first statement was false).],
-  [7 Closing off rebuilds the call], [[Close] is exact; re-runs compute the text's meaning; one text, one value; blocks are calls of their captures (@sec-arg-close, @sec-arg-split); sealed programs have [Close]'s shape, which the comparison of code needs (@sec-arg-conv).], [#s-cons: `closeCall` makes the sealed programs of the state (four constructions, each through `canonNeutral`); blocks go through `closeBlock` (25 references), which computes captures in `blockCaptures` (K1) and calls `closeCall`; `nfSealed` re-runs, refusing a text that holds a loan (D97); substitution (`substEnv`) and re-normalisation (`renormAll`) share `Env.mapState`. *One exception found:* `hintLater` (D124) builds a sealed value `⌈⋄hint …⌉` that is not [Close]'s: a deferred hint, handed down and read only by `forceHint` where `readsHint` says a hint is read.], [That `hintLater`'s value is never stored (not audited exhaustively). Redesign: give hints a type distinct from `Value`.],
-  [8 Worlds are exclusive], [Every assignment has one arm, and a fact of one arm never constrains another's assignment (@sec-arg-split); records as path conditions (@sec-arg-close); the goal refined on a path (@sec-arg-induction). Counterexample: `EtaBoom` (D79), asserted in `CaseSplits.ArmEta`.], [#s-cons: every arm of a split runs in `Env.inWorld` (eleven sites in `Machine.lean`: `splitArmsThenClose`, `evalMatchInd`, `checkTail`'s arms, `closeBlock`'s arms), whose exit (`exitWorld`) restores every component of the state but those listed, so a new component is dropped by default.], [—],
-  [9 Whole where relied on], [Membership at whole reads, ends, captures, observations and returns, at every future of the parts still lent (@sec-arg-dep); a block's neutrals checked at its arms' returns (@sec-arg-split); [Def]'s cells (@sec-arg-induction). Counterexamples: `GetN` (D73), `JLie` (D75), asserted rows.], [#s-cons for returns: `closeBlock` runs its arms itself and calls `bodyReturns` at each arm's end (`Machine.lean`, the arm loop), the same function `checkFix` calls at a body's return; no block can be formed without it (D76). #s-check for the rest: [Repack] at whole reads, borrows and captures; a lent part checked as a fresh unknown (D73); the `⊥` tests at read, borrow, capture and end (D53, D98, D127).], [The soundness of [Repack] at a read for dependent constructors has no owner (docs/18).],
-  [10 Recursion descends], [The outer induction (@sec-arg-induction); every run of a body during a check is of something earlier or smaller (@sec-arg-call, @sec-arg-rec). Counterexample: `CapSplit` (D78), rejected.], [#s-cons for recognition: one function, `recFrameOf`, decides whether a call belongs to a recursion entry, by a mark on the binding. #s-check for descent: `recCheck` at every typed call, including calls in nested functions and block arms. The order: a global enters Σ before its own check and is kept only if accepted (`Check.lean`), and every name is checked declared before anything runs (D118).], [D135 is termination, not consistency (@sec-arg-call).],
-  [11 Observation names every owner], [The [Call-type] step, both directions (@sec-arg-id). Its adequacy clauses are not consumed (@sec-arg-unused). Under the finals design of @sec-obs (and its refinement (C+)) the observation follows no loan below its frame, and the principle becomes "an observation names every root of its frame": the [Call-type] step then holds by construction.], [#s-cons: `Obs.footprint` takes its roots from the sides' terms (`placeOccs`), and `Obs.owners` follows every occurrence of a loan or a mark outward; one function, `obsResult`, observes a result for `Id` and for [Conv-fun]. `Decide.typeState` reads the type-state from syntax (adequacy).], [Known gap of adequacy, not consistency: where a re-pointed borrow of `Unit` points (D84's `RU`).],
-  [12 Access is exclusive], [The meaning of a state; joint injectivity of the contexts around a loan, and so the hypothesis direction of [Call-type] and a returned borrow's backward function (@sec-arg-id); writes at a field at every future (@sec-arg-dep); clean inputs to [Close] (@sec-arg-close); the leaf rules (@sec-arg-places).], [#s-check: [Access] in `accessPath`, `accessInside`, `accessNeutralHead`; every end of a borrower found from a place of the top frame goes through `endTopLoan`, which rejects ending a borrow a value in flight holds (D106) and asserts (L4) outside private copies; [End] requires a whole content (D98); D111's assertions at overwrite, drop and read; `closeCall` asserts loan-free inputs (C8).], [That every step keeps (WF1) to (WF3): swept on 2,137,352 states, not proved.],
-)
-
-*Principle 6 at an observation* (added by `theory5`, @sec-rd-ends; completed by `theory6`, @sec-obs-today). #s-not at five sites, each found by asking what a private run may test of the state below its own frame: an observation's `endAll` ends every borrow and `endBorrow` then tests the caller's borrows' contents whole (D98), a borrow with a sealed fill among its sites included, and, in a typed run, packed ([Repack]); and `idType` tests every owner it compares packed, the caller's included, whether the caller left it open or the side opened it. Measured, each as an accepted function whose call at a known argument is rejected: `S1` to `S5` of @sec-obs-today (the third referee's `CallK`, `theory5`'s `CallK2`, `CallK3`, `OpenAnc`, the fourth referee's `CallKF` and `AH8`). Type safety only: what the observation compares is right. The redesign: the observation never reads below its frame, which by construction is the finals design of @sec-obs, comparing each borrow by what was last written through it; a patch that only gates the tests by frame repairs four of the five sites and must keep the tests at fill sites (F1).
-
-= The argument in two halves <sec-twohalves>
-
-_Written by `theory3`, in answer to the referee (@sec-referee)._ This section replaces @sec-argument, which is kept below as superseded. It is the same argument the mechanisation is building (the plan, `18-consistency-proof-plan.typ`, its section "Meaning preservation"), written on paper, so that every case can be read against the form that survived three weeks of attack in Lean: the definitions are the plan's, restated here so that this document stands alone. What changes from @sec-argument is the form of the induction, not the reasons: the reasons are still the principles, and each case below says which.
-
-== What is related to what <sec-tw-defs>
-
-*An assignment* γ of a checker state Ω gives each unknown σ that Ω still refers to (in a value, a stored or deferred type, the goal, a record in force, or the type of such an unknown) a member $gamma(sigma)$ of the meaning of its type, in the order the unknowns were made, and meets the _path conditions_ of the current world: for each refinement $sigma := r$ in force, $gamma(sigma)$ is the meaning of $r$; for each generalisation $n := sigma$ in force, the meaning of the sealed program $n$. Nothing asks $gamma(sigma)$ to be computable: an unknown function ranges over every set function.
-
-*A reference state* $S$ is not a set of values but a structure, as the referee's O2 asks. It has the checker's frames, bindings and temporaries, and at each position: a _meaning_, which is a function of the future; a stored type, as a _code_ (which keeps a function type's parameters and result and a data type's declaration and parameters); and the declared reading. It also records which label each position holds (each label at one position at most), for each live label the places it is _lent_ at (each as a loan or as a fill), and its _record_, a whole member of its content's type; and a label counter. A _future_ φ gives labels values. A future is _typed_ for $S$ when it agrees with the run's future off the labels live in $S$ and gives each live label a whole member of the type its record names.
-
-*The strict reference run* $refrun(t)$ (the plan's definition, there called the strict reference run) runs the machine's rules on a reference state, except that a call applies the meaning of its callee and never runs a body (a callee returning a borrow lends the new label at every place its borrow arguments are lent); an access ends the live borrows lent at, over or under the place, read off where each is lent; a match reads the tag of its scrutinee's meaning, so nothing splits; and `Id`, `Eq` and `J` mean as in the model. It is _strict_: it fails at each point where a value is put at a type it is not a member of (an annotation, a constructor's field, a closure's formation, a borrow, an assignment, a read, a call's borrow argument, a typed former's parts), at a write at a field unless the path exists at every typed future, and at the end of a borrow unless its holder's content is a whole member of the type the label's record names, at every typed future. A read is taken at the typed future that gives each live label its record.
-
-*A reference state is good* when, at every typed future, each binding holds an open member of its stored type (the plan's definition of whole, partly moved and open members, which answers the referee's O10: field by field, with completions of moved earlier fields), each holder holds an open member of its label's record type, each live label's record is a member, and each label has one holder.
-
-*The relation.* $S$ _simulates_ Ω under γ and a renaming π (from the checker's labels to the reference's) at φ when: (R1, skeleton) the two have the same frames and bindings in the same order, with types of the same code and the same declared readings; (R2, labels) every label occurring in Ω is renamed by π to a label $S$ has issued, π being one to one on the live labels; (R3, holders and meanings) at every typed future ψ of $S$, each binding of Ω under γ, read at $psi compose pi$, means the same as the same binding of $S$ at ψ, a binding holds ℓ in Ω exactly when it holds $pi(ell)$ in $S$, and the temporaries holding borrows are matched one to one by label; (R4, lending) each live borrow ℓ of Ω is lent at the same places in $S$ under $pi(ell)$, as a fill or a loan alike; (R5, records) each live label of $S$ has a record. A checker state read as a reference state simulates itself; steps stated from any simulating state compose; and the relation survives a private copy (all three proved in Lean: `Rel.start`, `sim_seq`, `Rel.private_copy`).
-
-*The entry conditions* Pre(Ω, γ). γ is an assignment of Ω. The run's context is Ω's own: its declarations, a data model of them (N1, @sec-n1), each unknown's type, each global's meaning a member of its declared type (the outer hypothesis, below), the decision table the checker's at Ω (N6), and the typing of places (a place declared a borrow type holds a borrow, `⊥`, a loan or a mark; one declared an inductive holds a constructor value of it or a stand-in). Ω is well formed (the invariant N5 says every step keeps).
-
-== The two halves, stated <sec-tw-halves>
-
-*(I), the fundamental lemma,* is N2, proved in Lean for every clause of the strict run: from a good reference state, a strict run that succeeds gives a good result and leaves a good state, and a proof that runs proves a true proposition.
-
-*(II), the simulation.* Let $cal(P)$ be accepted and hole-free, $d_k$ the definition under check, and let the checker run a term $t$ from a state Ω, _typed_, to a value $v$, a type $A$ and a state Ω', or _untyped_ (a callee's body in place, a sealed program's re-run), to $v$ and Ω'. Let γ, φ, π and $S$ be such that
-- (E1) Pre(Ω, γ) holds;
-- (E2) $S$ is good and simulates Ω under γ and π at φ;
-- (E3) $t$'s embedded values have good meanings, $t$ names no unknown Ω lacks, and $t$ holds no hole;
-- (E4) _untyped runs only:_ the strict run of $t$ from $S$ at φ under γ succeeds.
-Then there are γ' extending γ (to the unknowns the run made, meeting their path conditions) and π' extending π (at the labels the run issued) such that
-- (C1) the strict run of $t$ from $S$ at φ under γ', in tail position exactly when the checker's run is, _succeeds_, with a result $r$, a type $T$ and a state $S'$;
-- (C2) $r$ is the meaning of $v$ under γ', read through π', at every typed future of $S'$;
-- (C3) typed runs only: $T$ means what $A$ means under γ';
-- (C4) Pre(Ω', γ') holds, and $S'$ with $r$ held as a temporary simulates Ω' with $v$ held as a temporary, under γ' and π' at φ.
-
-*What is not in (II).* No clause says that a value the checker holds is a member of its type. Membership is the reference's business: $S'$ is good and $r$ is a member of $T$ (or _moved_) by (I) applied to the run (C1) says succeeds, and (C2) and (C3) carry that to the checker's value and type. This answers the referee's O3: the three faults that killed the earlier form (a value in flight with no type, a return check that does nothing on a value with no dependent constructor, an untyped run that binds positions at types it never checks) were all failures to conclude membership on the checker's side, and nothing here asks for it. An untyped run binds whatever it binds; the strict run of the same term does the typing, and (E4) says it succeeds. Where (E4) comes from is part of each case that makes an untyped run (cases 1 and 3), and it always comes from the membership of a function's meaning in its type, never from the checker.
-
-*Why the relation survives the end of a borrow* (the referee's O2). An end is an operation on the reference state, not a choice of future: ending $pi(ell)$ makes its holder _moved_ and makes every position that read $pi(ell)$ read the holder's current content, and the record and the lending sites of $pi(ell)$ go with it. The checker's [End] of ℓ does the same to Ω. Before the end, a checker position holding a loan of ℓ means $psi(pi(ell))$ at each typed future ψ, which is a whole member of ℓ's type, and the reference position at ℓ's lending site means the same; after it, both mean the holder's content. So the relation is kept with equality at every typed future, as (R3) demands; the information order the referee found abandoned plays no part in it. The strict test at the end (the holder's content a whole member) is passed because the checker ends a borrow only over a whole content (principle 12, D98), and a whole open member is a member (N7, needed only where the content is of a dependent type). This is proved in Lean for the fragment's leaves (a read ends exactly the borrows reaching the variable, a borrow of a lent variable ends its borrower first, the drop of a `let` ends the borrow it bound).
-
-== (II) as the mechanisation states it <sec-tw-evalat>
-
-_Added by `theory5`, answering the second referee's R8._ The mechanisation proves (II) as two statements, `EvalAt` (a run of `eval`) and `TailAt` (a run of `checkTail`), by one strong induction on the checker's fuel (`Steps/Master.lean`: `master`, proved, assuming the 32 step statements, one per term former of `eval` and one per shape `checkTail` matches, bundled as `AllSteps`). They have hypotheses and conclusions (II) above lacks; each was forced by a counterexample or by a step's need.
-
-_Hypotheses beyond (E1) to (E4)._
-- (E5) _The plain mode_ (`ModeR`): no head evaluation, not copying, not in place; the erased depth free. In copying mode (inside `clone`) or in place (a call's head) the checker's read of a place of a non-copy type leaves the place, where the reference's plain run moves it: `let x = S(Z); let y = clone(x); x`, at the read of `x` inside `clone`. Sub-runs in those modes are the business of the steps for `clone`, `peek` and a call's head, not of the induction hypothesis.
-- (E6) _The reading handed down_ (`tailDecl`) is none or the decision table's reading of the term: a reading that is not the table's would make the checker's pre-pass erase a term the reference runs.
-- (E7) _The hint_ names only the state's unknowns (`HintBelow`), and (E4) is taken at the checker's hint (`hintM` of it), which N9 relates to the codomain (@sec-n9).
-- (E8) A frame exists; a typed run starts outside tail position (`tailNext` false); the term's embedded values are good, its unknowns below the counter, and it holds no hole.
-- (E9) _The decision table aligned at the run's end_ (`DecTab K.D st'`), not at its start: every step gets it at its sub-runs' ends from its own (`DecTab.back`: the checker's runs only extend the tables).
-
-_Conclusions beyond (C1) to (C4)._
-- (C5) _What the run keeps_ (`Kept`): the mode it started in, its number of frames, and its top frame's readings; sequencing uses it.
-- (C6) _A deferred call type_ (`LaterOk`): an untyped `let` of a call records the call's Π-type and arguments, and that pair reads, at its codomain, as the reference's result type (the first referee's item 4, which the relation needed and no clause said).
-- (C7) _A promised type that is missing reads as `err`_ (`TyWanted`: a typed run, or an untyped one whose type is wanted and not deferred), which is what the relation compares a binding with no type to.
-- (C2) is proved at the one future the run is read at (φ composed with the renaming), not at every typed future; the relation's (R3) asks every typed future of the bindings, and that is what the next step uses.
-
-_The tail form_ (`TailAt`): for every continuation that only extends the tables (`GrowsM`), from the plain mode with no reading handed down, the reference's tail run reaches a leaf where the continuation ran, related as `Out` says, with `Kept` from the start to the leaf.
-
-_The induction hypothesis_ (`IH`): at every smaller fuel, every `Δ` and every assignment, `EvalAt` and `TailAt` for every term, typed and untyped alike (an untyped run with (E4) as its entry condition). Every `Δ` and assignment, because a later sub-run starts under the extension an earlier one handed on.
-
-_Two facts it names that are not yet proved:_ `DeferClearG` (a successful run ends with the deferral flag clear: read true of the checker, unproved), and (E1)'s "each global's meaning a member of its declared type", which for the definition under check holds of its stage at the weakened type only (`FixEqG` excludes it): the outer induction supplies the stage (@sec-tw-induction).
-
-_Status._ The induction `master` #a-lean, assuming the step statements; the steps are proved for the fragment of case 8 and open beyond it.
-
-== The induction <sec-tw-induction>
-
-*Outer.* On the position $k$ of $d_k$ in the program, and, for a recursive $d_k$, on a bound $b$ on the rank of its decreasing argument (principle 10). The context's meaning for an earlier global is its own, a member of its type (the outer hypothesis). The context's meaning for $d_k$ is its _stage_ $b$, the function that applies the body with the stage below in place of itself, which is a member of $d_k$'s type at every argument of rank below $b$. Under D135, now on `main`, nothing during $d_k$'s check runs $d_k$'s body: a call of $d_k$ closes off at once, whichever path reaches it (a recursive call, a sealed program's re-run, a closure's call, a comparison of functions). So the outer hypothesis is used only through the meaning of such a sealed call, which is the stage applied (case 3).
-
-*Inner.* (II) is proved by strong induction on the checker's fuel: a callee's body and a sealed program's re-run run at less fuel than the call or the substitution that caused them, so every sub-run is covered, typed or untyped, at every assignment, future and renaming. One case per rule of the checker.
-
-*Nested, for local recursive functions* (the referee's O8). A `fix go (…) by y` in a body is checked where it is formed, by its own [Def], which is a sub-derivation. Membership of the closure (the strict point at its formation) is proved at that node by the same two halves, inside an induction on the rank of `go`'s decreasing argument under the assignments of its generic call, exactly as for a top-level definition: while `go` is checked its calls close off (D135 recognises a closure by its `fix` term), so the induction needs only `go`'s stage $b'$ to be a member below $b'$. The same nesting covers a stuck block's function (case 4), whose [Split] arms are its case tree.
-
-== From (II) to the theorem <sec-tw-concl>
-
-At the root of $d_k$'s check, the generic state read as a reference state is good and simulates itself, with the identity renaming. Each assignment γ of it reaches exactly one leaf $(Omega', v, A)$ of the case tree: at each split γ's value of the scrutinee is a constructor and selects one arm, and extending γ by its fields meets the arm's refinement (principle 8). By (II) along the path, the strict run of the body succeeds, with $v$'s meaning as its result and $A$'s meaning as its type. By (I) the result is a member of $A$'s meaning. [Def] checked $A equiv G'$, the goal refined on the path, so by N3, whose typing hypothesis (I) supplies (a value whose meaning fits a type is well typed inside, `hwt_of_fit`), $A$ and $G'$ mean the same; $G'$ is $G$ with the path's refinements, which γ meets. The cells, which [Def]'s pop gives the final contents of the borrowed places, are bindings, compared by (R3), and whole at the leaf ([Return], principle 9). So $d_k$'s result and final contents are members of what its type says, under every γ.
-
-One clause of membership is more than this: a $d_k$ that returns a borrow must have an _injective_ backward function, since the model's function types hold only such functions (N1). At a leaf the result is a borrow whose label's places are the cells (a borrow of $d_k$'s own local cannot be returned: it is a value in flight when the local dies, an error by principle 12). Each cell's content is a context around that label's loan, built only by the steps that place a loan (a borrow; a reborrow inside another borrow's content; a stuck call's fill, the callee's backward function; a call that ran, its mark; the end of a borrow whose content holds the loan), and touched by nothing else while the loan is live (principle 12). Each such step is injective, jointly over the places it fills (a stuck call's backward function by the callee's own membership), and composition keeps that: _holes are placed injectively_, a clause of N5. So the backward function is injective. #a-red[N5]
-
-== Case 1, the riskiest: a call of an accepted function that runs in place <sec-tw-callrun>
-
-[T-Call] whose callee's body completes in the machine ([App]). The checker evaluates the head and the arguments into temporaries, computes the call's type (case 2) and makes the [Rec] test (case 9); the callee is an earlier global or a closure whose check has finished, since a call of the function under check closes off (D135, case 3); it pushes a frame binding the callee's own name to the callee and the parameters to the arguments, lazily typed, runs the body _untyped_, and pops. The strict run applies the callee's meaning $G$ to the arguments' meanings (`callOf`). The step must show that the strict call succeeds, that its result means the checker's, and that the states after are related. In steps:
-
-+ _The arguments and the call point._ The induction hypothesis at each argument relates the two call points, each argument's meaning and label (Lean: the statement `CallHeadArgsG`, stated, not proved). #a-full
-+ _The reference's run in place._ Push on $S$ the frame the checker pushes (the callee's own name bound to $G$ at its declared type, each parameter to the argument's meaning, each borrow parameter holding the argument's label), run the body by the strict run, and pop with the strict pop. The checker's state after its push is related to $S$ after this push (kernel-checked on the program `J2`, docs/31 D132). In general the frames are not built alike: under (M1) the reference binds each parameter at its type read in the generic state, with cells, while the checker evaluates a borrow parameter's type at the call point in a frame that takes the caller's borrow and defers the others (`paramTypes`, `bindTy?`); the relation's skeleton clause asks the two stored types to have the same code, which is the transfer of a statement to a call site, C2 of @sec-frame-stmt, with its hypotheses (resolved determination where a type has an `Id` over an earlier borrow parameter). A deferred type the checker evaluates later, at a state that is no longer a call point, is outside C2 (the third referee's T4). #a-red[C2; a deferred type read late #a-np]
-+ _(E4) for the body's untyped run._ $G$ is a member of its type (outer hypothesis, or the nested induction for a closure), and the arguments are members of its domains (case 2), so the strict run of the body in the function's own frame, with a cell for each borrow parameter and $G$ itself in place of its own name, succeeds: that is what membership of $G$ applied there says, given the fixpoint equation of $G$ (N4's clause FixEq, @sec-frame-fix). By the frame property (N4) the strict run in place succeeds exactly when that run does. So (E4) holds at the body, at the codomain; the checker runs the body at its deferred hint or at none, which N9 says is the same run. #a-red[N4, N9]
-+ _The body._ The induction hypothesis, untyped, at the body: the checker's run in place is simulated by the reference's run in place, the result meaning the same and the states related. #a-full
-+ _The pop._ The checker's pop and the reference's strict pop act alike on related states: each binding of the callee's frame is dropped, its borrows end, a binding that dies while the result in flight borrows it is an error on both sides, and a returned borrow is renamed into the label [Lend] reserved (case 8 for each end and drop). #a-full
-+ _The link to `callOf`._ The reference's push, run and pop in place compute what `callOf` does: the result is $G$ applied, and each place lent to a borrow argument reads the final content $G$ gives it (or, for a returned borrow, its component of $G$'s backward function at the new label's final content). This is the frame property with its push, pop and fixpoint clauses (N4, @sec-frame). #a-red[N4]
-
-_Verdict:_ reduced to N4, with the call point unproved in Lean. What is gone: the earlier argument's claim that "a run of the body under check before its acceptance can only fail to end" (O4) is no longer needed or made, because under D135 no body under check runs at all. And the hypothesis (E4) is supplied, not asserted (O3).
-
-#measured[*D135, as it changes this case, re-run on `main` at 6d47f635* (each with the `Nat` prelude; the programs of @sec-a4 and of the referee's O3). `Sel`, `Q2` and `Q3`, each stating inside its own body an equation about a recursive call: all three rejected alike, "the ascribed term has type ⊤, expected Eq(Nat, ⌈Sel(0)⌉, 0)" (resp. `⌈Q2(0)⌉`, `⌈Q3(0)⌉` against `1`). Before D135 `Sel` and `Q3` were accepted and `Q2` rejected, the verdict following the value a run of the body under check computed. `Loop`: rejected by [Rec]. `LC2`, the route through a comparison of closures: rejected, the closure's call closing off. A local recursive function, checked and then called in place (the referee's `AddZ`): accepted. The same with an equation about its own call inside its body:
-```
-def SelfClo (n : Nat) : Nat := (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => (let e : Eq(Nat, go(p), Z) = refl; Z), })(n)
-```
-rejected, "expected Eq(Nat, ⌈(fix go …)(σ2)⌉, 0)": D135 recognises the closure under check by its code.]
-
-== Case 2: the call's types, `Id`, and a statement used at another state <sec-tw-types>
-
-*The step.* At a call point the checker evaluates each parameter type and the codomain in a frame binding the parameters to the arguments, pushed on the call point, on a private copy ([Call-type]); each argument's type must convert to its parameter's, and the call's type is the codomain so evaluated. The strict call applies $G$ along its function type's code: it decodes each argument at its parameter's code, which is the parameter type read in the function's own frame at the earlier arguments' meanings (the _generic_ reading), and fails where one does not decode; and the type it returns is the code the codomain reaches at the arguments. So the step needs two facts: (a) _the hypothesis direction_, each argument decodes at the generic reading, so that $G$ applies; (b) _the conclusion direction_, the codomain's code at the arguments means what the checker's call-site type means, for (C3).
-
-*Statement transfer.* Both follow from one lemma: a type evaluated at the call site, in the parameter frame pushed on the caller, means the same as the same type evaluated in the function's own frame at the arguments' meanings, with a cell for each borrow parameter; for a proposition, "the same" is "equally true". The two evaluations are strict runs of one term from two states related as the frame property relates them, so this is N4 applied to a statement: corollary C2 of @sec-frame-stmt, which holds only once the model reads a function type's domains with a cell per borrow parameter, change (M1); as the model stands it is false, by the second referee's `G1`. For a type with no `Id` over a borrow parameter, the two runs give the same meaning outright. For an `Id` that observes a borrow parameter $x_i$ (lending the cell $c_i$ in the function's frame, and a set $O_i$ of the caller's places at the call site: several when the argument reborrows through a borrow a stuck call returned), each side's run reaches the caller only through the parameter's loan (N4), so after its run and the ends each owner $o in O_i$ holds $C_o [f]$, with $f$ the parameter's final content and $C_o$ the context around the loan at $o$, the same for both sides. The conclusion direction is immediate. The hypothesis direction needs the contexts to be _jointly injective_ on whole members: by the footprint holding _every_ owner (principle 11; with one owner of two the context can be constant, the counterexample `BadD18` of the paper's table), by holes being placed injectively (N5), and by $f$ being a whole member at the observation's ends. The last is what the frame property's clause for `Id` needs (@sec-frame-id): the checker never ends a borrow over a content that is not whole, in an observation as anywhere (D98), and checks [Repack] at the end of each parameter's borrow; at `Id`'s observed owners it checks [Repack] too, which under the repair of @sec-rd-ends it would do at the observing frame's owners only (the fourth referee's F7: the two sections must change together), and which the finals design of @sec-obs does at every compared position, all of them the side's. #a-red[N4, N5]
-
-Then (a): the argument's meaning is a member of the type the checker computed for it, by (I); that type converts to the call-site parameter type (N3), which means what the generic reading means (transfer); so the argument decodes. (b) is transfer for the codomain. A proof call ([T-Call-proof]) never runs its body: the strict run's `callOf` at a codomain that is a proposition gives `⋆` exactly where the arguments decode, and transfer makes the call-site proposition true. #a-red[N3, N4, N5]
-
-*Other producers of returned borrows* (the referee's O7). The contexts of the injectivity argument also come from a stuck match whose declared type is a borrow (closed off as a block, whose fills are its function's backward function) and from a local closure returning a borrow. Neither is covered by the outer hypothesis, but each is a function checked inside the current derivation, and its membership, injectivity of its backward function included, is proved at its own node by the nested induction (@sec-tw-induction; the block in case 4, the closure in case 3) and the injectivity clause of @sec-tw-concl applied there. Re-run on `main` at 6d47f635, the referee's attacks `QB` and `QB2` (a borrow returned by a stuck match passed to `PF`, whose hypothesis needs the writes through it visible) are still rejected, each with the conjunction over every fill of the hole.
-
-*Computing `Id` at a state* ([Id]). The two sides are typed sub-runs on copies (induction hypothesis, inside a private copy, which the relation survives). The footprint's roots are read from the sides' syntax (principle 11), and their owners from where each loan is lent, which (R4) makes the same on both sides; so the two observe the same positions, and after the ends (each an equality of reference states, @sec-tw-halves) the same contents. So the checker's conjunction means the model's `Id`, but at an owner that is a proof binding inside an erased match on it, where the checker compares the proof's constructor and the model as it stands the token `•` (the fourth referee's F2): there it holds once the model reads the proof's data fields by a witness (@sec-proof-fields). Under the restricted (M3) the model's `Id` fails unless the observing frame's labels end over whole members, so (C1) at [Id] must also show that the checker's observation passes those strict ends: it does, since the checker ends no borrow over a content with a hole (D98) and checks [Repack] there (N7 for a dependent content; the third referee's T7). The caller's labels the checker ends in place are, under the repair of @sec-rd-ends, ended unchecked on both sides. One step is known false today, and the fault is the model's, not the design's: since D113 the checker observes what a re-pointed borrow binding points to ([Obs-ref]), and the model's observation does not yet read it (the plan: "the model's `Id` is now behind the checker's", queued). #a-red[the model's [Obs-ref], queued]
-
-_Verdict:_ reduced to N3, N4 and N5, and to the queued repair of the model's [Obs-ref].
-
-#measured[*An `Id` over a borrow parameter in a body that runs in place.* With the `Nat` prelude:
-```
-def F (x : &Nat) : Unit := (let h : Id(Unit, *x := 0, *x := 0) = refl; ())
-def GT : Eq(Nat, (let c = 5; F(&c); c), 5) := refl
-def GT2 : Eq(Nat, (let c = 5; let r = TailM(&c); F(r); c), 5) := refl
-```
-All accepted on `main` at 6d47f635: the run of `F` in place observes the caller's `c`, through `TailM`'s fill in `GT2`, where `F`'s check observed its cell. This is the shape the frame property's clause for `Id` (@sec-frame-id) is about.]
-
-== Case 3: closing off, re-running, and the functions checked inside a body <sec-tw-close>
-
-*Closing off* ([App-close], [App-neutral], and D135's calls of the function under check). The checker discards the body's partial run, consumes the borrow arguments, fills each loan $ell_i$ with #seal[$L; C; c_i$] (with a hole $"loan"_k$ before $c_i$ for a returned borrow) and returns #seal[$L; C$] (or $"borrow"_k$ of it). The strict call applies the callee's meaning. A sealed program means the strict run of its text from the empty state. That run binds each cell to the borrowed content (strict: a whole member, which it is, since a borrow passed to a call is whole, D127, the reference state is good, and a whole open member is a member, N7), applies the callee's meaning to the same arguments, and reads the cell: the final content `callOf` gives that place; for a returned borrow, at a future giving $k$ the value $x$, the backward function's component at $x$. So each fill means what `callOf` leaves at its place, and the result what it returns (principle 7: the text rebuilds the call). [Lend] lends the same places on both sides (principle 4, D90). The inputs are loan-free because [Access] ended the loans inside them (principle 12), so the text is closed. η at `Unit` replaces the result by `()` only where the declared type is `Unit`, which keeps its meaning since the result is a member of `Unit` (principle 3). The strict call succeeds because the callee's meaning is a member: an earlier global's by the outer hypothesis; an unknown function's by γ; a block's or a closure's by the nested induction; and $d_k$'s own, during its check, because its stage $b$ is a member below $b$ and [Rec] made the decreasing argument's rank smaller than the entry's, at most $b$ (case 9). #a-red[N7]
-
-*Re-running after a split* ([Seal]). A substitution re-runs every sealed program it changes, untyped, from the empty state. (E4) for the re-run: the program's meaning is the strict run of its text, which succeeded when it was made (above), and an assignment that meets the refinement gives the substituted text the same meaning, so its strict run succeeds. The induction hypothesis then says the normal form means the text's meaning. A text still holding a hole is never run (principle 7, D97); a head call is never closed off again, so the re-run computes or leaves the text as it is. #a-full
-
-*Generalising* ([Split-gen], `split f in t`). A record $n := sigma$ is a path condition, $gamma(sigma) = deno(n, at: gamma)$, found by exact equality of the text (D108), and alive only in its world (principle 8). A record whose text a later refinement changes no longer matches, and the call is then a fresh neutral: sound and incomplete (the referee's item 9). #a-full
-
-*A function formed inside a body* ([T-Fix]; the referee's O8). The strict run's point at a closure's formation fails unless the closure is a member of its function type. The checker checked the closure by [Def] at its own generic call, a sub-derivation; the nested induction of @sec-tw-induction applies (II) and (I) there, with the closure's own calls closing off (D135), and gives membership of the closure's meaning, the injectivity clause included (@sec-tw-concl at that node). Its captured values are read at their recorded declared types (principle 3), and capture no borrow (principle 6). #a-full
-
-_Verdict:_ argued in full, but for N7 at the cells.
-
-== Case 4: a split on an unknown, a stuck block, the entry and the join <sec-tw-split>
-
-*Every assignment takes one arm.* γ(σ) is a member of an inductive type, a tagged union, so its tag selects one arm, and extending γ by its fields meets that arm's refinement (principle 8: the arm's facts constrain no other arm's assignment). At a tail match the case tree branches and each branch is followed separately, ending with the join an instance's arm makes (D119). #a-full
-
-*A match not at the end of the body* is closed off as a block, the call $F_m (overline(a))$ of an anonymous function of its captures, after its entry; the rest of the body is checked once, after the block. The strict run instead reads the tag, makes the same entry, runs the selected arm directly and drops at the join the places the arms move. The step must show the two states after are related.
-- _The entry._ Both access the same captures in the same order, ending the same borrows (principle 12), provided the captures and their modes are the same: N6 for a block's captures (below). #a-red[N6]
-- _The block's meaning._ $F_m$ is a member of its function type: its arms, checked by [Split] each in its world, are the case tree of its body at its generic call, and each arm's end is checked as a return ([Return], principle 9), so the nested induction gives membership, injectivity of a borrow result's backward function included. So by case 3 the block's sealed programs mean $F_m$'s meaning applied to the captured contents. #a-full
-- _The block's run is the arm's run in place._ The block takes every place any arm uses, at least as strongly as any arm uses it (principle 7), so the selected arm, run in the block's frame on the cells, names nothing but its parameters; by the block lemma N8 (@sec-frame-block, not an instance of N4) it computes what the arm run in place computes, and what it writes reaches the captured places only through the block's borrow parameters. #a-red[N8]
-- _The states after._ The places moved are read from syntax and declared types (principle 4: `Decide.jdMoves`), so the block's by-move captures and the join's drops are the same places, `⊥` meaning _moved_ on both sides; the by-borrow captures hold fills that mean the arm's final contents; the copied captures are unchanged on both. A borrow-typed match lends its result the same places on both sides (D90). #a-red[N6]
-
-*The captures read values* (the referee's O9). The checker's `blockCaptures` counts a variable a borrow variable when its stored type is a borrow type _or its value is a borrow_, and the entry splits a capture into fields by the constructor its content holds; the reference reads both from declared types. On the states the checker reaches they agree wherever N5's typing of places holds: a binding holds a borrow only if its declared type is a borrow type (`&` only at the top of a declared type, no borrow inside data), its stored type is its declared type (D82), and the field split happens only through a value of a type with one constructor (D93), whose constructor its type names. One shape escapes that reading: a binding whose type is deferred (an untyped `let` of a call) and whose borrow has ended, so that it holds `⊥` with no stored type, assigned whole in an arm. The referee ran exactly that shape (`F` and `T` of O9), and the typed check and the closed call agreed. Not proved; the redesign of @sec-a4 (modes from declared readings only) would make it N6 by construction. 
-
-_Closed by reading (`theory5`)._ That shape does not arise. A binding's stored type is deferred only in an untyped run, and only for a `let` of a call whose declared result is not a borrow (`callFn`: `later` excludes a result read as `.ref`) and for a parameter whose declared type is not a borrow (`runBodyCore` evaluates the borrow parameters' types at the call point, `paramTypes` over the `.ref` readings); every other binding has its type. So a binding whose type is deferred never holds a borrow, and holds `⊥` only as moved data, which the typed check (stored type a data type) and the untyped run (no type, no borrow) both count as not a borrow variable: `isBorrowVar` agrees with the declared reading on every state. The constructor that splits a capture is read in both runs from a value whose type has one constructor: where the typed check has refined an unknown in place and the untyped run has not (it does not, for a field read, write or match: `T0` in @sec-n8), the untyped run takes the capture whole by move, but its entry then ends the same borrows (an unknown holds no loan; a mark or a sealed program's holes on the path are reached by either access), and the arms of the untyped run that touch a field of that unknown are stuck, so the call closes off before they differ; and no part of such an unknown can be lent (lending one needs the constructor). #a-full by reading; not mechanised. N6 for a block's captures thus holds by checks at three sites (`callFn`'s deferral, `runBodyCore`'s eager borrow-parameter types, `blockCaptures`'s split), not by construction; the redesign of @sec-a4 would make it structural.
-
-_Verdict:_ reduced to N8 and N6.
-
-== Case 5: dependent fields <sec-tw-dep>
-
-The reference state's positions hold _open_ members, defined field by field (the plan's definition, against the referee's O10): `⊥` or _moved_, a partly moved member, or a tree each of whose fields is moved, fits its declared shape at some completion of the moved earlier fields, or is itself open. The strict run makes the checker's tests: a write or borrow through an index field invalidates the proof fields and leaf fields whose type mentions it, in the reference as in the checker (D112); a write at a field succeeds only where the path exists at every typed future, which holds because the checker's [Access] has ended every borrow lent on the path, so no live loan or mark lies there (a clause of N5, measured on 48,804 writes); after an assignment or a borrow at a field every position must be an open member at every typed future, which the checker's typing by position, strong updates of tree fields only by values that say their type (principle 3, D110, D112) and checked writes of proof and leaf fields make true. A read is strict at a whole read: the value must be a member, which is N7 at a value that passed [Repack] (principle 9: whole where relied on, a lent part read as an unknown of its borrow's type, at every future of the parts still lent). A split of a neutral of a dependent type by its telescope reads it as a whole member, which it is: an unknown's value is a member by γ; a sealed program's by case 3; a block's by its arms' returns (case 4). #a-red[N5, N7]
-
-The model and the checker still differ in one known case: a field that is a tree field by its declaration, whose declared type computes to a leaf at the current index, still holding a tree from before the index was rewritten (the plan's list; no accepted program is known to show it).
-
-_Verdict:_ reduced to N5 and N7.
-
-== Case 6: conversion, `Eq`, `J`, `rewrite` and `split` <sec-tw-conv>
-
-Every "≡" premise of a check is used as an equality of meanings: the value's meaning is a member of the type it was evaluated at, by (I); the two types mean the same by N3; so the strict point at the position passes. N3's typing hypothesis (the referee's O5 (b): both sides well typed inside at one type) is supplied by (I) at each use: a value whose meaning fits a type is well typed inside at it (`hwt_of_fit`, proved in Lean), and both sides of every comparison the checker makes are values the strict run has returned. The function rules of conversion run generic calls; those runs are cases of (II), untyped, whose (E4) is the membership of the compared functions (case 1). `Eq` computes by injectivity, disjointness and convertibility, and on `⊥` as _moved_, the same on both sides because moves are decided by the code (principle 4). `J` computes only at convertible endpoints, where its motive's two instances mean one set (N3); otherwise it is closed off as a block of its transported term (case 4). `rewrite` and `split f in t` never run; `rewrite` checks its term against the goal with one side of a true equation put for the other, the same proposition by N3. #a-red[N3]
-
-_Verdict:_ reduced to N3.
-
-== Case 7: erased terms, proofs and types formed once <sec-tw-erase>
-
-An erased term runs on a private copy in both runs, and the relation survives the copy (`Rel.private_copy`, proved in Lean). Whether a term is erased is read from syntax and declared types (principle 4, by construction in `Decide.lean`), so both erase the same terms. A proof that the checker types has its clause run by the strict run on a copy, which succeeds by the induction hypothesis and so, by (I), proves a true proposition; its value `⋆` means $bullet$, a member of that proposition. A term is replaced by `⋆` only when its declared type is a proposition, which is then its type (principle 3, the direction used; the converse is not used). An erased match on a proof whose constructor has data fields gives those fields unknowns on its copy, where the reference must put a witness (@sec-proof-fields: the model's `.matchInd` clause at a proof tag, to change). A type is formed once, closed over values, and [Call-type] rebinds only its parameters (principle 6). #a-full, given the witness reading
-
-_Verdict:_ argued in full.
-
-== Case 8: places: reads, writes, borrows, ends and drops <sec-tw-places>
-
-The leaf rules. [Access] ends the same borrows on both sides, read from where each is lent ((R4); principle 12). Each end is an equality of reference states, its strict test passed by the checker's rule that a borrow ends only over a whole content (@sec-tw-halves; N7 where the content is dependent). A read takes the place's stored type (principle 5) and its content then reads no live label, so the read is the same at every typed future; a write is checked against the place's type (N3) and finds its path (case 5); a dropped value's borrows end, and a drop that would end a borrow a value in flight holds is an error on both sides (principle 12). Whether a read copies or moves is a decision of the code (principle 4), so the two leave the same places moved. η at `Unit` and at a type with one constructor keeps meaning because the type has one element (principle 3). These steps are proved in Lean for the fragment with numbers, variables, `let`, sequencing, and borrows and writes through them with several borrows live. #a-lean (for the fragment) #a-red[N3, N7] (beyond it)
-
-_Verdict:_ proved in Lean for the fragment; beyond it reduced to N3 and N7.
-
-== Case 9: recursion <sec-tw-rec>
-
-[Rec] checks every call recognised as recursive (by the name the function binds for itself, never by comparing values, D78) to pass a strict part of the decreasing parameter's entry value as refined so far (principle 10). Under γ, which meets the path's refinements, the argument's meaning is a strict part of γ's entry value, so of smaller rank. Under D135 every such call closes off, so its meaning is the stage applied, a member there (case 3). Recursion is never on a proof (principle 10). A local recursive function is the same at its own node (@sec-tw-induction). #a-full
-
-_Verdict:_ argued in full.
-
-== What is argued, and what rests on the named theorems <sec-tw-summary>
-
-#table(columns: (34%, 22%, 44%), align: left, table.header([*Case*], [*Status*], [*Rests on*]),
-  [1 A call that runs in place], [#a-red[N4, N9]], [The frame property (C1) with its start, pop and fixpoint equation (@sec-frame, now with the eleven hypotheses the mechanisation carries); the hint, N9, argued on paper (@sec-n9); the push rests on C2 (T4); the call point (Lean: stated).],
-  [2 The call's types; `Id`], [#a-red[N3, N4, N5]], [Statement transfer is N4's corollary C2, under (M1); the hypothesis direction is resolved determination, proved on paper from N5's (X5) (@sec-rd); the model's [Obs-ref] repair (queued).],
-  [3 Closing off; re-runs; local functions], [#a-red[N7]], [Only [Repack]'s soundness at the cells; the rest argued in full.],
-  [4 Split, block, entry, join], [#a-red[N8, N6]], [The block's run is the arm's run (N8, its place renaming written out in @sec-n8); the captures (N6, closed by reading).],
-  [5 Dependent fields], [#a-red[N5, N7]], [No live loan on a written path (N5, @sec-excl); [Repack] at a read (N7, argued in @sec-n7).],
-  [6 Conversion], [#a-red[N3]], [Conversion for code, argued in @sec-n3.],
-  [7 Erased terms], [#a-full], [—],
-  [8 Leaf rules], [#a-lean (fragment)], [Beyond the fragment, N3 and N7.],
-  [9 Recursion], [#a-full], [—],
-  [From (II) to the theorem], [#a-full], [(I), N3; the injectivity clause N5.],
-)
-
-No step needed something the design does not provide. The argument found no fault of the checker; it found that the model's observation is behind the checker's ([Obs-ref]), which was known, and it proposes one change to the model (@sec-frame-id).
-
-= The frame property <sec-frame>
-
-_Rewritten by `theory4` after the second referee, brought up to the Lean mechanisation by `theory5` after the third (the model on `origin/spine` at e0a030162; docs/31 D209 to D217; the Lean lane's lists "for the theory", items 1 to 18), and by `theory6` after the fourth (F3), clause by clause against `RunFrameI` on `origin/spine` at f9b411008 (docs/31 D218 to D220)._ A function's body is run in two ways. The checker runs it _in place_: a frame is pushed on the caller's state, each borrow parameter holds the caller's borrow, and the body's writes reach the caller's places through it. The model reads the function's _meaning_ off a run of the same body in the function's _own_ state: its captured values and, for each borrow parameter, a fresh borrow whose loan sits in a _cell_, a binding below the body's frame that ends holding the parameter's final content. The frame property says the two runs agree: both fail, or both succeed with the same result and states that correspond. Every call that runs in place rests on it, and so do a statement read at a call site, a sealed program's re-run, and the step from (II) to the theorem.
-
-It has been stated six times and refuted six times, each time by a state the statement admitted and no call makes (D113, D127, D129, D201, D203, and for the last paper statement the third referee's T1), and the Lean lane found, in proving its first lemmas, five hypotheses no statement had (D215, D216, D217). This section states the theorem with all of them, as the mechanisation now carries them, and marks each lemma #a-lean (with its name), #a-full (argued in full on paper here), #a-red[a named lemma], or #a-np (with what is missing).
-
-*Verdict, in short.* Theorem FR below is now the Lean lane's `RunFrameI` (stated, open as a whole) hypothesis for hypothesis, over the model as it is: twelve hypotheses on the two states, the call's start conditions, and one exclusion, of a term that forms an `Id` when there are parameter labels; the conclusion carries the relation and a parked result. Two hypotheses the previous paper statement lacked come from the match (the renaming's range, and sites in the callee's frame only at bindings, D219), with a conclusion (a live result label held by a temporary); one it had is one-sided (a parameter label lent in the callee's frame only as a fill, in place); and its "call point" is the state just _after_ the callee's frame is pushed. Site faithfulness (H10) stays the paper's, needed once (M2) is built; `Id` over a parameter is a separate lemma, OBS (@sec-frame-id), which the finals design of @sec-obs would make an ordinary clause. @sec-frame-lean gives each difference and which side is right. *Proved in Lean*: [Access], by commutation of ends (`frameRel_access`); [End] (`frameRel_endLabel`, `frameRel_foldEnd`); the write, a fresh label, pushes, a parked borrow, a move, a drop, a read (`Steps/FrameOps`); the clause for a match, on a number and on an inductive, proofs and one-constructor types included (`runFrameI_matchNat`, `runFrameI_matchInd`, `Steps/FrameMatch`); a call's fixes, the heart of the call clause (`frameRel_mapFix`, `frameRel_callData`, `Steps/FrameCall`). *Argued in full here*: the other operations and every other clause of the strict run but two (a `let`'s binding needs an invariant no statement has, and a Π-type formed in the body needs (M2) widened: D220), the start and the pop, the fixpoint equation from RecDesc, and, under D136, the fixpoint equation of every closure. *Not proved*: C3 (a closure value means what the strict run formed: a renaming of variables), the block lemma's place renaming PR, a deferred parameter type read after the call point (C2's one case), and the model changes, which are not built. No fault of the checker's consistency was found; its type-safety faults at observations are in @sec-obs.
-
-== The objects <sec-frame-rel>
-
-*A reference state* (`SState`). Frames of bindings and temporaries (`env`), oldest first. Each binding has a stored type (a code, which names a label when the binding holds a borrow), a declared reading and a _meaning_, a function from futures to values (`SVal`); a _future_ gives each label the final content of its borrow. Beside the frames: which position holds each label's borrow (`shape`; one holder per label, `Uniq`); where each label is lent (`lent`: _sites_, each a position, a path below it, and whether the label has its loan there or a fill); each label's content type and a member recorded when it was made (`heldTy`, `heldMem`); and the label counter (`nextLoan`). A label is _live_ when it has a holder (`liveLabels`). A _typed future_ of a state (`TypedFut`) agrees with the run's future off the live labels and gives each live label a whole member of its content type. A read is taken at the future that gives each live label its record (`typedFuture`).
-
-*What the run does to states.* [End] of a label ℓ (`endLabel`, `Mean.semEnd` with the sites carried): the holder becomes _moved_; every other meaning reads ℓ as the holder's current meaning (a meaning $v$ becomes $psi |-> v(psi[ell := x(psi)])$, $x$ the holder's); and the sites of the borrows lent inside the holder's content move to ℓ's sites (`relend`). [Access] of a place (`access`): round by round, in label order, end every live label with a site on the path to the place, at it or inside it (`dataHit`; for a match's tag, on the path and at it, `tagHit`); it reads sites, never meanings. A borrow (`borrowPlace`): a fresh label from the counter, the place now reading the label's final content, one loan site, the content recorded. A write at a path (`setContent`): defined only if the path exists at every typed future. The whole-state test after a write or a borrow at a field path (`lentOk`, `StateOk`): every binding of every frame holds an open member of its type at every typed future. A call (`callOf`, `callOfL`): it never runs a body; it applies the callee's meaning along its type's code, takes the borrow arguments' holders, and makes every position of the state read each consumed label as the callee's final content for it, or, for a returned borrow, as the backward function at a fresh label's final content, the fresh label lent as fills wherever the consumed labels were (`lentK`). [Entry] of a match not in tail position (`matchEntry`): the accesses of the places the block would capture, and, after the arm and the join, for a match whose declared type is a borrow, its result's label lent as fills at the places the block takes by `&` and wherever the borrows it takes by move are lent (`entryLend`, `entrySnapshot`). The join's drop (`joinDrop`). An observation (`observation`): each side run from the same state, a fresh member written at each re-pointed binding, then every live label ended in label order, and every position compared. And the strict tests: every end that is a strict point (`EndOk`: the holder's content a member of the label's type at every typed future), every value put at a type (`SM.strictS`), every borrow argument's label live at its parameter's content type (`BorrowArgsTyped`).
-
-*The run in place* (`CallRef.runCallRef`, the checker's `runBody`). At the call point $s_0$, the head and the arguments the caller's last temporaries: for a callee returning a borrow, reserve the result's label $g$, lent as fills wherever the borrow arguments are; push the callee's frame (`callFrame`): its captured values, its own name bound to its meaning $G$ at its declared type, each parameter at its type, a borrow parameter $x_i$ taking over the argument's label $k_i$ (the _parameter labels_ $"ks"$, in parameter order); run the body in tail position at the codomain; pop (`popCallFrame`): end, in label order and strictly, every label the body made and every label the frame holds, but the returned one, and drop the frame; rename the returned label into $g$ (`endInto`).
-
-*The run in the closure* (`RunCongr.fixBodyAt`, the `.fix` clause's `bodyAt`). From the closure's start state (under (M2), the forming top frame's layout holding only the captures, counter $0$; @sec-frame-model) under a fresh bottom frame (`SState.under`): bind its own name to a given meaning, then each parameter (`fixStep`): a borrow parameter gets a fresh label $l_i$, a _cell_ in frame 0 reading $l_i$'s final content at the content type and holding $l_i$'s one loan site, and the parameter holding $l_i$, with the argument as content and record; any other parameter is a plain binding. Run the body in tail position at the codomain; end, strictly, every label at or above the forming counter but the returned one; the _finals_ are the cells' meanings. The closure's function (`fixG`) is this at stage $"rank"(a) + 1$, its own name bound to stage $"rank"(a)$ at the function type weakened to `Unit` at and above that rank (`fixStage`); a function with no decreasing parameter has rank 0. `callOf` applies `closureAt` of that function.
-
-*The renaming* σ sends the closure's labels to the in-place ones: $sigma(l_i) = k_i$, and the closure's counter onwards to the in-place counter onwards, in order (after the reserved $g$ for a borrow result). An in-place future ψ is read in the closure as $psi compose sigma$ (`renF`).
-
-*The relation* (`FrameRel σ s₀ ks s s'`), between an in-place state $s$ and a closure state $s'$, for the start state $s_0$ (the in-place state just after `callFrame` has pushed the callee's frame, which is $s_0$'s top frame; "the caller's frames" are the frames below it) and its parameter labels:
-- (F1) σ is one to one and fresh-to-fresh (`inj`, `fresh`);
-- (F2) in place as many frames as $s_0$ (the caller's, then the callee's); in the closure frame 0 and one more (`frames`);
-- (F3) the caller's frames keep their stored types, readings and numbers of temporaries, and their holders (`lowerSkel`, `lowerShape`);
-- (F4) each caller position reads at ψ what it read at the call at the future that gives each $k_i$ the current meaning of cell $i$ read at $psi compose sigma$ (`lowerVal`, `cellFuture`);
-- (F5) the top frames hold the same bindings and temporaries in the same order, each binding with the same reading and recursion record, its stored type's label renamed, and its meaning at ψ the closure's at $psi compose sigma$ (`top`, `BindRen`); in particular the function's own binding is the same on both sides;
-- (F6) the top frames' holders correspond through σ, and the closure holds nothing outside its top frame (`topShape`, `clShape`);
-- (F7) every closure-live label has its image's content type, and its record unless it is a parameter label (`held`);
-- (F8) the in-place held labels' sites in the top frame correspond through σ, and each such label is in σ's image; the closure lends only in its top frame or at its cells; the caller's own borrows keep their sites (`lentTop`, `lentImg`, `lentCl`, `lentCaller`);
-- (F9) every closure-live label is sent to a parameter label or to a label at or above the call point's counter (`topLabels`).
-
-*The start* (`FrameStart s₀ ks`), of the state $s_0$ just after the push: (S1) the caller's frames read no label at or above the counter; (S2) the parameter labels are below it and distinct (`ks_lt`, `ks_nodup`); (S3) the caller holds none of them, and every label it holds is below the counter; (S4) the caller's borrows are lent only in the caller's frames. (S3) is true only after the push: at the call point the caller's temporaries still hold the arguments (D115), and the push moves them into the callee's parameters.
-
-== Three changes to the model <sec-frame-model>
-
-The frame property is a statement about the model alone. Where the model's definition differs from the checker's rule, the statement either fails or covers less than the argument uses it for. Three such places are known. Each change below is a definition on paper for the Lean lane; none changes the checker. The previous version of this section stated all three; the third referee found (M1) right and (M2) and (M3) wrong as written (T1 to T3), and they are replaced here.
-
-*(M1) A function type's later parameter types and codomain are read with a cell for each borrow parameter* (the second referee's `G1`, R1; made in the model by the thirty-second lead, docs/31 D210). For arguments $a_1, ..., a_(i-1)$ that are members of the domains before them, the _generic state_ $"Gen"_s (a_1, ..., a_(i-1))$ is the forming state under a fresh bottom frame with, for each $j < i$ in order: if $A_j$ is $\&A'_j$, a fresh label $l_j$, a cell in frame 0 reading $l_j$'s final content at the content type $D_j (a_1, ..., a_(j-1))$ and holding $l_j$'s one loan site, and $x_j$ pushed on the top frame holding $l_j$, with content and record $a_j$; otherwise $x_j$ pushed holding $a_j$, with no label. $D_i$ is the type the strict run of $A_i$ (of $A'_i$, for $\&A'_i$) returns from $"Gen"_s (a_1, ..., a_(i-1))$, and the codomain at $a_1, ..., a_n$ is the type the strict run of $B$ returns from $"Gen"_s (a_1, ..., a_n)$. This is `fixStep` without the function's own name, and it is what the checker's [Def], [Conv-pi] and [Conv-fun] do. Every reading of a parameter type or a codomain uses it (the strict call's decoding `domAfter`, the body's expected type `fixCod`, a deferred type `codeMeaning.paramTy`, the in-place frame's stored types). In Lean since D210 (`extendBy` built by `paramPush`, the body frame's step).
-
-*(M2) A closure formed in a body is run from its captures, in a frame laid out like the forming top frame* (the structural form, the Lean lane's ruling R2 and docs/31 D217; it replaces the previous definition, which defined the clause by itself, T3). The `.fix` clause first accesses each captured variable in order (`capStep`'s access, as now). Each captured position's meaning is then read as a read reads a place, at the state's typed future: a constant, by site faithfulness (H10 below). The closure's runs (its stages and `bodyAt`) start from `(stateOf 0 frame).under`, where `frame` has the forming top frame's layout, each captured position bound to its constant at its stored type and reading with no label, every other position a placeholder the body never reads (its free variables are exactly the captures, `mem_capOrder`), and the counter $0$, as `meanV`'s `.clo` clause runs a closure value. The moves follow, as now. The `.pi` clause is _not_ changed: the checker forms a Π-type's captures on a private copy (`inStatement (capture …)`), so forming one ends and moves nothing, which the present clause does in effect; built like `.fix` it would give the accepted `PiMove` and `PiLentEq` no meaning (T2). Within `runT`'s structural recursion: the body run is the original body's, a subterm. What it removes: the nesting of frames under a closure formed in the body (R2), since in place and in the function's own frame the inner closure's runs then start from equal states; and R7 (a), a global's meaning being formed in one state, `stateOf 0 []`. What it does not give: C3 is a lemma (below), since the checker's closure value runs `capture`'s re-indexed code with captured proofs inlined. Not built; the kernel-evaluated columns form closures only at empty top frames with no captures, where the start state is today's up to the counter (D217). _Widened_ (the thirty-fourth lead's finding, docs/31 D220): the `.pi` clause, and the `.fix` clause for the closure's own parameter types and codomain, run those types from `extendBy s`, the whole forming state under a fresh bottom frame, so in place they see the caller's frames and in the closure frame 0 one frame further down, and `FrameRel` cannot relate the two runs. (M2) must therefore also host those type runs in its structural frame, its captures read on a copy (no access, no move), exactly as the checker forms a Π-type's captures on a private copy; `PiMove` and `PiLentEq` keep their meaning.
-
-*(M3) An end inside an observation is a strict point exactly when its label is held in the observing frame* (the third referee's repair of T1, and the set $E_1$ of @sec-rd-ends). Such an end tests that the holder's content is a whole member of the label's type at every typed future. Every other end the observation makes, of the caller's labels in place, is unchecked: it substitutes and tests nothing. As previously written (every end strict, or the resolved finals whole) it made FR false at a call with no borrow parameter: `CallI`'s caller holds a borrow partly moved, which the in-place observation ends and tests and the closure's has no counterpart of. Restricted, the strict ends are of the same labels on both sides through σ (the parameter labels and the body's), whose finals agree, and whose tests commute among themselves ((I4) below). The model's observation ends every live label; it needs only the set $E$ of @sec-rd-ends, and the others' unchecked ends change nothing compared. The checker's counterpart is the repair of @sec-rd-ends; until it is made the checker rejects calls the model accepts (`CallI`, `UseK2`, `UseK3`, `OpenAnc`), which is harmless to consistency.
-
-== The statement, its hypotheses, and its uses <sec-frame-stmt>
-
-*Theorem FR (the frame property; Lean `Steps/FrameOps.RunFrameI` over `FrameInv`, stated, open as a whole).* Over the model as it is, with (M1) made. Let the run's context meet the fundamental lemma's conditions (`FundCtx`); let the start state $s_0$ (just after the push) and its parameter labels meet (S1) to (S4) (`FrameStart`); let $t$'s embedded values be good (`valsOk`); let $t$ form no `Id` unless there are no parameter labels (`t.idFree = true ∨ ks = []`); and let $s$ and $s'$ be related by `FrameRel` with:
-- (H1) $s$ good (`SGood`); (H2) $s'$ good; with them, each label held once on each side (`Uniq`) and every held label's record a member in place (`HeldOk`);
-- (H3) _locality_: every position of $s'$ reads only labels live in $s'$, and a holder only labels above its own (`RInv`); no position of its top frame reads a parameter label (`noParam`);
-- (H4) frame 0 of $s'$ has at least as many bindings as there are parameter labels; its first ones are the cells, in parameter order (`cells`, `cellsOf`);
-- (H5) every holder $s$ records is a position of $s$ (`ShapeAt`);
-- (H6) _lending is well founded_ in $s$ (`LendWF`: a rank on labels, a label lent inside another's content of lower rank than it);
-- (H7) in place, a parameter label is lent in the callee's frame only as a fill (`pfill`);
-- (H8) _the renaming's order_: in the closure the parameter labels' preimages lie below every other live label (`order`), and σ is monotone on the others (`mono`);
-- (H9) the in-place counter is at or above $s_0$'s (`counter`);
-- (H12) _the renaming's range_: σ sends every closure label, live or not, to a parameter label or to a label at or above $s_0$'s counter (`srange`, D219);
-- (H13) _sites at bindings_: in place, every site in the callee's frame is at a binding, never at a temporary (`bsites`, D219).
-Then the strict runs of $t$ from $s$ and from $s'$, at the same future, assignment, tail flag and expected type, both fail, or both succeed with the same result, its label renamed by σ, the final states again related by `FrameRel` and again satisfying (H1) to (H9), (H12) and (H13), and the in-place result's label, if it is live, held by a temporary of the callee's frame (`ResAtTemp`, D219) (`FrameAgreeI`).
-
-Two further things the argument below uses, which `RunFrameI` does not state: (H10) _site faithfulness_, on both sides, a position reads a live label only where that label is lent (needed by the clause for a closure formed in the body once (M2) is built, and by resolved determination); and, for a `let`'s binding (D220), that every site in the callee's frame is at an _existing_ binding, with the run's conclusion that an arm keeps the callee frame's number of bindings. And `Id` over a parameter label is outside FR: its clause is lemma OBS of @sec-frame-id, with resolved determination at the start (H11 below), or, under the finals design of @sec-obs, no separate clause at all.
-
-In Lean, (H1) to (H9), (H12) and (H13) are `FrameInv` (D216, D219): `AccInv` (`FrameRel`; in place `Uniq`, `ShapeAt`, `HeldOk`, `LendWF`, `pfill`; in the closure `Uniq`, `RInv`, `noParam`, `cells`; `order`, `mono`), both states good, the counter, `srange` and `bsites`. `frameInv_of` derives it from the hypotheses of the earlier statement `RunFrame` (`Steps/FrameRec`) and seven more. `RunFrame` as stated lacks them, and by reading is false at a state no call makes (two parameter labels lent as fills at each other's holders, reached by one access in orders the renaming reverses: the labels lent at those holders are left at different sites), as each earlier statement was. (H10) is not in Lean (D217's finding), nor the `let` invariant (D220: "to state"). @sec-frame-lean compares the two statements clause by clause.
-
-*Why each hypothesis is there.* Each was forced by a refutation or by a step of a proof; each holds at every call (the start lemma, @sec-frame-fix) and is kept by every run (the conclusion).
-- (H1), D113 (`Strict/FrameCE.run_frame_false`): the whole-state test after a write or a borrow at a field path reads every binding, in place the caller's frames, of which `FrameRel` says only how they read; a caller binding holding `err` makes the run in place fail where the closure's succeeds.
-- (H2), D201 (`Strict/FrameCellCE.runFrameS_false`): the same test reads the closure's frame 0; a further binding `junk : Nat ↦ err` there makes `x.0 := c` fail in the closure and succeed in place.
-- (H3), D129 (`Strict/FrameLocCE.run_frame_loc_false`): `FrameRel` compares meanings as functions of the future through σ, but a run reads a meaning at one future, which off the live labels is the run's own. One variable reading label 0 in the closure and label 5 in place, $sigma(l) = l + 5$, nothing live, reads differently at the future giving 5 the number 1. The clause about holders (only labels above their own) is what the commutation of ends needs (below).
-- (H4), D203 (`Steps/FrameEnd.lowerVal_end_needs_cells`): the caller's frames are read at the cells' meanings (F4); with no cell for a parameter label, its end in place changes what a caller position reads, and nothing in the closure does.
-- (H5), D209: [End] finds a label's holder by searching the positions (`holderOf`); a shape entry at no position is missed in place while the closure finds its counterpart. Bookkeeping: every run keeps it.
-- (H6), D215: with two labels each lent at the other's holder, ending them in the two orders leaves the labels lent at those holders with different sites (a stale site at one moved holder or the other), so a later access ends a borrow on one side and not the other. No accepted program makes that cycle (an entry that would lend the second label must move its holder, which accesses it whole and ends the first), and every end keeps the rank (`LendWF.endLabel`, proved). The previous version's (I4) used it unstated ("since lending is acyclic").
-- (H7), D211 and D215: commuting two parameter labels' ends on sites needs their sites at each other's holders to be fills, since `relend`'s re-rooting of a _loan_ site is not associative at an empty path (the model runs `&x` of a variable holding a borrow, ill-typed but run, which makes a loan site at a holder with an empty path). The commutation is done on the in-place side only (the closure ends its parameter labels in its own order, and the in-place fold is reordered to match it), so it is needed in place only, as Lean states it; the previous paper statement asked it on both sides. Every end keeps it (`pfill_endLabel`, proved). It is (I3) below in the form the proof uses.
-- (H8), D208 and D215: an access's rounds, the pop and an observation end labels in label order; σ keeps that order on the body's labels (`mono`: both counters advance in step), but may reverse two parameter labels (`P4`, below). The lemmas reorder by commutation where σ reverses, which needs the parameter labels below the others, so that a round ends the parameter labels it reaches, in some order, and then the others in the closure's order (`round_corr`). D208's clause is `mono`, true and needed: `P4` refutes D208's _premise_, that a parameter label has no site in the callee's frame (`P2` had already), not the clause, which the previous version of this section called false (the third referee's T6).
-- (H9): σ sends the closure's fresh labels to the in-place counter onwards (F1), which needs the in-place counter not behind the start's. Bookkeeping (`counters_endAt`, `frameRel_freshLoan`).
-- (H12), D219: [Entry]'s lending (`entryLend`) lends a match's result label, as fills, even when that label is dead, and `FrameRel` constrains σ only at live closure labels ((F9) `topLabels`). Were σ to send a dead closure label to a label the caller holds, the in-place lending would change a caller's sites, which (F8)'s `lentCaller` forbids. It holds at every call whose closure runs from counter 0 (a global, `stateOf 0`; every closure under (M2)): the cells are the first labels, sent to the parameter labels, and the rest to the in-place labels from the counter on. It subsumes (F9). A call's fixes need it too (D220: a consumed label's image is a parameter label or one the body made, so no caller position reads it).
-- (H13), D219: with every site in the callee's frame at a binding, nothing is lent at a temporary, where a result is parked; so lending a match's result label further keeps lending well founded ((H6)), the result's label being ranked below every other. Kept by every operation that only clears holders and passes sites on (`Shrinks`).
-- _The conclusion_ `ResAtTemp`, D219: a result is parked in a temporary (`pushTempShaped`: a borrow, a move of a borrow, a call returning one), and the steps after only clear holders. With (H13) it is what [Entry]'s lending needs.
-- (H10), D217, not in `RunFrameI`: under (M2) the `.fix` clause reads each captured position's meaning after the capture's access, as a constant, on both sides; that holds if the access ended every label the position reads, which it does if every label read there is lent there. (I1) says only that the callee's frame reads no parameter label. By reading every operation keeps it: a borrow reads its fresh label where it lends it; an end hands the holder's sites to the ended label's sites exactly where the ended label was read; a call's fixes read the fresh label where `lentK` lends it; [Entry] adds sites without reads. It is also assumption 3 of resolved determination (@sec-rd-stmt). #a-full by reading; not in Lean, which states FR over today's `.fix` clause.
-- (H11), D70, R6, T1 and @sec-rd, for lemma OBS (outside FR): an `Id` observes every position after the observation's ends, in place the caller's frames, in the closure the cells. The propositions agree when the caller's frames, resolved, determine the cells' finals. The paper's own programs `GT` and `GT2` (case 2) are bodies with such an `Id`. Lean excludes such a term from FR (`t.idFree = true ∨ ks = []`), and is right to: OBS rests on resolved determination, which is open, and `run_frame_obs` is false as stated (@sec-frame-id).
-- _Not a hypothesis: the two selves._ D127 found that at a call the two frames differ at the function's own binding: in place it is $G$ at its declared type; in the closure `callOf` applies it is the stage below, at the weakened type. FR compares instead with the closure run whose own binding _is_ $G$ at its true type (`fixBodyAt` at the true type; D202), so (F5) makes the two equal, and the difference becomes the fixpoint equation, a fact about $G$ alone (@sec-frame-fix).
-
-#measured[*`P4`: one access ends two parameter labels, in an order the renaming reverses.* With the `Nat` prelude, on `main` at 1b33384bf (re-run by the third referee at 08ff29a95):
-```
-def P4 (n : Nat) (x : &Nat) (y : &Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 6); let r1 : &Nat = match n { Z => x, S(j) => &p.0, }; let r2 : &Nat = match n { Z => y, S(j) => &p.1, }; *r1 := 1; *r2 := 2; let z = p; ())
-def UseP4a : Eq(Nat, (let a = 3; let b = 4; let ry = &a; P4(Z, &b, ry); a), 2) := refl
-def UseP4b : Eq(Nat, (let a = 3; let b = 4; let ry = &a; P4(Z, &b, ry); b), 1) := refl
-```
-All three accepted; `UseP4a` with `3` in place of `2`, and a control `Eq(Nat, Z, S(Z))`, rejected. At `n = Z` each match's [Entry] lends its result, a parameter label, as a fill at a field of `p`, and `let z = p` accesses `p` whole, ending both in one round, in label order. In `UseP4a` the caller made `ry`'s borrow of `a` before the borrow of `b`, so in place `y`'s label is the smaller and ends first, while in the closure `x`'s cell comes first. The two orders give the same state because neither holder reads the other's label (H3), lending is well founded (H6) and both sites at `p` are fills (H7): `endLabel_comm_state`.]
-
-*The uses, as corollaries.* Each use of the frame property in @sec-twohalves is one of the following.
-
-- *(C1) A call in place* (case 1; Lean `callOf_inPlace`, open). For an accepted function value whose meaning $G$ satisfies its fixpoint equation (@sec-frame-fix), at a good call point whose borrow arguments' labels are live at their parameters' content types and whose arguments decode at the domains: the run in place succeeds exactly when `callOf` does, with the same result and the same state, the returned label renamed into the reserved one on both sides. From FR with the start lemma, the pop lemma and the fixpoint equation. #a-red[FR, FixEq]
-- *(C2) A statement read at a call site* (case 2's transfer; [Call-type]). Assume (M1). At a call point, the strict run of a parameter type $A_i$ (or the codomain) in the frame [Call-type] pushes (the captures, and the earlier parameters bound to the arguments, a borrow parameter holding the caller's label) returns the same type as its run in $"Gen" (a_1, ..., a_(i-1))$. This is FR for a type term, run on a copy, with the earlier borrow arguments' labels as parameter labels and no own name on either side. Its hypotheses: (S1) to (S4), (H1) and (H5) as at C1's start; (H2) because a cell reads its label's final, a whole member at every typed future, and the arguments are members of the earlier domains (C2 at $j < i$, an induction on $i$); (H3), (H4), (H7) to (H9) because the frame is fresh (no parameter label has a site in it, and the closure's only labels are its cells'); (H6) and (H10) from the checker's state through (II)'s relation; (H12) and (H13) as at the start (@sec-frame-fix). Where $A_i$ has an `Id` over an earlier borrow parameter FR does not apply (it excludes such a term), and lemma OBS does, with (H11). For a proposition, "the same type" is the same proposition, the two sides of OBS being equivalent. #a-red[FR] _At a call point only_ (the third referee's T4): the checker evaluates a borrow parameter's type at the call point but defers the others (`runBodyCore`, `paramTypes`), evaluating each when it is read (`bindTy?`), on the state then; at a state that is no longer a call point C2 says nothing, and by reading an `Id` over a borrow parameter whose label has ended before the deferred type is read finds no owner, so the checker's type is weaker than the model's. By reading `paramTypes`, a deferred type is evaluated in a private frame that binds each argument _as passed_ (`lazyTy` keeps the arguments, a borrow argument with its content at the call), taking a still-live borrow from its present holder: so a type that reads parameters' values reads them as at the call, and one that observes a borrow parameter whose label is still live finds the same owners holding the same contexts (the callee cannot change the caller's positions but through its labels: FR). Only an `Id` over a borrow parameter whose label has ended (the parameter re-pointed, or consumed and the consumer done) loses its owners. #a-full for every other deferred type, by reading; #a-np for that one. The repair, decided from syntax: evaluate at the call point every parameter type that holds an `Id` over an earlier borrow parameter, and keep deferring the others (D82's laziness). No accepted program is known whose verdict it changes: an untyped run does not read a proof parameter's stored type (`evalMatchByType` reads it only in a typed run), so the weaker type is a gap of the relation (II), not of the checker.
-- *(C3) A closure's value at its forming* (case 3, [T-Fix]). Under (M2), a lemma: at a checker state related by (II) to the reference's forming state, the closure value `Machine.capture` forms means (`meanV`) what the `.fix` clause forms. The two are runs of the code `capture` re-indexes over the captures (`mapFree`), with each read of a captured proof replaced by `(⋆ : T)` (`Term.inlineReads`), from `stateOf 0` of the captures, and of the original body from (M2)'s frame: a renaming of variables and positions with the inlining undone, of the kind of PR (@sec-frame-block). #a-np (stated in docs/31 D217, not in Lean). For a Π-type, formed on a copy, the same without moves.
-- *(C4) The parameter types at the start* (the start lemma's stored types). Under (M1) and (M2) the run in place (`callFrame`) and the closure read the closure value's parameter types in the same state, its capture frame with cells: equal by definition. #a-full (under M1, M2). Not to be confused with case 1's push, which relates the _checker's_ frame to the reference's: that rests on C2 (T4; @sec-tw-callrun, step 2).
-- *(C5) A sealed program's re-run* (case 3): the checker re-runs a sealed program from one empty frame at its own counter; (II) relates that run to the strict run from an empty frame at the related counter; the sealed value means the strict run from `emptyState 0`. The last two agree by the renaming lemma RL. #a-red[RL]
-- *(C6) The step from (II) to the theorem* (@sec-tw-concl): an instance of FR (the third referee's T5, correcting the previous version, which cited RL). Take the checker's generic state of [Def], read as a reference state, as the in-place side, its frame 0 of cells as the caller's frames, and `fixBodyAt`'s state for the function at the generic arguments as the closure side. (F2) holds, two frames on each side; (F4) is the identity, each in-place cell reading its own label; (S1) to (S4) hold, frame 0 holding and lending nothing; (H4); (H6) to (H9) (each parameter label lent only at its cell; no site in the top frame; σ the identity on parameter labels and the shift on the others; equal counters); (H10) (each cell reads only its own label, lent there); and (H11) is trivial, each cell being the identity context around its loan. #a-red[FR]
-- *Theorem RL (the renaming lemma; Lean `FrameProp.run_counter_indep`, open; false as first stated, finding 7).* For bindings $b$ that read no future and carry no label, the strict runs of a term from `stateOf n b` and from `stateOf n' b` give the same result meaning and type, and states related by the shift $n' + j |-> n + j$. It is not literally FR's case (`FrameRel.frames` asks the closure for two frames and `stateOf` has one); its proof is FR's argument with the caller's clauses deleted, a second proof. #a-red[FR's argument, one frame]
-- *A match run directly, against the block it would close off as* (case 4): not an instance. The direct run names the caller's places in the caller's frame; the block's function names its parameters in its own frame, and a by-`&` capture holds a label in the block's run that has no counterpart in the direct one. Theorem N8 (@sec-frame-block).
-
-== The invariant <sec-frame-inv>
-
-The previous paper proof rested on (P), "a parameter label is lent only at its cell and in the caller's frames", which `P2` refutes: after a borrow-typed match whose arm returns a borrow parameter, [Entry]'s lending lends that parameter's label, as a fill, at places of the callee's frame, and a later access of such a place ends it. What the proof carries instead, beside (H1) to (H10):
-
-- (I1) _Reads._ Every position of the closure state reads only its live labels, a holder only labels above its own (H3). No position of the callee's frame, on either side, reads a parameter label, and in place none reads a label the caller holds. Kept: a borrow's label is fresh and read only at the borrowed place; an end substitutes its label away everywhere; [Entry]'s lending and a call's lending add sites, not reads; a call's fixes replace each consumed label by the callee's final for it, which reads at most the call's fresh label. #a-lean per operation (`LocalityRun.lean`: `endLabel_rinv`, `access_rinv`, `setAt_rinv`, `freshLoan_rinv`; in place derived, `top_noParam`)
-- (I2) _Sites in the callee's frame._ Every live label with a site in the callee's frame is held in the callee's frame, and is in σ's image (`lentImg`); the caller's labels have sites only in the caller's frames. Kept: a site in the callee's frame is made by a borrow, by [Entry]'s lending or by a call's lending, each for a label held by a temporary of the callee's frame, or by `relend` at the end of a label held there; holders move only within the callee's frame until the pop. #a-full
-- (I3) _Parameter labels' sites._ In place, a parameter label is lent in the caller's frames and, possibly, at places of the callee's frame that [Entry]'s lending added or `relend` moved there; in the closure, at a cell and at the corresponding places of the callee's frame. The cell need not be its own: a borrow-typed match whose block takes two borrow parameters by move lends its result wherever both were lent, so a parameter label can be lent at another parameter's lender in place and at another parameter's cell in the closure (the third referee's `P5`, below; `lentCl` allows any cell). In the callee's frame its sites are fills (H7). `FrameRel` compares the sites in the callee's frame only (F8). #a-full
-- (I4) _The order of ends._ σ keeps the order of two closure labels unless both are parameter labels (H8). Two ends commute _as states_ (meanings by `Mean.semEnd_comm`, sites by `relend_comm'`) when neither holder reads the other's label (H3), lending is well founded (H6), and a site of either at the other's holder is a fill (H7): `endLabel_comm_state`. Two _strict_ ends commute in their tests when the records are members, which gives a member for the label one end removes from the other's typed futures (`HeldOk`; `endOk_endLabel_indep`). So any two orders of a fold of ends over labels whose holders read none of them give the same state and the same tests: `perm_fold`. That covers an access's round, the pop and an observation's strict ends. #a-lean (`Steps/FrameAccess`)
-- (I5) The hypotheses (H1) to (H10) themselves.
-
-`P2`, `P4` and `P5` satisfy (I).
-
-#measured[*`P5`: a parameter label lent at another parameter's lender.* With the `Nat` prelude, all accepted on `main` at 08ff29a95 (the third referee's):
-```
-def P5 (n : Nat) (x : &Nat) (y : &Nat) : Unit := (let r : &Nat = match n { Z => (let w = x; y), S(j) => x, }; *r := 1; ())
-def UseP5a : Eq(Nat, (let a = 3; let b = 4; P5(Z, &a, &b); b), 1) := refl
-def UseP5c : Eq(Nat, (let a = 3; let b = 4; P5(Z, &a, &b); a), 3) := refl
-```
-At `n = Z` the result is `y`'s label, lent after the join at `b` (its own) and at `a` (`x`'s, taken by move).]
-
-== The proof <sec-frame-proof>
-
-By induction on $t$, as the strict run is defined (structural recursion on the term, mutual with match arms, argument lists and binders), carrying `FrameRel`, (H1) to (H10) and (I). (H1) and (H2) are carried by the fundamental lemma on each side (N2: a strict run keeps its state good); (H4) because no run changes frame 0's length; (H5) because a position is dropped with its shape entry (`dropLast_shape`); (H6), (H7) because every end keeps them (`LendWF.endLabel`, `pfill_endLabel`) and the other operations make labels lent only below fresh ones; (H8), (H9) because fresh labels come from the two counters in step; (H10) by reading (above). Each lemma below says: from related states satisfying all of these, the operation succeeds on both sides or on neither, and the states after are related and satisfy them.
-
-*One lemma per operation on states.*
-
-#table(columns: (18%, 57%, 25%), align: left, table.header([*Lemma*], [*Statement and argument*], [*Status*]),
-  [(O1) Typed futures], [For every typed future ψ' of $s'$ there is a typed future ψ of $s$ with $psi compose sigma = psi'$ on the closure's live labels (ψ is ψ' through σ there, each other live label of $s$ its record, a member by (H1), and the run's future elsewhere; typed because (F7) gives equal content types); and for every typed future ψ of $s$, $psi compose sigma$ agrees on the closure's live labels with a typed future of $s'$. So a test that reads only positions of the callee's frame, which read only live labels other than the parameter labels (I1), passes on one side exactly when it passes on the other.], [#a-lean at an end (`endOk_corr`); #a-full for a write's definedness],
-  [(O2) A read], [Taken at the future giving each live label its record. On the closure's live labels other than the parameter labels the records agree (F7), and a meaning of the callee's frame reads no other label (I1); so a read gives the same value on both sides, after the same access.], [#a-lean (`read_corr`, `contentOf_corr`, `resolve_corr`, `tyAt_corr`)],
-  [(O3) [End] of a label held in the callee's frame], [In the closure ℓ, in place σ(ℓ): holders at corresponding positions; meanings by injectivity of σ in the top frames and through the cells in the caller's frames (which needs (H4), and ℓ a parameter label's preimage or at or above the counter, (F9)); shape, labels and counters; sites by `relend`, which for a parameter label moves the sites lent at the holder to the caller's frames in place and the cell in the closure, and for a label the body made to corresponding places (F8, (I2)); the strict test by (O1).], [#a-lean (`Steps/FrameEndRel`: `frameRel_endAt`, `frameRel_endLabel`, `frameRel_foldEnd`; `Steps/FrameEnd`, `Steps/FrameEndShape`)],
-  [(O4) [Access] of a place of the callee's frame], [Round by round it ends the live labels with a site there: labels held in the callee's frame only (I2), corresponding through σ (F8). A round ends, in label order, the parameter labels it reaches (in some order, which σ may reverse) and then the others in the closure's order (H8), and by (I4) that fold is the image of the closure's (`round_corr`, `foldEnd_acc`). In place there are more rounds (the caller's labels are live), all past the fixpoint, which both sides reach within as many rounds as there are live labels (`iter_fix`, `round_nil_of_fix`). The strict ends: (O1).], [#a-lean, by commutation (`Steps/FrameAccess.frameRel_access`, from `FrameStart` and `AccInv`)],
-  [(O5) A write at a path; [Assign]'s write], [The value written is the same, set at corresponding positions; `AccInv` is kept given the written value reads only live labels, no parameter label, and at a holder only labels above it (the locality clauses at the written position). At a root holding a borrow the old borrow ends first (O3). The path's existence at every typed future reads the root's meaning, in the callee's frame: (O1).], [#a-lean (`frameRel_setAt`, `accInv_setAt`); the definedness #a-full],
-  [(O6) The whole-state test], [After a write or a borrow at a field path, every binding must hold an open member of its type at every typed future. The callee's frames are related ((O1), (O2)); the rest is untouched by the write and good on each side: the caller's frames by (H1), frame 0 by (H2). Inside the clause, after the write and before the test, they are good although the callee's frame may not be: they change only by ends, which substitute whole members (the third referee's T7; this is the per-operation reasoning inside N2's proof, not N2's statement).], [#a-full],
-  [(O7) A fresh label], [A borrow's or a call's result: the next labels correspond (F1, H9); the site, content type and record are made alike.], [#a-lean (`frameRel_freshLoan`, `frameRel_park`)],
-  [(O8) Bindings and temporaries], [Pushed (`pushBindShaped`, `pushTempShaped`), moved (`takeLabel`), dropped (`dropLast`); a `let`'s end (the held borrow's end, or `letLenders`' access), a discarded value's end: operations on the callee's frame made alike; ends by (O3), accesses by (O4). A `let` moves a result's label from its temporary to a new binding; lending stays well founded ((H6)) only if no live label has a site at that binding's position, which needs the invariant "every site in the callee's frame is at an existing binding" (true by reading: a `let`'s end empties the position it drops, and nothing lends at a position that does not exist; D220), not yet in `FrameInv`.], [#a-lean (`frameRel_pushTemp`, `frameRel_pushBind`, `frameRel_takeLabel`, `frameRel_dropLast`, `frameRel_clearShape`; label-free `run_frameS_lf`); the `let` invariant #a-np],
-  [(O9) D112's invalidation], [The places are read from the decision table at the callee's frame's readings, equal by (F5); each is an access and a write: (O4), (O5).], [#a-full (its parts #a-lean)],
-)
-
-*One lemma per clause of the strict run* (`runT`).
-
-#table(columns: (18%, 60%, 22%), align: left, table.header([*Clause*], [*Argument*], [*Status*]),
-  [Places, `Z`, `S`, `let`, `;`, assignment at a variable, with no label], [Lean.], [#a-lean (`run_frameS_lf`)],
-  [A borrow; an assignment through a borrow; field paths; `let` and `;` with labels], [(O2) to (O9) in sequence.], [#a-full (each step #a-lean but (O6))],
-  [A match (`matchNat`, `matchInd`)], [The tag: (O4) with `tagHit`, then (O2). The decisions (the block's captures and modes, the join's moves, the declared reading) read the callee's frame's readings, equal by (F5), and the places then moved (`movedPlaces`: the callee's frame, read at the future giving every live label `err`). [Entry]'s accesses and invalidation: (O4), (O9). The arm: induction. The join's drop: (O3), or (O4) and (O5). [Entry]'s lending: the result's label is held in the callee's frame; its new sites are corresponding places of the callee's frame (fills, keeping (H7)) and the sites of the borrows taken by move, which correspond in the callee's frame and elsewhere lie in the caller's frames or at the cells (`P2`, `P4`, `P5`). An erased match on a proof with several arms: each arm on a copy, by induction. Two facts this row missed, which Lean needed (D219): [Entry]'s lending acts on the result's label even when it is dead, so σ must be constrained at dead labels too ((H12)); and lending the result further keeps lending well founded only because nothing is lent at a temporary ((H13)) and the result is parked in one (`ResAtTemp`); "the result's label is held in the callee's frame" was false of a dead label.], [#a-lean (`runFrameI_matchNat`, `runFrameI_matchInd`, `Steps/FrameMatch`, over `FrameInv` with (H12), (H13))],
-  [`J`], [Its parts on copies; the motive's call on a copy (below); the entry, the transported term and the join as a match's.], [#a-full],
-  [Erased terms and statements], [Both sides keep the state; a proof's value is `⋆` at the true proposition, a statement's result carries no label.], [#a-lean (`agree_erasedIf`)],
-  [Constructors, inductive types, sorts, `S`, `&A`, `Eq`, `cong`, `symm`, `trans`, `rewrite`, ascription, `clone`, `peek`, `inplace`, `split`], [Compositions of the above and the induction; each strict test is of the same value at the same type.], [#a-full],
-  [An embedded value; a global], [`meanV` reads the value, the assignment and the future, never the state: the same on both sides, with no label. A global is the context's meaning.], [#a-full],
-  [A call inside the body], [The head: a global, or a place of the callee's frame read in place (O2). The arguments: induction. `BorrowArgsTyped` reads liveness and content types: (F6), (F7). `callOf`: the consumed labels' holders are temporaries of the callee's frame, taken alike; the same function is applied to the same meanings; the fixes act in the callee's frame alike (`renF_upd`), and in the caller's frames exactly where the cells are read (F4), since a consumed label is a parameter label, read through its cell, or the body's, which no caller position reads (S1). A returned borrow's fresh label (O7) is lent at the consumed labels' sites (fills in the callee's frame, keeping (H7)). That no caller position reads a consumed label needs its image to be a parameter label or the body's, for dead closure labels too: (H12). D202, D220.], [The fixes #a-lean (`frameRel_mapFix`, `frameRel_callData`, `Steps/FrameCall`); the borrow result's case, the call's `AccInv` and `FrameInv`, the head and the arguments #a-full, not yet in Lean],
-  [A body that reads its own binding], [By (F5) the two bindings are equal (the closure run is at $G$, its true type), so a recursive call is a call on related states.], [#a-full],
-  [A closure formed in the body], [Under (M2): each captured variable is accessed (O4); its meaning then reads no live label, since the access ended every label lent at it (to its fixpoint) and the position reads only labels lent at it (H10), with (H3) in the closure and `top_valAt` in place; so each captured constant is the same on both sides. The start states are then equal (the same layout by (F5), the same readings, labels dropped, counter $0$), so the closures are equal, and so is the strict membership test; the moves are writes (O5). No relation at a depth is needed for the body's runs (the previous version's section on frames at a depth is deleted). The closure's own parameter types and codomain are another matter: the model runs them from `extendBy s`, the whole forming state (D220), so (M2) must host those runs too, as for a Π-type (next row).], [#a-full (under M2 widened, H10)],
-  [A Π-type formed in the body], [Formed on a copy on both sides (the present `.pi` clause, unchanged by (M2)): neither state changes; its captured meanings are read as for a closure. But the model's `.pi` clause runs its parameter types and codomain from `extendBy s`, the whole forming state under a fresh bottom frame: in place the caller's frames lie below, in the closure frame 0, one frame further down, and `FrameRel` (two frames in the closure) cannot relate the two runs (D220). So the clause needs (M2) widened: its structural frame also hosts the type runs of `.pi` and of `.fix`'s own parameter types and codomain, its captures read on a copy, with no access and no move (as the checker forms a Π-type's captures on a private copy, so `PiMove` and `PiLentEq` keep their meaning); otherwise the relation at a depth. The previous version's #a-full was wrong.], [#a-np (needs (M2) widened)],
-  [`Id`], [Outside FR when there are parameter labels (`t.idFree = true ∨ ks = []`): lemma OBS of @sec-frame-id. With none, an observation like any other clause.], [#a-red[OBS], outside FR],
-)
-
-So the induction goes through every clause of the strict run, given the model changes, (H10) and the `Id` clause's lemma. #a-full (with the marks above)
-
-== The call in place: the start, the pop, and the fixpoint equation <sec-frame-fix>
-
-Corollary C1 (`callOf_inPlace`) is FR between two particular states, framed by a start and a pop, and linked to what `callOf` applies by an equation about the function alone.
-
-*The start.* At a good call point (with, for a borrow result, $g$ reserved), the state $s_0$ after `callFrame` (the start state of FR, @sec-frame-lean) and the closure state `fixBodyAt` builds from the callee's capture frame (M2), its own name $G$ at its true type, are related, with $sigma(l_i) = k_i$ and the closure's counter after its cells sent to the in-place counter after $g$, and (S1) to (S4), (H1) to (H10) and (I) hold. (S1): a good state reads no label at or above its counter (`SGood.fresh`). (S2): the arguments' labels are below it, and distinct since each label has one holder and the arguments are distinct temporaries. (S3): those holders are consumed by the push, and every other label the caller holds is below the counter. (S4): every site is in a frame of $s_0$, and $g$'s are where the arguments were lent. (F5): the captures are the same constants (M2); the own name is the same meaning at the same code (D202); the parameters hold the same meanings at the same types (C4), a borrow parameter holding $k_i$ in place and $l_i$ in the closure. (F4) holds with the identity, since each cell reads $l_i$'s final, which (F4) reads at $psi(k_i)$. (F7): content types agree by the call's strict test (`BorrowArgsTyped`); records differ (in place the content when the caller's borrow was made, in the closure the argument), which (F7) allows for parameter labels (D129). (H1): the call point is good and the arguments decode at the domains (case 2, through C2). (H2): each cell reads its label's final, a whole member at every typed future; $G$ is a member of its true type (the outer hypothesis); the arguments are members. (H3), (H4), (H5): the frame is fresh, one cell per borrow parameter. (H6): in place from the checker's acyclic lending (N5's (X3)) through (II)'s relation, which makes the reference's sites the checker's (R4); in the closure each label is lent only at its cell. (H7): no parameter label has a site in the pushed frame, the arguments having been loan-free temporaries (X4). (H8): the closure's labels at the start are its cells', the in-place parameter labels are the arguments' (both below their counters), and σ sends the cells' labels to them and the closure's counter onwards to the in-place counter (after $g$) onwards, in order. (H9): the counters are the call point's. (H10): in place from the checker's state through (II); in the closure each cell reads only its own label, lent there. (H12): the closure runs from counter 0 (a global, `stateOf 0`; every closure under (M2)), so its first labels are its cells', sent to the parameter labels, and every later one to the in-place counter (after $g$) onwards. (H13): the pushed frame has no site at all, its arguments having been loan-free temporaries (X4). #a-full; Lean: `frameInv_of` gives `FrameInv` from `RunFrame`'s hypotheses and the five new clauses; the start lemma itself is proved for one program (`frameJ2_holds`).
-
-*The pop.* From related states at the body's end, the two pops succeed or fail together and give: in place, $s_0$ with each position that read $k_i$ reading the $i$-th final (or, for a returned borrow, the $i$-th component of the backward function at $g$'s final content), the returned label renamed into $g$; in the closure, the result, the finals and the returned label that `closureAt` reads. The in-place pop ends the labels the body made and those the frame holds but the returned one; the closure's ends those at or above its forming counter but the returned one, which are the same labels through σ, in orders that differ only among parameter labels, which commute ((I4), `perm_fold`); the strict tests by (O1). After the ends, (F4) reads the caller's frames at the cells' finals: exactly `callOf`'s fixes, where `callOf` applies $G$ and $G$ at the arguments is `fixBodyAt` with own name $G$ by the fixpoint equation. For a returned borrow, `callOf`'s fresh label is the reserved $g$ (both are the call point's next label), and its sites (`lentK`) are $g$'s. #a-full, given FixEq.
-
-*RecDesc* (Lean `Master.RecDescG`, stated, D207). A function's body depends on its own binding only below the call's rank: for any two meanings of the own name, at function types with the same parameter codes and codomains that agree below $"rank"(a)$, whose applications agree at every argument list of rank below $"rank"(a)$, the strict runs of the body at $a$ from `fixBodyAt`'s state with either give the same output (result, finals and returned label). Only the output: where the body captures its own binding in a closure, the intermediate states hold different closure values, which agree only as applied below the rank.
-
-*The fixpoint equation* (Lean `FixEqG`, stated, D202). For an accepted function value with meaning $G$, at member arguments $a$: $G(a)$, which is stage $"rank"(a) + 1$ at $a$, equals `fixBodyAt` at $a$ with own name $G$ at its true type. From RecDesc by induction on $"rank"(a)$: at arguments $c$ of rank below $r = "rank"(a)$, stage $r$ gives stage $"rank"(c) + 1$ (stage $k$ at $c$ is stage $"rank"(c) + 1$ there for every $k > "rank"(c)$, by RecDesc at $c$ and induction on $k$), which is $G(c)$; below $r$ the weakened codomain is the true one, so the two closures agree as applied there; so by RecDesc the two runs of the body at $a$ are equal. Used only at a call that runs in place (C1). Under (M2) a global's meaning is formed in one state, `stateOf 0 []`, so the equation is needed there only (R7 (a)). #a-full from RecDesc; #a-lean for `R` (`FixEqR.fixEq_R`).
-
-*Where RecDesc comes from, for a global* $g$. At $g$'s acceptance, from [Rec] at its check. The outer induction's step $k$ establishes four facts about $d_k$, in this order (the Lean lane's D213; the previous version named only the last): the simulation (II) for $d_k$'s own check; then RecDescG, and the kind of its result (`RetKindG`); then FixEqG; then membership. RecDescG takes two facts. One is of the model: the meaning of a checker value depends on the context's $g$ only through the sealed programs headed by $g$ in it. The other is of the checker, and was not stated before (the Lean lane's item 11): _every sealed call of $d_k$ in a state its check reaches carries a decreasing argument of rank below the entry's, under every assignment meeting the path._ It holds because under D135 every call of $d_k$ during its check closes off, at a site where the typed check made the [Rec] test (the decreasing part moved into the call), and a sealed call's re-run never re-runs its head ([App-neutral-head], D39); so every application of $d_k$ in the check is one the test saw, at a value equal to the tested one up to the refinements the assignment meets (the Lean lane's item 5, "the order per run, not per written site", which D135 and D136 make per written site again). (II) for $g$'s check, at the assignment that gives $g$'s generic arguments the values $a$ (every argument list is one, since under (M2) a global's generic state has no captures), then says the strict run of the body at $a$ applies its own binding at lower ranks only. Under D135 $g$'s check never runs $g$'s body, so (II) for it uses no fixpoint equation of $g$: there is no circle (R7). #a-red[(II) for $g$'s check, and the [Rec] record]
-
-*A closure's fixpoint equation.* Under D136 only a top-level definition is recursive: a closure declares no `by`, its own name is not bound in its body, and its rank is 0. So its body does not read its own binding, and RecDesc holds for it outright: two meanings of the own name give the same run, since a run does not depend on a binding of constant meaning that its term does not name (the existence lane's locality, `DataModel/Exists/FrameLocal`'s `runT_qset`, applied to the own binding). The fixpoint equation of a closure is therefore immediate, and the invariant CloDesc of the previous version, left #a-np there, is not needed (@sec-clo-fix attacks and proves this). #a-full
-
-*Assembled* (C1): the start, FR, the pop and the fixpoint equation give: the call run in place succeeds exactly when `callOf` does, with the same result and the same state. #a-red[FR, FixEq]
-
-== `Id` over a parameter label <sec-frame-id>
-
-The model's `Id` runs each side from the same state, writes a fresh member at each re-pointed binding ([Obs-ref]), ends every live label in label order (strictly those held in the observing frame, (M3)), and compares the result and every position the state had (`observation`), for every choice of the written members. In place the positions include the caller's frames; in the closure, the cells.
-
-*Lemma OBS* (Lean `FrameProp.run_frame_obs`, open, and false as stated: below). At related states satisfying (I), with each side's runs related (FR, by induction), (M3), and resolved determination at the call point (@sec-rd, in the model's terms: _for two lists $v$, $v'$ of whole members of the parameter labels' content types, if every caller position of $s_0$, read with each $k_i$ given $v_i$ and every other label of $s_0$ given its holder's content, resolved, is the same for $v$ as for $v'$, then $v = v'$_), the in-place proposition holds exactly when the closure's does.
-
-_Argument._ After a side's run and every end, no position reads a label (each end substitutes its label away, and before them every position read only live labels: (I1) in the closure, `SGood`'s `RInv` in place), so the comparison is of constants and the future it is read at does not matter. The callee's frames compare equal on both sides or on neither (FR at the sides; the ends of labels held in that frame by (O3) and (I4), their strict tests by (O1)). In place the caller's labels end too, unchecked under (M3); their ends interleave with the callee's, and the result does not depend on the order (OI, below), so the caller positions end as $s_0$'s, resolved, at the cells' finals; in the closure the cells end holding those finals, whole members by (M3) at the parameter labels' strict ends. So the in-place observations are equal exactly when the callee's frames are and the resolved caller frames are, which by resolved determination is exactly when the callee's frames are and the finals are, which is when the closure's observations are equal. #a-red[OI, RD]
-
-*Lemma OI (order-independence of ends, on meanings).* In a state whose lending is acyclic, ending the live labels in any two orders gives the same meanings. Two adjacent ends commute: by acyclicity at most one of the two holders reads the other's label, and if the holder of ℓ₁ reads ℓ₂ but not conversely, ending ℓ₁ then ℓ₂ and ending ℓ₂ then ℓ₁ both give each meaning $v$ the meaning $psi |-> v(psi[ell_2 := x_2 (psi)][ell_1 := x_1 (psi[ell_2 := x_2 (psi)])])$; ends keep lending acyclic; so every permutation gives the same meanings. The sites commute likewise when the swapped sites at each other's holders are fills (H7). This is the paper's assumed property 4, on meanings; for the strict tests it is (I4), which needs the tested labels' holders to read none of them, as the observing frame's labels' do. #a-full on meanings; the strict half #a-lean (`perm_fold`)
-
-*Why `CellsDetermined` is the wrong form* (finding of the previous version, confirmed by the third referee). Lean's hypothesis asks the caller's frames, unresolved, to tell the members apart at every future. A caller frame can do that while its resolution cannot. Let the caller hold `r`, a borrow under its own label $g$ whose content reads the parameter label $k$ (`r`'s meaning $psi |-> psi(k)$), and let `c` be lent to $g$ as a fill reading $b(psi(g))$ for a constant function $b$; let the callee's `x` hold $k$, and the two sides be `*x := 0` and `*x := 1`. Unresolved, `r` tells $0$ from $1$ at every future, so `CellsDetermined` holds. Resolved, `r` is moved and `c` is $b$'s constant on both sides, so the in-place observations are equal, while the closure's cell reads $0$ against $1$. Every hypothesis of `run_frame_obs` holds and its conclusion fails. By reading; not kernel-checked. No call of an accepted program makes this state, since a fill's $b$ is a backward function, injective on members: resolved determination is exactly what that injectivity gives. *To restate:* `run_frame_obs` with resolved determination in place of `CellsDetermined`, and (M3) restricted.
-
-*Where resolved determination comes from.* Theorem RD of @sec-rd at the checker's call point, from N5's (X5) in the form "resolution is injective", N1's relation $R$ for the backward functions fills compute, and site faithfulness. (II)'s relation survives ends (an end is an equality of reference states, @sec-tw-halves) and relates holders and sites ((R3), (R4)), so the reference's resolution map at the call point is the checker's under γ, and resolved determination holds there. #a-red[RD, (II)]
-
-== The block lemma <sec-frame-block>
-
-Case 4 needs a match run directly to agree with the block it would close off as. That is not an instance of FR: no frame is pushed on the direct side, the arm names the caller's places where the block's function names its parameters, and a by-`&` capture is a borrow, with a label, in the block's run and has no counterpart in the direct one. So it is a theorem of its own, N8.
-
-*Theorem N8 (the block lemma).* Let a match $m$ not in tail position have, after its [Entry], the reference state $S_1$, captures $q_1, ..., q_n$ with their modes, and block function $F_m$ (the paper's [Block]: non-recursive, no captured values), and let the scrutinee's tag select arm $i$. Assume each captured value decodes at the block's domain for it (the third referee's T7: `callOf` decodes each argument, and fails where a captured value is not a member, where the direct run may not; the use in case 4 supplies it, since the checker closed the block off, which reads each capture whole). Then the direct run (arm $t_i$ from $S_1$, the join's drop, and for a borrow-typed match [Entry]'s lending) and `callOf` of $F_m$'s meaning at the arguments [Args] takes from $S_1$ (a borrow of each by-`&` capture, the value of each other) both fail, or both succeed with the same result and the same state, up to the renaming of the result's label into `callOf`'s fresh one: each by-`&` capture holds $F_m$'s final for it, each by-move capture is moved, each copied one is unchanged.
-
-_Reduction._ (a) `callOf` of $F_m$ is $F_m$ run in place: C1, with no captures and no recursion, so its fixpoint equation is trivial. (b) $F_m$ run in place is the direct run: the place-renaming lemma PR. #a-red[C1, PR] (PR: @sec-n8)
-
-== The statement against Lean's, clause by clause <sec-frame-lean>
-
-_Written by `theory6`, answering the fourth referee's F3._ Against `origin/spine` at f9b411008: `Steps/FrameOps.lean` (`FrameInv`, `ResAtTemp`, `FrameAgreeI`, `RunFrameI`, `frameInv_of`), `Steps/FrameAccess.lean` (`AccInv`, `LendWF`), `Steps/FrameRec.lean` (`RunFrame`, `FixEqG`), `FrameProp.lean` (`FrameRel`, `FrameStart`, `CellsDetermined`, `run_frame_obs`), `Steps/FrameMatch.lean`, `Steps/FrameCall.lean`, and docs/31 D218 to D220. Each row is a difference between the previous paper statement and Lean's, which side is right, and what the paper now says; the statement of @sec-frame-stmt is the result.
-
-#table(columns: (15%, 23%, 25%, 37%), align: left, table.header([*Clause*], [*The previous paper statement*], [*Lean*], [*Which is right; what the paper now says*]),
-  [The model], [Assumed (M1), (M2), (M3).], [Today's model with (M1) (D210): today's `.fix` and `.pi` clauses and `observation`.], [Lean, for what it states: FR is about the model that exists. (M3) is idle in FR, since `Id` over a parameter is excluded. (M2) matters only at a closure or a Π-type formed in the body, where `RunFrameI` over today's clauses needs the relation at a depth, and where (M2) as ruled does not suffice either: the type runs of `.pi`, and of a closure's own parameter types and codomain, read the whole forming state (D220). FR is now stated over today's model; those two clauses are marked as needing (M2) widened.],
-  [The start state $s_0$], [The call point, with the callee's frame above it ((F2): "the caller's frames of $s_0$ and one more").], [The state after the push: `frames` has $s$ with as many frames as $s_0$, whose top frame is the callee's (`Regress/FrameCheck` starts at $s_0 = s$).], [Lean. (S3), "the caller holds none of the parameter labels", is false at the call point, where the caller's temporaries still hold the arguments (D115). (F2) and the start are restated.],
-  [`Id` over a parameter label], [(H11): resolved determination at the call point, inside FR.], [Excluded: `t.idFree = true ∨ ks = []`.], [Lean, for now: the clause rests on OBS and resolved determination, both open, and `run_frame_obs` is false as stated. FR now has the exclusion; (H11) is OBS's hypothesis (@sec-frame-id). Under the finals design of @sec-obs the exclusion would go: the observation is then a function of the callee's frame and the cells, related like any other clause.],
-  [(H7) fills only], [On both sides.], [In place only (`AccInv.pfill` on $s$).], [Lean: the commutation it serves (two parameter labels' ends, which σ may reorder) is made on the in-place side, the closure ending them in its own order.],
-  [(H4) cells], [A cell for each parameter label.], [`ks.length ≤` the number of frame 0's bindings; the cells are the first ones, by position (`cellsOf`).], [The same in effect; Lean's is the precise form, adopted.],
-  [(F9) against (H12)], [Every closure-live label sent to a parameter label or above the counter (`topLabels`).], [`srange`: every closure label, live or dead.], [Lean (D219): [Entry]'s lending acts on a dead result label, and the call's fixes on a consumed one (D220). Added as (H12).],
-  [(H13) sites at bindings], [Absent.], [`bsites`: every in-place site in the callee's frame is at a binding.], [Lean (D219): without it, lending a parked result label could close a cycle of lending. Added.],
-  [A parked result], [Absent; the match row said "the result's label is held in the callee's frame".], [Concluded: `ResAtTemp`, a live result label is held by a temporary of the callee's frame.], [Lean (D219); the paper's sentence was false of a dead label. Added to the conclusion.],
-  [(H10) site faithfulness], [A hypothesis on both sides, and concluded.], [Absent.], [The paper, for the argument it makes: the closure clause under (M2) and resolved determination use it. `RunFrameI` over today's `.fix` does not. Kept beside FR, to add to Lean with (M2).],
-  [A `let`'s binding], [Argued in full ((O8)).], [D220: the binding a `let` pushes for a result's label must have no live label lent at its position; "every site in the callee's frame is at an existing binding", and an arm keeps the callee frame's number of bindings ([Entry]'s snapshot).], [Lean: neither statement has it. True by reading (a `let`'s end empties the position it drops). Named beside FR and in (O8)'s row; to state in `FrameInv` and `FrameAgreeI`.],
-  [The conclusion], [Related, and (H1) to (H10) again.], [`FrameInv` again ((H1) to (H9), (H12), (H13)) and `ResAtTemp`.], [Lean's, adopted.],
-  [The same in both], [—], [(H1), (H2) `good`, `good'`; (H3) `rinv'`, `noParam`; (H5) `shape`; (H6) `lend`; (H8) `order`, `mono`; (H9) `counter`; (S1) to (S4) and distinct parameter labels `FrameStart`; `FundCtx`; `valsOk`.], [—],
-)
-
-*What Lean has proved of FR since the third referee.* The clause for a match, on a number and on an inductive, a match on a proof and on a type with one constructor included (`runFrameI_matchNat`, `runFrameI_matchInd`, D219), and the heart of the call clause, a call's fixes keeping the relation (`frameRel_mapFix`, `frameRel_callData`, D220). The borrow result's case of a call, the call's `AccInv` and `FrameInv`, its head and arguments, and the other clauses are not yet in Lean.
-
-== What is proved, and what is not <sec-frame-found>
-
-#table(columns: (34%, 26%, 40%), align: left, table.header([*Item*], [*Status*], [*What is missing*]),
-  [Theorem FR, the statement], [stated, now hypothesis for hypothesis Lean's `RunFrameI` (@sec-frame-lean); open as a whole], [The proof below in Lean; (M2) widened for closures and Π-types formed in the body; (H10) and the `let` invariant in Lean.],
-  [(H6) to (H13), at the start and kept], [#a-full; kept by every end #a-lean (`LendWF.endLabel`, `pfill_endLabel`); (H12), (H13) kept through the match clause #a-lean], [The start lemma in Lean; (H10) in Lean.],
-  [The invariant (I)], [(I1) #a-lean per operation; (I4) #a-lean; (I2), (I3) #a-full], [—],
-  [(O1) to (O9)], [(O2), (O3), (O4), (O7), (O8) #a-lean; (O5) #a-lean but definedness; (O1) at an end #a-lean; (O6), (O9) #a-full], [(O6), definedness, (O9)'s assembly in Lean.],
-  [Every clause but `Id`], [#a-full, but a Π-type formed in the body #a-np, and a closure's own types and a `let`'s binding as marked; the match #a-lean; a call's fixes #a-lean], [Lean, clause by clause; (M2) widened (D220); the `let` invariant.],
-  [OBS, `Id` over a parameter], [#a-red[OI, RD]], [Lean's `run_frame_obs` false as stated: restate with RD and the restricted (M3).],
-  [RD at a call], [#a-red[RD (@sec-rd), (II)]], [RD's (X5) is N5's; site faithfulness.],
-  [The start; the pop], [#a-full; the start #a-lean on `J2`], [—],
-  [RecDesc, a global], [#a-red[(II) for $g$'s check, the [Rec] record]], [The [Rec] record as a checker invariant in Lean.],
-  [The fixpoint equation, a global], [#a-full from RecDesc; #a-lean for `R`], [—],
-  [The fixpoint equation, a closure], [#a-full under D136 (@sec-clo-fix)], [—],
-  [C1 a call in place], [#a-red[FR, FixEq]], [—],
-  [C2 a statement at a call site], [#a-red[FR]], [A deferred parameter type with an `Id` over a borrow parameter whose label has ended before it is read (T4) #a-np; every other deferred type #a-full.],
-  [C3 a closure's value], [#a-np], [The renaming of variables and positions, with `capture`'s inlining undone.],
-  [C4 the start's types], [by definition under (M1), (M2)], [—],
-  [C5 a re-run; RL], [#a-red[RL]; RL #a-red[FR's argument, one frame]], [Lean's `run_counter_indep` open.],
-  [C6 (II) to the theorem], [#a-red[FR]], [—],
-  [N8 the block lemma], [#a-red[C1, PR]], [PR: @sec-n8.],
-  [(M1), (M2), (M3)], [(M1) made in Lean (D210); (M2), widened, and (M3) proposals], [(M2) and (M3) not built; (M3) idle while FR excludes `Id` over a parameter.],
-)
-
-*Not proved, in words.* (1) `Id` over a parameter rests on resolved determination, which rests on N5's (X5) (argued, not mechanised) and on site faithfulness (argued by reading), and needs Lean's `run_frame_obs` restated. (2) A closure value's meaning against the strict run's formation, C3: a renaming of variables. (3) The block lemma's place renaming PR, now written out (@sec-n8) but not mechanised. (4) A deferred parameter type with an `Id` over a borrow parameter whose label has ended before it is read. (5) The structural (M2), widened to host the type runs of a Π-type and of a closure's own types (D220), and the restricted (M3) are not built in the model; until (M2) is, a Π-type formed in the body is not covered. (6) The `let` invariant of D220 is in neither statement. Everything else in this section is argued in full on paper, and is mechanised exactly where marked #a-lean.
-
-= Resolved determination, and the borrows an observation ends <sec-rd>
-
-_Written by `theory5`._ A statement `Id` over a borrow parameter is checked once, at the function's generic call, where the parameter's loan sits in a fresh cell, and is then used at every call site and in every run of the body in place, where the loan sits somewhere in the caller's places. The function's own check sees the parameter's final content in the cell; a call site sees it only through the caller's places, after every borrow between them has ended. The two readings of the statement agree only if the caller's places, once those borrows have ended, determine what was written through the parameter. If an accepted program could lend a borrow whose owners all ignored what is written through it, then
-```
-def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
-```
-which the checker accepts (at its generic call the cell ends holding `0` on one side and `1` on the other, so `e : False`), could be called with `refl` there: a closed proof of `False`. This section states the property (_resolved determination_, RD), attacks it on the checker with a program aimed at each way an owner could ignore a write (none found), proves it on paper and names the checker's sites it rests on (@sec-rd-proof), and answers which borrows an observation must end (@sec-rd-ends): more than the ones the observing body holds (ending only those would be unsound), as many as today in effect, and tested only where the body holds them. Every program below was run on `main` at 662110042 with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so`, beside the control `def Ctl : Eq(Nat, Z, S(Z)) := refl` (rejected every time); each is self-contained but for `G5`, the control `H` below, and the preludes it names (`Nats`; `Fixtures` for `Pick`).
-
-== The statement <sec-rd-stmt>
-
-Four notions first, in the checker's state Ω.
-- The _observing frame_ $O$ is the frame in which an `Id` is formed and its sides run: at a function's own check, the body's frame or the frame [Def] pushes to read the parameter types; at a call site, the frame [Call-type] pushes on its private copy; in a body run in place, the callee's frame.
-- A label's _sites_ are the places where it is lent: each occurrence of its loan, each sealed fill whose text holds its loan (a hole), and each mark `lent` of it. A site lies either at a position that holds no borrow, which is then an _owner_ of the label (paper A.1, item 3), or inside the content of another live borrow $"borrow"_m$; $m$ is then _above_ the label. By acyclicity (N5's (X3)) "above" is a well-founded order.
-- The _lending ancestors_ of a set $K$ of labels are the labels above a label of $K$, and above those, and so on. $E(K)$ is $K$ with its lending ancestors.
-- The _resolution context_ of a site, as a function of its label's final content $x$: the identity for a loan; for a fill, the meaning of the fill's text with $x$ put for the hole, which is a component of the backward function of the function value whose call (or stuck block) made the fill; a mark contributes nothing (it is transparent: where a call that ran points its result, the place holds the result's loan itself).
-
-*Resolved determination (RD).* Let Ω be a state the checker reaches, $O$ its top frame, and $K$ a set of live labels each held by a position of $O$. For a family $v = (v_k)_(k in K)$ of whole members of the labels' content types, let $Omega[v]$ be Ω with the content of each $"borrow"_k$ replaced by $v_k$ and then every label of $E(K)$ ended, in any order (the order does not matter: lemma OI of @sec-frame-id). Let $W(K)$ be the owners of the labels of $K$, which are positions of Ω below $O$ or in it. Suppose (a) every label of $E(K)$ outside $K$ is held, in Ω, by a holder whose content is a whole member of its type at every typed future, and (b) no position of $W(K)$ is a binding declared a proof. Then for every assignment γ of Ω's unknowns: _if every position of $W(K)$ means the same in $Omega[v]$ as in $Omega[v']$ under γ, then $v = v'$._
-
-_Restated by `theory6`_, after the fourth referee (F2, F4), who showed the earlier statement, at every state the checker reaches, false at a proof owner and proved only where the ancestors hold whole members. Hypothesis (a) is what RD1's use of (X5) needs: through a fill, an ancestor's content that is not a whole member is a backward function's argument outside its domain (F1). It holds wherever today's observation has passed: the observation ends each such ancestor before the labels of $K$ (its holder lies in a lower frame, and `endAll` goes in the order of the positions), so its end tests its content whole (D98) and of its type with the still-lent labels of $K$ read as unknowns of their types ([Repack], D73), which is "a whole member at every typed future"; and between the call point and the observation the callee changes that content only at the sites of $K$. Hypothesis (b) is the fourth referee's F2: at a proof owner the checker compares the proof's constructor, the model as it stands the token •. It goes once the model reads a proof's data fields as @sec-proof-fields says, since the owner then holds a witness there, compared field by field.
-
-It is about the checker's own state, and it is what the `Id` clause of the frame property needs at the call point (lemma OBS, @sec-frame-id), what the hypothesis direction of case 2 needs at every call (@sec-tw-types), and what keeps `G5` from being called with `refl`. Under the finals design of @sec-obs none of these uses remains: a call site compares the finals the callee's own check compares, and what is left of RD is its restriction to the labels held in one frame, for the block lemma's `Id` row (@sec-obs-attack, finding 2), where (a) holds by the observation's own tests and (b) by @sec-proof-fields. Its assumptions, each proved, argued or named below:
-+ the state is well formed: one holder per label, every loan bound, lending acyclic, and (X5) of @sec-excl, _holes are placed injectively_, in the form RD needs: the resolution of Ω, as a function of the final contents of its live labels, is injective on whole members (@sec-rd-proof states it exactly);
-+ every backward function a fill computes is injective on members (N1's relation $R$), by the producer of the fill: for an earlier global, by the outer hypothesis (its meaning is a member of its type); for an abstract function, by the assignment, whose value is in $R$; for the definition under check, whose recursive calls close off at once (D135), by its stage, which is a member only below the rank bound, together with the Lean lane's item 11 (every sealed call of it in a state its check reaches carries a decreasing argument of rank below the entry's, @sec-frame-fix), so each such fill is the stage's backward function where the stage is a member; for a stuck block's function, by N8; for a closure formed in a body, by its membership (@sec-clo-fix) and C3, which relates the checker's closure value to the strict run's and is not proved;
-+ _site faithfulness_: a position's meaning depends on a label's final content only where that label is lent (the thirty-third lead's finding, docs/31 D217, which the frame property's clause for a closure formed in the body needs too);
-+ the comparison is injective at each owner's type: `eq` keeps two different whole members apart (injectivity, disjointness, `⊥` apart from every value), and a place declared `Unit` has one value.
-
-== The attack <sec-rd-attack>
-
-An attack is a state at which `G5(r, refl)` is accepted for some borrow `r` the program has made, that is, at which `Id(Unit, *r := 0, *r := 1)` computes to `⊤`. Each row below aims at one way an owner could ignore a write; beside each, a twin with the true statement
-```
-def H (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
-```
-shows the shape is otherwise accepted. No row gives an accepted call of `G5`.
-
-#table(columns: (19%, 47%, 34%), align: left, table.header([*Shape*], [*Program (the call of `G5`)*], [*Verdict, and whether two different writes look equal*]),
-  [A returned borrow from a function that picks one of two arguments], [`APick (n : Nat) : False := (let a = 0; let b = 0; let r = Pick(n, &a, &b); G5(r, refl))`; the same at `Z` (`APickZ`); `H` in place of `G5` (`APickOk`)], [Rejected: at an unknown `n` the type is the conjunction over both fills, $ty("Eq")(⌈dots *r := 0; c_1⌉, ⌈dots *r := 1; c_1⌉) and ty("Eq")(⌈dots c_2⌉, ⌈dots c_2⌉)$, stuck; at `Z`, `False`. The twin accepted. Does not arise: both places are owners, and the fills are jointly injective.],
-  [A borrow of a field whose type depends on another field], [`Tagged := MkT(b : Bit, x : Payload(b))` with `Payload(B0) = Nat`, `Payload(B1) = Unit`; a borrow of the leaf, `match t { MkT(b, x) => G5(&x, refl) }` (`ATagLeaf`, and at an unknown tagged value `ATagLeaf2`); of the index, with `GB (x : &Bit) (e : Id(Unit, *x := B0, *x := B1)) : False` (`ATagIdx`, `ATagIdx2`)], [Leaf: rejected, `False`. Index: rejected by [Repack] at `Id`'s owner ("field x of MkT: it holds ⊥"), the borrow of the index having invalidated the leaf. Does not arise: the context `MkT(·, ⊥)` or `MkT(B0, ·)` is a constructor around the hole.],
-  [A borrow into a value later moved, partly moved, or overwritten], [`let r = &p.0` then `let q = p` (`AMoved`), `a := 5` after `let r = &a` (`AOver`), `p.1 := 7` (`AOverPart`), `let z = p.1` and back (`AMovedThenRefill`), `let z = p.1` left moved (`APart`)], [Moving or overwriting the owner ends `r` first ([Access]), so `G5` reads `⊥` and is rejected; a part beside the borrowed one gives `False` ($ty("Eq")(ty("Mk")(0, bot), ty("Mk")(1, bot))$). Does not arise.],
-  [A borrow through a borrow whose content is partly moved], [`AAnc : False := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; G5(&(*r).0, refl))`; twin `AAncOk` with `H` and `(*r).1 := z` after], [Both rejected, "[D53] a borrow ends while its content is partly moved out ((loan_1, ⊥))": the observation ends the caller's `r` to reach the owner `p`, and tests it. The rejection of the twin is a fault for type safety (@sec-rd-ends). With `r` whole (`AAncWhole`): `False`. Does not arise.],
-  [A reborrow through two levels], [`ATwo : False := (let a = 0; let r1 = &a; let r2 = &*r1; G5(&*r2, refl))`], [Rejected, `False`; the twin accepted. Contexts compose.],
-  [A borrow whose loan is in a stuck call's fill], [`AFill (n : Nat) : False := (let a = n; let r = TailM(&a); G5(r, refl))`; a reborrow of that result passed to `TailM` again (`AFill2`)], [Rejected: $ty("Eq")(⌈dots *r := 0; c_1⌉, ⌈dots *r := 1; c_1⌉)$, stuck, nested in `AFill2`. Does not arise: the fill is `TailM`'s backward function, injective.],
-  [A borrow whose lender is a proof, or erased], [`inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))`; `PEx (e : Ex) : False := match e { Wit(w, h) => G5(&w, refl) }`, a borrow of a proof's data field in an erased match; and the same `Id` formed there directly (`PExId`)], [Rejected, `False`: the checker compares the proof's constructor fields. In the model as it stands every proof is •, so there the `Id` is `True`, and the reference cannot even make the borrow `&w` (a field of • reads • at the error type, and a borrow is a strict point). The checker's reading is the necessary one: compared as •, `PEx(Wit(0, refl))` would be a closed proof of `False`. And it is not harmless as "rejecting more": as a hypothesis the finer proposition accepts more (`PExF` of the fourth referee's F2, accepted, refutes it). So this row is excluded from RD (hypothesis (b)) until the model reads a proof's data fields by a witness (@sec-proof-fields), after which RD holds here too. A borrow made in a type or a proof is ended with its private copy. Under the finals design of @sec-obs the call `G5(&w, refl)` compares `&w`'s finals, never the proof owner.],
-  [A function whose backward function an overwrite after an inner call might make constant], [`KG (x : &Nat) : &Nat := (let r = TailM(&*x); *x := 0; r)`; `KF (x y : &Nat) : &Nat := (let r = TailM(&*x); x := y; r)` (re-point `x` after reborrowing through it) with `G5(KF(&a, &b), refl)` at `0` (`AKF`) and at an unknown (`AKFn`); `KR (x y : &Nat) : &Nat := (x := y; x)` (`AKRz`); `KH` returning `Pick(Z, r, y)` of an inner result (`AKH`, `AKHz`)], [`KG` rejected (the write `*x := 0` ends `r`, which is then returned as `⊥`). The others accepted, and every call of `G5` on them rejected: `False` at known arguments, a stuck conjunction over the fills at unknown ones. Once a function has returned nothing of its run remains, so its backward function is the context of its parameters' contents around the returned borrow's loan at the return, which [Access] keeps from being overwritten while the loan is live. Does not arise.],
-  [`Unit` places, where every value is equal], [`PU (n : Nat) (u : &Unit) (x : &Nat) : &Nat`, returning `x` on both arms, with `G5(PU(n, &u, &a), refl)` (`APU`); a function type whose only borrow parameter is a `Unit`, `QU (g : Π(u : &Unit). &Nat) : False := (let u = (); G5(g(&u), refl))`, with variants passing a parameter `u : &Unit`, an annotated `Unit`, and a type function every arm of which is `Unit` (`QU2` to `QU6`)], [All rejected: the fill at the `Unit` place keeps the hole, $ty("Eq")(ty("Unit"), ⌈dots *r := 0; c_1⌉, ⌈dots *r := 1; c_1⌉)$, stuck. Does not arise, but only because of a choice the code makes and the paper does not (below).],
-)
-
-#measured[*The `Unit` row: the code keeps the hole, the paper drops it.* With the `Nat` prelude, on `main` at 662110042:
-```
-def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
-def QU (g : Π(u : &Unit). &Nat) : False := (let u = (); G5(g(&u), refl))
-def IU1 (u : &Unit) : &Nat := (let a = 0; &a)
-```
-`QU` rejected, "argument 2 (e) has type ⊤, expected Eq(Unit, ⌈let c1 = (); let r = σ0(&c1); *r := 0; c1⌉, ⌈let c1 = (); let r = σ0(&c1); *r := 1; c1⌉)"; `IU1` rejected ("[Drop] a dies while a value in flight borrows it").]
-The paper (appendix A.2, [Close]: "$f_i$ is `()` when $c_i$'s place is declared `Unit`") and `RULES.md` §3 ("`loan_ℓᵢ` becomes `()` when the place it lends is declared `Unit`") apply η to a fill in both rows of [Close]; the checker's `closeCall` applies it in the data row only (`Machine.lean`, the `| _ =>` branch, `fills.getD i false`), and the borrow row keeps the sealed fill with its hole. The code's choice is the one RD needs. Under the paper's, `g(&u)` would leave its hole in no place, so `Id(Unit, *r := 0, *r := 1)` would be `⊤` at `QU`'s call and `QU` would be accepted: a proof that `Π(u : &Unit). &Nat` is empty. That is consistent (the model makes the type empty too, since a backward function from `Nat` to `Unit` is not injective, and no accepted closed term has the type: `IU1` is the obvious attempt), but it is the leaked-borrow fault of the paper's note 7 again, with D44's guard ("a borrow-returning function type takes a borrow") met by a `&Unit` that carries nothing. *Proposed:* the paper and `RULES.md` say that η replaces a fill by `()` in the data row only, with `QU` as the reason. No change to the checker.
-
-== The proof <sec-rd-proof>
-
-Write Φ for the _resolution map_ of Ω: it sends a family ψ of final contents, one whole member for each live label, to the meanings of the positions of Ω that hold no borrow, after each label is ended with its content ψ(ℓ). The form of (X5) RD needs is:
-
-*(X5), resolution is injective.* For every state the checker reaches, Φ is injective on families of whole members, under every assignment of the unknowns.
-
-*Lemma RD1 (readback).* If Φ is injective, the labels of $E(K)$ are upward closed in the lending order, and site faithfulness holds, then RD holds. _Proof._ In $Omega[v]$ every label of $E(K)$ ends with a content determined by $v$: a label of $K$ with $v_k$; an ancestor $m$ with its content in Ω, in which the labels below it that lie in $E(K)$ are put their finals, so $m$'s final is a function $c_m (v)$. Every label not in $E(K)$ ends with its content in Ω, which holds no loan of a label of $E(K)$ (were it to hold one, the label would be above a label of $E(K)$, hence in it, by upward closure), so its final does not depend on $v$. So $Omega[v]$'s positions are $Phi(psi_v)$ with $psi_v (k) = v_k$ for $k in K$, $psi_v (m) = c_m (v)$ for the ancestors, and fixed values elsewhere. A position outside $W(K)$ depends, by site faithfulness, only on the labels lent at it; if one of them were in $E(K)$ the position would be an owner of it, and so of a label of $K$ (an owner of an ancestor is an owner of every label below it: paper A.1, item 3, follows loans outward), so in $W(K)$. Hence the positions outside $W(K)$ mean the same in $Omega[v]$ and $Omega[v']$, and if those in $W(K)$ do too, $Phi(psi_v) = Phi(psi_(v'))$, so $psi_v = psi_(v')$ by (X5), and in particular $v = v'$. (X5) is about families of whole members: $psi_v$ is one because each $v_k$ is, and each $c_m (v)$ is by hypothesis (a), the ancestor's content being a whole member at every typed future, $v$'s values included. #a-full
-
-*Lemma RD2 ((X5) is kept by every step).* By induction on the run, one operation at a time, with Φ read as a composition along the lending forest: each position's meaning is built from the resolution contexts of the sites inside it, applied to the finals of their labels, and a label's final, where it is lent inside another's content, is read back from that content at the site's path. Φ is injective exactly when, label by label from the top of the forest down, the contexts at the sites of the labels whose sites lie in already-determined values are jointly injective in those labels' finals. Each operation keeps that:
-- A borrow puts a fresh label's loan at the borrowed place, whose content [Access] has emptied of live loans: the identity at a path, and the old content becomes the label's own, whole.
-- An end substitutes a label's content into its sites: the contexts of the loans inside that content are composed with the ended label's contexts, and a composition of jointly injective maps is jointly injective (where the label had several sites, its content, and every loan inside it, is substituted into each fill: the fills' joint injectivity, then the content's constructor context).
-- [Close] replaces each argument's loan by a fill of the call's text and, for a borrow result, puts the fresh hole in every fill (one [Close] makes every fill of its hole, closing off's (C3)); the fills together are the callee's backward function, injective by assumption 2. A fill keeps no live loan of its inputs (the precondition, asserted in `closeCall`).
-- A call that runs and returns a borrow leaves the result's loan where it points and marks the other places lent to it ([Lend], D99): the identity and constants, jointly injective. A borrow-typed match's [Entry] lending is the same for a block.
-- An assignment, a read, a match and a drop each first end the borrows lent at what they touch ([Access], [Drop]). A step that changes the value around a live site writes at a path disjoint from it: a write to a sibling field (`let r = &p.0; p.1 := 7`), or [Open]'s invalidation of a leaf beside a lent field (D112). That keeps the context around the site a constructor context with the site's hole in place, so injectivity is kept (the earlier sentence, "no step changes the value around any of its sites", was false, the fourth referee's F4; its conclusion stands). A drop that would end a borrow held by a value in flight is an error (D106), so no label loses its holder unseen.
-- A refinement substitutes a member's meaning for an unknown, the same under the assignment; a sealed fill holding a hole is never run (D97), so its context stays the meaning of its text; a sealed program is generalised only after the borrows with holes inside it have ended (D29, D90's `G1`), so no hole is replaced by an unknown.
-- η at `Unit` replaces a value by `()` only at a place declared `Unit`, which has one member; in [Close]'s borrow row the fill is kept (above).
-#a-full by reading, operation by operation; it is the (X5) row of each operation in @sec-excl, made exact. Not mechanised.
-
-*Theorem RD.* Under assumptions 1 to 4, RD holds of every state the checker reaches that meets its hypotheses (a) and (b). From RD1 and RD2, with site faithfulness (the thirty-third lead's, argued by reading in docs/31 D217, not proved) and assumption 4 (`eq` is injective on whole members: N3's clauses for constructors and `⊥`). #a-full (given site faithfulness, N1's $R$ by producer as in assumption 2, and N8 and C3 for the producers they cover)
-
-*The checker's sites it rests on.* Each is a place in the code that makes one of the steps above true; a failure at any of them is a predicted way for RD to fail.
-
-#table(columns: (30%, 70%), align: left, table.header([*Site*], [*What it guarantees for RD*]),
-  [[Access]: `accessPath`, `accessInside`, `accessNeutralHead`, `Value.ownedLoans` (assignment)], [No read, write, match or borrow touches a value around a live site; a match on a fill ends its hole first.],
-  [[Drop]: `dropTopBind`, `dropValue`, `popFrame`; D106 in `endTopLoan`], [A site's place never dies while its label is live; no label loses its holder unseen.],
-  [`closeCall`: the precondition assertion, the fill per borrow argument with the one hole $k$, and no η in the borrow row], [Fills are the callee's backward function, whole; the hole is in every borrowed place, `Unit` ones included (`QU`).],
-  [`callFn`'s [Lend] (`lendEnv .mark`, `.into`, D99); `blockEntry`'s lending], [A borrow returned by a call that runs, or by a match, is lent at every place its borrow arguments lend, so where it points is an owner.],
-  [`generalizeNeutral` after `accessNeutralHead` (D29, D90); `nfSealed`'s [Seal-hole] (D97)], [No hole is generalised away, and no fill with a hole runs.],
-  [`owners` and `footprint` (`Obs.lean`); `Value.hasLoan` counting marks], [The observation compares every owner of every label a side writes or passes on.],
-  [D44 in [T-Pi] and `checkFix`], [A borrow-returning call has a borrow argument, so its hole has a place (`QF` of the paper's note 7).],
-  [D48, D66, `capture`, D110 (`strongUpdate`), D111's assertions], [A borrow is only ever the whole value of a binding or temporary: the lending forest's nodes are positions.],
-  [`endBorrow`'s D98 test], [Each label the sides leave ends over a whole content, so its final is in RD's domain.],
-)
-
-== Which borrows an observation must end <sec-rd-ends>
-
-*Today.* The observation (`obsResult`) ends every borrow of the whole state (`endAll` over every position), and each end makes the tests of `endBorrow`: D98 (the content whole) and, in a typed run, [Repack] (the content of its type); `idType` then checks [Repack] on every owner it compares. So a side's private run tests the caller's state below its own frame, three ways, and each rejects a call that runs fine. The first is the third referee's (`CallI`, `CallH`, `CallK`); the second and third are new.
-
-#measured[*Three sites where an observation tests the caller.* With the `Nat` prelude, on `main` at 662110042; in each group the first two definitions are accepted.
-```
-def H (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
-def FJ2 (n : Nat) (x : &Nat) : Unit := match n { Z => (let h : Id(Unit, *x := 0, *x := 0) = refl; ()), S(m) => (), }
-def CallK2 (n : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; FJ2(n, &(*r).0); (*r).1 := z; ())
-def UseK2 : Unit := CallK2(Z)
-def UseK2S : Unit := CallK2(S(Z))
-def AAncOk : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; H(&(*r).0, refl); (*r).1 := z; ())
-```
-(1) D98 at the end of a caller's borrow that lies between the parameter and its owner: `UseK2` and `AAncOk` rejected, "[D53] a borrow ends while its content is partly moved out ((loan_1, ⊥))"; `UseK2S` accepted. The third referee's `CallK` is the same with a borrow the callee does not need.
-```
-inductive Bit := B0 | B1
-def Payload (b : Bit) : Type := match b { B0 => Nat, B1 => Unit, }
-inductive TW := MkTW(b : Bit, x : Payload(b), w : Nat)
-def FJ3 (n : Nat) (x : &Nat) : Unit := match n { Z => (let h : Id(Unit, *x := 0, *x := 0) = refl; ()), S(m) => (), }
-def CallK3 (n : Nat) : Unit := (let t = MkTW(B0, 3, 5); match t { MkTW(b, x, w) => (b := B1; FJ3(n, &w); x := ()), })
-def UseK3 : Unit := CallK3(Z)
-def OpenCall : Unit := (let t = MkTW(B0, 3, 5); match t { MkTW(b, x, w) => (b := B1; H(&w, refl); x := ()), })
-```
-(2) [Repack] on a caller owner that the caller holds open, as it may (the leaf `x` invalidated by `b := B1`, refilled before the match ends): `UseK3` and `OpenCall` rejected, "[Repack] Id observes it, but it is open: field x of MkTW: it holds ⊥"; `CallK3`, `CallK3(S(Z))`, and `OpenCall` with `let r = &w; *r := 0` in place of the call of `H`, accepted.
-```
-inductive Void : Type
-inductive One := O
-def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
-inductive VW2 := MkVW2(n : Nat, x : Fin1(n), w : Nat)
-def OpenAnc : Unit := (let t = MkVW2(S(Z), O, 5); let r = &t; match *r { MkVW2(n, x, w) => (n := Z; H(&w, refl); n := S(Z)), })
-```
-(3) [Repack] at the end of a caller's borrow whose content the caller holds open: `OpenAnc` rejected, "[Repack] a borrow of it ends, but it is open: field x of MkVW2 holds a value of type One, but its type from the earlier fields is Void"; the same with `let q = &w; *q := 0` for the call accepted.]
-
-Each is a fault for type safety, not consistency: a call of an accepted function rejected where it would run fine, or, with `CallK2` and `CallK3`, an accepted function whose call at a known argument is rejected, which principle 4 forbids. Each comes from one omission: an observation's private run reaches below its frame (principle 6).
-
-*What the comparison needs.* Let $O$ be the observing frame after a side has run, and $E_1$ the labels held in $O$: the parameters' borrows, the borrows the side made and kept, a re-pointed binding's, a borrow result's ([Obs-borrow]). The observation must end
-- every label of $E_1$: its end is how what the side wrote through it reaches the places it is lent at; and
-- every lending ancestor of $E_1$, the set $E_2$: the footprint compares _owners_, positions holding no borrow, and between a parameter's label and its owners there may be caller borrows (the `r` of `CallK2`) whose ends carry the write there.
-
-- every label lent at a position the footprint compares, once $E_1$ and $E_2$ have ended, with its lending ancestors, the set $E_3$: not for the truth of the comparison (the two sides leave such a label's loan in the same place, and `eq` takes it as reflexive), but because the `Id` the observation forms is a _type_, stored and read later at a fixed future, and must hold no loan (N5's (WF11)): a label of $E_3$ can survive inside a stuck conjunct, as when a borrow returned by a stuck call was reborrowed in two parts, one passed to the callee and the other kept by the caller, so that the fills at the owners hold both holes, and ending the callee's leaves each fill sealed over the caller's (D97), compared stuck, with a live loan in the formed type.
-
-It needs nothing else: a label outside $E = E_1 union E_2 union E_3$ is lent at no compared position and above none, and a side reaches below $O$ only through $E_1$ (principle 6, and a call's arguments are loan-free: N5's (X4)), so its end changes no compared value, and ending it or not gives the same proposition. Ending every label, as `endAll` does now, ends $E$; the fault is only in what it tests.
-
-$E_2$ cannot be dropped. Ending only the observing frame's own borrows, the repair that suggests itself, is unsound: in `AAnc` above it ends the argument's label, whose final reaches `r`'s content, `Mk(0, ⊥)` against `Mk(1, ⊥)`, but the owner `p` still holds `r`'s loan on both sides, so `Eq(Pair(Nat, Nat), loan, loan)` is `⊤` and `G5(&(*r).0, refl)` would be accepted: a closed proof of `False` (predicted by reading; the checker cannot be run with that repair without changing it). The alternative to ending $E_2$ is to compare, for each label of $E_1$, the value at its sites (inside the content of the nearest ancestor) instead of at its owners; that changes the footprint and its order, so we do not propose it.
-
-*What the observation must test.* Exactly what the side produced: D98 and [Repack] at the end of each label of $E_1$, [Repack] at each owner that is a position of $O$ (an owned local of the observing body) and at the result. Not at the end of a label of $E_2$ or $E_3$, and not at a caller owner: those hold the caller's state with the side's writes through its labels put in. That value may be open for two reasons, both legitimate: the caller holds it open while its code runs (principle 9's (W)), or the side opened it itself, by writing through a borrow of an index field the caller passed (the fourth referee's F5: `S5` of @sec-obs-today, `AH8`; the real call leaves the same open value, and the caller repairs it). The caller's own run tests it where it ends. Ending $E_2$ unchecked puts `⊥` or an open value into an owner, which `eq` compares as it is: `⊥` equal to itself only, open values field by field; N3 must say so for open members, those the side opened included (@sec-theorems, N3's row).
-
-*The same in the three runs.*
-- _The function's own check_ ([Def]; [Conv-pi] and [Conv-fun] at their generic calls): $O$ is the body's frame or the frame that reads the parameter types; $E_1$ holds the cells' labels; the cells are bindings of frame 0 that hold no borrow and are lent to nothing else, so $E_2 = E_3 = emptyset$, and the tests are exactly today's: no verdict of any definition's own check changes.
-- _A call site_ ([Call-type]): $O$ is the frame pushed on the private copy, which takes the arguments' borrows (`takeArgBorrow`); $E_2$ is the caller's borrows between the arguments and their owners, $E_3$ the caller's borrows lent at those owners.
-- _A body run in place_: $O$ is the callee's frame; the same as at a call site, with the callee's own locals in $O$.
-They agree. The labels of $E_1$ correspond through the frame property's renaming (a parameter label to its cell's label, a label the body made to its counterpart), and their final contents are equal (theorem FR at the sides), so D98 and [Repack] on them give the same verdict in all three. The own check compares the cells, which hold the finals; a call site and a run in place compare the caller's owners after the ends of $E$, which read the finals through the resolution contexts (FR's (F4)). The conclusion direction (a statement proved in the closure holds at the call) is immediate, since the owners are functions of the finals; the hypothesis direction is RD. #a-red[FR, RD]
-
-*In the code* (a proposal; not made; option (B) of @sec-obs): `obsResult` passes the observing frame to `endAll`; `endBorrow`'s D98 test and its typing-mode [Repack] apply only to a borrow held at a position of that frame or above, _or one of whose sites is a sealed fill_ (the fourth referee's restriction, F1: unrestricted, an unchecked end of a caller's borrow returned by a stuck call puts a content that is not a member into a fill inside a formed type); `idType`'s [Repack] on owners only to owners in that frame. `endAll` keeps ending every borrow, which ends $E$. With it four of the five measured sites are repaired (@sec-obs-today) and one is not (`S4Z`, a caller's borrow with a fill site); `AAnc` and every row of @sec-rd-attack are still rejected. In the model it is the third referee's restricted (M3): strict ends for the observing frame's labels only (@sec-frame-model); the checker's test at a caller's fill-site borrow is then a rejection the model does not make, harmless to consistency. @sec-obs compares this patch with today's observation and with a design that never looks below the frame.
-
-= The observation's design: three options <sec-obs>
-
-_Written by `theory6`._ An observation is what `Id` computes: it runs each side on a private copy, ends borrows, and compares what is left. Today it ends every borrow of the whole state, tests each end, and compares the _owners_ of the places the sides write, wherever they are, the caller's frames included. This section measures what that costs (five places where a callee's observation rejects its caller's legitimate state, @sec-obs-today); states exactly a design the user proposed, in which an observation never looks below its own frame and compares, for each borrow lent from below, the value last written through it (@sec-obs-finals); attacks that design from the history of the faults the present tests were added for (@sec-obs-attack); and compares three options on one page (@sec-obs-compare). Every program below was run on the checker of `main` at b3f6a3854 with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so`, in a block `uses Nats, Fixtures`, beside the control `def Ctl : Eq(Nat, Z, S(Z)) := refl`, rejected every time. Neither alternative is built: their verdicts are predicted by reading the code they would change, beside the nearest program run today.
-
-*In short.* The proposed design, which I call _the finals design_, holds up: I found no program it would wrongly accept, it repairs all five sites by construction, and it removes resolved determination from every call site, the frame property's one exceptional clause, and the deferred-type gap of C2. It needs one precision the proposal lacks (a borrow with no site at all must count as lent from below), it leaves a one-frame residue of resolved determination at the block lemma, and it costs one kind of equation: an induction hypothesis whose borrow the caller got from a stuck call no longer arrives wrapped in that call's backward function, and needs a `rewrite`. I recommend it, with one refinement found in the attack, (C+), which compares every borrow of the frame by its final and so needs no injectivity of backward functions anywhere (@sec-obs-compare).
-
-== Today's observation, and the five places it tests the caller <sec-obs-today>
-
-*What it does* (`idType`, `observe`, `obsResult`, `endAll`, `endBorrow` in `Machine.lean`; `footprint`, `owners` in `Obs.lean`). Call _observing frame_ $O$ the frame in which the `Id` is evaluated: in a function's own check, the frame that reads the parameter types, or the body's frame; at a call site, the frame [Call-type] pushes on a private copy of the caller's state; in a body run in place, the callee's frame. The footprint takes the free places that the two sides write, borrow, or pass on whole, and puts in their stead the _owners_ of each one's root: the root itself if it is owned, and otherwise every position found by following the root's borrow's loan outward, through each borrow whose content holds it, to a position holding no borrow, in any frame. Each side then runs on its own copy (typed); the observation ends _every_ borrow of the whole state, in the order of the positions, and each end tests that the borrow's content is whole (D98) and, in a typed run, of its type ([Repack], D64); it compares the result and the owners, and tests each compared value with [Repack].
-
-So at a call site and in a body run in place, the observation ends and tests the caller's borrows, and tests the caller's places. It reads below its frame, which principle 6 says a run never does, and it fails where the caller holds, quite properly, a value moved out of or open. Each of the five sites below gives an accepted function whose call at a known argument is rejected, which principle 4 forbids.
-
-#measured[*The five sites, each as an accepted function and its rejected call.* On `main` at b3f6a3854:
-```
-def FJ2 (n : Nat) (x : &Nat) : Unit := match n { Z => (let h : Id(Unit, *x := 0, *x := 0) = refl; ()), S(m) => (), }
-def S1 (n : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; FJ2(n, &(*r).0); (*r).1 := z; ())
-def S1Z : Unit := S1(Z)
-inductive Bit := B0 | B1
-def Payload (b : Bit) : Type := match b { B0 => Nat, B1 => Unit, }
-inductive TW := MkTW(b : Bit, x : Payload(b), w : Nat)
-def S2 (n : Nat) : Unit := (let t = MkTW(B0, 3, 5); match t { MkTW(b, x, w) => (b := B1; FJ2(n, &w); x := ()), })
-def S2Z : Unit := S2(Z)
-inductive Void : Type
-inductive One := O
-def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
-inductive VW2 := MkVW2(n : Nat, x : Fin1(n), w : Nat)
-def S3 (n : Nat) : Unit := (let t = MkVW2(S(Z), O, 5); let r = &t; match *r { MkVW2(k, x, w) => (k := Z; FJ2(n, &w); k := S(Z)), })
-def S3Z : Unit := S3(Z)
-def PickP (n : Nat) (x : &Pair(Nat, Nat)) (y : &Pair(Nat, Nat)) : &Pair(Nat, Nat) := match n { Z => x, S(m) => y, }
-def S4 (n : Nat) (m : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let q : Pair(Nat, Nat) = Mk(3, 4); let r = PickP(m, &p, &q); *r := Mk(7, 8); let z = (*r).1; FJ2(n, &(*r).0); (*r).1 := z; ())
-def S4Z (m : Nat) : Unit := S4(Z, m)
-inductive VV := MkVV(n : Nat, x : Fin1(n))
-def S5 (n : Nat) : Unit := (let t = MkVV(S(Z), O); match t { MkVV(k, x) => (FJ2(n, &k); k := S(Z)), })
-def S5Z : Unit := S5(Z)
-```
-`S1` to `S5` accepted, and so is each at `S(Z)` in place of `Z` (`S1S`, …; `S4S (m : Nat) : Unit := S4(S(Z), m)`). At `Z` each call is rejected: `S1Z` and `S4Z`, "[D53] a borrow ends while its content is partly moved out ((loan_1, ⊥))" (`(loan_4, ⊥)` for `S4Z`); `S2Z`, "[Repack] Id observes it, but it is open: field x of MkTW: it holds ⊥"; `S3Z`, "[Repack] a borrow of it ends, but it is open: field x of MkVW2 holds a value of type One, but its type from the earlier fields is Void"; `S5Z`, "[Repack] Id observes it, but it is open: field x of MkVV holds a value of type One, but its type from the earlier fields is Void". At an unknown `n` `FJ2` is stuck and the call closes off, so no observation runs; at `Z` it runs in place and its `Id`'s observation reaches the caller. The first site needs no borrow parameter: `S1u`, the same as `S1` with `FJ0 (n : Nat) : Unit := match n { Z => (let h : Id(Unit, (), ()) = refl; ()), S(m) => (), }` called and `(*r).0` moved, is accepted and `S1u(Z)` rejected the same way (the third referee's `CallK`).]
-
-#table(columns: (5%, 39%, 22%, 17%, 17%), align: left, table.header([*Site*], [*What the callee's observation tests in the caller*], [*Found by*], [*(B) the excepted patch*], [*(C) the finals design*]),
-  [1], [D98 at the end of a caller's borrow, between the parameter and its owner (`S1`) or unrelated (`S1u`)], [the third referee (T1); `theory5`], [accepted], [accepted],
-  [2], [[Repack] at a caller's owner that the caller holds open (`S2`)], [`theory5`], [accepted], [accepted],
-  [3], [[Repack] at the end of a caller's borrow whose content the caller holds open (`S3`)], [`theory5`], [accepted], [accepted],
-  [4], [D98 at the end of a caller's borrow one of whose sites is a sealed fill (`S4`)], [the fourth referee (F1)], [rejected: kept by F1's restriction], [accepted],
-  [5], [[Repack] at a caller's owner that the side itself opens, through a borrow of an index field (`S5`)], [the fourth referee (F5)], [accepted], [accepted],
-)
-
-*What consistency pays for it.* The comparison is made at the caller's owners, far from where the write lands. A statement proved at a function's own check, which compares the cells (one per borrow parameter, each holding what was written through it), is the same statement at a call site only if the caller's places, once the borrows between them and the parameter have ended, determine what was written: resolved determination (@sec-rd). That lemma is the delicate part of the argument. It needs (X5), N1's injectivity relation for every backward function a fill computes, and site faithfulness. The fourth referee showed it holds only where the borrows in between hold whole members, that it fails at a proof owner, and that for the function under check it needs the Lean lane's item 11 (F2, F4). It is also what the frame property's `Id` clause (OBS, (H11)) rests on, the one clause Lean excludes outright (`RunFrameI`'s `t.idFree = true ∨ ks = []`). And because an observation at a call site follows loans through the caller, the deferred parameter types of C2 lose their owners when a label ends before they are read (the third referee's T4).
-
-== The finals design, stated exactly <sec-obs-finals>
-
-*The idea* (the user's): an observation never reads or tests below its own frame. For each borrow lent from below (a parameter's, or one held when the observing term starts) it compares the _finals_, what each side last wrote through that borrow, exactly as a function's own check compares the cells; places of its own frame it compares as now. Nothing below the frame is ended, tested or read.
-
-*Definitions.* At the moment an `Id` is evaluated, before either side runs, in the state Ω with observing frame $O$:
-- a label is _held in $O$_ when a binding or temporary of $O$ holds its borrow;
-- a _site_ of a label is an occurrence of its loan, a sealed fill whose text holds its hole, or a mark #lent($ell$, $dot$) (paper A.1);
-- a label held in $O$ is _internal_ when it has at least one site and every site lies in $O$ or inside the content of a borrow held in $O$;
-- the _borrows lent from below_ $K$ are the labels held in $O$ that are not internal: those with a site below $O$, and those with no site at all;
-- the _detached state_ $Omega^O$ has two frames: frame 0 holds, for each $k in K$ in label order, a _cell_ $c_k : T_k |-> "loan"_k$, where $\&T_k$ is the stored type of $k$'s holder; frame 1 is $O$, unchanged. Every frame below $O$ is dropped, and with it every site of a label of $K$ below $O$: the cell is that label's one site below.
-- The _final_ of $k in K$ on one side is what $c_k$ holds once that side has run from $Omega^O$ and every borrow has ended: what was last written through the borrow.
-
-*The observation.* Compute the footprint in $Omega^O$: the owners of a root whose borrow is in $K$ are now its cell (and any place of $O$ where it is also lent), those of an internal one as today, those of an owned root the root. Run each side from $Omega^O$ on its own copy, typed, with [Obs-ref] as today; end every borrow of the copy; compare the result, the footprint's positions, and the [Obs-ref] components, each tested with [Repack]. Every end makes today's tests (D98, and [Repack] in a typed run). Every borrow of $Omega^O$ is held in $O$, so every end and every compared position is the side's own; nothing of the caller is in the copy. The copy is discarded with the observation, so the real state is unchanged.
-
-*In each place an `Id` is evaluated.*
-- _A function's own check_ ([Def], `checkFix`). Below $O$ is frame 0 of cells, one per borrow parameter, each holding exactly that parameter's loan. So when $K$ is the parameters' labels, $Omega^O$ is Ω and the observation is today's, test for test. It differs in one case: a body that passed a parameter whole to a call returning a borrow, and then forms an `Id` over the result. The result's label is held in $O$ and lent at the parameter's cell through the call's fill or mark, so it is in $K$; today the observation compares the cell, the fill around the final, and the finals design compares the final. With `TailM` (the `Nat` prelude), `OwnR (x : &Nat) : Unit := (let r = TailM(x); let h : Id(Unit, *r := 0, *r := 1) = refl; ())` is rejected today with the expected type `Eq(Nat, ⌈let c1 = σ0; let r = TailM(&c1); *r := 0; c1⌉, ⌈… *r := 1; c1⌉)`, stuck; under the finals design that type is `Eq(Nat, 0, 1)`, which is `False`. Its twin with the reborrow `TailM(&*x)` (`OwnRx`) has the same type today and keeps it: the result's label is lent inside $x$'s content, so it is internal and its owner is $x$'s cell.
-- _A parameter type read at a call site_ ([Call-type]: `callType`, `declCallType`, `paramTypes`). $O$ is the private frame binding the parameters to the arguments, each borrow argument taken from its holder (`takeArgBorrow`). $K$ is the borrow arguments' labels, and $Omega^O$ is the function's generic state at the arguments' values: cells, then the parameter frame. So a statement read at a call site is the statement of the function's own check at those values, by construction, deferred parameter types included: they bind the arguments as passed (`lazyTy`), and the finals do not depend on where the caller's loans are, or whether they still exist.
-- _A body run in place._ $O$ is the callee's frame. $K$ is the parameters' labels the frame still holds, and any label of $O$ that a call or a borrow-typed match lent where a parameter's label was. $Omega^O$ is, up to the renaming of labels, the closure state of theorem FR: cells, then the callee's frame.
-- _At top level, or in a body with no borrow from below._ $K$ is empty, $Omega^O$ is $O$ alone, and the observation is today's.
-
-*The final of a borrow lent from below, case by case.*
-- _Re-borrowed_ (`&*x`, `&(*x).0`): the reborrow's label is internal, lent inside $x$'s content; whichever order the ends take (lemma OI), its final is in $x$'s content when $x$'s label ends into its cell.
-- _Passed on to a call that closed off_ (`f(x)`, or `f(&*x)`): [Close] fills the cell (or the place inside $x$'s content) with the call's sealed program; for a borrow result, with a hole for the result's label, which is then held in $O$ and ends into the hole. The final is the sealed program a function's own check leaves in its cell.
-- _Passed on to a call that ran_: the callee's pop ends the label, putting its content in the cell; for a borrow result, [Lend] marks the cell for the result's label (D99), whose end resolves the mark.
-- _Returned through a match_: a borrow-typed match's [Entry] lends its result's label at the places its block takes by `&` and wherever its by-move borrow variables are lent (D90), here the cell; the result's end fills it.
-- _A returned borrow of a stuck call held by the caller_ (`G5(r, refl)` with `r = TailM(&a)`): at `G5`'s call site $r$'s label is in $K$, its cell replacing the fill at `a`; the side writes `0` or `1` through it, and those are the finals. The fill at `a`, the backward function, is never consulted.
-- _Re-pointed by both sides_ ([Obs-ref], D113): a side's assignment drops the old borrow, which ends it, so the old label's final is its content at the re-pointing; [Obs-ref] then compares where the binding points and what it points to, as today, its fresh value reaching a cell when the new target lies below $O$.
-- _Consumed_ (D114): wherever the path ends the label (a callee's parameter, a block's, the join's drop), its content lands in its cell.
-
-*What the five sites become.* At each site's call `FJ2(Z, …)`, $O$ is `FJ2`'s frame and $K$ is `x`'s label alone (lent inside `r`'s content in `S1`, at a field of `t` in `S2`, `S3` and `S5`, inside the content of a borrow returned by `PickP` in `S4`). The final is `0` on both sides, the end tests `0` whole and of type `Nat`, and the caller's `r`, `t` and fills are never ended, tested or compared. All five are accepted.
-
-== Attacking it <sec-obs-attack>
-
-*From the history of the tests.* For each decision behind a test that an observation makes, the program it was added for, what the finals design does with it, and what it does with the same fault moved into the caller.
-
-#table(columns: (15%, 31%, 27%, 27%), align: left, table.header([*Decision*], [*The program wrongly accepted before it*], [*The finals design, by reading*], [*The offending borrow moved into the caller*]),
-  [D44: a function type returning a borrow takes a borrow], [`P (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : Empty := …` and `Q (g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)`: `g(5)`'s hole lies in no place, the footprint is empty, so `e`'s type is `⊤` and the type `Π(n : Nat). &Nat`, inhabited in Rust by a leaked borrow, is refuted.], [Rejected even without D44: at `P`'s call site `x`'s label has no site, so it is in $K$, and its finals are `0` and `1`: `False`. With $K$ defined as the labels with a site below $O$, it would be accepted (finding 1 below).], [Not applicable. D137's twin, a `&Unit` place whose fill η would drop (`QU`), is rejected likewise, without D137.],
-  [D53 (h): a borrow ends whole], [A side that moves out through a borrow and leaves it so: `Id(Unit, (let a = *y; ()), (let b = *y; ()))` (D98's `LeftOpenBoth`).], [Rejected: `y`'s label is in $K$, and its end in $Omega^O$ makes D98's test, as the own check's does.], [`S1`, `S1u` (the caller's partly moved borrow): accepted, rightly; the callee wrote nothing the caller's moved part could spoil.],
-  [D64 and D72 to D76: [Repack] at the whole-again points], [A value left open where it is relied on: `IdLie`, `SeqLie` (D72), `GetN`/`BoomI2` (D73), `JLie`/`BoomJ` (D75).], [Rejected wherever the own check rejects: every end and every compared position of $Omega^O$ is the side's, tested as today.], [`S2`, `S3`, `S5`: accepted, rightly. The caller's code holds its value open (principle 9's (W)); nothing relies on its type while the callee observes; the finals are tested at their own types.],
-  [D98: an observation ends no borrow over a moved-out content], [`ObsBorrowThrough`: both sides reborrow through `IdL(&y)` and move its content out; the observation read the lender as moved, the model the error value.], [Rejected: the returned borrow is held in $O$ or is a reborrow inside a borrow of $K$, and its end is tested.], [F1's `CallF`, `CallO` and `S4`: accepted. F1's danger, a fill over a value that is not a member inside a formed type, cannot arise: the formed type compares finals, never a caller's fill. F1's `Bad` gets the hypothesis type `False`, correctly, and means a function from the empty set.],
-  [D106: no access ends a borrow a value in flight holds], [`JoinPrefix.TK`; `f(&x, x)`.], [Unchanged in $O$. A value in flight below $O$ is out of the sides' reach (principle 6) and now of the observation's ends too.], [Today an observation ends a caller's in-flight borrow on its copy, harmlessly (D106 is off in copies); the finals design does not.],
-  [D113: [Obs-ref] observes what a re-pointed borrow points to], [`Hide`: a write through a re-pointed binding, overwritten by the observation unseen.], [Rejected: [Obs-ref] as today; a re-pointing into a borrow of $K$ carries its fresh value into that borrow's final.], [Not applicable: a side re-points only $O$'s bindings.],
-  [D114: a side may end a borrow it consumes, on every path], [`A1(1, &c)` rejected while `A1` was accepted.], [Unchanged: a consumed label of $K$ ends into its cell on every path, where the path puts the end.], [Not applicable.],
-)
-
-*A formed `Id` is a stored type, and holds no loan.* Every label of $Omega^O$ is held in $O$, and the observation ends them all, so no compared value holds a loan, and a sealed fill in it has no hole left. The formed type never mentions a place below $O$: where a statement is about a borrow lent from below, it mentions that borrow's finals, values computed from $O$'s own contents. The fill a caller holds over a returned borrow never enters it, nor a caller's partly moved or open value, nor a caller's hole kept by a stuck conjunct (the third case of $E_3$ in @sec-rd-ends, which needed today's observation to end the caller's labels lent at the compared owners). Every sealed program the observation makes comes from a call the side made in $O$, on contents a borrow passed whole (D127) and packed, so its re-run is on members (principle 7, F1's concern).
-
-*An `Id` between two different writes.* Re-running @sec-rd-attack's list by reading: in every row, `G5(r, refl)` reads `G5`'s parameter type at its call site, where `r`'s label is in $K$ and its finals are what the sides write, `0` and `1`. So the type is `Eq(Nat, 0, 1)`, which is `False`, and `refl` is rejected, whatever `r`'s provenance: a pick (`APick`, where today the type is a stuck conjunction over two fills), a field whose type depends on another (`ATagLeaf`, `ATagIdx`, today rejected by [Repack]), a borrow into a moved or partly moved value (`AMoved`, `AAnc`, today D98), two levels (`ATwo`), a stuck call's fill (`AFill`, `AFill2`, today a stuck equation), a proof's data field (`PEx`, today `False` by comparing the proof's constructor), the functions `KF`, `KR`, `KH`, `Unit` places (`APU`, `QU`), and the fourth referee's (a) to (e). None needs an argument about the caller: the finals design compares exactly what the function's own check compares, so a hypothesis or a conclusion has the same proposition at the check and at every call. A statement proved at one state and used at another is the same statement.
-
-*Findings.*
-+ _A borrow with no site is lent from below._ The proposal's wording ("a borrow lent from below") suggests the labels with a site below $O$. A borrow returned by a call with no borrow argument (D44's `g(5)`) or one whose fill η replaced by `()` (D137's `g(&u)` at a `Unit` place) has no site at all; defined so, $K$ would omit it, its writes would be compared nowhere, and D44's and D137's programs would be accepted again. Defined as above ($K$ = held in $O$ and not internal), they are rejected, and D44 and D137 are no longer needed for consistency; they still matter for what `Id` says (the leaked `'static` borrow of the paper's note 7: with the finals design, Ochr no longer refutes `Π(n : Nat). &Nat`, so a later design could admit `'static` borrows).
-+ _A residue of resolved determination at the block lemma, within one frame._ A match not in tail position is run directly in its frame $f$ at an instance, and as a block, the call of an anonymous function with its own frame, in its sealed re-run. An `Id` in one of its arms is formed in $f$ on the direct path and in the block's frame on the other. Under the finals design the block compares the finals of its by-`&` captures, while the direct arm compares $f$'s places through the contexts inside $f$. When a capture goes through a borrow internal to $f$ that a stuck call returned (`BlkFill (n k : Nat) (a b : &Nat) : Unit := (let r = Pick(n, &*a, &*b); match k { Z => (let h : Id(Unit, *r := 0, *r := 0) = refl; ()), S(j) => (), }; ())`, accepted today, as is its call), the direct arm's conjunction is over `Pick`'s two fills, `Eq(Nat, ⌈… *r := 0; c1⌉, ⌈… *r := 1; c1⌉) ∧ Eq(Nat, ⌈… c2⌉, ⌈… c2⌉)` for its twin `BlkFill1` (measured: rejected today with that expected type), and the block's is `Eq(Nat, 0, 1)`. The two agree in truth because `Pick`'s backward function is jointly injective (N1's relation R): the place-renaming lemma's `Id` row (@sec-n8) needs that, where today it needs nothing and C1 needs all of resolved determination instead. So the finals design does not remove R or (X5); it shrinks resolved determination from every caller's state to the contexts inside one frame, whose lending ancestors are borrows of that frame, ended and tested whole by the observation (so the fourth referee's F4 does not arise there).
-+ _An induction hypothesis no longer carries a stuck call's backward function._ Today a callee's statement read at a call site observes the caller's owners, so it arrives in the caller's context, which is what the paper's "induction hypotheses at the call site" means; under the finals design it arrives about the borrow passed. Where the context is constructors (a field reborrowed for a recursive call, the paper's every example), `Eq`'s injectivity peels it and the two forms are the same proposition. Where it is a sealed fill, they are not convertible. Measured as a proxy, on today's checker:
-  #measured[With the `Nat` prelude:
-  ```
-  def Lift (x : &Nat) : Id(Unit, (let r = TailM(&*x); AddM(&*r, 0)), (let r = TailM(&*x); ())) := (let r = TailM(&*x); AddMZero(r))
-  def LiftC (x : &Nat) : Id(Unit, (let r = TailM(&*x); AddM(&*r, 0)), (let r = TailM(&*x); ())) := (let r = TailM(&*x); let c = clone(*r); AddMZero(&c))
-  def LiftR (x : &Nat) : Id(Unit, (let r = TailM(&*x); AddM(&*r, 0)), (let r = TailM(&*x); ())) := (let r = TailM(&*x); let c = clone(*r); let h = AddMZero(&c); rewrite ← h in refl)
-  ```
-  `Lift` accepted: `AddMZero(r)`'s type at its call site is `Eq(Nat, F(N(s)), F(s))`, with `s` the sealed content of `r`, `N(s)` the sealed `AddM` of it, and `F` `TailM`'s fill (measured by ascribing it `True`). `LiftC`, whose hypothesis is about a copy of `r`'s content, which is the form `AddMZero(r)` would have under the finals design, rejected: "the body of LiftC has type Eq(Nat, ⌈let c1 = ⌈…⌉; AddM(&c1, 0); c1⌉, ⌈…⌉), but the goal is Eq(Nat, ⌈… *r := ⌈…⌉; c1⌉, ⌈… *r := ⌈…⌉; c1⌉)". `LiftR` accepted: one `rewrite` bridges it.]
-  So `Lift` would be rejected and `LiftR`'s form would be needed. I searched the examples, tests and case studies (`Ochr/Examples/*.lean`) for every call of one of the 166 definitions that take a borrow and whose type mentions `Id`, with an argument that is, or reborrows, a variable bound to a call of one of the 114 functions returning a borrow: the only hits are the all-owners attack `GR` and its twin `GROk` (`Equality.lean`), whose verdicts the finals design keeps (`GR`'s `Neq(r, h)` then expects `False` instead of a conjunction over `Pick`'s two fills; `GROk`'s `⊤` either way), and one false hit across two definitions. No suite program relies on the fill context; `HashMap.lean` lifts its bucket lemmas through `GetMut` by recursion on the index precisely so that "the untouched buckets stay where they are".
-+ _The own check's forms over a consumed parameter change._ `OwnR` above: the type becomes `False` instead of a stuck equation over `TailM`'s fill, while `OwnRx` (a reborrow) keeps the stuck form. The two forms agree in truth (by R) and both paths compute the same one (the same borrows are lent from below on every path, D90), so this is a change of form, not of meaning. A further step compares every borrow held in $O$, internal or not, by its final; that makes `OwnR` and `OwnRx` alike and removes finding 2's residue. A consumed internal borrow then needs a cell of its own beside its sites in $O$: an identity fill gives it one, keeping one loan per label outside sealed programs ((X2)). That is the refinement (C+) of @sec-obs-compare.
-+ _No wrong acceptance found._ Every program above that today's checker rejects for consistency is rejected by the finals design, by reading; every program it would accept and today's checker rejects is one of the five sites' kind or `Lift`'s complement, true at every instance.
-
-== Three options on one page <sec-obs-compare>
-
-(A) is today's checker; (B) the patch of @sec-rd-ends with the fourth referee's restriction; (C) the finals design of @sec-obs-finals.
-
-#table(columns: (16%, 28%, 28%, 28%), align: left, table.header([], [*(A) Today*], [*(B) The excepted patch*], [*(C) The finals design*]),
-  [What an observation ends and tests], [Every borrow of the whole state, each end tested (D98, typed [Repack]); [Repack] at every compared owner, in any frame.], [Every borrow; the tests only at borrows held in $O$ or with a sealed fill among their sites, and at owners in $O$.], [Every borrow of the detached state $Omega^O$ ($O$ and one cell per borrow lent from below), each tested; nothing below $O$ exists in it.],
-  [What it compares], [The result, the owners (anywhere) of the places written or passed on, [Obs-ref]'s components.], [The same.], [The result, $O$'s places, each borrow lent from below by its final, [Obs-ref]'s components.],
-  [Verdicts that differ from (A)], [—], [`S1Z`, `S2Z`, `S3Z`, `S5Z` accepted; `S4Z` still rejected.], [All five accepted. `Lift` rejected (needs `LiftR`'s `rewrite`); `Id`s over a borrow a call returned from a consumed parameter computed one context further in (`OwnR`).],
-  [What consistency needs for `Id`], [Resolved determination at every call point, with F4's hypotheses (ancestors whole, no proof owner, item 11 for the function under check), (X5), N1's R, site faithfulness; OBS and OI; (M3) restricted; C2 open for a deferred type read late (T4).], [All of (A)'s, and more where the patch accepts: resolved determination through ancestors that hold moved-out or open contents (injective through a plain loan or a mark, F4), N3 for `⊥` and open values at caller owners, values a side itself opened included (F5); and the link "the checker's test at a fill-site borrow gives resolved determination's hypothesis at the call point".], [No resolved determination at call points, no OBS, no OI over caller labels, no restriction of (M3) (every end in $Omega^O$ is the side's, so (M3)'s first form, every end strict, is right: T1 refuted it only because the caller's labels were in the state), C2 for `Id` by construction, deferred types included. New: the detach lemma DL (FR-related states detach to states equal up to the renaming). Kept: R and (X5) within one frame, for N8's `Id` row (finding 2).],
-  [The frame property's `Id` clause], [OBS, with (H11) resolved determination; Lean's `RunFrameI` excludes `Id` when there are parameter labels, and `run_frame_obs` is false as stated.], [The same, with (M3) restricted and resolved determination in F4's form.], [None of its own: by DL the two observations are of states related as C6's are (frame 0 of cells on both sides, (F4) the identity), so FR's other clauses give it; the exclusion `t.idFree = true ∨ ks = []`, `run_frame_obs`, `CellsDetermined` and `CellsAtObs` are deleted.],
-  [Change to the checker], [None.], [About twenty lines: `endBorrow`'s two tests gated by frame and fill sites; `idType`'s [Repack] on owners in $O$ only.], [About sixty to a hundred lines: `idType` builds $Omega^O$ on its private copy (one new function), computes the footprint and runs both sides from it; `owners`, `endAll`, `endBorrow` unchanged.],
-  [Change to the model], [(M2), (M3) restricted, [Obs-ref] (queued).], [The same.], [`observation` detaches first (a `detach` on reference states, mirroring the checker's), then ends every label strictly; [Obs-ref] (queued); DL.],
-  [D44 and D137], [Needed for consistency.], [Needed.], [Not needed for consistency (finding 1); kept for what `Id` means and for Rust's reading.],
-)
-
-*A refinement, (C+): every borrow by its final.* Finding 4 above stopped at a mechanism; there is a simple one, and it removes finding 2's residue. Detach every label held in $O$ alike: its sites below $O$ are dropped (with the frames below) and it gains a cell in frame 0 that reads its final; its sites in $O$ stay. For a label lent from below the cell replaces its sites below, as in (C); for an internal one it is an extra site, which in the checker is an identity fill, the sealed program $seal("loan"_ell)$ whose text is the hole (inside sealed programs a loan may occur any number of times, (X2)), and in the model a position reading $psi(ell)$, lent as a fill. Nothing accesses frame 0, so the extra site changes no run of the sides; at $ell$'s end it is filled and re-runs to $ell$'s final (D97). The footprint then compares the result, each _owned_ root at itself, and each _borrow_ root at its cell: no loan is ever followed outward, and `owners` is not used by `Id`. In a function's own check this changes `OwnRx` to `OwnR`'s form (`False`), so the two agree; elsewhere it changes only `Id`s over a borrow made in the observing frame whose loan sits under a fill, from the fill's equation to the final's.
-- _Finding 2's residue goes._ The direct arm of a match in its frame $f$ compares, for a borrow root $r$, $r$'s final; the block in its own frame compares the final of its by-`&` capture of a place under $r$, a constructor path below $r$'s final (a capture is a place: a path of fields and `*` from a root). So the two `Id`s differ by `Eq`'s injectivity on constructors only, true in the model; no backward function's injectivity is used. A consumed internal borrow is the same label in both frames (the block takes it by move), compared at its cell in each.
-- _DL needs no (I6)._ Every label of $O$ is treated alike, so the two detached states correspond through σ whatever the two sides' sites below were.
-- _N1's relation R is no longer used by the argument._ Every use of a backward function's injectivity traced in this document is resolved determination (at call points, or within a frame at the block lemma) or the clause of membership that exists only because the model's function types demand it (@sec-tw-concl). Under (C+) neither remains, so the model can read a function type returning a borrow as all functions with a backward function, injective or not, and (X5) ("holes placed injectively") drops out of N5. D44 and D137 then express a choice about `'static` borrows, not a condition of soundness.
-- _Verdicts_: the suite forms 19 `Id`s in a body over a borrow a call returned (`Equality.BadD18` and its twin among them, `ReturnedBorrows`' observations of a moved-out returned borrow); by reading, each keeps its verdict under (C+) (`BadD18`'s `e` becomes `False` in both arms instead of a conjunction over `Pick3`'s fills, still refuting its `refl` arm).
-- _What it costs beyond (C)_: one more case in `detach`; the identity fill is a sealed program made on the observation's private copy by something other than [Close], so principle 7's "one maker" must say "held in the state outside an observation's copy" (it is filled and re-run before anything compares it). Not attacked beyond the rows of @sec-obs-attack, which it passes as (C) does.
-
-*What I would choose: (C), refined to (C+).* It makes the observation a function of its own frame, so principle 6 holds for observations by construction instead of by tests at five sites, and principle 4's "one code, two runs" holds for `Id` by construction: the function's own check, a call site and a body run in place compute the same proposition from the same frame. Consistency loses its most delicate lemma at the place it was hardest (resolved determination over arbitrary caller states, with the fourth referee's three exclusions), the frame property loses its one exceptional clause, and C2's deferred-type gap closes; with (C+), resolved determination and the model's injectivity relation go altogether. The patch (B) keeps all of (A)'s obligations, adds two, and leaves one fault (`S4Z`) and a test whose only role is to keep a model that cannot read the fill from failing. The cost of (C) and (C+) is one kind of equation (finding 3), which a `rewrite` repairs and which no suite program uses.
-
-*What I am unsure of.* (1) The completeness cost is measured on one shape by a proxy, and searched for in the suite's source (no program relies on it), not measured on the suite's verdicts; whoever builds (C) should dump every row's verdict against `main`. (2) (C+)'s identity fill in the checker: I argued it keeps (X2) and (WF12) on the copy by reading, not by running. (3) The model's `detach` and the lemma DL are not written in Lean; @sec-obs-dl sketches them against `SState`'s lending sites: under (C) DL needs one invariant the relation does not carry ((I6): a closure label is lent at a cell exactly when its image is lent in a caller's frame), under (C+) it does not; under both FR's (H8) must be stated of the labels σ may reorder rather than of the cells'.
-#a-full by reading for the statement and the attack; nothing mechanised; no program of (C) or (B) run.
-
-== What the finals design would need proved <sec-obs-dl>
-
-The model's observation would detach as the checker's does, and three facts would replace OBS, OI over caller labels and resolved determination at call sites. Each is sketched here so that the Lean lane can judge the cost before the design is chosen.
-
-*The checker's change, specified (for (C+)).* In `idType`, after the type-state check and the [Obs-ref] bindings (both read on the real state, as now), and inside one private copy (`privately`):
-+ _Detach._ Let $f$ be the top frame. For each label held by a binding or a temporary of $f$, in the order of its holder's position, with $\&T$ its holder's stored type (a binding's declared type, a temporary's D104 type; a borrow is never held by a binding whose type is deferred, @sec-tw-split), make a binding $c_ell : T$ of a new frame 0 holding $"loan"_ell$ if no value of $f$ but its holder's holds a loan, fill or mark of ℓ, and the identity fill $seal("loan"_ell)$ otherwise. The environment becomes that frame 0, then $f$; every frame below $f$ is dropped. Positions of $f$ become frame 1's; `observe` takes its watched frame (`obsFrame`) from the top frame as now, and the [Obs-ref] and consumed bindings are variables, resolved in the top frame.
-+ _Footprint._ As `Obs.footprint`, but a root that holds a borrow contributes its cell's position, a root that is owned contributes itself, and a root holding `⊥` nothing, as now; `owners` is not called.
-+ _Observe._ Each side by `observe` from the detached state, each on its own copy, as now; the ends (`endAll`) and their tests (`endBorrow`: D98, typed [Repack]) unchanged, since everything they meet is the side's.
-+ _Compare._ The owners' types by `bindTy?` (a cell's is its $T$), [Repack] on every compared value and `mkEqM`, as now.
-Under (C) instead, only the labels with a site below $f$ or none get a cell, and the footprint follows a loan of an internal label to its owner in $f$, as `owners` does now. [Conv-fun]'s observation, at the generic state, is unchanged in both.
-
-*The model's detach.* For a reference state $t$ whose top frame is $O$: $K(t)$ is the labels held in $O$ none of whose sites is at a position of $O$ or that have no site at all, a site inside a borrow's content being recorded, in the model, at that borrow holder's position with a path through `*`, so that "inside a borrow held in $O$" is "at a position of $O$". $"detach"(t)$ has frame 0 holding, for each $k in K(t)$ in the order of its holder's position in $O$, a binding of stored type $T_k$ (from the holder's $\&T_k$) whose meaning reads $k$'s final ($psi |-> psi(k)$), lent there as a loan site; frame 1 is $O$; the shape, the sites, the records and the content types are those of $t$ restricted to $O$'s labels, each label of $K(t)$ keeping its sites in $O$ and gaining the cell's; the counter is $t$'s. The observation runs both sides from $"detach"(t)$ and then ends every label, each end strict.
-
-*Lemma DL (detach is related).* If $s$ and $s'$ satisfy FR's hypotheses for $s_0$, `ks` and σ, then $K(s) = sigma(K(s'))$, and $"detach"(s)$ and $"detach"(s')$ satisfy them again, at the shape of C6: two frames on each side, frame 0 of cells in the same order, (F4) the identity (each in-place cell reads its own label, which the closure's cell reads through σ), and the labels of $K$ as the cells' labels. The top frames are untouched, so (F5), (F6) and the sites in $O$ ((F8)) carry over. That $K$ corresponds through σ needs one invariant the relation does not carry: (I6) _a closure label has a site at a cell exactly when its image has one in a caller's frame_. It holds at the start ((I3): each parameter label has its cell and its caller's site; under the finals design without D44, a parameter label with no site in place is still in $K$ on both sides, since the closure's cell is below), and every operation keeps it on both sides alike: a fresh label of the body is lent only in $O$; a call's lending (`lentK`), an end's re-rooting (`relend`) and [Entry]'s lending (`entryLend`) copy the sites of a label to another, below and in $O$ alike. One hypothesis of FR is stated too narrowly for the detached pair: (H8) asks the cells' labels to lie below every other label, while $K$ may hold a fresh result label made after an internal one; what the proof of (H8)'s use needs is that the labels σ may reorder (the original parameter labels) lie below the others, which still holds. So FR's (H8) should be stated of the labels σ is not monotone on, not of the cells'. #a-full by reading; (I6) not stated in Lean.
-
-*The `Id` clause, then.* In place and in the closure the observation runs the two sides from related detached states, which is FR at C6's shape (the sides' terms are subterms, so the induction covers them); its strict ends are of the same labels through σ, in orders that differ only among the original parameter labels ((I4), `perm_fold`); and its compared positions are the footprint's, read from the sides' syntax and the top frame's holders, so they correspond, and hold constants after the ends. So the in-place proposition is the closure's. #a-red[FR, DL]
-
-*C2 for `Id`, then.* At a call site, the private frame [Call-type] pushes holds the parameters, each borrow argument taken from its holder; its detached state is the function's generic state at the arguments' values, up to the renaming of labels (the cells are the arguments' labels, in parameter order), so a type read at a call site and at $"Gen"$ are runs from related states: FR at C6's shape again, deferred types included, since a deferred type's frame binds the arguments as passed and detaching forgets where their loans are. #a-red[FR, DL]
-
-*What is not needed any more.* OBS and its hypothesis (H11); OI over caller labels; resolved determination at a call point, with the fourth referee's three exclusions and (X5) over the caller's state; (M3)'s restriction; `CellsDetermined`, `CellsAtObs`, `run_frame_obs`; `RunFrameI`'s exclusion `t.idFree = true ∨ ks = []`; N3's extension to caller owners that are open or partly moved. *What is still needed* under (C): resolved determination within one frame, for the block lemma's `Id` row (finding 2), with R and (X5) restricted to that frame. Under (C+) not even that: the block lemma's `Id` row needs `Eq`'s injectivity on constructors only, and DL needs no (I6), since `detach` treats every label of $O$ alike; N1's relation R and N5's (X5) are then used nowhere.
-
-= The fixpoint equation of a closure <sec-clo-fix>
-
-_Written by `theory5`._ The previous version of @sec-frame left one fixpoint equation unproved: that of a closure value formed by an untyped run (a body run in place, a sealed program's re-run), which a later call of the closure in place needs (C1). It proposed an invariant, CloDesc ("every closure value in a state satisfies RecDesc at its captured values"), and named three things it lacked: where the closure captures the enclosing function's own binding; (II) for the enclosing check at every assignment; and the model's "function under check" recognised by its code (docs/31 D205). Since D136 (a local function is not recursive) none of the three is needed.
-
-*Theorem CloFix.* Let $F$ be a closure value held in a state (II) reaches, formed by any run, typed or untyped, with code $kw("fix") f (overline(x) : overline(A)) : B := b$ (no `by`) and captured values $overline(kappa)$, and let $G$ be its meaning. Then (a) at member arguments $a$, $G(a)$ equals `fixBodyAt` at $a$ with own name $G$ at its true type (the fixpoint equation), and (b) $G$ is a member of $F$'s function type.
-
-(The proofs are in the order of the statement, but (a) uses (b): its whole-state test needs $G$ a member of its true type, which is (b), while (b) uses nothing of (a); so read (b) first. There is no circle; the fourth referee's F7.)
-
-_Proof of (a)._ D136 rejects `by` on every `fix` that is not a top-level definition, where its check starts, so $F$ declares none; and without `by`, $f$ is bound in nothing: not in $b$, not in $overline(A)$ or $B$ (the paper's binding rules). So $b$ does not name its own binding. A function with no decreasing parameter has rank 0, so $G(a)$ is stage 1 at $a$: the run of $b$ with its own name bound to stage 0 at the function type weakened to `Unit` everywhere. The lemma below replaces stage 0 by $G$ at the true type. #a-full
-
-*Lemma OwnIrr (a run does not read a binding its term does not name).* Two states that differ only at one binding of the top frame, which the term does not name and which holds, in each, a member of its stored type there, give strict runs of the term with the same output and final states that differ only at that binding. By induction on the run: a binding is read by a variable naming it, which the term has none of; the decisions read its declared reading, which is the same (the own name's reading is the function type's code, `.pi`, on both sides); and the whole-state test after a write at a field path reads every binding, and passes on that one on both sides, since each is a member. #a-full; the case where only the meaning differs and the binding is constant is the existence lane's locality lemma (`DataModel/Exists/FrameLocal`, `runT_qset`, #a-lean); with the stored type differing as well, as here, not mechanised.
-
-_Proof of (b)._ The strict run's point at a closure's formation is strict: it fails unless the closure formed is a member. Where $F$ is formed by the typed check, its own [Def] is a sub-derivation, and the nested induction of @sec-tw-induction gives membership (case 3). Where an untyped run forms it, that run is the run of an accepted function's body in place or of a sealed program, and (E4) for it, the success of the strict run of the same term, is supplied by the case that makes the untyped run (case 1 from FR and the enclosing function's membership; case 3 from the sealed program's meaning); the strict run's success includes its formation point, so $F$'s meaning is a member. A closure that calls the enclosing global $g$ by name (it cannot hold $g$ as a value: $g$ occurs only as the head of a call, [Rec]) calls the context's meaning of $g$, which is $G_g$ after $g$'s acceptance and the stage during $g$'s check, where every such call closes off (D135) and was tested by [Rec] (entries stay on the stack while nested functions are checked); so the closure's equation does not involve $g$, and $g$'s own fixpoint equation (@sec-frame-fix) covers its calls. #a-full
-
-_What is no longer needed._ CloDesc as an invariant of states: every closure satisfies its fixpoint equation by (a), at any captured values. (II) for the enclosing check at every assignment is still used, but only for a global's RecDesc, where @sec-frame-fix uses it. "Under check" by code (D205): no local function is under check (it has no [Rec] entry).
-
-#measured[*Closures and the enclosing function's recursion.* With the `Nat` prelude, on `main` at 662110042 (`inductive Box (A : Type) := MkBox(v : A)`):
-```
-def LocBy (n : Nat) : Nat := (fix go (y : Nat) : Nat by y := match y { Z => Z, S(p) => go(p), })(n)
-def Shadow (n : Nat) : Nat by n := (fix Shadow (y : Nat) : Nat := Shadow(y))(n)
-def H1 (n : Nat) : Nat by n := match n { Z => Z, S(m) => (let f = (λ(u : Unit) : Nat => S(H1(clone(m)))); f(())), }
-def UseH1 : Eq(Nat, H1(3), 3) := refl
-def H1Bad (n : Nat) : Nat by n := match n { Z => Z, S(m) => (let k = clone(n); let f = (λ(u : Unit) : Nat => H1Bad(clone(k))); f(())), }
-def H2 (n : Nat) : Box(Π(u : Unit). Nat) by n := match n { Z => MkBox((λ(u : Unit) : Nat => Z)), S(m) => MkBox((λ(u : Unit) : Nat => S(match H2(clone(m)) { MkBox(g) => g(()), }))), }
-def UseH2 : Eq(Nat, match H2(3) { MkBox(g) => g(()), }, 3) := refl
-def H3 (n : Nat) : Nat by n := match n { Z => Z, S(m) => (let g = H3; g(clone(m))), }
-```
-`LocBy` rejected (D136); `Shadow` rejected ("Shadow is not in scope in its own body", D31); `H1`, `UseH1` accepted and `UseH1` with `2` rejected; `H1Bad` rejected by [Rec] ("not a strict subterm"); `H2`, whose closures are formed by untyped runs and called after the call that formed them returns, and `UseH2` accepted, with `4` rejected; `H3` rejected ("[Rec] H3 occurs in its own body other than as the head of a call").]
-
-= A model of the data types exists (N1) <sec-n1>
-
-_Written by `theory7`._ The argument reads every type as a set, and a data type as a set built from its declaration. N1 says that such sets exist for every program the checker accepts, built from what the checker reads in each declaration, and that they are the right sets: the least ones, whose constructors are injective and never overlap, and whose elements are all finitely deep. A match on data, `Eq`’s injectivity and disjointness, [Rec]’s order and the meaning of a match on a proof all read those properties, and every other named theorem assumes N1. Most accepted proofs of `False` in the project's history came from this corner: a declaration that mentions itself negatively behind a type function, a parameter or its own nesting (D36, D107), a proposition with two constructors eliminated into data (D45), a sort hidden from the checker's reading (D55, D128), a variable read off the spine of a nested occurrence (D120), nesting across sorts (D121), a type named in its own parameters (D133). This section states N1 exactly (@sec-n1-stmt), lists the checks of the checker the construction uses (@sec-n1-checks), says what it takes from Lean's metatheory and where Ochr's declarations go beyond it (@sec-n1-carneiro), proves N1 on paper by the construction (@sec-n1-proof), and places the eight facts the Lean theorem assumes (@sec-n1-facts). @sec-n1-attack attacks the checks with programs aimed at each way a declaration could have no model, or the wrong one.
-
-== The statement <sec-n1-stmt>
-
-*Universes.* Fix inaccessible cardinals $kappa_0 < kappa_1 < dots$, one for each universe level the program writes and one above. A sort means a set: #univ($ty("Prop")$) $= {emptyset, {bullet}}$ and #univ($ty("Type")_i$) $= vk(i)$, as in Carneiro's model (thesis §6.2: $U_0 = {emptyset, {bullet}}$, $U_(n+1) = V_(kappa_n)$). A set in #vk(0) is _small_.
-
-*Trees.* A data value means a _tree_: the name of its declaration $ty("D")$, one of its constructors $ty("C")$, and the meanings of $ty("C")$'s fields in order, a proof field's being $bullet$. Write it $ty("D").ty("C")(v_1, dots, v_k)$. A tree records no parameter. So two trees are equal exactly when they have the same declaration, the same constructor and equal fields. This is the plan's "a data value means a tree", without the record, which the Lean model keeps only because Lean cannot quantify over sets (@sec-n1-facts).
-
-*Which programs.* A program is a list of items (inductive declarations and definitions), the library's first, checked in order by `checkItem`; it is _accepted_ when every item is, and _hole-free_ when it has no hole. $Sigma_k$ is the signature after its first $k$ items. In Lean the statement is at every fuel and, under `consistencyBounded` (docs/31, D2), for programs that write no sort above `Type₁`; on paper there is no bound.
-
-*The loose and the typed domain.* Let $ty("D")(x_1 : X_1, dots, x_l : X_l)$ be a declaration. A type parameter is written at a sort (D128) and ranges over that sort's meaning, a fixed set. A value parameter's type has a declared sort $s_j$, read from syntax (D55), and the parameter ranges over #univ($s_j$) itself, which holds every member of every type of that sort (each #univ($s$) is transitive, the proof object $bullet$ being $emptyset$ as in the thesis). The _loose domain_ of $ty("D")$ is the product of these ranges, every tuple of meanings the parameters could hold. The _typed domain_ #pardom($ty("D")$) is the subset of tuples $overline(a)$ in which each $a_j$ is a member of the meaning of $X_j$ at $a_1, dots, a_(j-1)$, that meaning being the strict reference run of the term $X_j$ in the frame binding the earlier parameters ($refrun(dot)$, the plan's).
-
-*Field types.* For a constructor $ty("C")_(i) (g_1 : B_1, dots, g_k : B_k)$ of $ty("D")$, a tuple $overline(a)$ and meanings $v_1, dots, v_(j-1)$ of the earlier fields, $deno(B_j)(overline(a), v_1 dots v_(j-1))$ is the reference run of the term $B_j$ in the frame that binds the parameters to $overline(a)$, the earlier fields to $v_1, dots, v_(j-1)$ and the later ones to nothing (as the checker's `fieldTele` binds them), reading every declaration through the data model, $ty("D")$ itself included, and reading an applied declaration $ty("M")(overline(t))$ _loosely_: as #fam($ty("M")$) at its arguments' meanings, without testing them against $ty("M")$'s parameter types, where the strict run tests each. Where the run fails otherwise, the field type means $emptyset$. Wherever the strict run of a field type is defined, it means the same, since its clause for an applied declaration returns the family at its arguments once they pass their tests; this is the faithfulness the simulation reads, and the Lean model's (`FieldsFaithful`: "wherever the reference run of a declared field type is defined, it means the model's").
-
-*Definition (a data model).* A data model of a signature Σ gives each inductive declaration $ty("D")$ of Σ a family #fam($ty("D")$) on its loose domain, with values sets of trees of $ty("D")$ if $ty("D")$ is declared in `Type₀`, and truth values if it is declared in `Prop`, such that:
-- (DM1, faithful fields) at every $overline(a)$ of the loose domain, for a data-sorted $ty("D")$, $fam(ty("D")) (overline(a)) = {ty("D").ty("C")_(i) (v_1, dots, v_k) mid(|) v_j in deno(B_(i j))(overline(a), v_1 dots v_(j-1)) "for each" j}$, and for a `Prop`-sorted one, $fam(ty("D")) (overline(a)) = {bullet}$ exactly when that set is not empty;
-- (DM2, faithful parameters) #pardom($ty("D")$) is computed by the reference runs of the parameter-type terms, as the checker evaluates them;
-- (DM3, least) #fam($ty("D")$) is the least family satisfying DM1 among the families monotone in $ty("D")$'s nestable parameters (sets ordered by inclusion, truth values by $emptyset subset.eq {bullet}$); for a data-sorted declaration it is the union of its stages, $union.big_(n < omega) stageop(ty("D"))^n (emptyset)$ (@sec-n1-proof);
-- (DM4, monotone) #fam($ty("D")$) is monotone in each nestable parameter, and, for data, preserves unions of increasing chains in it;
-- (DM5, small) at every tuple of the loose domain and earlier fields in their field types, every field type means a small set or a truth value; so every value of a data-sorted family is small.
-
-*Theorem N1.* For every accepted, hole-free program there is a data model of its declarations. It is built declaration by declaration: the families of $Sigma_k$'s declarations are determined by $Sigma_k$, and they remain a data model of every later $Sigma_(k')$ (_stability_). Consequently:
-+ every element of $fam(ty("D")) (overline(a))$ is exactly one constructor applied to members of its fields' types, constructors are injective, two constructors have disjoint images, and trees of two declarations differ: what [Eq-inj] and [Eq-disj] read, and what makes a match on data take exactly one arm;
-+ every element of a data type is a tree of finite depth, its leaves the values of fields of other kinds (numbers, functions stored under a type parameter, proofs), and a strict subterm through any field (through a nested declaration's tree, or a value stored under a type parameter) has smaller rank: the order [Rec] reads;
-+ a `Prop`-sorted declaration means $emptyset$ or ${bullet}$, its least truth; a match on a proof of a subsingleton has at most one arm, whose fields are all $bullet$, so what it produces is determined by the proposition alone;
-+ with the other type formers read as in the plan (a Π-type as the dependent product, cut to the functions with injective backward functions when it returns a borrow, the plan's relation $R$; a Π-type into proofs as a truth value; `Eq` and `Id` as truth values; $\&T$ as $T$), every type value an accepted program forms means a set in the universe of its declared sort, and `False` means $emptyset$.
-
-*What N1 identifies that the checker does not.* Trees record no parameter, so two applications $ty("D")(overline(a))$ and $ty("D")(overline(a'))$ whose field types mean the same are the same set: with `inductive Ph (A : Type) := MkPh`, $deno(ty("Ph")(ty("Nat"))) = deno(ty("Ph")(ty("Bool"))) = {ty("Ph").ty("MkPh")}$, and with `inductive Big (U : Type₁) := MkBig`, `Big(Type)` and `Big(Prop)` mean one set. Carneiro's model identifies them too (an element $iota_1(x)$ of $alpha + beta$ does not record $alpha$ or $beta$). The model is then wrong only if the checker refutes such an equation, and it does not: [Eq-disj] fires on two constructor values of different constructors, or on `⊥` against a value, and a type value is neither (a type is a copy, so a place that holds one is never moved). `R1` to `R4` of @sec-n1-attack try, and are rejected, each equation stuck. Conversely, [Conv-cong]’s rule that a constructor value's recorded parameters are ignored is an identity in this model. The Lean model keeps a record of the parameters (a type parameter's code, a value parameter read small, of a parameter above `Type₀` only what the field types compute from it), so it identifies fewer types, `Big(Type)` and `Big(Prop)` among them, and needs the same fact, which it calls "the standing assumption" (@sec-n1-facts).
-
-*What N1 does not say.* Nothing about runs: that a value the checker builds is a member of its type, or that a field type the checker computes at an instance is defined, is (I) and (II). N1 says only that the sets exist, are faithful to the runs of the declaration's own terms wherever those are defined, and have the properties above.
-
-== The checks the construction uses <sec-n1-checks>
-
-Each check is made by `checkInd` (`Check.lean`), on the declaration's syntax and the declarations before it, before the declaration is stored, unless the row says otherwise. The steps are those of @sec-n1-proof; the last column is what goes wrong without the check, with the program that showed it (the paper's appendix, `Inductives.lean`, or @sec-n1-attack).
-
-#figure(table(columns: (27%, 13%, 30%, 30%), align: left,
-  table.header([*Check (decision, function)*], [*Step*], [*What the step needs of it*], [*Without it*]),
-  [Fresh names; constructors distinct and not reused (\[Ind-decl\], `declared`)], [S0], [A tree's name and constructor identify its declaration and its arm.], [An arm resolved by name could name two constructors; disjointness would compare trees of two types.],
-  [Sort `Prop` or `Type₀` (`d.sort > 1`, and resolution before it)], [S4, S6], [The family’s values are small sets or truth values.], [`inductive Big1 : Type₁ := MkBig1(x : Type)` is rejected by resolution; a data type in `Type₁` would need trees over #vk(1), which no rule of the checker reads.],
-  [Fields form a telescope (D64, `fieldRefs`)], [S2], [The fields are a dependent sum read left to right.], [A field whose type reads itself has no such sum (`LateEq`, rejected).],
-  [First-order fields (D36, K4, D71, `firstOrderTerm`): `Nat`, `Unit`, a parameter, an applied declaration with first-order type arguments, a call of an earlier global whose stored codomain is a written sort (arguments: parameters, fields, numerals, first-order types), an equation over first-order data; no `Π`, `&`, sort, match or `let`; and no call that computes to a `Π`, a sort or a borrow at the generic telescope], [S2, S3], [The grammar the stage operator recurses on; no field is a function out of the type.], [`Bad := MkBad(f : Π(x : Bad). False)`: a closed proof of `False` by typing alone (paper, note 4); `B1`, `B8`.],
-  [The declared type only on the spine: not in a call's argument, an equation, or an argument at a value parameter (`firstOrderArgs`, `firstOrderCallArgs`)], [S3], [Off the spine, nothing depends on the family being defined.], [`B1`, `B2`: the type behind a type function, at an instance only.],
-  [Nesting only at nestable parameters, the greatest set, own occurrences included (K4, D107, `nestableSet`, `nestViolation`)], [S3, S5], [An earlier family is monotone and union-preserving in the parameter the type is nested at (DM4).], [`PositivitySelf.Q`: `Q(Unit, 0)` is `Q(Unit, 0) → False`, Curry's paradox; `B3`, `B4`, `B14`.],
-  [A variable mentions what its declared type mentions (D120, `deepVars`, `readViolation`), so a parameter read off the spine is not nestable], [S3], [Off-spine nodes read no value of the type, and no nestable parameter: they are steady.], [`D2Node(x : D2, p : Pt(D2, x))`: the knot's record equals its own flip (`KnotCE`); `DA2`.],
-  [One sort per knot (D121, `sortNestViolation`, `passOther`)], [S3, S6], [The data construction and the truth construction never apply each other to a varying argument.], [`D := MkD(q : Q(PP(D)))`: a data type whose truth no depth bound fixes (`PropNestCE`); `B11`, `B12`.],
-  [The type's constructors unreadable while it is declared (D107, the `declaring` entry)], [S3], [An off-spine node cannot build or inspect a tree of the type.], [`PositivityDeclaring.E`: a field type ill-typed once the type has constructors; `DG`, `B5`.],
-  [Field types in `Prop` or `Type₀` at the generic telescope (`sortOf`), sorts syntactic (D55), a type parameter written as a sort (D128)], [S4], [Every field type means a small set or a truth value (DM5).], [`TL (A : Type) (B : (let z = A; Type)) := MkTL(x : B)`, accepted before D128: a field type reading a value parameter that varies; `U1` to `U10`, `T1` to `T5`.],
-  [Names declared and earlier (D118, `undeclaredCheck`); the declaration's own name only in its fields (D133)], [S1], [The recursion on the declaration list reads only earlier families and globals.], [`Q3 (A : Type) (n : Nat) (x : Q3(A, n, n))` ran the checker out of memory (D133).],
-  [No borrow in a parameter or field type (D71, D48, `typeHasRef`)], [S0], [A tree holds no borrow; a parameter is recorded in a type.], [`RefP(&x)`, `Bad9`: a borrow inside a type and inside data.],
-  [A constructor's parameter inferred only where the model can read it back (D105, `inferablePos`), and a bare constructor at a value argument given no hint (the reference's D172)], [S7], [The run's constructor clause agrees with the family.], [`MkW(t)` with `t : Tag(3)` typed `Wrap(3)`; `DL` (@sec-n1-attack, H).],
-  [_Elsewhere:_ subsingleton elimination, in every position, types and value arguments included (D45, `largeElim`, `fieldTermIsProp`, `Machine.evalMatchByType`)], [(3)], [A match on a proof produces data only where the proposition determines it.], [`IsL` (paper, note 10); `C1` of @sec-n1-attack.],
-  [_Elsewhere:_ recursion only on a `Type₀` inductive ([Rec])], [(2)], [Recursion descends along the rank of trees.], [`qe` (@sec-n1-attack, I): no recursion on a proof.],
-  [_Elsewhere:_ borrows only of `Type₀` (D66); a borrow result needs a borrow parameter (D44)], [(4)], [`Type₀` stays predicative; $R$ holds of every accepted function.], [`Impred` (Hurkens' paradox; paper, note 11); `QF` (paper, note 7).],
-), caption: [The checks of a declaration, and the step of the construction each one serves.]) <fig-n1-checks>
-
-== What Lean's metatheory gives, and where Ochr goes beyond it <sec-n1-carneiro>
-
-Carneiro's thesis (`docs/papers/theory-of-lean.pdf`) defines Lean's inductive specifications (§2.6.1): a family $mu t : forall x :: alpha. U_ell$ with uniform parameters and indices, whose constructors take non-recursive arguments of any type (the types of later arguments may use them) and recursive arguments $forall z :: gamma. t thin e$, functions into the family. It has no nesting and no mutual declarations (§2.8, item 5, says Coq has them and that they are encodable). §5 reduces every specification to eight type formers ($bot$, Σ, +, a universe lift, propositional truncation, W, =, acc), and §5.4 leaves the constructors, the recursors and their computation rules of that reduction as future work. §6.2 interprets the eight in ZFC with one inaccessible per level, $forall$ into `Prop` as a truth value, and W-types as the intersection of all sets closed under `sup` (§6.2.1), inside $V_lambda$ when the cofinality of λ exceeds the branching.
-
-*What the construction takes from it.* The universes and the two-element `Prop` (§6.2); the reading of a Π into `Prop` as a truth value, so `Prop` is impredicative (§6.2, the clause for ∀); that $V_lambda$ is closed under products for λ inaccessible (§6.2, Remark 1); the least-set construction of §6.2.1 in its finitary case only, where $omega$ stages suffice; and subsingleton elimination (§2.6.2), in a stricter form, since Ochr has no indices and so no data field "appears in the output type". It does _not_ use §5’s reduction: each Ochr declaration is built directly as a least fixed point on families, as in Werner's set model of inductive types and Dybjer's indexed inductive definitions, so §5.4’s gap is not inherited.
-
-*Where Ochr's declarations go beyond it.*
-- _Nesting_, at a nestable parameter of an earlier declaration and at the declaration's own parameter, with a type argument that changes along the recursion (`DD(A) := DLeaf | DNode(x : DD(DD(A)))`, accepted). The thesis has no nesting; Lean 4’s kernel translates nesting into mutual declarations and requires uniform parameters, so `DD` has no Lean counterpart. The construction needs every earlier family monotone and union-preserving in its nestable parameters (DM4), which the nesting rule makes true.
-- _Recursive occurrences at other values of the value parameters_, with families indexed by values Forded through equation fields over the observational `Eq` (`Vec(A, m)` inside `Vec(A, n)`), where the thesis has indices. The construction is one fixed point over the whole loose domain at once.
-- _Field types computed by running code_: a call of an earlier type function, an equation whose sides run, an argument at a value parameter that runs, with local borrows and writes (`AV` in @sec-n1-attack). Their meaning is the reference run's, which the thesis's typed terms have no counterpart for; the construction needs each such run to be _steady_, independent of the family being defined, which D36, D71, D107 and D120 make true (S3).
-- _Dependent fields read by later fields_. The thesis's non-recursive arguments cover them. Ochr adds one restriction the construction uses: a field read off the spine of a later field's type has a type mentioning neither the declared type nor a nestable parameter (D120).
-- _Propositions with data fields_ (`Ex := Wit(n : Nat, e : Eq(Nat, n, n))`), which the thesis has (∃), and _propositions nested at their own `Prop` parameter_ (`N2 (P : Prop) (n : Nat) : Prop := MkN2(z : N2(N2(P, n), 1), …) | StopN2(a : P)`), which it does not; these are built truth first (S6).
-- _The erased and the proof classes_: a proof field means $bullet$, a value of a `Prop`-sorted declaration is ⋆; parameters may be in any universe, data only in `Type₀`, `Prop` beside `Type₀` in `Type₁` (D66), and universes are not cumulative.
-- _Borrows_: none in a declaration (D71); borrows only of `Type₀` (D66), which keeps `Type₀` predicative.
-
-*What the thesis has and Ochr does not.* W-types (a field that is a function into the type: `WT := WLeaf | WNode(f : Π(n : Nat). WT)`, rejected), so every Ochr fixed point is reached after $omega$ stages; `Prop`-sorted declarations with fields in a higher universe (`U8`, rejected); indices.
-
-== The construction <sec-n1-proof>
-
-The proof builds the families by recursion on the program's declarations (S1), and, for one declaration, by recursion on the grammar of its field types (S2) and a least fixed point (S5 for data, S6 for propositions). Each step is marked: #a-full; #a-lean (with the name); or #a-np. Steps that use one of the eight facts of the Lean theorem name it; @sec-n1-facts says of each whether it is true and why.
-
-*S0. Universes and trees.* Trees are well founded: the fields of a tree are sets of lower rank than the tree (they are its components). Each universe #univ($s$) is closed under finite tuples, subsets, dependent sums and, for $s$ not `Prop`, products indexed by its own sets (thesis §6.2, Remark 1). #a-full
-
-*S1. The order of the declarations.* By recursion on $k$, the data model $dmodel(k)$ of $Sigma_k$ and the meanings $G^k$ of its definitions (the plan's program meaning: a definition's meaning is its body's reference run, a recursive one by stages on the rank of its decreasing argument). $G^k$ is not part of N1, but later field types call it. When item $k$ is a declaration $ty("D")$:
-- the entry the checker stored is the declaration it checked, so every check of @fig-n1-checks passed on $ty("D")$'s syntax and on $Sigma_(k-1)$ (fact `ItemFacts`);
-- $ty("D")$'s parameter and field types name only declarations and definitions of $Sigma_(k-1)$, and $ty("D")$ itself in its fields (D118, D133; fact `NamesFact`);
-- they are source terms, with no embedded value (fact `NoValFact`), so what they name is what their syntax names.
-So the runs of $ty("D")$'s parameter types read only $dmodel(k-1)$ and $G^(k-1)$, and the runs of its field types read those and $ty("D")$'s family. That a term's run under two models and two tables of globals that agree at the names it mentions is the same is #a-lean (`Knot.runT_congrN`, `meanV_congrN`, no assumed fact). The parameters' typed domain #pardom($ty("D")$) is then defined by their runs (DM2). #a-full
-
-*S2. The grammar of field types, and the stage operator.* By the checks, every field type $B$ of $ty("D")$ is in the grammar
-$ B ::= ty("Nat") | ty("Unit") | x_j | ty("M")(overline(t)) | ty("D")(overline(t)) | F(overline(u)) | ty("Eq")(T, a, b) $
-where $x_j$ is a parameter written at `Prop` or `Type`, $ty("M")$ an earlier declaration, $F$ an earlier global whose stored codomain is a written sort, and $ty("Eq")$'s type $T$ first-order data; the _spine_ of $B$ is $B$ itself and, inside $ty("M")(overline(t))$ or $ty("D")(overline(t))$, the arguments at type parameters, recursively; every other node (a call, an equation, an argument at a value parameter, a call's arguments) is _off the spine_. The spine holds no variable but parameters. $ty("D")$ and $ty("D")$'s nestable parameters occur only on the spine, and there only as a whole field type or inside an argument at a nestable parameter of the declaration applied (the declared type's own occurrences included, at the greatest set). For a family $X$ on the loose domain, let #ftm($B$, $X$) be $deno(B)$ with $ty("D")$ read through $X$ (the model $dmodel(k-1)$ extended by $ty("D") |-> X$), and for a data-sorted $ty("D")$
-$ stageop(ty("D")) (X)(overline(a)) = {ty("D").ty("C")_(i) (v_1, dots, v_k) mid(|) v_j in ftm(B_(i j), X) (overline(a), v_1 dots v_(j-1)) "for each" j}. $
-That an accepted declaration is in the grammar is read here off `checkInd`, each condition a check of @fig-n1-checks made before the store, and is #a-lean from the stored entry's checks (`Knot.grammar_of_checks`, from `IndChecks`; the bridge from `checkInd`’s run to `IndChecks`, `CheckIndGivesChecks`, has its pieces proved and its assembly open).
-
-*S3. Off the spine nothing varies; on it everything is monotone.* _Lemma S3a (steady nodes)._ An off-spine node of a field type of $ty("D")$, and every argument at a non-nestable type parameter, has the same meaning under every family $X$ and at every value of $ty("D")$'s nestable parameters. _Proof._ Such a node names no $ty("D")$ (`firstOrderArgs`, `firstOrderCallArgs`, D71) and no constructor of $ty("D")$ (D107); it reads no variable whose declared type mentions $ty("D")$ (D120); and it reads no nestable parameter, directly or through a variable's declared type, since a parameter so read is removed from the nestable set (`Term.nestOk` with `deepVars`, D120), and a parameter passed to a declaration of the other sort likewise (D121). A value parameter whose own type reads a nestable parameter is read by no field type (fact `VaryValFact`: such a parameter on the spine would be a type, which D55 and D128 make a type parameter; off the spine its read puts the nestable parameter in the node's `deepVars`). By S1’s congruence the node runs alike under every $X$; and the run of a term reads its frame only at the variables the term mentions, provided the places its decisions name are rooted there (fact `DecLocal`; frame locality is #a-lean, `FrameLocal.runT_qset`, assuming it), so it reads none of the fields and parameters that vary. #a-full
-
-_Lemma S3b (monotone, union-preserving)._ #stageop($ty("D")$) maps families that are monotone and preserve unions of increasing chains, in their nestable parameters and in themselves, to such families; it is monotone in $X$ on them, and preserves unions of increasing chains of them. _Proof._ By induction on the spine. A steady node is constant (S3a). A parameter on the spine is the identity in it. $ty("M")(overline(t))$, $ty("M")$ earlier: at $ty("M")$'s nestable parameters the arguments are spine nodes, monotone by induction, and $fam(ty("M"))$ is monotone and union-preserving there (DM4 for $ty("M")$, by S1’s recursion); at its other parameters the arguments are steady, and since the applied declaration is read loosely no test of an argument against a parameter type that varies with $X$ enters (the site D120 recorded as (B2)). $ty("D")(overline(t))$: the same with $X$, whose own monotonicity at its nestable arguments covers an argument that is itself a spine node mentioning $ty("D")$ (`DD(DD(A))` reads $X(X(A))$: if $X subset.eq Y$ then $X(X(A)) subset.eq Y(X(A)) subset.eq Y(Y(A))$, the second by $Y$'s monotonicity). Equations and calls are steady. The fields form a dependent sum, but a field that a later field's type reads is read off the spine (the spine holds only parameters), so its type mentions neither $ty("D")$ nor a nestable parameter (D120): the sets it ranges over are steady, and a later field type depends on its value only through steady nodes. Tagged unions and such dependent sums are monotone and preserve unions of chains; a tree has finitely many fields, each one value, so a tree of $stageop(ty("D")) (union.big_n X_n)$ lies in some $stageop(ty("D")) (X_n)$. #a-full
-
-*S4. Small.* _Lemma._ At every tuple of the loose domain, with earlier fields in their field types and a family $X$ whose values are small, every field type of a data-sorted or `Prop`-sorted $ty("D")$ means a small set or a truth value. _Proof._ `Nat` and `Unit` mean $NN$ and ${()}$. A parameter heading a field type is written at `Prop` or `Type` (D55, D128 and the level check; fact `FieldHeads`), so it holds a truth value or a small set. $ty("M")(overline(t))$ means a value of $fam(ty("M"))$, small or a truth value by S1’s recursion; $ty("D")(overline(t))$ a value of $X$. An equation means a truth value. A call $F(overline(u))$: $F$'s stored codomain is a written `Prop` or `Type` (`firstOrderTerm` and the level check, fact `FieldHeads`), and $F$'s meaning, as every function's in the model, is a typed function: at arguments in its domains it gives the body's reference result when that is a member of the codomain's meaning there, and the error value otherwise, as at arguments outside its domains (in Lean, the encoding at the codomain's code, `callOfL_enc`; fact `GlobalCallLevels`); a field type whose run gives the error value means $emptyset$; the codomain `Type` means $vk(0)$ and `Prop` means ${emptyset, {bullet}}$ whatever universe the domain is in, so the call gives a small set or a truth value (or the field means $emptyset$). Each stage $stageop(ty("D"))^n (emptyset)(overline(a))$ is then a set of finite tuples over small sets, small by S0, and their union over $omega$ is small, $kappa_0$ being regular and uncountable. #a-full
-
-*S5. A data-sorted declaration.* $fam(ty("D")) = union.big_(n < omega) stageop(ty("D"))^n (emptyset)$ on the loose domain. By S3b the stages increase, and the union is a fixed point: $stageop(ty("D")) (union.big_n stageop(ty("D"))^n (emptyset)) = union.big_n stageop(ty("D"))^(n+1) (emptyset)$. It is the least fixed point among monotone families (each stage lies below any such fixed point, by induction on $n$ with S3b's monotonicity), it is monotone and union-preserving in the nestable parameters (a union of an increasing chain of such families is one), and its values are small (S4). This is DM1 for data, DM3, DM4 and DM5. #a-full. In Lean the same family is built on records, as a knot guarded by path length (`Knot.knot_exists`, witness `knotK`, #a-lean assuming the grammar, the earlier records' parametricity, local parameter types, `DecLocal` and label-free globals, each discharged in the assembly but `DecLocal`).
-
-*S6. A `Prop`-sorted declaration, truth first.* On the predicates on the loose domain that are monotone in $ty("D")$'s nestable `Prop` parameters (a complete lattice: pointwise meets and joins of monotone predicates are monotone), let $Psi_(ty("D"))(T)(overline(a)) = {bullet}$ exactly when some constructor has field meanings $v_j in ftm(B_(i j), T) (overline(a), v_1 dots v_(j-1))$, $ty("D")$'s occurrences read as $T$ and a proof field contributing $bullet$ when its proposition holds. The data fields of a `Prop`-sorted declaration mention neither $ty("D")$ nor its nestable parameters (D121: a nested occurrence passes only through declarations of its own sort, and a parameter passed to the other sort is not nestable), so they are steady; its proof fields are on the spine ($ty("D")$, a `Prop`-sorted $ty("M")$ at nestable parameters, a parameter) or steady (an equation, a call into `Prop`). So $Psi_(ty("D"))$ is monotone, by S3’s induction with the earlier `Prop`-sorted families monotone in their nestable `Prop` parameters (DM4, by S1’s recursion), and by Knaster and Tarski it has a least fixed point, #fam($ty("D")$). The existential ranges over small sets and truth values and its result is a truth value, whatever their size: this is impredicativity, as in the thesis's ∀. A declaration nested at its own `Prop` parameter (`N2(N2(P, n), 1)`) reads $T(T(P), 1)$, monotone because $T$ is. #a-full. In Lean: `Knot.truth_exists`, #a-lean assuming the grammar, the earlier `Prop`-sorted records monotone, local parameter types, `DecLocal` and label-free globals. (`Q : Prop := MkQ(h : And(Q, True))` is accepted; its least truth is $emptyset$, and no proof of `Q` can be written, @sec-n1-attack, I.)
-
-*S7. Faithful.* At the fixed point, #ftm($B$, $fam(ty("D"))$) is by definition the loose reference run of $B$ under the data model that has $fam(ty("D"))$, so DM1 holds as stated, and wherever the strict run of a field type is defined at a typed tuple, it means the model's field type: the strict run's clause for an applied type, $ty("M")(overline(t))$, returns $fam(ty("M"))$ at its arguments' meanings once each argument has passed its membership test, which is the loose clause; its clause for a constructor solves an omitted parameter from the fields' types only where the model's family can be read back (D105), and gives a bare constructor at a value argument no hint (D172 of the reference, as the checker), so a value argument is a meaning fixed by its own term. #a-full; in Lean along the spine and at the steady nodes, #a-lean (`Knot.knotK_agree`, `Steady.steadyAt_knotK`, `TruthAgree.semP_run`), and for parameter types (`Params.pty_faithful`).
-
-*S8. Stable.* The families of $Sigma_k$ remain a data model of every later $Sigma_(k')$. The run of $ty("D")$'s field and parameter types at a later state reads the same families (S1’s congruence: $dmodel(k')$ agrees with $dmodel(k)$ at the names they mention) and takes the same decisions: a decision on a field-type term reads its syntax and the stored entries of the names it mentions, which do not change once accepted (one namespace, Σ only grows; fact `DecStable`). #a-full, given the fact; in Lean `DeclStep.field_transfer`, `param_transfer`, #a-lean assuming `DecStable`.
-
-*S9. The consequences.* (1) From DM1, and from trees carrying their declaration and constructor: a tree of $fam(ty("D")) (overline(a))$ has one constructor; equal trees have equal fields; different constructors give different trees. (2) Every element lies in a finite stage, so it is a tree of finite depth; a strict subterm through any field is a component of a component, of lower rank (S0), through a nested declaration's tree or a value under a type parameter alike. (3) A `Prop`-sorted family's values are truth values; a match on a proof producing data needs a subsingleton (D45), with no constructor (no arm) or one whose fields are all proofs, so its arm's field values are $bullet$ and its meaning is a function of the truth alone. (4) The other type formers: a Π-type means the dependent product of its codomain's meanings over its domains' (cut to $R$ for a borrow result, by recursion on the type with the injectivity relation of the plan), in the universe of its larger sort by Remark 1; into `Prop`, a truth value; `Eq`, `Id`: truth values; $\&T$: $T$'s meaning, with $T$ in `Type₀` (D66), so `Type₀` stays closed (a borrow of `Type₀` would put a product over all of #vk(0) back into #vk(0)). That this definition is well founded (types are evaluated by code) is the plan's ("Making the definition well founded", tested on a slice); it is not re-argued here. #a-full for (1) to (3); #a-claim for (4).
-
-== The eight facts of the Lean theorem, placed <sec-n1-facts>
-
-`Assembly.exists_dataModel` (on `spine`, `ochr/core/lean/Ochr/Meaning/DataModel/Exists/Assembly.lean`, the bundle `DataFacts`) proves, for every list of items and every fuel, that a data model covering every declaration and faithful at every stage exists, on the standard axioms with nothing unproved beneath it, from eight facts. Each is placed below at the step of @sec-n1-proof that uses it, with whether it is true and why. "Read" means read here against `main`’s checker at 8153a6665; "measured" points to @sec-n1-attack.
-
-#figure(table(columns: (16%, 7%, 50%, 27%), align: left,
-  table.header([*Fact*], [*Step*], [*True? Why*], [*Status*]),
-  [The checker stores what it checked (`ItemFacts`)], [S1, S2], [True. `checkInd` appends the entry `{ d with ctors := [], nestable := [], declaring := true }` before the fields are checked and, as its last act, replaces it by `{ d with nestable := ownSet }`; every check of @fig-n1-checks is an `err` before that line, so an accepted declaration's entry is the declaration as written, its nestable set the one computed. `checkDef` leaves the declarations and appends one global, and a rejected item leaves Σ as it was (the verdict boundary in `checkDefs`). In Lean the first part is `Steps.Machine.checkItem_tables`, the second `CheckIndGivesChecks`.], [Read true. Lean: all but `IndChecks` #a-lean; `IndChecks` has its pieces proved and its assembly open; 300 of 300 stored declarations pass by sweep.],
-  [Field and parameter types hold no embedded value (`NoValFact`)], [S1], [True of every program the surface produces: neither `Surface.lean` nor `Notation.lean` builds a `Term.val` (no occurrence of the constructor), so resolution's terms are source terms. It is a fact about resolution, not the checker, which accepts a core declaration holding one (`FactsCE.EV`).], [Read true; not derived in Lean.],
-  [No field type reads a varying value parameter (`VaryValFact`)], [S3], [True since D128. A value parameter _varies_ when its declared type reads a nestable parameter. On the spine a parameter is a field type only if its declared type is syntactically a sort (D55); since D128 such a parameter must be written at a sort, so it is a type parameter. Off the spine, a node that reads it reads, through `deepVars`, the nestable parameter its type mentions, which `nestableSet` then removes: contradiction. Measured: `T1`, `T4` rejected by D128, `T2`, `T3`, `T5` by D55, `T6`, `T7` accepted with the parameter unread.], [Read true (machine10 and here); not derived in Lean.],
-  [The names an accepted item mentions are earlier (`NamesFact`)], [S1], [True: `undeclaredCheck` runs on every parameter, field, result type and body before anything is evaluated, accepting a declaration's own name only in its fields (D118, D133).], [Read true; not derived in Lean.],
-  [Field-type heads are at a sort no higher than `Type` (`FieldHeads`)], [S4], [True since D128. A parameter heading a field type has a declared type syntactically a sort (D55), written so (D128), and the level check rejects one written at `Type₁` (`U3`). A call heads one only if its global's stored codomain is a written sort (`firstOrderTerm`), and the level check rejects `Type₁` and above, whether the call runs (`U4`, `U7`) or is stuck, when `sortOf` reads its head's codomain (`U6`); universes are not cumulative, so the value has the codomain's sort.], [Read true; not derived in Lean.],
-  [A global with codomain `Prop` or `Type` calls to small type values (`GlobalCallLevels`): the hard case, a domain in `Type₁`], [S4], [_True; proved here._ A function's meaning is a member of its type's meaning (or the error value): the dependent product of its codomain's meanings, so every call gives a member of the codomain's meaning at its arguments, and a written `Type` means #vk(0) at every argument, whatever universe the domain lies in. Nothing in the set model depends on the domain's universe. _In Lean_ universes are codes stratified by carrier level, and a Π-type with a domain in `Type₁` is a level-2 code whose codomain `Type` is the level-1 universe code lifted: `TyM.code2 (univ 1) = ⟨_, .lift _ .univ1⟩`, and by definition `Code2.enc (.lift _ c) a = c.enc a.down` and `Code1.enc .univ1 p = .ty (.t0 …)`, a level-0 type value (likewise `univ0` for `Prop`). So a proof needs three steps, none hard, the ones the existence lane’s handoff plans (`Exists/HANDOFF.md` on `spine`, item 1): (i) the stage invariant that a global's type in the stage is `err` or its stored type's meaning (`globalTyS`); (ii) `runT` at a written Π-type with a sort codomain gives a telescope whose codomain is the constant `univ l`; (iii) `callOfL_enc` at level 2, as `callsLevel0_of_not_t2` uses it at levels 0 and 1, then the two equations above. No extra check is needed; no counterexample exists. Measured: `WT`, `WM`, `WI`, `WB`, `WP`, `WF` (a constant, a match, the identity on the `Type₀` argument, a result through `Big(A)`, into `Prop`, a domain in `Type₂`), all accepted, each meaning a family into #vk(0) or into truth values.], [#a-full on paper; #a-np in Lean.],
-  [Decisions name places rooted at the term's free variables (`DecLocal`)], [S3], [True since D129: the places a run's decisions name (the join's moves, a block's captures, re-pointed borrows, invalidated fields) are read from the term's syntax and declared types, rooted at its free variables or at places already moved at a match's entry. Only matches, `J` and `Id` take such decisions, and in a field type they occur only off the spine.], [Read true (machine10: captures, re-pointing, invalidation; the join after D129); frame locality #a-lean assuming it.],
-  [A field type runs the same at later states (`DecStable`)], [S8], [True at the states the checker reaches: a decision on a field-type term reads its syntax and the stored entries of the names it mentions (a global's stored type, a declaration's sort, fields and nestable set), each fixed once accepted, in one namespace; Σ only grows. False at an arbitrary state (`FactsCE`, the pair `E` and `F`), which is why it is stated at reached states.], [Read true; not derived in Lean.],
-), caption: [The facts `exists_dataModel` assumes, each placed.]) <fig-n1-facts>
-
-*The standing assumption.* The Lean model's records keep a type parameter's code, a value parameter's small reading, and of a parameter above `Type₀` only what the field types compute from it, so it identifies two applications that differ only at such a parameter (`Big(Type)`, `Big(Prop)`); the paper model identifies more, since trees record nothing. Either is sound only if the checker never refutes an equation between two applications of one type former. It does not, as said under the statement, and `R1` to `R4` confirm it.
-
-*Status of N1.* _On paper, proved here_ for every accepted, hole-free program, with no bound on universe levels: S0 to S9, from the checks of @fig-n1-checks read off `checkInd` and the match and recursion rules, the reference run's congruence and frame locality (#a-lean, the latter assuming `DecLocal`), and the definition of a function's meaning as typed (`GlobalCallLevels` on paper). Its one claimed step is (4), the other type formers, which is the plan's. _In Lean_, `exists_dataModel` is proved from the eight facts; one (`GlobalCallLevels`) is now argued with the three Lean steps it needs; six are read true and not derived; one (`ItemFacts`) is proved but for the assembly of `CheckIndGivesChecks`. _Attacked_ (@sec-n1-attack): no accepted declaration without a model, no accepted large elimination, no accepted definition of an empty type or false equation.
-
-= Attacks on the checks of a declaration <sec-n1-attack>
-
-_Written by `theory7`._ Each program below was written to test one way a declaration could have no model (a negative occurrence, a field too large, a proposition eliminated into data), or the wrong one (a model that identifies what the checker tells apart, a field type read off a value parameter that varies), and run with `lake env lean` on the checker of `main` at 8153a6665, with the `Nat` prelude. In each program a declaration written `reject` was rejected and every other one accepted: all 193 verdicts are as written. The table gives, for each aim, the programs, the verdict and, for what was accepted, why a model exists. The programs follow, one block per group.
-
-#figure(table(columns: (25%, 15%, 22%, 38%), align: left,
-  table.header([*Aim*], [*Programs*], [*Verdict*], [*If accepted: the model*]),
-  [A negative occurrence behind a type function], [`B1`, `B2`], [Rejected (D36: the declared type in a call's argument).], [—],
-  [… behind a parameter, a nested declaration], [`B3`, `B4`, `B14`; `NB`, `DP`, `HB`, `HA`], [`B3`, `B4`, `B14` rejected (not nestable, D107); the inner declarations accepted.], [`NB(A) = A ⊎ NB(A → Void)`, a family over #vk(0) in which `A` is not nestable; `HA`’s `A` is nestable (a whole field type), so `B13 = {MkB13(h)} ⊎ {E13}` with `h` in `HA(NegV, B13)`, a least fixed point.],
-  [… behind a function type's domain, at a parameter's own type (D120’s (B2))], [`NF`, `DF`, `DG`, `DH`; `NL`, `DL`, `DL2`; `NA`, `DA`, `DA2`; `VF`], [`NF`, `DF`, `NL`, `NA` accepted; the rest rejected.], [`DF = {LeafF} ⊎ {NodeF(p)}` with `p` in `NF(DF, 0, ()) = DF`’s trees: `NF` never reads its value parameter, and the value `()` is in `NegF(X, 0)` for every `X`. A value at a parameter whose type reads the nestable parameter would have to name the declared type (`DG`, `DL2`, `DA`), read a field of it (`DA2`), or take its parameter from a hint (`DL`): each rejected. A parameter typed by a Π over an earlier type parameter cannot be declared at all (`VF`), an incompleteness.],
-  [… behind an `Eq` or `Id` type], [`TE`, `B5`, `B6`, `B7`], [`TE` accepted; `B5` to `B7` rejected.], [`TE(T, a)` is `{MkTE}` (the equation is true); `T` is not nestable (passed to an equation).],
-  [… behind a dependent field's type, a match in a field type], [`B2`, `B4`, `B8`, `B9`; `SelfIx`], [Rejected.], [—],
-  [… a declaration at another sort], [`B11`, `B12`; `PP`, `Wrap`], [`B11`, `B12` rejected (D121).], [`PP(A)` is the truth of `A ≠ ∅`; `Wrap(P)` is `{MkWrap(•)}` or ∅.],
-  [A field one universe too high, hidden the same ways], [`U1` to `U10`, `T1` to `T5`, `FA`, `FAf`], [All rejected but `FA`.], [`FA (n : Nat) : TypeA(n) := Nat` is a data-class function returning the type `Nat`; `TypeA(n)` is a type of sort `Type₁` written as a codomain, legal (D55). It cannot head a field (`FAf`, D55) and its result cannot be bound (`FAuse`, D131). Its meaning is $n |-> NN$, a member of $NN -> vk(0)$.],
-  [An equation at a universe], [`TEq`, `te`, `TyEq`, `tyeq`], [Accepted.], [A proof field means $[a = b] subset.eq {bullet}$ at any type; a parameter in `Type₁` is recorded by no tree.],
-  [A two-constructor proposition into data: direct, through a nested proposition, through `J`, through a match in a type], [`IsL`, `IsLT`, `IsLP`, `InAnn`, `InArg`, `InEq`, `InId`, `TagO`, `TagF`, `TagFE`, `ViaSS`, `ViaWr`, `ViaJ`, `Proj`, `ProjM`, `ProjC`], [All rejected (D45), in types and value arguments alike.], [—],
-  [A `Prop`-sorted declaration whose data field a later field reads], [`ExB`, `ExP`, `Pin`, `IsTr`, `Imp`, `NestW`, `UseP`], [Accepted; `GetB`, `GetPin`, `Forge`, `exBbad` rejected.], [`ExB` is the truth of $exists b. thin deno(ty("BF"))(b) != emptyset$: true. No data leaves a proof (D45); a proof may split on the data field.],
-  [Fording with a computed index], [`EvV`, `HV`, `MV`, `AV`, `VD`, `Inj`, `EvNo`], [Accepted; `ev1`, `NoRefute` rejected.], [One family over the value parameter, the index fixed by an equation field: `EvV(n)` holds the trees whose last equation is true. An index computed by a call, a match or a local write is a steady value (S3a). Injectivity at an unconvertible index field stays stuck (`NoRefute`), never `False`.],
-  [The hard case `F (A : Type₁) : Type` heading a field: a constant, a match, the identity, through a declaration, into `Prop`, a domain in `Type₂`], [`WT`, `WM`, `WI`, `WB`, `WP`, `WF`, `W2`], [Accepted; `wtBad`, `wmBad`, `FId` rejected.], [`WT(A) = {MkWT(n) | n ∈ ℕ}` for every $A in vk(1)$: the family is a function from #vk(1) to #vk(0). `F`’s meaning sends every argument to a member of #vk(0), whatever its domain (`GlobalCallLevels`, @fig-n1-facts). `W2` writes `Type₂`, beyond the Lean model's bound but not the paper's.],
-  [The standing assumption: an equation between two applications of one type former refuted], [`R1` to `R4`, `Cast`], [`R1` to `R4` rejected (the equation is stuck, never `False`); `Cast` accepted, a stuck cast.], [The model identifies `Ph(Nat)` and `Ph(Bool)`; the checker neither proves nor refutes it.],
-  [A parameter read off the spine while it varies (D128’s readers)], [`T1` to `T8`], [`T1`, `T4` rejected by D128; `T2`, `T3`, `T5` by D55; `T6` to `T8` accepted.], [`T6`, `T7`: the parameter that varies is read by no field. `T8`: a written sort.],
-  [Parameters inferred at a higher universe (D105)], [`ti`, `tl`, `tw`], [`ti`, `tw` accepted, `tl` rejected.], [The parameter comes from the annotation, never from the fields.],
-  [Propositions whose least model is empty; recursion through them], [`Q`, `Acc1`, `N2`, `E1`, `E0`; `q`, `qn`, `qe`, `acc`], [Declarations accepted; every attempt to build or refute rejected.], [`Q`, `Acc1`, `E1` mean $emptyset$ (no base case); `N2` is the least truth of its rules. `Q` cannot be refuted either: no recursion on a proof (`qe`).],
-), caption: [The attacks on N1, by aim.]) <fig-n1-attack>
-
-*A. A negative occurrence, hidden.* The type being declared (or a parameter it is nested at) reaches a negative position through each route the brief named.
-#measured[
-```
-inductive Bool := false | true
-inductive Void : Type
-def NegV (X : Type) : Type := (Π(x : X). Void)
-def NegB (X : Type) (b : Bool) : Type := (match b { false => Unit, true => (Π(x : X). Void) })
-reject inductive B1 := MkB1(f : NegV(B1))
-reject inductive B2 := MkB2(b : Bool, f : NegB(B2, b))
-inductive NB (A : Type) := NBase(a : A) | NStep(r : NB(NegV(A)))
-reject inductive B3 := MkB3(x : NB(B3))
-inductive B3Ok := MkB3Ok(x : NB(Unit))
-inductive DP (A : Type) := MkDP(b : Bool, f : NegB(A, b))
-reject inductive B4 := MkB4(d : DP(B4))
-def NegF (X : Type) (n : Nat) : Type := (match n { Z => Unit, S _ => (Π(x : X). Void) })
-inductive NF (A : Type) (n : Nat) (f : NegF(A, n)) := MkNF(y : A)
-inductive DF := LeafF | NodeF(p : NF(DF, 0, ()))
-reject inductive DG := LeafG | NodeG(p : NF(DG, 1, λ(x : DG) : Void => match x { LeafG => LeafG, NodeG(q) => LeafG }))
-reject inductive DH := LeafH | NodeH(m : Nat, p : NF(DH, m, ()))
-inductive TE (T : Type) (a : T) := MkTE(e : Eq(T, a, a))
-reject inductive B5 := MkB5(t : TE(NegV(B5), λ(x : B5) : Void => match x { MkB5(t) => match t { MkTE(e) => λ(y : B5) : Void => y } }))
-reject inductive B6 := MkB6(b : B6, e : Eq(B6, b, b))
-reject inductive B7 := MkB7(e : Id(Unit, (), ()))
-reject inductive B8 := MkB8(b : Bool, f : (match b { false => Unit, true => (Π(x : B8). Void) }))
-reject inductive B9 := MkB9(f : (let T = Nat; T))
-def NatA : Type := Nat
-reject inductive B10 := MkB10(x : NatA)
-inductive PP (A : Type) : Prop := MkPP(x : A)
-reject inductive B11 := MkB11(q : PP(B11))
-inductive Wrap (P : Prop) := MkWrap(h : P)
-reject inductive B12 : Prop := MkB12(w : Wrap(B12))
-def App (G : Π(X : Type). Type) (A : Type) : Type := G(A)
-inductive HA (G : Π(X : Type). Type) (A : Type) := MkHA(x : A, y : App(G, Nat))
-inductive B13 := MkB13(h : HA(NegV, B13)) | E13
-inductive HB (G : Π(X : Type). Type) (A : Type) := MkHB(y : App(G, A))
-reject inductive B14 := MkB14(h : HB(NegV, B14)) | E14
-```
-The reasons: `B1`, `B2`, `B6` to `B10` "fields are first-order data" (D36); `B3`, `B4`, `B14` "occurs at the parameter A of …, which is not nestable" (D107); `DG`, `B5` "reads the constructors of …, which are not known while … is declared" (D107); `DH` "the parameter f of NF has type Unit, expected ⌈NegF(DH, σ0)⌉"; `B11`, `B12` "a nested occurrence passes only through declarations of its own sort" (D121). `B10` is an incompleteness: a constant that is a type is not admitted as a field type, while a call is.]
-
-*H. The parameter-type site.* A value argument stands at a parameter whose own type reads a nestable parameter; this is the site D120 recorded as (B2) and left open. It is not enforced by a check. The construction does not need it (it reads an applied declaration loosely, @sec-n1-stmt, and a family never reads a value parameter its field types do not read), and it is unreachable by a value that varies: a value of a type built from the declared type must name it, read a field of it, or take its parameter from a hint, and each is rejected.
-#measured[
-```
-inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
-inductive NL (A : Type) (l : List(A)) := MkNL(y : A)
-reject inductive DL := LeafL | NodeL(p : NL(DL, Nil))
-reject inductive DL2 := LeafL2 | NodeL2(p : NL(DL2, Nil[DL2]))
-reject inductive VF (A : Type) (g : Π(x : A). Nat) := MkVF(y : A)
-inductive VF0 (g : Π(x : Nat). Nat) := MkVF0(y : Nat)
-inductive NA (A : Type) (a : A) := MkNA(y : A)
-reject inductive DA := LeafA | NodeA(p : NA(DA, LeafA))
-reject inductive DA2 := LeafA2 | NodeA2(t : DA2, p : NA(DA2, t))
-```
-`DL`: "cannot infer the parameter A of Nil" (a bare constructor at a value argument has no hint); `DL2`: "fields are first-order data" (the argument names `DL2`); `DA`: the constructor `LeafA` "reads the constructors of DA" (D107); `DA2`: "the argument at the value parameter a of NA reads t, whose declared type DA2 mentions DA2" (D120). `VF` is rejected with "κ is not a type: its declared type is not a sort", for any Π-typed parameter whose type mentions an earlier type parameter (`VF (A : Type) (g : Π(x : A). Nat)`, likewise `Π(x : Nat). A`, `Π(x : A). B`, `Π(x : A). Type`); `VF0`, with no earlier parameter in it, is accepted. An incompleteness, and the message names a variable internal to the checker.]
-
-*B. A field one universe too high, hidden.*
-#measured[
-```
-inductive Bool := false | true
-reject inductive U1 := MkU1(x : Type)
-reject inductive U2 := MkU2(x : Prop)
-reject inductive U3 (A : Type₁) := MkU3(x : A)
-def TyF (n : Nat) : Type₁ := Type
-reject inductive U4 := MkU4(x : TyF(0))
-def TyM (b : Bool) : Type₁ := (match b { false => Type, true => Prop })
-reject inductive U5 := MkU5(b : Bool, x : TyM(b))
-def TyS (n : Nat) : Type₁ := (match n { Z => Type, S _ => Prop })
-reject inductive U6 := MkU6(n : Nat, x : TyS(n))
-def PiU (b : Bool) : Type₁ := (match b { false => Type, true => (Π(A : Type). A) })
-reject inductive U7 := MkU7(b : Bool, x : PiU(b))
-reject inductive U8 : Prop := MkU8(A : Type)
-def UU (n : Nat) : Type₁ := (match n { Z => Prop, S _ => Prop })
-def VV (n : Nat) : UU(n) := (match n { Z => True, S _ => True })
-reject inductive U9 := MkU9(h : VV(0))
-inductive Bx (A : Type) := MkBx(x : A)
-reject inductive U10 := MkU10(x : Bx(Type))
-inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
-def te : TEq(Type, Nat, Nat) := MkTEq[Type, Nat, Nat](refl)
-reject def teBad : TEq(Type, Nat, Unit) := MkTEq[Type, Nat, Unit](refl)
-inductive H2 (U : Type₂) := MkH2
-def h2 : H2(Type₁) := MkH2[Type₁]
-```
-`U1` to `U8`: "its type must be in Prop or Type" (`U6` at a stuck call, by its head's codomain; `U8` a proposition with a field in `Type₁`, which Lean allows); `U9`: D55; `U10`: "the parameter A of Bx has type Type₁, expected Type".]
-
-*C. A proposition with two constructors eliminated into data.*
-#measured[
-```
-inductive Bool := false | true
-inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
-inductive Tag (n : Nat) := MkTag
-reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true, Inr(q) => false }
-reject def IsLT (h : Or(True, True)) : Type := match h { Inl(p) => Nat, Inr(q) => Unit }
-reject def IsLP (h : Or(True, True)) : Prop := match h { Inl(p) => True, Inr(q) => False }
-reject def InAnn (h : Or(True, True)) : Unit := (let x : (match h { Inl(p) => Unit, Inr(q) => Unit }) = (); ())
-reject def InArg (h : Or(True, True)) : Type := Tag(match h { Inl(p) => 0, Inr(q) => 1 })
-reject def InEq (h : Or(True, True)) : Prop := Eq(Nat, match h { Inl(p) => 0, Inr(q) => 1 }, 0)
-reject def InId (h : Or(True, True)) : Prop := Id(Nat, match h { Inl(p) => 0, Inr(q) => 1 }, 0)
-reject inductive TagO (h : Or(True, True)) := MkTO(t : Tag(match h { Inl(p) => 0, Inr(q) => 1 }))
-reject inductive TagF := MkTF(h : Or(True, True), t : Tag(match h { Inl(p) => 0, Inr(q) => 1 }))
-reject inductive TagFE := MkTFE(h : Or(True, True), e : Eq(Nat, match h { Inl(p) => 0, Inr(q) => 1 }, 0))
-inductive SS : Prop := MkSS(o : Or(True, True))
-reject def ViaSS (s : SS) : Bool := match s { MkSS(o) => match o { Inl(p) => true, Inr(q) => false } }
-def ViaSSOk (s : SS) : Bool := match s { MkSS(o) => true }
-inductive Wr (P : Prop) : Prop := MkWr(x : P)
-reject def ViaWr (s : Wr(Or(True, True))) : Bool := match s { MkWr(o) => match o { Inl(p) => true, Inr(q) => false } }
-def InProof (h : Or(True, True)) : Eq(Nat, 0, 0) := match h { Inl(p) => (let k = 1; refl), Inr(q) => (let k = 2; refl) }
-inductive Ex : Prop := Wit(n : Nat, e : Eq(Nat, n, n))
-reject def Proj (x : Ex) : Nat := x.0
-reject def ProjM (x : Ex) : Nat := match x { Wit(n, e) => n }
-reject def ProjC (x : Ex) : Nat := match x { Wit(n, e) => clone(n) }
-reject def ViaJ (h : Or(True, True)) (b : Bool) : Type := J(Bool, match h { Inl(p) => true, Inr(q) => false }, b, λ(c : Bool) : Type => Nat, refl, Nat)
-```
-Every rejection is D45’s "a match on a proof of … returns a non-proof, but … is not a subsingleton", in a type, an annotation, an equation's side and an inductive declaration's field type as in code. `ViaSSOk` takes apart a subsingleton (one constructor, all fields proofs) and produces data that does not depend on its field.]
-
-*D. A `Prop`-sorted declaration whose data field a later field reads.*
-#measured[
-```
-inductive Bool := false | true
-inductive Void : Type
-def BF (b : Bool) : Type := (match b { false => Nat, true => Void })
-def IsT (b : Bool) : Prop := (match b { false => False, true => True })
-inductive ExB : Prop := WitB(b : Bool, x : BF(b))
-inductive ExP : Prop := WitP(b : Bool, h : IsT(b))
-def exB : ExB := WitB(false, 3)
-def exP : ExP := WitP(true, refl)
-reject def exBbad : ExB := WitB(true, 3)
-def UseP (e : ExP) : Eq(Nat, 0, 0) := match e { WitP(b, h) => match b { false => match h {}, true => refl } }
-reject def GetB (e : ExP) : Bool := match e { WitP(b, h) => b }
-inductive Pin : Prop := MkPin(b : Bool, e : Eq(Bool, b, true))
-reject def GetPin (e : Pin) : Bool := match e { MkPin(b, h) => b }
-inductive IsTr (b : Bool) : Prop := MkIsTr(e : Eq(Bool, b, true))
-def FromIsTr (b : Bool) (h : IsTr(b)) : Nat := match h { MkIsTr(e) => 0 }
-def NestW (e : ExP) : Eq(Nat, 0, 0) := match e { WitP(b, h) => (b := true; match e { WitP(b2, h2) => (let q : Eq(Bool, b2, true) = refl; refl) }) }
-reject def Forge (e : ExP) : IsT(true) := match e { WitP(b, h) => h }
-inductive Imp : Prop := MkImp(n : Nat, e : Eq(Nat, S(n), 0))
-def ImpE (i : Imp) : False := match i { MkImp(n, e) => match e {} }
-```
-`GetPin` is rejected though `Pin`’s equation determines its data field: Ochr's subsingleton rule asks every field to be a proof, stricter than Lean's (no indices). `Forge` is rejected because the arm's `h` has type ⌈`IsT(σ0)`⌉, not `⊤`.]
-
-*E. Fording, with a computed index.*
-#measured[
-```
-def Double (n : Nat) : Nat by n := (match n { Z => Z, S k => S(S(Double(k))) })
-def Half (n : Nat) : Nat by n := (match n { Z => Z, S k => match k { Z => Z, S j => S(Half(j)) } })
-inductive EvV (n : Nat) := EZ(h : Eq(Nat, n, Double(0))) | ES(m : Nat, r : EvV(m), h : Eq(Nat, n, Double(S(m))))
-def ev2 : EvV(2) := ES(0, EZ(refl), refl)
-reject def ev1 : EvV(1) := ES(0, EZ(refl), refl)
-inductive HV (n : Nat) := HZ(h : Eq(Nat, n, 0)) | HS(m : Nat, r : HV(Half(m)), h : Eq(Nat, n, S(m)))
-inductive MV (n : Nat) := MZ(h : Eq(Nat, n, 0)) | MS(m : Nat, r : MV(match m { Z => Z, S k => k }), h : Eq(Nat, n, S(m)))
-inductive AV (n : Nat) := AZ(h : Eq(Nat, n, 0)) | AS(m : Nat, r : AV((let c = clone(m); AddM(&c, 1); c)), h : Eq(Nat, n, S(m)))
-def EvNo (r : EvV(1)) : False := match r { EZ(h) => match h {}, ES(m, q, h) => match m { Z => match h {}, S k => match h {} } }
-inductive VD (n : Nat) := VDN(h : Eq(Nat, n, 0)) | VDC(m : Nat, h : Eq(Nat, n, S(m)))
-reject def NoRefute (a : Nat) (b : Nat) (h1 : Eq(Nat, 3, S(a))) (h2 : Eq(Nat, 3, S(b))) (e : Eq(VD(3), VDC[3](a, h1), VDC[3](b, h2))) : False := match e {}
-inductive Tg (n : Nat) := MkTg
-reject inductive SelfIx := SL | SN(t : SelfIx, r : Tg(match t { SL => 0, SN(u, v) => 1 }))
-```
-`NoRefute`: "[Match] on e, whose type Eq(VD(3), VDC(σ0, ⋆), VDC(σ1, ⋆)) is not an inductive type": `m` is an index field, so injectivity waits for it (D64), and the equation is never `False`. With the cases on `a` and `b` written out, `a = b` is proved (`Inj`, accepted). `SelfIx`: D107.]
-
-*F. The hard case: a global with a domain in `Type₁` heading a field's type.* Ochr has no match on a type, so "a match" is a match on a value beside the `Type₁` argument; "the identity" is on the `Type₀` argument, the identity at `Type₁` itself not being a `Type` (`FId`).
-#measured[
-```
-inductive Bool := false | true
-def FT (A : Type₁) : Type := Nat
-inductive WT (A : Type₁) := MkWT(x : FT(A))
-def wt : WT(Type) := MkWT[Type](3)
-def wt2 : WT(Π(X : Type). X) := MkWT[Π(X : Type). X](4)
-reject def wtBad : WT(Type) := MkWT[Type](())
-def FM (A : Type₁) (b : Bool) : Type := (match b { false => Nat, true => Unit })
-inductive WM (A : Type₁) := MkWM(b : Bool, x : FM(A, b))
-def wm : WM(Prop) := MkWM[Prop](true, ())
-reject def wmBad : WM(Prop) := MkWM[Prop](true, 3)
-def FI (A : Type₁) (B : Type) : Type := B
-inductive WI (A : Type₁) (B : Type) := MkWI(x : FI(A, B))
-def wi : WI(Type, Nat) := MkWI[Type, Nat](5)
-reject def FId (A : Type₁) : Type := A
-inductive Big (U : Type₁) := MkBig(n : Nat)
-def FB (A : Type₁) : Type := Big(A)
-inductive WB (A : Type₁) := MkWB(x : FB(A))
-def wb : WB(Type) := MkWB[Type](MkBig[Type](1))
-def FP (A : Type₁) : Prop := Eq(Type₁, A, A)
-inductive WP (A : Type₁) := MkWP(h : FP(A))
-def wp : WP(Prop) := MkWP[Prop](refl)
-def FF (G : Π(X : Type₁). Type) : Type := G(Prop)
-inductive WF (G : Π(X : Type₁). Type) := MkWF(x : FF(G))
-def wf : WF(λ(X : Type₁) : Type => Nat) := MkWF[λ(X : Type₁) : Type => Nat](7)
-def F2 (A : Type₂) : Type := Nat
-inductive W2 (A : Type₂) := MkW2(x : F2(A))
-def w2 : W2(Type₁) := MkW2[Type₁](8)
-```
-Each declaration's family is a function from its parameters' universe to #vk(0): for every $A in vk(1)$, `WT(A)` holds the trees `MkWT(n)` for $n in NN$, `WB(A)` the trees `MkWB(MkBig(n))`, `WM(A)` the dependent sum of `FM(A, b)` over `b`, and `WF(G)` the trees whose field lies in `G`’s value at `Prop`. In each, the field's type is a call whose result the model places in #vk(0) because the global's codomain is `Type` (or `Prop`), whatever its domain.]
-
-*G. The standing assumption, and the readers behind D128.*
-#measured[
-```
-inductive Bool := false | true
-inductive Big (U : Type₁) := MkBig
-inductive Ph (A : Type) := MkPh
-reject def R1 (h : Eq(Type, Big(Type), Big(Prop))) : False := match h {}
-reject def R2 (h : Eq(Type, Ph(Nat), Ph(Bool))) : False := match h {}
-reject def R3 (h : Id(Type, Ph(Nat), Ph(Bool))) : False := match h {}
-reject def R4 (h : Eq(Ph(Nat), MkPh[Nat], MkPh[Nat])) : False := match h {}
-def R4ok : Eq(Ph(Nat), MkPh[Nat], MkPh[Nat]) := refl
-def Cast (h : Eq(Type, Ph(Nat), Ph(Bool))) (x : Ph(Nat)) : Ph(Bool) := J(Type, Ph(Nat), Ph(Bool), λ(X : Type) : Type => X, h, x)
-def TyAlias : Type₁ := Type
-def SortF (X : Type) : Type₁ := Type
-reject inductive T1 (A : Type) (B : (let z = A; Type)) := MkT1(x : B)
-reject inductive T2 (A : Type) (B : TyAlias) := MkT2(x : B)
-reject inductive T3 (A : Type) (B : SortF(A)) := MkT3(x : B)
-reject inductive T4 (A : Type) (B : (match 0 { Z => Type, S _ => Type })) := MkT4(x : B)
-reject inductive T5 (A : Type) (B : (Type : Type₁)) := MkT5(x : B)
-inductive T6 (A : Type) (B : TyAlias) := MkT6(n : Nat)
-inductive T7 (A : Type) (B : SortF(A)) := MkT7(n : Nat)
-inductive T8 (A : Type) (B : (Type)) := MkT8(x : B)
-inductive TE (U : Type₁) (a : U) := MkTE(h : Eq(U, a, a))
-def ti : TE(Type, Nat) := MkTE(refl)
-reject def tl : Unit := (let x = MkTE(refl); ())
-def tw : TE(Type, Nat) := MkTE[Type, Nat](refl)
-```
-`R1` to `R3`: "[Match] on h, whose type Eq(Type, …, …) is not an inductive type": the equation is stuck; `R4`: its type is `True`, which has a constructor. `T1`, `T4`: D128; `T2`, `T3`, `T5`: "[D55] B is written where a type is expected, but its declared type is not a sort", the reader not seeing through a constant, a call or an ascription, where D128’s reader agrees, so `B` is a value parameter for both. `tl`: "cannot infer the parameter U of MkTE" (D105).]
-
-*I. Propositions whose least model is empty, and recursion through them.*
-#measured[
-```
-inductive Bool := false | true
-inductive Q : Prop := MkQ(h : And(Q, True))
-reject def q : Q := MkQ(⟨q, refl⟩)
-reject def qn (n : Nat) : Q by n := (match n { Z => MkQ(⟨qn(n), refl⟩), S m => MkQ(⟨qn(m), refl⟩) })
-reject def qe (x : Q) : False by x := (match x { MkQ(h) => match h { Intro(a, b) => qe(a) } })
-inductive Acc1 : Prop := MkAcc1(h : Acc1)
-def fromAcc (a : Acc1) : Nat := (match a { MkAcc1(h) => 0 })
-reject def acc : Acc1 := MkAcc1(acc)
-inductive N2 (P : Prop) (n : Nat) : Prop := MkN2(z : N2(N2(P, n), 1), e : Eq(Nat, n, 0)) | StopN2(a : P)
-def n2 : N2(True, 0) := MkN2[True, 0](StopN2[N2(True, 0), 1](StopN2[True, 0](refl)), refl)
-reject def n2f : N2(False, 1) := StopN2[False, 1](refl)
-def TypeA (n : Nat) : Type₁ := Type
-def FA (n : Nat) : TypeA(n) := Nat
-reject def FAuse (n : Nat) : Nat := (let T = FA(n); 0)
-reject inductive FAf := MkFAf(x : FA(0))
-inductive E0 : Type
-inductive E1 := MkE1(e : E1)
-def e1f (x : E1) : False by x := (match x { MkE1(y) => e1f(y) })
-inductive TyEq (U : Type₁) (A : U) := MkTyEq(e : Eq(U, A, A))
-def tyeq : TyEq(Type, Nat) := MkTyEq[Type, Nat](refl)
-```
-`q`, `acc`: a definition does not name itself (D118); `qn`: [Rec], the recursive call is on `n`; `qe`: "the decreasing parameter must have an inductive type", a proof having no rank. `Q` and `Acc1` mean $emptyset$ in the least model, and the checker can neither build nor refute them; `E1` means $emptyset$ and `e1f`, accepted, is true there. `FAuse`: D131; `FAf`: D55.]
-
-*What the attacks found.* No accepted declaration without a model, no large elimination from a non-subsingleton anywhere, no accepted definition of an empty type or of a false equation. Two incompletenesses, neither a fault of consistency: a parameter whose type is a Π over an earlier type parameter is rejected with a message naming an internal variable (`VF`), and a constant that is a type is not admitted as a field type (`B10`). The (B2) site of D120, left open in principle 1’s audit, is unenforced and unreachable (`H`).
-
-= Conversion on values that hold code <sec-n3>
-
-_Written by `theory5`._ N3 says that conversion identifies only values that mean the same. It is proved in Lean for values that hold no code (branch `rules-trial`). The values that hold code are sealed programs, closures and Π-types, compared by three rules: [Conv-cong] (component by component: a sealed program by its text, a closure by its code and captures; the checker's fast path is plain equality), [Conv-fun] (two function values by their Π-types, their captured values and the observations of their generic calls) and [Conv-pi] (two Π-types by their class and borrow flag and their domains and codomain at the generic arguments).
-
-*Theorem N3c.* Let $v equiv w$ at a state the checker reaches, both well typed inside at one type (the typing hypothesis, which (I) supplies at every use: `hwt_of_fit`). Then $v$ and $w$ mean the same under every assignment. By induction on the derivation of $v equiv w$, which is finite: the relation is the least one, and a comparison that needs itself answers "not convertible" (`convStack`). One lemma per rule.
-
-#table(columns: (19%, 59%, 22%), align: left, table.header([*Lemma*], [*Statement and argument*], [*Status*]),
-  [CV1 [Conv-refl]], [Equal values, binder names ignored, mean the same: the strict run is invariant under renaming of bound variables (terms are identified up to it).], [#a-full],
-  [CV2 data], [Constructors, borrows, inductive types, `&`, `Eq`, `⊥`, unit laws.], [#a-lean (`rules-trial`)],
-  [CV3 sealed programs], [Two sealed programs whose texts are equal but for their embedded values, which are pairwise convertible, mean the same. A sealed program means the strict run of its text from the empty state. That run depends on its embedded values through their meanings (the model's congruence, `RunCongr`) and through their _readings_, which convertible values need not share (`F (n : Nat) : Unit := ()` and `H (n : Nat) : TF(Z) := ()` are convertible, and a call's result is copied for one and moved for the other). But every sealed program held in the state has [Close]'s shape, $L; C; K$ (principle 7: `closeCall` is its only maker, and the one other sealed value, the deferred hint, is never stored), and in that shape a reading is read at three points only: the head's class and [Close] row, which [Conv-pi] makes equal for convertible heads; η at `Unit` on the head call's result, which replaces a member of `Unit` by `()`, itself (principle 3); and the head's codomain as the stored type of `r` in the borrow row, which nothing in the text reads to decide (`*r := k; c` writes through it, `peek` copies). The cells are typed by embedded type values, compared as values. So the two runs have the same meaning.], [#a-red[principle 7, `RunCongr`] (RunCongr #a-lean for the present `.fix` clause, to redo under (M2))],
-  [CV4 closures, fast path], [Two closure values equal as values (code, captures and recorded readings) mean the same: CV1.], [#a-full],
-  [CV5 [Conv-fun]], [Two function values $F$, $G$ with convertible Π-types, pairwise convertible captured values, and convertible observations at the generic call mean the same. The generic arguments are unknowns of the parameter types (each borrow parameter a borrow of a fresh cell, as [Def]), so an assignment of them is any list of members. Both are members of their type (typing hypothesis, (I)), so (E4) holds for the untyped runs of their generic calls, and (II) relates each run to the strict run under every assignment; the strict run at the generic state is `callOf` applied (C6's instance of FR, with C1 at the call). By the induction hypothesis the two observations mean the same under every assignment: the same result and the same final contents of the cells; for a borrow result, the same contents after one shared fresh value $sigma_w$ is written through it ([Obs-borrow]), which under every assignment of $sigma_w$ is the same backward function. A function's meaning is that observation at every argument list: its only effects are its result and its borrowed places (principle 6). The class and row are equal (the Π-types are convertible, CV6). So $F$ and $G$ mean the same function. The decisions inside each run read that function's own declared types, which are part of its meaning; a reading a context takes from the function value itself is its class and row.], [#a-red[(II) for untyped runs, FR (C1, C6)]],
-  [CV6 [Conv-pi]], [Two Π-types with the same class and borrow flag whose parameter types and codomain, evaluated at the generic state of the first with cells for its borrow parameters, are pairwise convertible, mean the same family. Under (M1) the model's domains and codomain at a list of arguments are their strict runs in exactly that state; the generic arguments range over every list of members under assignments, and by (II) and the induction hypothesis the components mean the same under each. The class and flag are part of the meaning (a Π into proofs is a truth value; a borrow result has a backward function).], [#a-red[(II), (M1)]],
-  [CV7 least relation], [Every "not convertible" fails safe: a stuck `Eq`, a rejected definition, or `J` stuck. A comparison that needs itself (a closure whose body is stuck at its generic call on its own sealed call) answers "not convertible"; read coinductively, [Conv-fun] would identify any two such closures (the paper's example, `J` proving `Eq(Nat, S(Z), Z)`).], [#a-full],
-)
-
-*Attack.* Each program tries to make two convertible values mean different things.
-#measured[With the `Nat` and `List` preludes, on `main` at 662110042:
-```
-def TF (n : Nat) : Type := match n { Z => Unit, S(m) => Nat, }
-def F (n : Nat) : Unit := ()
-def H (n : Nat) : TF(Z) := ()
-def FH : Eq(Π(n : Nat). Unit, F, H) := refl
-def P (f : Π(n : Nat). Unit) (n : Nat) : Prop := Eq(Unit, f(n), ())
-def TrFH (n : Nat) : P(H, n) := J(Π(n : Nat). Unit, F, H, λ(g : Π(n : Nat). Unit) : Prop => P(g, n), refl, refl)
-def TwiceF (n : Nat) : Unit := (let r = F(n); let a = r; let b = r; ())
-def TwiceH (n : Nat) : Unit := (let r = H(n); let a = r; let b = r; ())
-def G1 (x : Nat) : Nat := match x { Z => Z, S(p) => S(Z), }
-def G2 (x : Nat) : Nat := match x { Z => Z, S(p) => Z, }
-def G12 : Eq(Π(x : Nat). Nat, G1, G2) := refl
-def MkNil (A : Type) : List(A) := Nil
-def HintIn : Eq(List(Nat), Cons(Z, MkNil(Nat)), Cons(Z, Nil)) := refl
-```
-`FH`, `TrFH` (the transport along `F ≡ H` of a statement read through η) and `HintIn` accepted; `TwiceH` rejected ("[Read] r was moved out"), `TwiceF` accepted: the reading that differs between convertible functions changes what a context written with the function's name may do, not what any value means, and a context that holds the function in a variable reads the variable's declared type, the same for both; `G12` rejected: two functions whose generic calls are both stuck are not identified.]
-No pair of convertible values with different meanings was found. *Status of N3 for code:* reduced to (II) for untyped runs, FR's C1 and C6, (M1), principle 7 (by construction, but for the deferred hint, by reading) and the model's congruence; not mechanised.
-
-= Conversion at a type <sec-n3t>
-
-_Written by `theory7`._ N3 at a type: two type values the checker identifies mean the same set. It is the part of N3 that N1 serves, since a type's meaning is read through the data model. The Lean proof for values that hold no code (`rules-trial`) took two facts of the data layer as hypotheses: that the library's `And`, `True` and `False` mean conjunction, truth and falsity, and that the unit laws keep typing as well as meaning (the plan, "What the two halves leave"). Both follow from N1 here.
-
-*Type values.* A sort; an applied declaration $ty("D")(overline(v))$; $\&T$; an equation as `eq` builds it (`True`, `False`, a conjunction of equations, or a stuck `Eq`); a Π-closure; a neutral whose type is a sort (an unknown, or a sealed program whose head's codomain is a sort).
-
-*Theorem N3t.* Let $v equiv w$ be type values at a state the checker reaches, both well typed inside at one sort. Then $v$ and $w$ mean the same set under every assignment. By induction on the derivation of $v equiv w$, which is finite (the relation is the least one, @sec-n3, CV7); one lemma per rule.
-
-#figure(table(columns: (19%, 59%, 22%), align: left, table.header([*Lemma*], [*Statement and argument*], [*Status*]),
-  [TC1 [Conv-refl], sorts], [Equal values mean the same; a sort means its universe.], [#a-full],
-  [TC2 [Conv-cong] at $ty("D")(overline(v)) equiv ty("D")(overline(w))$], [The arguments are pairwise convertible, so they mean the same: at a type parameter by the induction hypothesis, at a value parameter by N3 for values. A declaration's family is a function of its parameters' meanings, with nothing else recorded (N1: trees record no parameter), so both sides are #fam($ty("D")$) at one tuple, which is typed by the hypothesis.], [#a-full given N3 for values],
-  [TC3 [Conv-cong] at $\&T$ and `Eq`], [$deno(\&T) = deno(T)$; an equation means the truth of its sides' meanings being equal, so convertible sides give the same truth value.], [#a-full given N3 for values],
-  [TC4 [Conv-unit]], [$deno(ty("And")(ty("True"), P)) = deno(P) = deno(ty("And")(P, ty("True")))$, through nested `And`s. By N1 at the library's declarations: `True` has one constructor and no field, so its least truth is ${bullet}$; `False` has none, so $emptyset$; `And(P, Q)` has one constructor `Intro(l : P, r : Q)`, so its least truth is ${bullet}$ exactly when both are. The unit laws keep typing too: a proof of either side is $bullet$, and a match on it decides by its own stored type's head (`Intro` for `And`, the declaration of $P$ otherwise), producing data only from a subsingleton, whose result the proposition determines (N1, consequence 3).], [#a-full],
-  [TC5 `eq` at a constructor], [[Eq-inj]: $deno(ty("Eq")(ty("D")(overline(a)), ty("C")(overline(v)), ty("C")(overline(w)))) = [deno(ty("D").ty("C")(overline(v))) = deno(ty("D").ty("C")(overline(w)))]$, which is the conjunction of $[deno(v_j) = deno(w_j)]$, since a tree determines its fields (N1, consequence 1), and that is what `And` of the field equations means (TC4); the conjuncts are typed at the field types at $overline(a)$, of which both sides' fields are members by the hypothesis; for a dependent constructor `eq` waits until the index fields are convertible (D64), and then the field types computed from the left side are the right side's. [Eq-disj]: trees of different constructors differ (consequence 1), so the equation means $emptyset$, `False`’s meaning; `⊥` means _moved_, no member of a type. [Eq-refl]: N3 for values.], [#a-full given N3 for values],
-  [TC6 [Conv-pi]], [Two Π-types of one class and borrow flag whose domains and codomain, evaluated at the generic arguments of the first, are pairwise convertible: the same family, so the same dependent product (cut to $R$ alike, by the flag), or the same truth value for a class that returns proofs. As CV6 of @sec-n3.], [#a-red[(II), (M1)]],
-  [TC7 neutral types], [An unknown means its assignment; two sealed programs whose types are sorts are convertible by their texts and embedded values, as CV3 of @sec-n3.], [#a-red[principle 7, `RunCongr`]],
-), caption: [N3 at a type, rule by rule.]) <fig-n3t>
-
-*What N1 contributes.* A declaration's family reads only its parameters' meanings (TC2); a tree determines its declaration, constructor and fields (TC5); the library's connectives mean conjunction, truth and falsity by their least truths (TC4, TC5). The model identifies more types than the checker does (`And(Q, Q)` and `Q`, `Big(Type)` and `Big(Prop)`, `UQ(0, u)` and `UQ(0, v)` for two values of a type that is `Unit` only by computation); that is harmless, since N3 asks only that what the checker identifies is equal.
-
-*Attack.* Each program tries to make two types the checker identifies mean different sets, or a decision taken at one of two convertible types tell their proofs apart.
-#measured[With the `Nat` prelude, on `main` at 8153a6665:
-```
-inductive Bool := false | true
-inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
-inductive Box2 (P : Prop) := MkB2(h : P)
-def U1 (Q : Prop) (x : Box2(And(True, Q))) : Box2(Q) := x
-def U2 (Q : Prop) (x : Box2(Q)) : Box2(And(Q, True)) := x
-reject def U3 (Q : Prop) (x : Box2(And(Q, Q))) : Box2(Q) := x
-def S1 (h : And(True, Or(True, True))) : Bool := match h { Intro(l, r) => true }
-def S2 (h : Or(True, True)) : Bool := S1(h)
-reject def S3 (h : And(True, Or(True, True))) : Bool := match h { Intro(l, r) => match r { Inl(p) => true, Inr(q) => false } }
-def I1 (a : Nat) (b : Nat) (h : Eq(Pair(Nat, Nat), Mk(a, b), Mk(b, a))) : Eq(Nat, a, b) := match h { Intro(l, r) => l }
-def I2 (h : Eq(Bool, true, false)) : False := match h {}
-inductive UP (u : Unit) := MkUP
-def E1 (x : Unit) (y : UP(x)) : UP(()) := y
-def UU (n : Nat) : Type := (match n { Z => Unit, S _ => Nat })
-inductive UQ (n : Nat) (u : UU(n)) := MkUQ
-reject def E2 (u : UU(0)) (v : UU(0)) (y : UQ(0, u)) : UQ(0, v) := y
-inductive HT (f : Π(x : Nat). Type) := MkHT
-def F1 (y : HT(λ(x : Nat) : Type => Nat)) : HT(λ(z : Nat) : Type => Nat) := y
-reject def F2 (y : HT(λ(x : Nat) : Type => Nat)) : HT(λ(z : Nat) : Type => Unit) := y
-inductive Big (U : Type₁) := MkBig
-reject def B1 (y : Big(Type)) : Big(Prop) := y
-def PA : Type₁ := Prop
-reject def P1 (f : Π(x : Nat). Prop) : (Π(x : Nat). PA) := f
-```
-All 23 verdicts as written. The unit laws act inside a type argument (`U1`, `U2`) and nothing more (`U3`). `S2` passes a two-constructor proof where a subsingleton is declared, and `S1`’s result does not depend on it; taking `r` apart into data is rejected (`S3`, D45). η at `Unit` reaches a parameter declared `Unit` (`E1`) and not one that is `Unit` only by computation (`E2`). Function-valued arguments are compared by their generic calls (`F1`, `F2`). `B1` and `P1`: types the model identifies or that differ in class are not converted.]
-
-*Status of N3 at a type.* Argued in full here from N1 and from N3 for values, but for Π-types and sealed type programs, which reduce as in @sec-n3. The data layer's two facts that the Lean proof assumes are consequences of N1 (TC4, TC5). No pair of convertible types with different meanings was found.
-
-= [Repack] at a read <sec-n7>
-
-_Written by `theory5`._ N7 is the step of the argument where an open value becomes a member again: the reference run is strict at a whole read, so where the checker reads a value of a dependent type whole, the value must be a member, and the checker's evidence is that it passed [Repack].
-
-*Definitions* (the plan's definition of members, `18-consistency-proof-plan.typ`). A value is an _open member_ of a data type at a record when it is moved, or a partly moved member, or a tree of that declaration at that record each of whose fields is moved, or fits the field's declared shape at some completion of the moved parts of the earlier fields, or is itself a tree, open at its own record, of the declaration the record names for that field or of a declaration a strong update stored there. It is _closed_ when each field fits its declared shape at the current earlier fields; a closed, whole open member is a member.
-
-*Theorem N7.* Let $v$ be whole, an open member of $T$ at every typed future, and let [Repack] pass on $v$ at $T$ (`repackCheck`: each part still lent replaced by a fresh unknown of its borrow's type, `lentUnknown`; then `packedErr` finds nothing). Then $v$ is a member of $T$ at every typed future.
-
-_Proof._ By induction on $v$. If $v$ holds no value of a dependent constructor, [Repack] tests nothing; then no strong update has been made inside it (strong updates are of tree fields of dependent constructors only, D110), so every field fits its declared shape, and, whole, at the current earlier fields: $v$ is closed, so a member. Otherwise $v$ is a constructor value whose fields $w_1, ..., w_k$ are each, by open membership with no moved part, (i) a value fitting its declared shape at the current earlier fields, or (ii) a tree open at its own record, of the declared declaration or of one a strong update stored. `packedErr` checks each field against the type its telescope gives at the current contents of the earlier fields, $T_j$, recursively. A field of kind (ii) passes only if its own record's type converts to $T_j$, and its own fields pass, so by the induction hypothesis it is a member of its own type, and by N3 of $T_j$. A field of kind (i) fits by hypothesis; for a proof field, which [Repack] cannot test by its content `⋆`, that is all there is, and it is where open membership carries the truth of a proof field across writes: a write or borrow through an index invalidates every proof field and leaf field whose type mentions it (`⊥`, which "whole" excludes), and re-assigning one is checked at the current contents, with each lent part an unknown of its borrow's type (D64 amended, D112). So $v$ is closed at its current contents. At every typed future: a part lent to a borrow takes, at a future, any whole member of the borrow's type (a typed future gives each live label one), and [Repack] passed with that part an unknown of exactly that type, so, its tests being conversions that hold under every assignment of the unknown (N3), it passes at each future's value. Parts lent to a returned borrow that ran are marked, and the mark is looked through: only the loan where the result points is an unknown, the rest is constant at every future; parts holding a stuck call's fill are kept as the fill, whose meaning at every future is the callee's backward function at that future's value, a member of the cell's declared type, which is what [Repack] compares. #a-red[N3]
-
-*The sites where [Repack] runs.* It must run at every point where the reference run reads a value of a dependent type whole, which principle 9 lists ((W): a whole read, move or borrow; the captures of a block, a closure or a Π-type; `Id`'s observed result and owners; (P): a borrow's end, a body's or block arm's return). That list is principle 9's audit, not N7. One correction from @sec-rd-ends: at `Id`'s owners [Repack] must run only on owners in the observing frame (a caller's owner holds the caller's state with the side's writes put in, which may be open by the caller's doing or the side's, F5; the caller's run tests it where it ends). Under the finals design of @sec-obs no caller owner is compared at all.
-
-*Attack.* Aimed at a proof field made true at the current contents while an index it reads may still change.
-#measured[With the `Nat` and `Fixtures` preludes, on `main` at 662110042:
-```
-def IsSuccN (n : Nat) : Prop := match n { Z => False, S(m) => ⊤, }
-def IsSuccSnd (p : Pair(Nat, Nat)) : Prop := match p { Mk(a, b) => IsSuccN(b), }
-def IsSuccFst (p : Pair(Nat, Nat)) : Prop := match p { Mk(a, b) => IsSuccN(a), }
-inductive PS := MkPS(p : Pair(Nat, Nat), h : IsSuccSnd(p))
-inductive PF2 := MkPF2(p : Pair(Nat, Nat), h : IsSuccFst(p))
-def Fst (x : &Pair(Nat, Nat)) : &Nat := &(*x).0
-def PickP (n : Nat) (x : &Pair(Nat, Nat)) (y : &Pair(Nat, Nat)) : &Pair(Nat, Nat) := match n { Z => x, S(m) => y, }
-def ReSnd : Unit := (let c = MkPS(Mk(0, 1), refl); match c { MkPS(p, h) => (let r = Fst(&p); h := refl; *r := 5; let z = c; ()), })
-def ReFst : Unit := (let c = MkPF2(Mk(1, 1), refl); match c { MkPF2(p, h) => (let r = Fst(&p); h := refl; *r := 0; let z = c; ()), })
-def ReFill (n : Nat) : Unit := (let c = MkPS(Mk(0, 1), refl); let q : Pair(Nat, Nat) = Mk(0, 1); match c { MkPS(p, h) => (let r = PickP(n, &p, &q); h := refl; (*r).1 := 2; let z = c; ()), })
-```
-`ReSnd` accepted: the index is lent to `Fst`'s result, which points at its first part, and the proof reads the second, constant at every future. `ReFst` rejected, "the proof assigned to h (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⊤, expected ⌈IsSuccN(σ0)⌉": the proof reads the part the result points at. `ReFill` rejected likewise, the hole of the stuck call's fill replaced by an unknown inside the fill. The GetN shape (the paper's [Repack] row of its figure of conditions) is rejected on `main`.]
-*Status of N7:* argued in full on paper from open membership (the plan's definition), the invalidation and checked re-assignment of proof and leaf fields (D64, D112), and N3; not mechanised.
-
-= The block lemma and its place renaming <sec-n8>
-
-_Written by `theory5`._ Case 4 needs a match run directly to agree with the block it would close off as (theorem N8, @sec-frame-block). N8 reduces to C1 (the block's function run in place is `callOf`) and to the place-renaming lemma PR, which relates the direct run of the arm to the block's function run in place. The previous version gave PR as an outline; here it is written out.
-
-*The setting.* A match $m$ not in tail position, of declared type $B$, in the caller's frame $f$, after its [Entry] (which accessed each capture $q_1, ..., q_n$ in order, so no borrow is lent on the path to any $q_j$, at it or inside it). The captures are the maximal places of the match's resolved occurrences, each with its mode: `mv` (moved in), `ref` (by `&`), `cp` (copied); the block function is $F_m = chevron.l thin tack.r kw("fix") \_ (z_1 : U_1 dots z_n : U_n) : B := m' chevron.r$, with $m'$ the match with each $q_j pi$ renamed to $(dr z_j) pi$ (`ref`) or $z_j pi$ (otherwise), each $z_j$ declared as $q_j$ (`&` of its declared type if `ref`). The tag of the scrutinee selects arm $i$ on both sides. The _direct side_ $D$ runs $t_i$ from $S_1$ in frame $f$, then the join's drop of the places $M$ the arms move, then, for a borrow-typed match, [Entry]'s lending. The _block side_ $B$ evaluates [Args] from $S_1$ (`&q_j` for `ref`, a fresh label $l_j$ with its loan at $q_j$; $q_j$ read for `mv`, leaving it moved; $q_j$ read in place, a copy, for `cp`), pushes $F_m$'s frame binding the $z_j$, runs the selected arm $t'_i$, and pops.
-
-*The relation* $"PR"(D, B)$ between a direct state and a block state, during the arm's run:
-- (P1) _Below._ The frames below $f$ are the same on both sides, and so is frame $f$'s part outside the captures. At each capture $q_j$, $B$'s frame $f$ holds $"loan"_(l_j)$ (`ref`), _moved_ (`mv`), or the value at entry (`cp`), where $D$ holds the current content of $q_j$.
-- (P2) _The parameters._ $B$'s top frame binds each $z_j$: for `ref`, $"borrow"_(l_j)$ whose content is $D$'s current content at $q_j$; for `mv` and `cp`, $D$'s current content at $q_j$ (for `cp` its content at entry, which the arm does not change: it only reads a `cp` capture, by copy).
-- (P3) _The arm's own positions._ The bindings and temporaries the arm has pushed correspond one to one, above frame $f$'s own in $D$ and above the $z_j$ in $B$, with the same values up to the label renaming (P4) and variables renumbered by the shift between the two frames' layouts.
-- (P4) _Labels._ The labels the arm makes correspond by the shift of the counters: the block side has made the $l_j$ first, one per `ref` capture, and, for a match whose declared type is a borrow, one more, the result's label its call reserves before the arm runs (D99; the fourth referee's F7); every other label is the same.
-- (P5) _Places._ A place $q_j pi$ in $D$ corresponds to $(dr z_j) pi$ (`ref`) or $z_j pi$ (otherwise) in $B$: the same content up to (P4), the same declared reading (the $z_j$ are declared as the $q_j$).
-- (P6) _Sites._ A label the arm makes is lent at $q_j pi$ in $D$ exactly when it is lent at the corresponding place in $B$ (inside $l_j$'s content, for `ref`), and at the arm's own positions alike; each $l_j$ is lent at $q_j$ only.
-
-*Lemma PR.* From $"PR"(D, B)$, each step of the arm succeeds on both sides or on neither, with the same value up to (P4), and $"PR"$ holds after. At the arm's end, $D$'s join and lending and $B$'s pop and [Lend] give the same state up to the renaming of the result's label into the label $B$'s call reserved. One lemma per operation:
-
-#table(columns: (19%, 59%, 22%), align: left, table.header([*Operation*], [*Argument*], [*Status*]),
-  [Access of a place under a capture], [$D$'s access of $q_j pi$ ends the labels lent on the path from $q_j$'s root down to $q_j pi$, at it and inside it. After the [Entry] no label is lent at a strict prefix of $q_j$ or at $q_j$ but those the arm made since, and those are lent inside $q_j$'s content (it reaches below the frame only through the captures), so $D$ ends exactly the arm's labels lent at or under $q_j pi$. $B$'s access of $(dr z_j) pi$ ends the labels lent on its path: $z_j$ holds a borrow, which is not a loan, so the labels lent inside $l_j$'s content at or under π: the same, by (P6). $l_j$ itself is never ended by the arm: only an access of $q_j$ in frame $f$ would, which $m'$ cannot name. For `mv` and `cp` the path is in $B$'s top frame, the same labels.], [#a-full],
-  [Read, move, copy, `clone`], [The same content (P5) at the same declared reading, so the same copy-or-move decision. A move of a part in $D$ is a move of a `mv` capture (the join's set $M$ is read from the arms, at the same grain as the captures, D84, D129).], [#a-full],
-  [Assignment, write at a field path, D112's invalidation], [The same value written at corresponding places, after the corresponding accesses; the invalidation's places are read from the same readings.], [#a-full],
-  [Borrow], [A fresh label on each side, corresponding by (P4), lent at corresponding places (P6), with the same content.], [#a-full],
-  [End and drop of the arm's labels and locals], [The same substitution on both sides: a label lent at $q_j pi$ in $D$ is lent inside $l_j$'s content in $B$, where its end puts the same content.], [#a-full],
-  [A match inside the arm], [The same tag (P5), the same decisions (readings by (P5)), its own [Entry] and join on corresponding places; a nested block on each side by the induction (the same captures, renamed).], [#a-full],
-  [A call inside the arm], [The same head and arguments (P5); `callOf`'s fixes act at the consumed labels' sites, which correspond (P6); a returned borrow's new label is lent at corresponding places.], [#a-full],
-  [`Id` inside the arm], [The observation runs each side on a copy and ends its labels; then $D$ compares $q_j$'s root position in frame $f$ (or a position of the arm), $B$ compares, for a `ref` capture, the same position of frame $f$ after $l_j$ has ended (so it holds the same final), and for `mv` and `cp`, $z_j$ in the top frame. The footprints differ in which position holds $q_j$'s content, but each side's other compared positions hold values neither side of the `Id` changes; so the conjunctions are equally true (in the model, which compares every position, they are the same proposition up to a reflexive conjunct). Where $q_j$ is a strict part of its root (a field), $D$'s conjunct compares the whole root, which `eq` takes apart by injectivity; for a dependent constructor whose indices differ it stays stuck, the same truth.], [#a-full (truth); the checker's two propositions can differ in form],
-  [Erased terms, statements], [On copies on both sides.], [#a-full],
-  [The end of the arm], [$D$: the join drops each place of $M$ (each a `mv` capture or a part of one), and a borrow-typed match lends its result at the places the block takes by `&` and where its by-move borrow variables are lent ([Entry]'s lending). $B$: the pop ends each $l_j$, putting $z_j$'s content, $D$'s current content at $q_j$, back at $q_j$; drops each `mv` $z_j$, as the join drops $q_j$; drops each `cp` copy; [Lend] lends the result at the places lent to its borrow arguments, the `ref` captures' places and those its by-move borrow variables lend; D99 renames the returned label into the reserved one. The two states are then equal up to that renaming: frame $f$ holds the same contents (P1, P2), the same places moved, the same places lent to the result.], [#a-full],
-)
-
-_Hints._ The direct arm, out of tail position, gets no hint unless the match is annotated; the block's body is in tail position of $F_m$ and gets $F_m$'s codomain, the match's type. A constructor whose parameters the arm leaves to be inferred is inferred from its fields on the direct side; on the block side the hint is the arm's own type, which the arm's typed check computed, so the recorded parameters agree where the direct side infers them, and the direct side's typed check rejects the arm where it cannot. #a-full
-
-*N8 assembled.* With the hypothesis that each captured value decodes at the block's domain for it (the third referee's T7, supplied by case 4: the checker closed the block off, which reads each capture whole), `callOf` of $F_m$ is $F_m$ run in place (C1; no captures, no recursion, so its fixpoint equation is CloFix's, trivial), and PR makes that run the direct one. #a-red[C1] for the first half; PR #a-full; not mechanised.
-
-#measured[*Blocks against their direct runs.* With the `Nat` prelude, on `main` at 662110042; each definition is accepted at its generic call (where its match closes off as a block) and its calls at known arguments compute as the direct run does:
-```
-def Blk1 (n : Nat) (x : &Pair(Nat, Nat)) : Unit := (match n { Z => (let h : Id(Unit, (*x).0 := 1, (*x).0 := 1) = refl; (*x).0 := 2), S(m) => (), }; ())
-def UseBlk1 : Eq(Pair(Nat, Nat), (let c : Pair(Nat, Nat) = Mk(0, 0); Blk1(Z, &c); c), Mk(2, 0)) := refl
-def Blk4 (n : Nat) (x : &Nat) : Unit := (match n { Z => (let r = TailM(&*x); *r := 7), S(m) => (), }; ())
-def UseBlk4 : Eq(Nat, (let c = S(S(Z)); Blk4(Z, &c); c), S(S(7))) := refl
-def Blk4Gen (n : Nat) (x : &Nat) : Id(Unit, Blk4(clone(n), &*x), match n { Z => (let r = TailM(&*x); *r := 7), S(m) => (), }) := match n { Z => refl, S(m) => refl, }
-def Blk5 (n : Nat) (m : Nat) (x : &Nat) : Unit := (match n { Z => (match m { Z => *x := 1, S(k) => *x := 2, }; ()), S(j) => (), }; ())
-def Blk5Gen (n : Nat) (m : Nat) (x : &Nat) : Id(Unit, Blk5(clone(n), clone(m), &*x), match n { Z => match m { Z => *x := 1, S(k) => *x := 2, }, S(j) => (), }) := match n { Z => match m { Z => refl, S(k) => refl, }, S(j) => refl, }
-```
-All accepted, with `Blk1(S(Z), …)` leaving `Mk(0, 0)`, a borrow variable moved into a block (`Blk2`), and a block reading a captured part after writing it (`Blk6`, `4`) as well. One incompleteness, not a fault: `Blk1Gen (n) (x : &Pair(Nat, Nat)) : Id(Unit, Blk1(clone(n), &*x), match n { Z => (*x).0 := 2, S(m) => (), })` is rejected, since in an untyped run (`Blk1`'s body run in place at `Z`) an unknown pair is not refined in place, so the call closes off, while the typed right side refines it (D93 refines in typed runs only: `def Fst0 (x : &Pair(Nat, Nat)) : Unit := (*x).0 := 2` with `Id(Unit, Fst0(&*x), (*x).0 := 2)` is rejected the same way, "expected Eq(Nat × Nat, ⌈let c1 = σ0; Fst0(&c1); c1⌉, (2, σ2))"). The same for a read (`clone((*x).0)`), a write to an owned value's field and a one-arm match in a body run in place; the join's drop, by contrast, does refine such an unknown in an untyped run (a non-tail match whose other arm moves `p.1`, run in place at an unknown `p`, computes). Principle 4's list of decisions should name it: whether an unknown of a type with one constructor is refined in place or the run is stuck is decided differently by the typed check and by an untyped run's field access; the difference only loses equations (the closed-off call means the same), so it is incomplete, not unsound.]
-
-= Hints are inert <sec-n9>
-
-_Written by `theory5`._ N9 is where (E4) of case 1 meets the checker's hint: the checker runs a body in place at the _deferred hint_ of its codomain (`hintLater`, a sealed value that only `forceHint` reads), or at the codomain computed at the call point when an argument is a borrow, or at none where `readsHint` says the body's tails read no hint; the strict run, and the closure run of the frame property, are at the codomain itself (the second referee's R8).
-
-*Theorem N9.* Let a body $b$ be run in place at a call point with arguments $overline(w)$ of a function value of Π-type $Pi$, at the hint $h$ the checker hands it (`runBodyCore`). Then (a) where `readsHint` is false, the run at no hint and the run at the codomain $T_B$ (`declCallType` at the call point) give the same result and the same state; (b) the deferred hint, forced at any later point of the same run, is a type value meaning what $T_B$ means, under every assignment extending the run's to the unknowns the forcing makes; (c) so the run at $h$ and the run at $T_B$ give results and states that mean the same.
-
-_Proof._ (a) `readsHint` follows `evalCore`'s reads of its hint, by reading: a constructor whose parameters are not written, of an inductive that has some (it takes them from the hint); an embedded value, `rewrite` and `rewriteR`, whose returned type is the hint (read only where the context reads the term's type, the flag `typeRead`, false at a body's tail); `clone`, `peek` and `inplace`, which hand it to their operand; and, in tail position, a `let`'s or `;`'s tail, a match's arms and a split's term. Every other form passes no hint to its parts or ignores it. So where `readsHint` is false no hint is read, and the two runs are the same run. #a-full by reading. (b) `hintLater` is chosen only when no argument is a borrow; it keeps the arguments as passed, and `forceHint` computes `declCallType` from them in a private frame pushed on the state at the forcing. The codomain names only its parameters and the closure's captures, all values (captures hold no borrow, and no argument is one), so its evaluation reads nothing of the state but them: neither a move of a parameter in the body (the hint keeps the argument as passed) nor a write elsewhere changes it; an `Id` in it observes only its own private frame's owned parameters. The untyped run that forces it makes no split, so no refinement intervenes; the forcing's own private run may make unknowns and generalisation records (D37), which mean what they stand for (a path condition the extended assignment meets). With a borrow argument the hint is computed at the call point (`declCallType` there), before the body runs. #a-full by reading. (c) At each read site the forced value means the same type as $T_B$ ((b)): a constructor records parameters with the same meanings (the parameters are part of a constructor value's meaning, (WF10)), and conversion ignores them; an embedded value's or a `rewrite`'s returned type means the same type. #a-red[N3]
-
-#measured[*The hint at a body run in place.* With the `Nat` and `List` preludes, on `main` at 662110042:
-```
-inductive Tag (A : Type) (n : Nat) := MkTag
-def Mv (A : Type) (n : Nat) : Tag(A, n) := (let k = n; MkTag)
-def UseMv : Eq(Tag(Nat, 3), Mv(Nat, 3), (MkTag : Tag(Nat, 3))) := refl
-def Wr (A : Type) (x : &Nat) : Tag(A, *x) := (*x := 0; MkTag)
-def UseWr : Eq(Tag(Nat, 5), (let c = 5; Wr(Nat, &c)), (MkTag : Tag(Nat, 5))) := refl
-def TT (n : Nat) : Type := match n { Z => List(Nat), S(m) => List(Unit), }
-def MkTT (n : Nat) : TT(n) := match n { Z => Nil, S(m) => Nil, }
-def UseTT : Eq(List(Nat), MkTT(Z), (Nil : List(Nat))) := refl
-```
-All accepted, with `UseMv` at an unknown `n` and `UseTT` at `S(Z)` and `List(Unit)`; `UseWr` at `Tag(Nat, 0)` rejected ("the left side of Eq has type Tag(Nat, 5)"). `Mv` moves the parameter its codomain mentions before the tail reads the hint, which keeps the argument as passed; `Wr`'s hint is taken at the call point, before the body writes through `x`.]
-*Status of N9:* argued on paper by reading `readsHint`, `forceHint`, `hintLater` and `runBodyCore`; the agreement of `readsHint` with `evalCore` is the one point a change to `evalCore` could break silently (a new form that reads its hint must be added to `readsHint`), so it is a check, not a construction: the redesign of @sec-a6 (hints of a type of their own) would make it structural. Not mechanised; Lean's `HintIndep` is stated for bodies whose tails read no hint ((a)).
-
-= Exclusive access is preserved <sec-excl>
-
-_Written by `theory3` (the clauses the argument uses, task 4 in part); completed by `theory5` (every clause of the plan's well-formedness, (WF11) and (WF12) included, and (X5) in the form resolved determination needs)._ N5 says every step of the checker keeps its state well formed. The plan's well-formedness has fifteen clauses, (WF1) to (WF12) and (WF14) to (WF16) (`18-consistency-proof-plan.typ`, its sections on states and on well-formedness); the argument uses them in the seven forms below, and this section argues each is kept by each operation of the machine. It is the blueprint of the lemma per operation that N5's proof needs; nothing here is mechanised but where marked.
-
-*The clauses, in the forms the argument uses.*
-- (X1) = (WF1): each label has at most one borrow, held as the whole value of a binding or temporary, never inside data, a sealed program, a closure, a type or a record, with one exception: the record of a deferred parameter type (`Binding.lazyTy`, set by `runBodyCore` on every parameter whose type it defers) keeps the call's arguments as passed, a borrow argument as $"borrow"_ell space c$ with its content at the call. That copy is not a position of Ω and no step of the machine reads it as a value; it is read only by `paramTypes` (through `bindTy?`) on a private copy, which first takes the live borrow from its holder (`takeArgBorrow`, which leaves `⊥` there) and then binds the record's copy, so inside that copy the label has one holder again, and the copy is discarded. If the label has ended by then, `takeArgBorrow` finds no holder and the copy's borrow is a borrow with no site, lent nowhere (the case of C2 the third referee's T4 names; under the finals design of @sec-obs such a borrow is still lent from below, and its finals are compared). D111's assertions and the sweep scan values, not these records (the fourth referee's F6).
-- (X2) = (WF2), (WF9): every loan or mark has its borrow in the state (but an inert loan inside a sealed program's run); outside sealed programs a label occurs as a loan at most once; a loan outside a sealed program sits at a position with a stored type.
-- (X3) = (WF3): lending is acyclic: the relation "a loan, fill or mark of ℓ lies inside the content of $"borrow"_m$" is well founded (Lean's `LendWF` is its reference-state form).
-- (X4) = (WF5): at every call point each argument is loan-free or a borrow of loan-free content.
-- (X5): _resolution is injective_: the map from the final contents of the live labels (as independent whole members) to the meanings of the positions holding no borrow, each label ended with its final, is injective, under every assignment (the form @sec-rd needs; for one label it says the contexts at its sites are jointly injective in its final content).
-- (X6) = (WF14) and the plan's "no live loan on a written path": after a write's access no live loan or mark lies on the written path, and no live borrow is lent strictly above a moved part.
-- (X7) = (WF6), (WF7), (WF8), (WF10): the typing of places (a place declared a borrow type holds a borrow, `⊥`, a loan or a mark, and a place that holds a borrow is declared a borrow type), `&` only of `Type₀` and only at the top of a type, constructor values recording their parameters.
-- (WF11): no stored or deferred type of a binding, no type of an unknown, not the goal, and no generalisation or η-record holds a live loan (a sealed program's holes included).
-- (WF12): under a live fill only borrows filled there: at a position holding a live borrow's fill or mark, every live borrow lent at that place or inside it is filled or marked at that place too.
-- (WF4), (WF15), (WF16): captures hold no borrow and no `⊥`, sealed programs are closed, the declared types a closure records hold no loan, and every sealed program ends in a read whose meaning does not depend on the type it is read at.
-
-*One lemma per operation.* Each row says what the operation does to the clauses and why they are kept. "By [Access]" means: the operation is preceded by the access of the place it touches, which ends every borrow lent on the path to it, at it, or anywhere inside its content (for an assignment: in the part it owns; for a match: at the head and inside a neutral there), so it touches no live loan, fill or mark.
-
-#table(columns: (17%, 61%, 22%), align: left, table.header([*Operation*], [*Why the clauses are kept*], [*Status*]),
-  [[Borrow] `&p`], [After the access, `p`'s content holds no live loan and is whole; the fresh label's borrow is one temporary (X1), its loan one occurrence at `p`, at a binding with a stored type (X2); its content is loan-free, so it is lent below nothing (X3); the context at `p` is the identity composed with the contexts of the borrows `p` lies inside, so resolution stays injective in the new label's final (X5); the temporary's stored type is `&T` with `T : Type₀` (X7, [T-Borrow]). No type or record is touched (WF11). A borrow at or under a fill or mark first ends it (the fill's holes are on the path, D90), so nothing is lent inside a live fill (WF12).], [#a-full],
-  [[End] ℓ], [The holder becomes `⊥` (X1; X7, a place declared `&T` holding `⊥`). The content $w$ replaces ℓ's loan or fills its holes, in the values of Ω only (`substEnv … false`): no type or record holds ℓ (WF11), so none needs it. The loans inside $w$ move with it: their contexts are composed with ℓ's site's context, and a composition of jointly injective maps is jointly injective (X5); a nesting path $n -> ell -> m$ becomes $n -> m$ (X3). Where ℓ's site was a fill, $w$'s loans become holes of that same fill, so every borrow lent inside a fill is filled there (WF12); a mark over ℓ passes to the live borrows $w$ holds, at the same place (D90). $w$ is whole (D98), so no `⊥` enters a borrow's content's place (X6).], [#a-full],
-  [[Access], [Drop], the join's drop, a `let`'s end], [Sequences of ends, each the row above. A drop that would end a borrow a value in flight holds is an error (D106), so no temporary loses its borrow unseen; a binding's drop ends its borrowers before the place dies, so no site's place vanishes while its label is live (X2, X5).], [#a-full],
-  [[Read], [Move], [Copy], `clone`], [Data read after its access is loan-free (X4 for what is passed on); a moved borrow passes from the place to a temporary, the place holding `⊥` (X1). A partly moved place or a borrow over a partly moved content is not read (D127), so no `⊥` travels (X6).], [#a-full],
-  [[Assign] `p := t`], [The access ends the loans on the path and in the part `p` owns, inside neutrals there too (X6, by definition of that access, D67); the old content is dropped; a borrow written moves from its temporary to `p` (X1), its own content holding no loan of a borrow lent outside it (a moved borrow's content was emptied of loans by the read's access). (X7): in a typed run the value's type was converted to the place's; in an untyped run the term's declared type reads as a borrow exactly when its value is one (sorts are syntactic and evaluation keeps declared types, principle 3), and the place's declared type is the one the typed check compared it with. A strong update stores only a constructor value of a data inductive (D110, D112), never a borrow (X1).], [#a-full; (X7) in untyped runs #a-red[N6]],
-  [[Close]], [(X4) holds at the call point: each argument was read or borrowed after its access, a later argument's access only ends borrows, and `closeCall` asserts it. The borrow arguments' holders are consumed (X1). Each argument's loan becomes a fill holding no live loan of its inputs, and the hole of a returned borrow is put in every fill, one [Close] making them all (X2, inside sealed programs only; (WF4), the text closed but for the hole). The fills are the callee's backward function, injective on members by its membership (X5, jointly over the places borrowed; a fill at a place declared `Unit` keeps its hole in the borrow row, @sec-rd-attack). Each fill sits at the whole place where the argument's loan was, so nothing else is lent at or inside it (WF12). The cells' declared types are the lent places' (D82), loan-free (WF11). The text ends in `peek` of a cell or in the call (WF16).], [#a-full, given membership],
-  [[Lend], a call that runs and returns a borrow; [Entry]'s lending], [Each place lent to a borrow argument (or, for a borrow-typed match, each place the block takes by `&` and those its by-move borrow variables lend) is marked, as a whole, for the reserved label; where the result points the mark is around its loan, elsewhere constant: _jointly_, not singly, injective (X5); this is why every owner must be observed. The returned label is renamed into the reserved one (D99), not ended. A mark wraps the whole site, which held only the argument's loan or fill (WF12).], [#a-full],
-  [[Split], refinement, generalisation], [Refinement substitutes constructor values for unknowns, in values, stored types, the types of unknowns and the goal (`substEnv … true`), touching no label; a fill stays a fill over the same holes. A sealed program is generalised only after the access has ended every live borrow inside it (`accessNeutralHead`, D29, D90's `G1`), so no hole is generalised away (X5) and no record keys a text with a live loan (WF11). [T-Split-goal] generalises a program found in the goal, which holds no loan (WF11). An η-record maps an unknown to a constructor of fresh unknowns, typed in the arm's world (WF11).], [#a-full],
-  [A sealed program's re-run], [Only a program with no hole runs (D97), from an empty frame; it introduces no label into the state, and its value replaces the program in place.], [#a-full],
-  [Capture, private copies, observations], [A capture reads after its access and captures no borrow and no `⊥` ((WF4), [Capture]); the declared types it records are the bindings' (WF15). A private run restores the state but names and records, and records hold no loan, so no label made inside a copy occurs after it ((WF11), the row below).], [#a-full],
-  [Forming a type], [Every type is formed in a type position, which is erased and so runs on a private copy (principle 2); every read there accesses first, so a type value is built from loan-free reads, constructors of them, captures (after their accesses) and the results of calls, whose sealed programs have no hole (the result rows of [Close] hold none). A dependent field's type is computed in a frame that binds what each earlier field stands for, a borrow's content resolved through its loans and marks (`resolveLoans`, D117), and a tree field whose content does not have that type takes its content's (D112). The goal, a parameter's stored type, a `let`'s, and Δ of a fresh unknown are each such a type. So (WF11) holds of every type the checker stores.], [#a-full],
-  [A call's push and pop], [The push moves the arguments from temporaries to bindings (X1); a deferred parameter type records the arguments as passed (`lazyTy`), borrow arguments included, which is (X1)'s one exception (a second copy of each borrow argument, in a record that only a private copy reads, after taking the live borrow from its holder); their contents are loan-free (X4), so the record holds no loan (WF11), but it may name a borrow that has since ended (the deferred-type case of C2, @sec-frame-stmt). The pop is drops and ends; a frame's binding that dies while the result borrows it is an error.], [#a-full],
-  [Invalidation of dependent fields (D112)], [Writes `⊥` at fields whose type mentions a written index, after ending a lent leaf's borrows, as a write would (X6).], [#a-full],
-)
-
-*(WF11), argued.* A loan in a type would outlive its borrow, since [End] substitutes into the values of Ω only, and a type is read at a fixed future. Types enter the state in four ways: a stored type of a binding or temporary, a deferred type, the type of an unknown, the goal; records in two: a generalisation record, an η-record. Each is made by a computation on a private copy (a type position), whose reads end every loan inside what they read, or is a constructor of such values, or is a record made after an access ended the live loans of its key ("Forming a type" and "[Split]" above). Nothing later puts a loan into an existing type: [End] does not substitute into types, a refinement substitutes constructor values of fresh unknowns, and a re-run replaces a sealed program by its value. The one place a type is computed from a value that can hold a live borrow's fill is a dependent field's type, where the index field is lent to a stuck call: there the tree field takes its content's type, which has no hole.
-#measured[*A tree field read while its index is lent to a stuck call.* With the `Nat` prelude, on `main` at 662110042:
-```
-inductive Void : Type
-inductive One := O
-def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
-inductive V := MkV(n : Nat, x : Fin1(n))
-def RdWhileFilled (v0 : V) : Unit := (let v = v0; match v { MkV(n, x) => (let r = TailM(&n); let y = x; let z : One = y; *r := Z; ()), })
-def RdWhileFilledT (v0 : V) : Unit := (let v = v0; match v { MkV(n, x) => (let r = TailM(&n); let y = x; *r := Z; let w = y; ()), })
-```
-`RdWhileFilled` rejected, "the ascribed term has type ⌈Fin1(σ1)⌉, expected One": `y`'s stored type is its content's, `Fin1` of the index as it was, with no hole of `TailM`'s fill; `RdWhileFilledT` accepted.]
-#a-full by reading; the sweep (the plan's section on well-formedness) found it on every recorded state. Not mechanised.
-
-*(WF12), argued.* A fill or a mark is made at a whole place that holds exactly a borrow argument's loan, fill or mark ([Close], [Lend], [Entry]); nothing else is lent there or inside it then, since that place's content is in the argument's borrow. Afterwards no operation lends anything at or inside it without ending it: every [Access] of a place at or under a fill or a mark ends its borrow first (a fill's holes and a mark count as loans on the path, D90; a match ends the holes inside a neutral head); and an [End] of the filled label puts its content's loans into the same fill, so they are filled there. Two borrows filled at one place arise exactly so: a returned borrow's content lent onward in two parts, then the returned borrow ended (D93 made the parts places).
-#measured[*Two parts of a returned borrow, lent onward, then the borrow ended.* With the `Nat` prelude, on `main` at 662110042:
-```
-def PickP (n : Nat) (x : &Pair(Nat, Nat)) (y : &Pair(Nat, Nat)) : &Pair(Nat, Nat) := match n { Z => x, S(m) => y, }
-def TwoParts (n : Nat) : Nat := (let a : Pair(Nat, Nat) = Mk(1, 2); let b : Pair(Nat, Nat) = Mk(3, 4); let c : Pair(Nat, Nat) = Mk(5, 6);
-  let r = PickP(n, &a, &b); let q1 = &(*r).0; let q2 = &(*r).1; r := &c; *q1 := 7; *q2 := 8; let z = a; let w = b; 0)
-def TwoPartsBad (n : Nat) : Nat := (let a : Pair(Nat, Nat) = Mk(1, 2); let b : Pair(Nat, Nat) = Mk(3, 4); let c : Pair(Nat, Nat) = Mk(5, 6);
-  let r = PickP(n, &a, &b); let q1 = &(*r).0; let q2 = &(*r).1; r := &c; let z = clone(a.1); *q2 := 8; 0)
-```
-`TwoParts` accepted, and its calls at `Z` and at `S(Z)`; the value at `Z`, `a`, is `Mk(7, 8)` (`refl`); `TwoPartsBad` rejected, "no such place \*q2: its path does not exist in ⊥", and so is its body written at `Z`. Re-pointing `r` ends the returned borrow; its content's two reborrows become holes of the fills at `a` and `b` (at an unknown `n`) or pass its marks on (at `Z`), so reading one field of `a` ends both, on every path.]
-#a-full by reading; the sweep holds it on every recorded state since its restatement. Not mechanised.
-
-Not argued here: (WF6)'s typing of values beyond (X7) (membership is (I)'s business in @sec-twohalves, not well-formedness's); and (X7) where a binding's type is deferred (case 4's one shape). The table found no operation that breaks a clause. *Status of N5:* every clause argued per operation on paper (#a-full by reading, as marked), none mechanised; the sweep holds every clause in its restated form on 2,137,352 states.
-
-= A proof's data fields, and what "a proof is irrelevant" means <sec-proof-fields>
-
-_Written by `theory6`, answering the fourth referee's F2._ A proposition can have a constructor with data fields, `inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))`. A match on a proof of it is decided by the proof's type (D45), and since `Ex` is not a subsingleton its arm must be a declared proof, so the match is erased and runs on a private copy. In that arm the checker puts at the scrutinee's place a constructor value whose proof fields hold `⋆` and whose data fields hold fresh unknowns of their types ([T-Match-prop]'s $Omega_1^i$, `bindDataFields`), and the arm may read, write and borrow them. The model, as it stands, runs the arm with the place still `•` (`Run.lean`'s `.matchInd` clause at a proof tag), so a field reads `•` at the error type, a borrow of it fails its strict test, and an `Id` over it compares the proof as `•` on both sides. The simulation (II) then has no reference run to relate the checker's to.
-
-#measured[*The checker on a proof's data fields.* With the `Nat` prelude, on `main` at b3f6a3854 (`G5` as in @sec-rd-stmt, `G5T (x : &Nat) : Prop := Id(Unit, *x := 0, *x := 1)`):
-```
-inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))
-def PB (e : Ex) : True := match e { Wit(w, h) => (let r = &w; refl), }
-def PExT (e : Ex) : True := match e { Wit(w, h) => (let t : Prop = G5T(&w); let q : Eq(Prop, t, False) = refl; refl), }
-def PIdSelf (e : Ex) : True := match e { Wit(w, h) => (let t : Prop = Id(Unit, w := 0, w := 1); let q : Eq(Prop, t, False) = refl; refl), }
-def PW (e : Ex) : True := match e { Wit(w, h) => (let q : Eq(Nat, w, 0) = refl; refl), }
-```
-`PB`, `PExT`, `PIdSelf` accepted, and so are the fourth referee's `PExF` and a `clone(w)` and a `w := 5` in the arm. `PW` rejected, "the ascribed term has type ⊤, expected Eq(Nat, σ0, 0)": the field is an unknown. `PData (e : Ex) : Nat := match e { Wit(w, h) => w, }` rejected by subsingleton elimination.]
-
-*What the model must read.* At an erased match on a proof whose constructor has data fields, on the arm's private copy, the reference puts at the scrutinee's place a _witness_: the constructor applied to a member of the proposition's untruncated carrier, chosen classically, its proof fields `•` and its data fields that member's. One exists: the scrutinee is a member of its type (the reference state is good), so the proposition is true and its carrier is not empty; with one constructor every element of it is built by that constructor; with several (an `Or`), some constructor has one, and the reference runs the arm of such a constructor with such a witness (`SM.anyArm` already runs the arms on copies and takes one that runs to a proof), while the checker's arms for the other constructors, checked at unknowns, relate to no reference run, since no assignment meets their path condition, and (II) is vacuous there. The witness's data fields are members of their field types, and the types of its proof fields are true. The checker's fresh unknowns are related to the witness's data fields by extending the assignment at them, which is how `Steps/Match.evalMatchByType_step` (on `spine`) already states the step; any witness serves, since the checker checked the arm at unknowns. Two definitions change: the `.matchInd` clause at a proof tag with data fields writes the witness before running the arm; and the reference state's goodness admits, at a binding declared a proposition and only inside such an arm's copy, a witness as well as `•`. (R3) then relates the checker's $ty("C")(overline(sigma); star)$ with the reference's $ty("C")(overline(w); bullet)$ under the extended assignment.
-
-*With that reading the simulation holds at the fourth referee's programs.* `PB`: `&w` borrows a data field of a constructor value, a member of `Nat`, so the strict test passes. `PExT` and `PExF`: at `G5T`'s call in the arm the observation's owner is the proof binding `e`, holding `Wit(σ, ⋆)` on the copy; both sides compare `Wit(0, ⋆)` against `Wit(1, ⋆)`, which `eq` takes apart to `False`, and the model compares `Wit(0, •)` against `Wit(1, •)`, also false. `PIdSelf` the same, with the `Id` formed in the arm itself. Resolved determination's hypothesis (b) can then be dropped, and its assumption 4 holds at such an owner: it holds a constructor value, compared field by field.
-
-*What "a proof is irrelevant" then means.* Three things, and the argument uses each.
-+ _Outside an erased match on it, a proof is `⋆` and means `•`._ Any two proofs of one proposition are convertible ([Conv-refl] at `⋆`) and mean the same. Used by N3 (conversion identifies them), by [Def] (a proof parameter is `⋆` at the generic call, so a lemma's meaning does not depend on the proof it is passed), by sealed programs that embed a proof (N3 for code, its clause CV3), by [T-Call-proof] (a proof call's body never runs), and by case 7 (a term is replaced by `⋆` only when its declared type is a proposition, principle 3).
-+ _Inside such a match, the proof's data fields are unknowns._ What the arm proves, it proves at every witness, so the witness the model chooses is invisible to every conclusion the arm reaches.
-+ _Nothing computed from a witness leaves the arm._ The arm is a declared proof unless the inductive is a subsingleton, whose fields are all proofs (subsingleton elimination, D45), and its copy is discarded with everything it wrote, borrowed or formed. Used by case 7 (`Rel.private_copy`) and by the model's reading of a match on a proof through its type (paper §7.1).
-Inside the arm the converse of the first point fails by design: two witnesses of one proposition are not convertible (`Wit(0, ⋆)` against `Wit(1, ⋆)`), and an `Id` there compares witnesses. That is consistent, since those comparisons are made on the arm's copy only and the model makes the same ones.
-
-*The alternative* the referee names, rejecting every borrow, read and write of a proof's data field so that the model's `•` stands, would reject `PB`, `PExT`, `PIdSelf` and the `clone` and the write; I have not measured what it costs the suite. The witness reading costs one step of the `.matchInd` clause and one clause of goodness, and it is the reading the Lean lane's statement already takes, so I recommend it. Under the finals design of @sec-obs the caller-owner half of the fault disappears (`G5(&w, refl)` compares `&w`'s finals, not `e`), but the in-frame half (`PIdSelf`, and the borrow in `PB`) needs this reading either way. #a-full by reading; not mechanised.
-
-= Superseded: the argument from the principles alone <sec-argument>
-
-_Superseded by @sec-twohalves (27 November, `theory3`), and kept because the audits and the referee's report cite it._ Its reasons are mostly sound and reappear in @sec-twohalves; its form is not. Four of the principles it cites were the proof's open theorems (now N1, N3, N4 and N5); its induction carried exact meanings pointwise at one future, which the end of a borrow breaks (O2); and it carried membership as a conclusion of every step of the checker, untyped runs included, with no argument for them (O3). Its claim that a run of the body under check can only fail to end (case 4) described the checker before D135 and was false of it (O4); D135 is now on `main` and the claim is no longer needed.
-
-_Written by `theory2` after reading the paper whole, `RULES.md`, the nine model notes and docs/18's shape of the argument; it replaces the first draft's three cases._ This section proves consistency from the principles, as a paper proof a reader can check case by case. It takes from docs/18 only the _shape_ (a set model, a meaning for every state the checker reaches, and the checker's run read as computing those meanings) and argues every step from the principles of @sec-principles, citing each by number and name and nothing else: no fact about the code and no lemma of the mechanisation. The two inductions it sets up are its own. Where a step needed more than the first draft's principles said, the step names what was missing, and each such finding is now a clause of a principle (@sec-revision). @sec-arg-unused lists what no step uses. The cases come in order of risk, the riskiest first.
-
-== The statement, and what it is about <sec-arg-statement>
-
-*Theorem (consistency).* For every program the checker accepts, every accepted definition $d_k$ means a member of the meaning of its declared type. In particular an accepted constant $c : T$ means a member of $deno(T)$, so $T$ does not compute to `False`, whose meaning is empty.
-
-*The model* is principle 1 (meanings exist). Each type value means a set; `False` means $emptyset$; a proposition means $emptyset$ or ${bullet}$, and every proof means $bullet$; `Eq(A, a, b)` means ${bullet}$ exactly when $a$ and $b$ mean the same element; a function type with borrow parameters means the functions from the contents of the borrowed places and the other arguments to the result together with the final contents of the borrowed places, and, for a returned borrow, to a _backward function_ from the value finally left in it to those final contents, which must be injective; a Π-type into propositions means the truth value "true at every argument"; a recursive function means its limit by stages on the size of its decreasing argument.
-
-*The meaning of a state.* A state Ω the checker reaches means something under two choices. An _assignment_ γ gives every unknown σ that Ω names a member of the meaning of its type, and meets every record in force in the current world: a refinement $sigma := r$ when γ(σ) is the meaning of $r$, a generalisation $n := sigma$ when γ(σ) is the meaning of $n$ (principle 8, worlds are exclusive: the records in force are exactly the current world's). A _future_ φ gives every live borrow a whole member of its content's type, the content it will hold when it ends (principle 12, access is exclusive: a borrow ends only over a whole content). Under γ and φ each position of Ω means: an unknown its value under γ; a loan, or a place marked lent, the future's value of its borrow, or the content it marks; a place holding a borrow that borrow's current content; a sealed program the meaning of running its text (principle 7); `⊥` the value _moved_; a constructor value its tree; a closure a function. This is defined only because every value the checker holds is at a position of Ω with a stored type (principle 5, the state is the whole truth), and the live borrows form a forest in which each has one holder and lends exactly the places that hold its loans (principle 12).
-
-*The meaning of a term*, run from a state's meaning, is its _reference run_ (docs/18, the strict reference run): the rules of the machine, except that a call applies the meaning of its callee instead of running its body, and a match reads its scrutinee's constructor under γ instead of splitting. Every decision the rules make (whether a term is erased, copy or move, the places a match moves, which borrows end where, η, the parameters a constructor records) the reference run makes as principle 4 says they are made: as a function of the code and the declared types.
-
-*Good states.* A state is good when, under every assignment and every future, every position with a stored type holds a member of that type, or an _open_ member (a value of a dependent type in the middle of a mutation, or partly moved: principle 9).
-
-== The induction <sec-arg-induction>
-
-*Outer induction:* on the position of $d_k$ in the program, and, for an assignment γ of $d_k$'s generic call, on the size of $d_k$'s decreasing argument under γ (principle 10). Its hypothesis: every earlier definition, and $d_k$ itself at every smaller size, means a member of its type.
-
-*Inner induction:* on the checker's derivation of $d_k$ (its typed run at the generic call, case tree included). The claim, for each step from a good state Ω running a term $t$ to a value $v$ of type $A$ and a state Ω': for every assignment γ of Ω, extended at each split by the fields of γ's value of the scrutinee and following that arm, and every future φ,
-- (i) the reference run of $t$ from Ω's meaning is defined, returns $v$'s meaning, and leaves Ω''s meaning;
-- (ii) $v$'s meaning is a member of $A$'s;
-- (iii) Ω' is good.
-An _untyped_ run (a callee's body run in place, a sealed program's re-run, a generic call a comparison makes) satisfies (i) and (iii) for code whose meaning is a member of its type, which the outer hypothesis supplies (@sec-arg-call).
-
-*From the claim to the theorem.* $d_k$'s derivation ends, on each path of its case tree, at a leaf $(Omega', v, A)$ where [Def] checked that the frame pops and that $A equiv G'$, the goal as refined on the path. Each γ reaches exactly one leaf: at each split, γ's value of the scrutinee is a constructor of its type and selects one arm (principle 8). At that leaf, (ii) puts $v$'s meaning in $deno(A)$; principle 2 (identifications hold) gives $deno(A) = deno(G')$; and $deno(G') = deno(G)$ under γ, because $G'$ is $G$ with the path's refinements substituted, which γ meets (principle 8). The pop ends the borrow parameters, so their cells receive their final contents, which [Return] checked whole (principle 9, whole where relied on). So under every γ, $d_k$'s result and the final contents of its borrowed places are members of what its type says: membership in its Π-type, but for one clause, that a $d_k$ returning a borrow has an injective backward function. That clause is proved in @sec-arg-id, and needs principle 12.
-
-*The first move of every case* reads the checker's successful step as an instance of a rule of the paper, taken at the state the rules describe. That needs principle 5 (every value the checker holds is in its state, nothing outside the state decides a step, and no failure becomes a value); it is not repeated below.
-
-== Case 1, the riskiest: `Id`, and a statement used at another state <sec-arg-id>
-
-*Computing `Id`* ([Id]). At Ω, `Id(A, t, u)` runs each side on its own copy of Ω (principle 6, effects stay local) with the typing judgement, ends every borrow, and conjoins the equation between the two results with those between the two final contents of each place of the footprint: the places the sides write or borrow, each traced to its owners (principle 11). The model's `Id` is the paper's (the paper's figure for `Id`, §5.2): the equality of the two observations at those places. Each side's run computes the side's meaning, by the inner hypothesis (i) applied to the side's run on its copy. Ending every borrow fixes each future at its holder's content, which in meaning is a substitution, and substitutions along a forest commute, so the order does not matter (principle 12). Each equation means what it says (principle 2). So the conjunction means the model's `Id`, and computing `Id` is exact.
-
-This used neither that the footprint names _every_ place a side can change (footprint sufficiency) nor that the two sides leave the same moves and borrows ([Id-typestate]). With `Id` meaning the equality at the footprint, both are about whether `Id` says what its user means (adequacy, which is no longer a target), not about whether the checker computes it truly.
-
-*Using a statement at another state* ([Call-type]). This is the step the paper names the hardest. A definition $d$ with parameters $overline(x) : overline(A)$ and codomain $B$ was checked at its generic call, where each borrow parameter $x_i : \&T_i$ lends a fresh cell $c_i$ holding an unknown $sigma_i$. A caller calls it at a call point Ω with arguments $overline(w)$; the call's type is $B$ evaluated with the parameters bound to $overline(w)$, at Ω: the callee's statement observed through the caller's places. Let $overline(d)$ be the arguments' meanings (for a borrow argument, its content's). The callee's meaning $F$ is a member of its type (outer hypothesis), and that membership speaks of the _generic_ statement at $overline(d)$; the caller holds the _call-site_ one. Both directions are needed: a hypothesis true at the call site must be true generically at $overline(d)$, so that $F$ applies; and a conclusion true generically must be true at the call site, so that the call's value is a member of the type the checker gave it.
-
-Everything in $B$ other than an `Id` is computed from the parameters' meanings alone, the same at both states: a type is formed once, closed over values (principle 6), and every decision in it is a function of its code (principle 4). So the two evaluations of $B$ differ only inside its `Id`s, and only in their footprints. A footprint's roots are read from the sides' syntax, the same at both (principle 11), so the footprints differ only in the owners of the borrow parameters' loans: the one cell $c_i$ generically, and at the call site the set $O_i$ of the caller's places that own the argument's loan $ell_i$ (several when the argument reborrows through a borrow that a stuck call returned, whose hole sits in the fill of every place that call borrowed).
-
-Each side's run at the call site is its run at the generic state plugged into the caller: it reaches the caller only through the loans its borrow parameters hold (principle 6). So once a side has run and every borrow has ended, each owner $o in O_i$ holds $C_o [f]$, where $f$ is the final content of $ell_i$ (the generic cell's final content) and $C_o$ is the context around $ell_i$'s loan at $o$, the same for both sides. The conclusion direction follows: if the generic equations hold, $f_t = f_u$, so $C_o [f_t] = C_o [f_u]$ at every owner. The hypothesis direction needs the converse, that $C_o [f_t] = C_o [f_u]$ at every $o in O_i$ gives $f_t = f_u$: the contexts must be _jointly injective_. They are, for three reasons.
-- The footprint at the call site holds _every_ owner (principle 11). With one owner of two, the context can be constant: `Pick(n, &a, &b)` at an unknown `n` puts its hole in the fills of both `a` and `b`, and in the world where `n` is a successor `a`'s fill no longer depends on it (the counterexample `BadD18`, the paper's table of side conditions).
-- A context is built only by the steps that place a loan: a borrow (the identity); a reborrow (a loan inside another borrow's content, composed with that borrow's context); a stuck call returning a borrow (its hole in the fills of the places it borrowed: the callee's backward function, injective by principle 1 for an unknown callee and by the outer hypothesis for a checked one); a call that ran and returned a borrow (its mark on each lent place: a constructor context around the hole, or none); and the end of a borrow whose content holds the loan (composition). Each of these is injective, jointly over the owners.
-- Nothing else changes a context while its loan is live. No read, copy, match, overwrite or drop touches a live loan, because every access first ends the borrows that lend what it touches (principle 12); and a sealed fill that holds a live hole is never run (principle 7). So a context, once built, changes only by composition.
-
-_What was missing._ The last bullet is the one step of this case that no principle of the first draft stated. Its principle 5 said that a borrow's loans "sit exactly where it lends", which does not say that nothing touches them, and its principle 1 did not say that backward functions are injective. Both are clauses now: principle 12 (access is exclusive, split from 5) and the last clause of principle 1.
-
-*The injectivity clause of membership.* The same argument proves the clause that [Def] left open (@sec-arg-induction): a $d_k$ returning a borrow has an injective backward function. At a leaf, the result is a borrow whose loan the pop has carried into the cells (a borrow of one of $d_k$'s own locals cannot be returned: it is a value in flight when the local dies, an error by principle 12), and the cells' contents are contexts around that loan, built and kept as above, so jointly injective in its final value.
-
-_Verdict:_ closes, from principles 1, 2, 4, 6, 7, 11 and 12, with the two clauses above, which are new.
-
-== Case 2: dependent fields <sec-arg-dep>
-
-The steps: an assignment to a field of a dependent constructor (a strong update of a tree field; a checked write of a proof or leaf field; a write or borrow through an index field, which invalidates the fields whose types mention it), a read or borrow of a field typed by position, a split of a neutral of a dependent type by its telescope, and the end of a borrow into such a value.
-
-The model (principle 1) gives a dependent constructor a Σ-set: tuples whose later fields lie in sets computed from the earlier ones. Principle 9 (whole where relied on) gives the invariant: a value may be _open_ (a later field outside the set its earlier fields compute, a field moved or invalidated) while the code that opened it runs, so a good state's positions hold open members, and at every point where code relies on a value's type the value is whole. Each step keeps the state good:
-- A write through an index field invalidates every proof field and leaf field whose type mentions it, so no field is left claiming a type its new index refutes, and open membership is kept (principle 9).
-- A tree field takes the type of what it holds, and a leaf or proof field keeps its declared type at the current index: a type is read off a value only where the value says its type (principle 3, readings are true, its last clause). A strong update stores only a value whose content says its type, so the field's type as the checker reads it is its type in the model.
-- A whole read, a borrow's end, a capture, an observation and a return are points where a value is relied on (principle 9), so the value is a member there. A part still lent at such a point may receive any member of its borrow's type before its borrow ends, so the value must be whole at every future of the parts still lent; the checker checks a lent part as a fresh unknown of its type (D73). _What was missing:_ the first draft's principle 9 did not say "at every future", which is the clause `GetN` broke before D73. It is a clause now.
-- A write at a field must find the field's path under every future, since a state means a function of the future. After the write's [Access] no live loan or mark lies on the path (principle 12), so the path exists in every future.
-- A split of a neutral of a dependent type by its telescope assumes that the neutral means a whole member. An unknown does, by the definition of an assignment; a stuck call's result or fill means the callee's result or final contents, members by the outer hypothesis; a block's means what its arms return, each checked whole at the arm's end (principle 9, its producer clause, with principle 7: a block is a call of its captures).
-
-_Verdict:_ closes, from principles 1, 3, 7, 9 and 12. The meaning of an open value is the model's design (principle 1); what the principles give is that the checker reads it truly (3) and never lets it escape (9).
-
-== Case 3: closing off a stuck call, and re-running it after a later split <sec-arg-close>
-
-*Closing off* ([Close], [Lend]). At a call point the call $f(overline(w))$ gets stuck; the checker discards the partial run, consumes the borrow arguments, gives each borrowed place a fill #seal[$L; C; c_i$] and returns #seal[$L; C$] (for a returned borrow, a borrow of a fresh label, whose hole is in every fill). The reference run applies $f$'s meaning to the arguments' meanings: its result is the forward value, and each lent place means its component of the final contents, or of the backward function at the returned borrow's future value. The two agree because a sealed program means the meaning of running its text (principle 7), and the text rebuilds the call exactly: the same function value, the other arguments as their values, each borrowed content in a fresh cell (principle 7), with nothing else of the call point reaching the callee (principle 6). Each output is its own program, whose last read copies, so reading one output moves nothing another needs (principle 7). The inputs are loan-free and whole, because [Access] ended the loans inside them and a borrow passed on is whole (principles 12 and 9), so the text is closed. Whether a call lends its result the places it borrowed does not depend on whether it ran or closed off (principle 4), so the borrows live afterwards, and what they lend, are the reference run's.
-
-*Re-running after a split.* A later split substitutes a constructor pattern for an unknown at every position of the state, and re-runs every sealed program it changes (principle 8, the substitution is total; principle 7, re-run exactly where an input changes). Under an assignment that meets the refinement, substitution changes no meaning. The re-run is an untyped run of the text from an empty frame, which computes the text's meaning because the text is a member's code (its head is an earlier definition, the definition under check at a smaller size, an unknown function, or a block whose arms were checked: the outer and inner hypotheses), and it takes the decisions that meaning takes (principle 4). Its head call does not close off again (principle 7), so the re-run computes or leaves the text as it was. A text still holding a hole is never run (principle 7, D97): its meaning is a function of the future, and it stays so until the hole is filled. _What this removes:_ the paper's route assumes _hole parametricity_ (a fill's run never inspects its hole), an assumption about runs. In this argument no run ever meets a live hole, so it is not needed.
-
-*Generalising* ([Split-gen], `split f in t`). A sealed scrutinee $n$ is replaced everywhere by a fresh unknown σ and recorded as $n := sigma$. The record is a path condition, γ(σ) the meaning of $n$, which every later derivation of the same text meets, because one text has one meaning (principle 7: the text is closed and the machine deterministic), looked up by exact equality (principle 2: a record's key is compared exactly, D108). The record is in force only in the world that made it, since in a sibling world the same text can have another type (principle 8; the closed proof of `False` through `g(())` and `T(n)`, the paper's §6.4).
-
-_Verdict:_ closes, from principles 2, 4, 6, 7, 8, 9 and 12.
-
-== Case 4: a call that runs in place, and what it leaves in the caller <sec-arg-call>
-
-[T-Call] with a callee that runs: the checker checks the arguments and the call's type, then runs the callee's body untyped in a frame pushed on the caller's, and pops it. The reference run applies the callee's meaning. Three things make the checker's run compute it.
-- _The callee's meaning is a member._ The callee is an earlier definition, the one under check at a smaller size, a closure formed and checked by a typed run, or an unknown (closed off at once: case 3). Every run of a body that the check makes is of one of these, because every call the check makes passes [Rec] where it is written, and a call that passes [Rec] at the generic call is on a smaller entry value at every instance (principle 10). _What was missing:_ the first draft's principle 10 said how a recursive call is checked, but not that every call is of something earlier or smaller; that order is what the outer induction needs, and it is a clause now. The rest of the first draft's principle 4, "only checked code runs", is not used: D135's `Loop` and the first draft's `LC2` run the body under check at a call that has not yet been checked, but a definition is accepted only if every such call passes [Rec], so in an accepted definition every run of its own body is at a smaller size; before acceptance such a run can only fail to end, which is undecided (principle 5), never an acceptance. D135 is a fault of termination, not of consistency.
-- _The run in place is the run in isolation._ A body names only its own frame, reaches the caller's places only through the loans its borrow parameters hold, and gives them back by ending those borrows (principle 6). So its run in place is its run from a fresh frame with cells, plugged back into the caller: the callee's meaning applied. The arguments stay at positions of the state until the frame binds them, so an end during the call reaches them (principle 5).
-- _It decides as its meaning does._ The untyped run takes every decision as a function of the code (principle 4): erasure, copy and move, the join's moves, borrow ends, η, and a constructor's recorded parameters (the hint, restored by D124). The hint is a decision because a constructor value's meaning includes the parameters it records.
-
-What the call leaves in the caller: its result; the final contents of its borrowed places, at their loans; and, for a returned borrow, that borrow lent every place its borrow arguments lend (principle 4: the same whether it ran or closed off). The pop drops the frame's bindings, and a binding that dies while a value in flight borrows it is an error (principle 12). The call's type is its codomain at the call site, which case 1 relates to the callee's meaning.
-
-_Verdict:_ closes, from principles 4, 5, 6, 10 and 12, with case 1.
-
-== Case 5: a split on an unknown, and the join <sec-arg-split>
-
-[Split] checks each arm in its own world, under the refinement of the scrutinee σ to that arm's constructor with fresh fields. A match not at the end of the body is then closed off as a _block_, an anonymous function of the places its arms use, and the rest of the body is checked once, from the state the block leaves.
-- _Every assignment has one arm._ γ(σ) is a member of an inductive type, a tagged union, so exactly one constructor matches it, and extending γ by its fields meets that arm's refinement. What an arm establishes about its refinement is visible in it alone (principle 8), so γ is never asked to meet another arm's.
-- _The block means the match._ The block's sealed programs mean the run of its text, which is the arm γ selects run in the block's frame on the places it captured (principle 7: blocks are calls). The block takes every place any arm uses at least as strongly as any arm uses it, by move if an arm moves it and by borrow if an arm writes or borrows it (principle 7, its capture clause), so its fills compute every place the selected arm changes. The arm run in the block's frame is the arm run in place, plugged in (principle 6).
-- _The state after the block is the state after the arm._ The reference run runs the selected arm directly, after the same accesses at the match's entry, and then drops at the join the places the arms move. The block's entry, the places it moves and their grain are read from the code (principle 4), so after the block the checker's state has the same borrows ended, the same places moved (`⊥`, _moved_ on both sides), and fills meaning the arm's final contents.
-- _The block's result is a member._ Each arm's result is checked against the block's type, and each arm's return is checked whole, its borrowed captures included (principle 9: a block's arms are the returns of a producer). The arms' types are convertible (principle 2), and a type convertible across sibling worlds names no arm's own unknowns, since names are never reused.
-- A match at the end of the body is not closed off: its arms are branches of the case tree, each a world (principle 8), and each ends with the join an instance's arm makes (principle 4). A match on a value of a type with one constructor refines it in place, recorded in its world (principle 8).
-
-_Verdict:_ closes, from principles 2, 4, 6, 7, 8 and 9.
-
-== Case 6: recursion <sec-arg-rec>
-
-`fix f (…) : B by x_j := b` means its limit by stages (principle 1). [Rec] checks every call recognised as recursive, by the name `f` binds for itself and never by comparing function values (which refinement changes), to pass at position $j$ a strict part of $x_j$'s entry value as refined so far (principle 10). Refinement only adds constructors, so under every γ that meets the path the argument's meaning is a strict part of γ's entry value, of smaller size: the stage below is the function itself there, which is membership, and the outer hypothesis covers the call. Recursion is never on a proof, whose meaning is $bullet$ and has no size: the decreasing parameter's type is data (principle 10, with principle 1). Every call is of an earlier definition, of a value, or of `f` at a smaller size (principle 10's order, case 4).
-
-_Verdict:_ closes, from principles 1, 8 and 10.
-
-== Case 7: conversion, and `Eq` and `J` computing <sec-arg-conv>
-
-Every "≡" premise of the rules is used as an equality of meanings under every assignment: principle 2 (identifications hold). Rule by rule:
-- Values are compared by their structure, constructors by tag and fields (the parameters they record are fixed by their type), sealed programs by their text. Equal parts give equal meanings, provided a text's meaning depends on its embedded values only through their meanings. The decisions in a text can read an embedded value's _reading_ (its declared type), which convertible values need not share: `F (n : Nat) : Unit := ()` and `H (n : Nat) : TF(Z) := ()` are convertible, and a call of one is copied where a call of the other is moved (docs/18, conversion). But a sealed program has [Close]'s shape (principle 7: nothing else makes one), and in that shape the only decision that reads an embedded value's reading is η at `Unit` on the head call's result, which sends a member of `Unit` to itself (principle 3). So texts with convertible parts mean the same.
-- Two Π-types are compared at generic arguments, with their class and borrow flag, which are part of their meaning (a Π-type into proofs is a truth value); compared by their parts (the fast path), their recorded readings are compared too. Generic arguments range over every member, and the evaluation of the components is the same function of the code at every argument (principle 4), so equal meanings there are equal meanings everywhere.
-- Two function values are compared by the observations of their generic calls: their results and the final contents of their cells, a returned borrow observed through a fresh value written through it. A function's meaning is fixed by that observation, because its only effects are its result and its borrowed places (principle 6), and the observation's runs are untyped runs of members (case 4).
-- The relation is the least one: a comparison that needs itself answers "not convertible" (principle 2), and every "not convertible" fails safe, as an error, a stuck term or a later check.
-- `Eq` computes by injectivity and disjointness of constructors (principle 1: an inductive type is a tagged union of tuples; for a dependent constructor only while its index fields are convertible), by reflexivity (conversion, above), and on `⊥` as a value of its own, which means _moved_ alike on every run because moves are decided by the code (principle 4).
-- `J` computes to its transported term only at convertible endpoints (principle 2), where the motive's two instances mean one set; otherwise it is closed off as a block of its transported term (case 5), which computes once a refinement makes the endpoints convertible. Under a hypothesis equating unequal values no assignment exists, so nothing is claimed there. `rewrite` and `split f in t` never run: `rewrite` checks its term against the goal with one side of a true equation put for the other, the same proposition by principle 2, and `split` is a generalisation and a split (cases 3 and 5).
-
-_Verdict:_ closes, from principles 1, 2, 3, 4, 6 and 7.
-
-== Case 8: erased terms, proofs, and types formed once <sec-arg-erase>
-
-An erased term (a proof, a type, anything in a type or erased position) runs on a private copy of the state, which is thrown away but for fresh names and records that mean the same in every state of the world (principle 6). The reference run erases the same terms (principle 4), so afterwards both are at the state before. A proof's value is `⋆`, which means $bullet$ and is a member of its type only if that proposition is true; the erased run's derivation shows it is (inner hypothesis (ii), on the copy), and a term is replaced by `⋆` only when its type is a proposition (principle 3). A lemma's call is not run: its type is its codomain at the call site, which case 1 relates to the lemma's meaning, under the outer hypothesis. A type is formed once, closed over the values of its free variables, so later mutation does not change its meaning, and [Call-type] rebinds only the parameters (principle 6).
-
-Principle 3 is used in one direction only: a term replaced by `⋆` has a type that is a proposition. The converse fails (the first draft's `W2`, @sec-a3: a term of type `⊤` that reads as data and writes), and the argument does not need it: that term runs, with its effects, in the checker and in the reference run alike.
-
-_Verdict:_ closes, from principles 3, 4 and 6.
-
-== Case 9: places, reads, writes, borrows and ends <sec-arg-places>
-
-The machine's leaf rules. Before a place is read, borrowed, assigned or matched, [Access] ends the borrows that lend what is touched (principle 12), so its content then holds no live loan and its meaning does not depend on the future. An end fixes the future at its holder's content, which is whole (principle 12); it only loses information. A read takes the place's stored type, its declared type (principle 5), and a whole read is a point where the value is relied on (principle 9). A written value was checked convertible with the place's type (principle 2). η at `Unit`, η at a type with one constructor and `⋆` at a proposition replace a value by its canonical one, which keeps its meaning only because the reading is true (principle 3). Whether a read copies or moves is a decision of the code (principle 4), so the checker and the reference run leave the same places moved. A dropped value's borrows end, and dropping a live loan while a value in flight borrows it is an error (principle 12).
-
-_Verdict:_ closes, from principles 2, 3, 4, 5, 9 and 12.
-
-== What the argument does not use <sec-arg-unused>
-
-- _Principle 11 beyond its first clause._ That the footprint names every place a continuation could read, that the sides leave the same moves and borrows ([Id-typestate]), and where re-pointed borrows point ([Obs-ref]) make `Id` mean what its user means (adequacy, dropped as a target on 13 November); that the conjunction comes in one order makes the two paths' conjunctions convertible (completeness). Consistency uses only that the observed places are read from syntax and every owner is observed (case 1). The other clauses stay, marked as adequacy's.
-- _Principle 4's clauses about untyped runs as such:_ that they run only checked code (beyond principle 10's order), can run every form the check accepts (D125), and make the tests the check made (D134). Their faults made accepted functions uncallable (a failure of type safety), never an acceptance. Kept, marked as type safety's.
-- _Principle 3's agreement among readers_ ("every reader of one fact gives the same answer") is principle 4 applied to readings; and the converse of a reading (a propositional type always reads as a proof) is not used (case 8).
-- _The first draft's principle 12_ (undecided decides nothing) is used only in the first move of every case, reading a success as a derivation of the rules; it is now a clause of principle 5.
-- Every principle of the revised list is used by at least two cases.
-
-== What the argument found <sec-arg-found>
-
-No case needed something the design does not provide, so nothing here says the design is wrong. Five clauses were missing from the first draft's statements, each now in its principle (@sec-revision): that nothing touches a live loan (principle 12, case 1); that backward functions are injective (principle 1, case 1); "at every future of the parts still lent" (principle 9, case 2); the order of calls (principle 10, cases 4 and 6); and that the parameters a constructor records are a decision (principle 4, case 4, already among the first draft's decisions, now with its reason). One assumption of the paper's route is not needed: hole parametricity (case 3). D135 is a fault of termination, not of consistency (case 4). And one risk predicted from case 8 is closed already:
-
-#measured[*Predicted from case 8:* a binding whose declared type is a call of a type function whose arms are Π-types of different classes takes its class from a normal form (the two-paths census's site 7, "the weakest argument in this census"), where principle 3 would have to hold of a stuck type. *Run:*
-```
-def PT (n : Nat) : Type₁ := match n { Z => Π(x : &Nat). Type, S(k) => Π(A : Type). A, }
-def L (n : Nat) (p : PT(n)) : Nat := (let c = 0; let T = p(&c); c)
-def L2 (n : Nat) (p : PT(n)) : Nat := match n { Z => (let c = 0; let T = p(&c); c), S(k) => 0, }
-```
-With the `Nat` prelude: both rejected at the binding of `p`, "[D77] this binding's type is computed by a type function whose arms are Π-types whose calls are erased differently". D77 removed the site; the census's argument for it is obsolete.]
-
-*Where the argument is weakest.* It is a paper proof, and three of its steps rest on facts the principles state but nobody has proved of the checker: the frame property (principle 6, cases 1, 3, 4, 5), that every step keeps the borrows a forest with exact lending (principle 12, swept on 2,137,352 states and not proved), and that every decision in an untyped run is computed by the deciders the reference run uses (principle 4, by construction for the decisions in `Decide.lean`, by D90's unproved first obligation for a block's captures). These are where a fault would show next.
-
-= What is done, and what is next <sec-next>
-
-_Done (theory1)._ The ledger of all 139 decisions and the eight proofs of `False` (@sec-ledger), the residue and the principles found in it (@sec-residue), audits from the code of principles 4, 3 and 5 with predictions run (@sec-a4, @sec-a3, @sec-a5).
-
-_Done (theory2)._ The paper read whole, `RULES.md`, the nine model notes and docs/18's shape of the argument. The argument from the principles alone (@sec-argument): the statement, the two inductions, and nine cases, riskiest first, each closed from principles cited by name. It found five missing clauses and no case where the design is wrong. The principles revised against it (@sec-principles, @sec-revision): exclusivity split out as principle 12, the first draft's principle 12 merged into 5, principles 3, 4 and 11 narrowed to what consistency uses with the rest marked as type safety's or adequacy's, and clauses added to 1, 7, 9 and 10. Every "what consumes it" now points at cases of the argument; the enforcement of principles 6 to 12 was read against the code at 105021637 (@sec-a6), which found the claim "every private run is one of two combinators" false as stated (six more sites, all restoring through the same two functions) and one sealed value that is not [Close]'s (`hintLater`). One prediction run: census site 7 (closed by D77).
-
-_Done (theory3)._ The referee's report answered (@sec-answers). The theorem restated as conditional on six named theorems, with a seventh proved in Lean (@sec-theorems); principles 1, 2, 6 and 12 split into the design half they keep and the theorem that moved; principle 7's "one maker" restated for sealed programs held in the state. The argument redone in two halves over a structured reference state (@sec-twohalves): (II) stated exactly, with its relation, entry conditions and conclusion; nine cases, riskiest first, two argued in full, one proved in Lean for a fragment, the rest reduced to named theorems; the earlier argument kept as superseded. A first paper proof of the frame property, which the second referee showed incomplete (@sec-referee2) and which @sec-frame now replaces. The clauses of exclusive access the argument uses, one lemma per operation (@sec-excl). D135 now on `main`: `Sel`, `Q2`, `Q3`, `Loop` and `LC2` re-run (all rejected), and what the document said about runs of unchecked code corrected (@sec-a4). No fault of the checker found.
-
-_Done (theory4)._ The frame property rewritten (@sec-frame) against the model's definitions: theorem FR, its hypotheses with their refutations, its uses as corollaries or definitions, the invariant (I) replacing (P), one lemma per operation and clause, the call in place with RecDesc and the fixpoint equation, `Id` with resolved determination, the block lemma N8; three model changes (M1) to (M3); N8 and N9 added to @sec-theorems; the second referee answered (@sec-answers). Findings: `P4` (D208's monotonicity clause false), `run_frame_obs` false as stated. No fault of the checker found.
-
-_Done (theory5)._ The paper, `RULES.md`, the notes on `Id` and closing off, `Obs.lean` and the checker's observation and call types read; the Lean lane's lists "for the theory" (items 1 to 18) and docs/31 D209 to D217. *Resolved determination* (@sec-rd): stated, attacked on the checker with a program for each way an owner could ignore a write (none accepted a call of `G5` with `refl`), proved on paper from (X5) as "resolution is injective", N1's relation and site faithfulness, with the checker's sites it rests on; one paper/code mismatch (η of a fill at a `Unit` place: the code keeps the hole in [Close]'s borrow row, the paper drops it, and the code's is what RD needs). *Which borrows an observation must end*: the observing frame's, their lending ancestors and the labels lent at the compared owners; tested only for the first; ending only the observing frame's is unsound (`AAnc`); three type-safety faults where an observation tests the caller's state (D98 and [Repack] at a caller's borrow's end, [Repack] at a caller's owner), with accepted functions whose calls at known arguments are rejected (`CallK2`, `CallK3`). *The frame property* (@sec-frame) brought up to the mechanisation: FR with the eleven hypotheses Lean carries, (M2) structural, (M3) restricted, the third referee's T1 to T7 folded in (D208's clause true; C6 from FR; C3 a lemma; C2 at a call point only), the operation lemmas marked with their Lean proofs (`frameRel_access` by commutation among them), the section on frames at a depth deleted. *Exclusive access* (@sec-excl): every clause per operation, (WF11) and (WF12) argued and probed. *A closure's fixpoint equation* (@sec-clo-fix): immediate under D136; CloDesc not needed. *Conversion on code* (@sec-n3), *[Repack] at a read* (@sec-n7), *the block lemma's place renaming* (@sec-n8), *hints are inert* (@sec-n9): each stated, attacked (nothing found) and argued on paper. One incompleteness: an untyped run's field access does not refine an unknown of a one-constructor type in place (`T0`), though its join's drop does. N6 for a block's captures closed by reading (case 4). No fault of the checker's consistency found.
-
-_Done (theory6)._ The paper, `RULES.md`, the note on `Id`, `Obs.lean` and the checker's observation, call types and `checkFix` read; the decisions behind the observation's tests (D44, D53, D64, D72 to D76, D98, D106, D113, D114); `RunFrameI` and its files on `spine` at f9b411008 with docs/31 D218 to D220. *The observation's design* (@sec-obs): the five places where a callee's observation tests its caller, measured as accepted functions whose calls at `Z` are rejected (`S1` to `S5`); the user's finals design stated exactly against the code (a detached state of one cell per borrow lent from below, then the observing frame), for the own check, a call site, a body in place and top level, and the final defined case by case; attacked from every decision behind the tests and from resolved determination's attack list (no wrong acceptance; a borrow with no site must count as lent from below; a one-frame residue at the block lemma; an induction hypothesis loses a stuck call's fill, `Lift`, needing a `rewrite`, which no suite program relies on); three options on one page; the refinement (C+), every borrow by its final, which removes the residue and every use of backward-function injectivity; the detach lemma sketched (@sec-obs-dl). *The fourth referee answered* (@sec-answers, with a table for the third): a proof's data fields read by a witness (@sec-proof-fields, F2), resolved determination restated with its hypotheses (F4), caller owners opened by the side (F5), (X1)'s exception (F6), the smaller points (F7). *The frame property* stated as `RunFrameI` hypothesis for hypothesis, with each difference and which side is right (@sec-frame-lean, F3): the start after the push, (H7) in place, (H12), (H13) and `ResAtTemp` added, `Id` over a parameter excluded; a Π-type formed in the body and a closure's own types need (M2) widened (D220), and a `let`'s binding an invariant neither statement has. No fault of the checker's consistency found.
-
-_Done (theory7)._ The paper, `RULES.md`, the plan's section on the set model, the Lean statement of the data model's existence and its facts (`Assembly.lean`, docs/34, `FactsCE.lean` on `spine`), `notes/inductive-model.md`, `checkInd` and the checks it calls, and the sections of Carneiro's thesis on inductive specifications, the reduction to eight type formers and the ZFC model read. *N1* (@sec-n1): stated exactly (a data model: one family per declaration on its loose parameter domain, faithful to the reference runs of the declaration's own terms, least, monotone in its nestable parameters, small; trees that record no parameter), with what "every accepted program" quantifies over; the checks the construction uses, one by one with their steps (@fig-n1-checks); what it takes from Carneiro and where Ochr goes beyond (nesting at own parameters, values instead of indices, field types computed by running code, propositions nested at their own `Prop` parameter); proved on paper by the construction, S0 to S9, every step in full but the other type formers; the eight facts of `exists_dataModel` placed, each true, `GlobalCallLevels` argued on paper with the three Lean steps it needs (no extra check, no counterexample). *Attacks* (@sec-n1-attack): 193 programs, each aimed at one way a declaration could have no model or the wrong one (negativity hidden nine ways, a field too large hidden the same ways, a two-constructor proposition into data through types, value arguments, nested propositions and `J`, propositions with data fields read by later fields, Fording with computed indices, the hard case five ways, the identification of types, D128's readers, propositions whose least model is empty). Nothing wrong accepted. Principle 1's audit (@sec-a1) completed: every site a named check but (B2), which is unenforced and unreachable. Two incompletenesses: `VF` (a parameter typed by a Π over an earlier type parameter, rejected with a message naming κ) and `B10` (a constant type alias as a field type). *N3 at a type* (@sec-n3t): rule by rule from N1 and N3 for values, Π-types and sealed type programs reduced as for code; the Lean proof's two facts of the data layer derived from N1; 23 programs, nothing found.
-
-_Next (after theory7)._
-- *N1 in Lean* (@fig-n1-facts): `GlobalCallLevels` by its three steps (the stage invariant on a global's type, `runT` at a written Π-type with a sort codomain, `callOfL_enc` at level 2 with `Code2.enc` of a lift); then derive the six read facts from the checker's code, and assemble `CheckIndGivesChecks`. The redesign of @sec-a1 would make the last structural.
-- *N1's step (4)*, the other type formers: that the model's meaning of every type value is in its universe, with $R$, is the plan's, tested on a slice; it is the one step of @sec-n1-proof not argued here.
-- *`VF`*: accept a parameter typed by a Π over an earlier type parameter (the parameter telescope's reading of the captured parameter), or reject it with a message that names the parameter.
-
-_Next (after theory6)._
-- *The observation, for the user's rethink* (@sec-obs-compare): choose among today's (A), the excepted patch (B) and the finals design (C) or its refinement (C+). For (C+): `idType` builds the detached state on its private copy (cells for every label the observing frame holds: a plain loan for one lent from below, an identity fill for an internal one) and computes the footprint and both observations from it, a borrow root at its cell; then dump every row's verdict against `main` (predicted: the five sites accepted, `Lift`'s shape rejected, `OwnR`/`OwnRx`-shaped `Id`s computed further in). In the model: `observation` detaches likewise; the lemma DL; FR's (H8) stated of the labels σ may reorder; delete OBS, `CellsDetermined`, `run_frame_obs` and `RunFrameI`'s `Id` exclusion; and, under (C+), drop the injectivity relation R from function types.
-- *If (A) or (B) is kept instead*: (B) as written in @sec-rd-ends, with F1's restriction (fill-site caller borrows keep their tests); resolved determination in its restated form (@sec-rd-stmt) to mechanise, with (X5); `run_frame_obs` restated with it; N3 for open and partly moved values at caller owners.
-- *The model at a proof's data fields* (@sec-proof-fields): the `.matchInd` clause at a proof tag puts a witness at the scrutinee's place on the arm's copy; goodness admits it there. Needed under every option.
-- *The frame property in Lean* (@sec-frame-lean): (H10) site faithfulness with (M2); the `let` invariant of D220 in `FrameInv` and `FrameAgreeI`; (M2) widened to host the type runs of `.pi` and of a closure's own types; then the remaining clauses of `RunFrameI` (the call's borrow result, its `AccInv` and `FrameInv`, head and arguments), the start lemma for (H12) and (H13), C3's renaming and PR.
-- *A deferred parameter type read after the call point* (C2's open case, T4): closed by construction under (C) or (C+); under (A) or (B), evaluate at the call point every parameter type that holds an `Id` over an earlier borrow parameter.
-- *Principle 4's list of decisions*: add "an unknown of a type with one constructor refined in place or stuck", taken differently by the typed check and an untyped run's field access (`T0`, incomplete only).
-- *N5 and N7 in Lean*: one lemma per operation for each clause of @sec-excl ((X5) only if (A), (B) or (C) is kept; (WF11), (WF12) included); N7 by induction over the value.
-- *N9* (hints are inert) is argued on paper (@sec-n9); its one check is that `readsHint` names every form `evalCore` hands its hint to.
-- _Older items, kept:_
-- *N6 for a block's captures:* closed by reading (case 4, @sec-tw-split); computing the modes from declared readings only would make it structural.
-- *`hintLater`* (@sec-a6): show it is never stored, or give hints a type distinct from `Value`, so principle 7's "one maker" is structural (CV3 of @sec-n3 rests on it).
-- The audits the first draft left: principle 2's question for each identification site, whether it is preserved by every refinement; principle 4's tests made only by untyped runs.
-- docs/18's own section on principles (`<sec-principles>` of the plan) still lists the seven of 2 November; once this file is accepted it replaces that section, and the plan's "lemmas each step uses" should cite these twelve.
-
-= The referee's report <sec-referee>
-
-_Written by `referee1`, 27 November 2026, as the adversarial referee of @sec-argument, after reading the paper whole (with its appendix and the fragment proof), `RULES.md` whole, the principles and the argument above closely, and the plan's section on the shape of the argument (the set model, conversion, meaning preservation and the strict reference run). Programs were run with `lake env lean` on the checker of `main` at c830346b6, whose checker sources are those of 105021637; each is self-contained, "with the `Nat` prelude" meaning `uses Nats`. Nothing in the author's sections was changed._
-
-== Verdict
-
-The argument does not show what its summary says it shows. Its cases are, read one at a time, mostly sound reasoning about the design, and the decomposition into nine cases by risk is a useful map; but "the argument closes in every case, citing the principles and nothing else" is true only because four of the twelve principles are not properties of the design that a check enforces: they are the open theorems of the consistency proof itself (the existence of the set model, the soundness of conversion for code, the frame property, and the preservation of the borrow invariants), so what the section proves is a reduction to them, of the same kind as the paper's conditional theorem for the fragment F. Two further faults lie in the induction rather than in any case: the claim it carries is stated pointwise in a future that the end of a borrow changes, and it carries membership as a conclusion of every step of the checker, including the untyped runs, which is the form the mechanisation tried and abandoned on 20 November, here asserted for untyped runs without an argument. Three steps rest on a principle in a form that the author's own audit, or the code, shows false: that nothing but [Close] makes a sealed program; that a run of the body under check before its acceptance can only fail to end, D135 not being on `main`; and that a stuck block's captures are read from the code alone. No program was found that the checker accepts and that proves `False`, and no accepted empty type; every attack on the design itself (a stuck block's returned borrow passed to a lemma that needs writes through it visible, a borrow of a borrow, the universe rules, fuel) was rejected or held. So the result is: the design survives this referee, and the proof does not yet exist; the objections below say where it is missing.
-
-== Objections, most serious first
-
-=== O1. The principles that carry the argument are the proof's open theorems
-
-*Where.* The summary ("proves, case by case ... citing the principles and nothing else. The argument closes in every case"), @sec-arg-statement, and the verdict line of every case.
-
-*Objection.* A principle, by @sec-what, is a sentence about the design that the checker makes true by construction or by checks at enumerable sites. Four of the twelve are not that:
-- Principle 1 (_meanings exist_) is the existence of the data model. The plan's own statement of it (`exists_dataModel`) assumes eight named facts, of which one is an unproved fact about the model (a global heading a field's type has a small result at every argument, with a hard case at a domain in a higher universe) and six are read true but not derived from the code. The syntactic conditions principle 1 lists (positivity, nesting, D120, D121, D128, D133, …) are necessary conditions found one at a time by the lanes building the model; that they suffice is the theorem.
-- Principle 2 (_identifications hold_) is the soundness of conversion. The plan proves it in Lean only for values that hold no code; for the two function rules it is part of the simulation (the plan's (V4) and (V5)). Case 7 argues it rule by rule, so it is not merely assumed; but its function rules rest on case 4's untyped runs (O3), and principle 2 as written lacks the plan's typing hypothesis (O5).
-- Principle 6 (_effects stay local_) is the frame property. The mechanisation found it false as stated four times (item 2 below) and has no current statement; cases 1, 3, 4, 5 and 7 use it.
-- Principle 12's clause that every step keeps the borrows a forest with exact lending is the preservation of well-formedness, which the author's audit records as swept on 2,137,352 states and not proved; case 1's injectivity and every field write rest on it.
-
-The author's "Where the argument is weakest" names three of these steps; it does not name principle 1 or principle 2, and the summary and @sec-arg-found still say the argument closes.
-
-*Evidence.* The plan's paragraph on the general proof of the model (eight facts) and its status of conversion (for code, and for the premises of the two function rules: open); item 2 below; the author's own audit row for principle 12. With the `Nat` prelude, the hard case of the model's fact (6) is accepted by the checker:
-#measured[
-```
-def FT (A : Type₁) : Type := Nat
-inductive WT (A : Type₁) := MkWT(x : FT(A))
-```
-Accepted. A data type in `Type₀` whose field's type is a call of a global whose domain is `Type₁`: the case the plan's fact (6) calls hard. The argument's principle 1 says only "its field types read only through what the model can follow".]
-
-*Kind.* The argument is incomplete, and its summary overclaims.
-
-*What would settle it.* Restate the theorem as conditional on principles 1, 2 (for code), 6 and 12's preservation, as the paper's fragment theorem is conditional on naturality and the machine's invariants; mark in @sec-principles which principles are theorems of the proof rather than properties enforced at sites; and correct the summary and @sec-arg-found. Or prove the four.
-
-=== O2. The induction's claim does not survive the end of a borrow
-
-*Where.* @sec-arg-induction: "for every assignment γ of Ω ... and every future φ, (i) the reference run of t from Ω's meaning is defined, returns v's meaning, and leaves Ω'’s meaning”. And case 9: "An end fixes the future at its holder's content ...; it only loses information."
-
-*Objection.* The meaning of a state is defined pointwise, under one assignment γ and one future φ: a loan of ℓ means φ(ℓ). When a step ends ℓ (at every access, drop, join and observation), the loan's place afterwards holds the holder's content, whatever φ(ℓ) was. So for every φ with φ(ℓ) different from that content, Ω''s meaning at φ is not obtained by any run from Ω's meaning at φ, which has forgotten who holds ℓ and what it holds now: claim (i), read with the argument's own definitions, is false at every step that ends a borrow, and the conclusion does not survive the next step. It is repairable only by changing what (i) is about: a reference state that keeps which position holds which label and its current content, as the plan's strict reference run does (meanings as functions of the future, reads taken at the future that gives each live borrow its record, each end tested at every typed future). Case 9's justification of an end, "it only loses information", is true of the plan's meanings as functions of the future (the plan records it proved in Lean), but it is not what (i) asks: the plan used that order first as the relation between the checker's state and the reference's and abandoned it because comparing by the order admitted wrong states, and (i) demands equality; at one fixed φ an end does not lose a meaning, it replaces one. "Good states", quantified over every future of whole members, is consistent with the plan's typed futures, but nothing in the argument says at which future a read is taken; the plan's example `let r = &p; let z = (*r).0; let w = q; (*r).0 := z; w` shows that the obvious choice (each borrow's current content) is not a future of whole members in mid-run.
-
-*Evidence.* The reasoning above; the plan's definition of the strict reference run (where a read is taken) and its note on the abandoned order.
-
-*Kind.* The argument is wrong as stated (a conclusion that does not survive the next step), and repairable.
-
-*What would settle it.* State the inner claim over reference states with labels and records, as in the plan, with reads at the record future; and re-derive case 9's end as an equality of reference states.
-
-=== O3. Membership is carried on the checker's run, and asserted for untyped runs
-
-*Where.* @sec-arg-induction: "(ii) v's meaning is a member of A's"; "An untyped run (a callee's body run in place, a sealed program's re-run, a generic call a comparison makes) satisfies (i) and (iii) for code whose meaning is a member of its type, which the outer hypothesis supplies (@sec-arg-call)”. Case 4, all three bullets.
-
-*Objection.* This is the second form of the plan's route: "a simulation by a reference run that was not strict, carried membership as a second conclusion of every step of the checker". Stating it in Lean showed that no step concluded membership of the value an evaluation returns: a value in flight had no type, the check at a function's return does nothing on a value with no dependent constructor (so `0` passed at `Unit`), and a known callee's body binds positions at types it never checks. The argument returns to that form without addressing any of the three. For untyped runs it asserts (i) and (iii) and gives no induction for them: case 4's bullets say that the callee's meaning is a member, that the run in place is the run in isolation (principle 6), and that it decides as its meaning does (principle 4). None of these gives (iii), that every position an untyped run binds holds a member of its stored type: an untyped run binds a callee's parameters and its `let`s at types it never compares with the values; its temporaries may have no stored type (D104, "none where an untyped run computed none"), and its `let` of a call has a type computed later (D82, D132, D134), about which "good" says nothing. And "decides as its meaning does" is about decisions, not about the values the run computes, which is what (i) needs.
-
-This matters most during the check of a recursive definition, where an untyped run of the body under check computes values that a type then uses. The outer hypothesis gives only that the definition at a smaller size is _a member of its type_; for the checker's type to mean the reference run's, the in-place run must compute the definition's meaning at that size, which is exactly the untyped-run claim. The ruling meant to remove this (D135: while a function is being checked, a call of it closes off at once) is not on `main`.
-#measured[
-```
-def Sel (n : Nat) : Nat by n := match n { Z => Z, S(m) => match m { Z => (let e : Eq(Nat, Sel(m), Z) = refl; Z), S(k) => Z, }, }
-```
-With the `Nat` prelude: accepted on `main`. While `Sel` is being checked, the type `Eq(Nat, Sel(m), Z)` at `m = Z` is computed by running `Sel`'s own body in place, untyped, to `Z`, and `refl` is accepted against it. The reference run reads the same type as `Eq(Nat, ⟦Sel⟧(0), 0)`, which is `True` only if the untyped run computed the stage. The verdict follows the value that run computes:
-```
-def Q2 (n : Nat) : Nat by n := match n { Z => Z, S(m) => match m { Z => (let e : Eq(Nat, Q2(m), S(Z)) = refl; Z), S(k) => Z, }, }
-def Q3 (n : Nat) : Nat by n := match n { Z => S(Z), S(m) => match m { Z => (let e : Eq(Nat, Q3(m), S(Z)) = refl; Z), S(k) => Z, }, }
-```
-`Q2` is rejected ("the ascribed term has type ⊤, expected False") and `Q3` accepted; they differ only in what the `Z` arm returns, which only the run of the body under check reads.]
-
-*Kind.* Incomplete (a step asserted, in the form that failed when it was mechanised); covers items 1, 3, 4 and 5 below.
-
-*What would settle it.* Either adopt the plan's split: a strict reference run whose membership is the model's own fundamental lemma, so that the checker owes only that the strict run succeeds; or give the untyped runs their own simulation lemma, proved by induction on the untyped run inside the outer induction, saying what a position bound or held in flight by an untyped run means; and land D135 or prove that the in-place run of the body under check computes the stage below.
-
-=== O4. "What the argument does not use" uses D135's gap
-
-*Where.* Case 4: "before acceptance such a run can only fail to end, which is undecided (principle 5), never an acceptance. D135 is a fault of termination, not of consistency"; repeated in @sec-arg-unused and @sec-arg-found.
-
-*Objection.* As a description of the checker this is false: before acceptance, a run of the body under check can end and decide a type (`Sel` above). The conclusion, that no wrong program is accepted through it, may still hold, but the argument offered for it is that in an accepted definition every run of its own body is at a smaller size, and that reaches consistency only through O3's untyped-run claim for the definition under check, which is what D135 was ruled to make unnecessary. The ruling is described as if in force; it is recorded as "not landed yet" in docs/32, and the checker of `main` still runs the body.
-
-*Kind.* The argument is wrong in a stated fact, and incomplete in the step that matters.
-
-*What would settle it.* Land D135 (and then case 4 needs no claim about the body under check), or prove O3's claim for it.
-
-=== O5. Two clauses the argument relies on are false as written
-
-*Where.* Case 7: "a sealed program has [Close]’s shape (principle 7: nothing else makes one)”. Principle 2: "Wherever the checker identifies two things ..., the two mean the same element under every assignment".
-
-*Objection.* (a) Principle 7's "nothing else makes a sealed program" is false at the code: `hintLater` (`Machine.lean`, line 828) builds a sealed value whose head is no call, `⌈⋄hint P w̄⌉`, the deferred hint of a called body. The author's own audit found it (@sec-a6) and @sec-next lists it as to do, yet case 7's verdict "closes" depends on the clause without mentioning it. Reading the sites where a run hands on or reads a hint (the `.val`, `rewrite`, `hole`, constructor and `split` cases of `evalCore`), each either forces the hint (`forceHint`) before storing it or returning it as a type, or passes it on unread (`split`; `hole` is stuck in an untyped run before it reads one), so I found no route by which it reaches a stored position or a comparison; but nothing structural prevents one. (b) Principle 2 as stated has no hypothesis, and the plan's lemma needs one: both sides well typed inside at one type. The plan's counterexample is a pair of convertible propositions with different meanings, `Eq(Nat, And(True, Nat), Nat)` and `Eq(Nat, Nat, Nat)`; no accepted program forms the first, which is what the hypothesis says. The argument never carries "well typed inside", so it cannot discharge the hypothesis at the sites where it uses principle 2 (cases 1, 3, 5, 7 and the conclusion).
-
-*Kind.* (a) a principle is not enforced (no structural guarantee); (b) a principle is misstated.
-
-*What would settle it.* (a) as @sec-next says: give hints a type distinct from `Value`. (b) add the typing hypothesis to principle 2, and derive it at each use from membership (the plan's lemma that a value whose meaning fits a type is well typed inside at it).
-
-=== O6. The frame property is used five times and never stated
-
-*Where.* Case 1: "Each side's run at the call site is its run at the generic state plugged into the caller: it reaches the caller only through the loans its borrow parameters hold (principle 6)"; case 4's second bullet; cases 3, 5 and 7.
-
-*Objection.* Principle 6 is a sentence ("a running body names and changes only its own frame and what its borrows lend; a call exchanges only what it is passed"), and the steps use it as an equation between two runs, "plugged in". That equation is the frame property, which was false as first written four times when stated in Lean: a dead label read through the renaming of labels; a callee state that is not itself well formed; no cell for a borrow parameter; and the caller's frames compared only by value. The argument does not say which equation it means, so none of the four can be checked against it, and case 1's hypothesis direction (a hypothesis true at the call site is true generically) depends on its exact form: it must relate every owner's context, not values only, which is precisely the fourth failure.
-
-*Kind.* A principle is missing in the form the argument uses (an equation, over good states, with labels).
-
-*What would settle it.* The author's first "next" item: a precise statement over good states, with how labels are renamed and what the isolated run's cells are, checked against the four failures before it is used.
-
-=== O7. Two producers of returned borrows are missing from case 1
-
-*Where.* Case 1: "A context is built only by the steps that place a loan: ... a stuck call returning a borrow (... the callee's backward function, injective by principle 1 for an unknown callee and by the outer hypothesis for a checked one) ...".
-
-*Objection.* Two other things return a borrow whose hole lands in the caller's places: a stuck match whose declared type is a borrow, closed off as a block (its result is lent what the block takes by `&` and what its by-move borrow variables lend), and a local closure returning a borrow. A block is not a definition, so the outer hypothesis does not cover it, and it is not an unknown callee; a closure is checked by its own [Def] inside the current derivation, not by the outer hypothesis. Injectivity of their backward functions is therefore not established by the case as written. The design does observe them: the attack below is rejected because the checker observes both fills.
-#measured[
-```
-def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
-def QB (n : Nat) (a : Nat) (b : Nat) : False := (let r : &Nat = match n { Z => &a, S(k) => &b, }; PF(r, refl))
-def QB2 (n : Nat) (a : Nat) : False := (let r : &Nat = match n { Z => &a, S(k) => &a, }; PF(r, refl))
-```
-With the `Nat` prelude: `PF` accepted; `QB` and `QB2` rejected ("argument 2 (e) has type ⊤, expected" a conjunction over the fills of `a` and `b`, resp. of `a`). Had either been accepted, `QB(0, 0, 0)` would be a closed proof of `False`.]
-
-*Kind.* Incomplete.
-
-*What would settle it.* Add the two producers: a block's backward function is injective because each arm's returned borrow derives from its by-`&` captures or its by-move borrow variables, checked at the arm's return; a closure's by the inner claim at its own [Def].
-
-=== O8. Local recursive functions have no induction
-
-*Where.* @sec-arg-induction (the outer induction is on $d_k$'s position and its decreasing argument), case 6: "the stage below is the function itself there, which is membership, and the outer hypothesis covers the call".
-
-*Objection.* A `fix go (…) by y` inside a body is checked by its own [Def] as a node of $d_k$'s derivation, and its recursive calls are on `go`'s own argument, not on $d_k$'s. The outer hypothesis says nothing about `go` at smaller sizes, and the inner induction is on the derivation, in which `go`'s check is one node; membership of `go` needs an induction on `go`'s decreasing argument at that node, which the argument does not set up. Such functions are accepted, proofs among them:
-#measured[
-```
-def AddZ (n : Nat) : Eq(Nat, Add(clone(n), Z), n) := (fix go (y : Nat) : Eq(Nat, Add(clone(y), Z), y) by y := match y { Z => refl, S(p) => go(p), })(n)
-```
-With the `Nat` prelude: accepted.]
-
-*Kind.* Incomplete (routine to repair).
-
-*What would settle it.* A third induction, on the local function's decreasing argument under the assignments of its generic call, nested at its [Def] node.
-
-=== O9. Principle 4 for a block's captures reads values
-
-*Where.* Case 5: "The block's entry, the places it moves and their grain are read from the code (principle 4)"; the author lists D90's first obligation as open.
-
-*Objection.* At the code, the capture modes are partly a function of values: `blockCaptures` (`Machine.lean`, around line 4188) treats a variable as a borrow variable if its stored type is a borrow type _or its current value is a borrow_ (`b.val.isBorrow`), and the granularity step (around line 4239) splits a capture by the constructor its content holds. Both are consumed by the entry of a match run directly (which accesses the captures, invalidates the dependent fields of those taken by `&`, and lends a borrow-typed result the places taken by `&`), in typed and untyped runs alike. In an untyped run a `let` of a call has its type deferred, so the reading of a borrow variable there is its value. I tried the one shape where that could differ (a let-bound borrow ended before a borrow-typed match, assigned whole in an arm the run does not take), and it did not:
-#measured[
-```
-def Mkb (x : &Nat) : &Nat := x
-def F (a : Nat) (b : Nat) (c : Nat) (d : Nat) : Nat := (let y = Mkb(&a); let a2 = a; let k = Z; let r : &Nat = match k { Z => &c, S(j) => (y := &b; &c), }; y := &d; *r := 5; c)
-def T : Eq(Nat, F(0, 0, 0, 0), 5) := refl
-```
-With the `Nat` prelude: both accepted (the typed check and the closed call agree).]
-
-*Kind.* A principle is not enforced by construction; no fault found.
-
-*What would settle it.* Compute modes from declared readings only (the typed run's stored type is the declared reading; an untyped run should consult the same reading, not the value), or prove D90's first obligation.
-
-=== O10. Open and partly moved members are used and not defined
-
-*Where.* @sec-arg-statement: "Good states. ... holds a member of that type, or an open member (a value of a dependent type in the middle of a mutation, or partly moved: principle 9)"; case 2.
-
-*Objection.* The argument defines neither. Principle 9 says a value "may be open ... only while the code that opened it runs", but a partly moved local stays partly moved until its scope ends (a match binds places, so `match xs { Cons(h, t) => t }` leaves `xs` partly moved), and a partly moved value is compared in `Id` and `Eq` (`⊥ = ⊥` is `True`), so its meaning matters beyond the code that moved it. The plan needed three definitions (two refuted in Lean, by a rewritten index and by tuples compared only with tuples) before it reached a structural one, field by field, with completions of the moved earlier fields. Case 2's steps are only as good as the definition they keep.
-
-*Kind.* Unclear (a definition missing).
-
-*What would settle it.* Take the plan's definition of whole, partly moved and open members and check case 2 against it.
-
-== On what the argument says it does not use
-
-Read skeptically, as the brief asked. _Principle 11's adequacy clauses_ (footprint sufficiency, [Id-typestate], [Obs-ref], the order of conjuncts): agreed, not used. The model's `Id` is the equality of the observations at the footprint, so nothing about what a continuation could read enters; and at a call site the sides run in the pushed parameter frame and can name no place of the caller, so [Id-typestate]’s clause against ending an outside borrow protects nothing that consistency needs. _Principle 4's clauses about untyped runs as such_ (only checked code runs, every accepted form runs, the same tests): the second and third are type safety's, agreed; the first is used, through the body under check (O4). _Principle 3's converse_ (W2): agreed, not used; the replacing direction is enforced at every site I read (a declared type of declared sort `Prop` is always a proposition: `Eq`, `Id`, a `Prop` inductive, a `Π` into one, a variable declared `: Prop`, a call whose codomain is written `Prop`). _Hole parametricity_ (case 3): agreed, not needed, since no run meets a live hole (D97); this is one real simplification over the paper's route.
-
-== The fourteen items
-
-#table(columns: (24%, 46%, 30%), align: left, table.header([*Item*], [*Where the argument handles it, and by which principle*], [*Referee's reading*]),
-  [1. A value in flight had no type; a function's return check did nothing on some values (`0` at `Unit`).], [Claim (ii) of the inner induction, for typed steps; nothing for untyped steps.], [*Not handled.* The argument carries membership in the form that failed (O3).],
-  [2. The frame property, false as stated four times.], [Principle 6, cited in cases 1, 3, 4, 5, 7.], [*Not handled.* No statement given; none of the four failures discussed (O6).],
-  [3. A recursive function's body run in place while it is being checked.], [Case 4: "D135 is a fault of termination, not of consistency"; principle 10's order.], [*Not handled.* D135 is not on `main`; `Sel` shows the run's value used in a type; the needed step is O3's (O4).],
-  [4. A borrow returned at a result type not written as a borrow type; a binding whose type is computed later.], [Principle 4 ("a function type's class and [Close] row") for the first; nothing for deferred types.], [*First handled:* the surface rejects `&T` anywhere but a written type (`IdT(&Nat)` as an argument: "Nat is not a place"). *Second not handled:* "good" is about positions with a stored type, and says nothing of a deferred one (O3).],
-  [5. An untyped run's binding is not tested; an erased call's private copy discards its records.], [Principle 6 for the private copy ("leaves nothing behind but fresh names and facts"); nothing for untyped bindings.], [*Not handled* for bindings (O3). The private copy is handled for consistency; D132 was a type-safety fault.],
-  [6. The existence of the data model.], [Principle 1, its list of syntactic conditions (D107, D120, D121, D128, D133).], [*Assumed*, not argued (O1). The higher-universe head is accepted (`WT`); the parameter that varies under nesting, the own name in parameters and nesting across sorts are rejected by D128, D133, D121.],
-  [7. A live borrow's future; the end of a borrow as a failure point; members of what, when partly moved or open.], [The meaning of a state under a future; principle 12 (ends over whole contents); principle 9.], [*Partly handled.* Futures are introduced but the claim is pointwise in them (O2); the end as a failure point of the strict run is not discussed; open membership undefined (O10).],
-  [8. One holder per label; a place lent twice; a borrow whose content is a borrow.], [Principle 12 ("one holder", "lends exactly the places that hold its loan, fill or mark").], [*Handled in the statement*; its preservation is unproved (O1). `let y = &x` with `x : &Nat` is rejected ("a borrow of a borrow-typed place").],
-  [9. A split on a stuck call generalised to an unknown, its record, the same call met again after a refinement.], [Case 3, "Generalising": principles 2 (exact keys, D108), 7, 8.], [*Handled.* Not discussed: a record whose text a later refinement changes no longer matches, so the call is a fresh neutral; sound, incomplete.],
-  [10. The join: a place moved in one arm only; re-rooting; an arm never run and never checked.], [Case 5, principle 4 (the join from syntax and declared types).], [*Handled for paths that split.* An arm skipped on a known constructor is not mentioned; it is harmless only because the scrutinee is that constructor at every instance, which the argument should say.],
-  [11. Conversion of functions by running at fresh unknowns; `Eq` on values holding code.], [Case 7: observation of the generic call, least relation, injectivity and disjointness.], [*Handled*, modulo O3 (the observation's runs are untyped) and O5.],
-  [12. Impredicative `Prop`, large elimination, subsingleton elimination, universe levels.], [Principle 1's list (predicativity of `Type₀`, subsingleton elimination), case 6 (no recursion on a proof).], [*Partly handled.* Where the model needs impredicativity and how a Π-type's sort is computed is not discussed. Probes hold: `Π(A : Type) (a : A). A` declared in `Type` is rejected ("has type Type₁"); a borrow of a proof is rejected (D66).],
-  [13. The hint a tail is handed; what an untyped run decides differently.], [Case 4: principle 4, "the hint is a decision" (D124); untyped-only tests marked type safety's.], [*Handled* in principle; the one hint that is a value (`hintLater`) is O5 (a).],
-  [14. A decision taken with less fuel than another run had.], [Principle 5: "running out of fuel is undecided".], [*Handled.* The checker's monad puts fuel exhaustion in its own exception, outside the one `catchStuck` catches (`Env.lean`, line 280; `Catch.lean`), and every fuel-bounded reader throws on exhaustion; so a run with less fuel is undecided, never decided differently.],
-)
-
-== The cases, restated
-
-#table(columns: (14%, 43%, 43%), align: left, table.header([*Case*], [*What it claims, from what*], [*Referee's reading*]),
-  [Statement], [Every accepted definition means a member of its type; a constant of type `False` is impossible.], [Fine as a target; "means" needs the structured reference state (O2).],
-  [Induction], [Outer on program order and decreasing size; inner on the typed derivation, with (i) exact meanings, (ii) membership, (iii) goodness; untyped runs get (i), (iii).], [O2 (pointwise in the future), O3 (membership on the checker's run; untyped runs asserted), O8 (local recursion).],
-  [1 `Id`, [Call-type]], [Computing `Id` is exact; a statement transfers between the generic call and a call site in both directions by joint injectivity of contexts.], [The strongest case; rests on O6 and principle 12's preservation; missing producers (O7). The attack `QB` is rejected.],
-  [2 Dependent fields], [Invalidation, typing by position, strong updates and [Repack] keep open membership; writes find their paths at every future.], [Rests on an undefined open membership (O10) and an unproved measurement (no live loan on a written path).],
-  [3 Closing off], [A sealed program rebuilds the call; re-runs compute the text's meaning; generalisation is a path condition.], [Sound reasoning; "the re-run computes the text's meaning" is O3's claim for untyped runs.],
-  [4 Calls in place], [The callee's meaning is a member; the run in place is the isolated run; it decides as its meaning.], [O3 and O4; principle 6's equation (O6).],
-  [5 Split and join], [Each assignment takes one arm; the block means the arm; the state after the block is the arm's.], [Sound given principle 4 for captures (O9) and principle 6.],
-  [6 Recursion], [[Rec] at the generic call gives descent at every instance; the stage below is the function.], [Sound for top-level definitions; local recursive functions need their own induction (O8).],
-  [7 Conversion], [Each conversion rule is an equality of meanings.], [Needs the typing hypothesis (O5 (b)) and one maker of sealed programs (O5 (a)); the function rules rest on O3.],
-  [8 Erasure], [Erased terms leave nothing; `⋆` only at propositions.], [Sound; the converse (W2) is indeed not used.],
-  [9 Leaf rules], [Accesses end what is touched; reads, writes and drops keep meanings.], [The end step is argued by the abandoned order (O2).],
-)
-
-== For a second referee
-
-The objections above are on the argument's structure and on three principles' enforcement; the design itself held against every program tried. What was not done: the frame property's four failures were not each turned into a program against this argument's use of principle 6 (O6); principle 12's preservation was not attacked beyond the borrow-of-a-borrow probe; the dependent-field case (2) was read but not attacked with programs; and O9's value-dependent captures were tried in one shape only (the granularity split by a content's constructor was not tried). Also tried and held, with the `Nat` prelude and `PF` of O7: the hypothesis direction of case 1 through a returned borrow of a stuck call, a reborrow of it, and a reborrow that outlives its holder's re-pointing, `PF(TailM(x), refl)`, `(let r = TailM(&n); PF(r, refl))`, `(let r = TailM(&n); let s = &*r; PF(s, refl))` and `(let r = TailM(&n); let s = &*r; r := &a; PF(s, refl))`, are all rejected (the fill over the hole is observed); and a recursive call at the same argument inside a type in the body, `def Q (n : Nat) : Nat by n := (let e : Eq(Nat, Q(clone(n)), Q(clone(n))) = refl; Z)`, is rejected by [Rec]. The probes are in this report; the runner is `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` from `ochr/core/lean`.
-
-= Answers to the referee <sec-answers>
-
-_Written by `theory3`; the second table by `theory4`; the third and fourth by `theory6`._ Each objection and item of the four referees' reports, with where it is now addressed or that it still stands. The reports themselves are unchanged.
-
-#table(columns: (22%, 50%, 28%), align: left, table.header([*Objection*], [*Where it is addressed*], [*Stands?*]),
-  [O1 The principles are the proof's open theorems], [The theorem is now conditional on named theorems N1 to N7 with their status (@sec-theorems); principles 1, 2, 6 and 12 keep only their design halves; the summary no longer says the argument closes from the principles alone.], [Answered. The named theorems themselves are open but N2.],
-  [O2 The claim does not survive an end], [The claim is (II), over a reference state that keeps holders, lending sites and records, compared at every typed future through a renaming; an end is an equality of reference states, and reads are at the record future (@sec-tw-halves, @sec-tw-places).], [Answered.],
-  [O3 Membership on the checker's run; untyped runs asserted], [Membership is never a conclusion on the checker's side: it is (I)'s, about the strict run (@sec-tw-halves). Untyped runs are cases of (II) with the hypothesis (E4) that the strict run succeeds, supplied from the membership of a function's meaning through the frame property (case 1) or of a sealed program's meaning (case 3).], [Answered, reduced to N4.],
-  [O4 D135's gap used], [D135 is on `main`; no body under check runs, so no claim about such runs is made. `Sel`, `Q2`, `Q3`, `Loop`, `LC2` re-run and rejected (@sec-tw-callrun, @sec-a4).], [Answered.],
-  [O5 (a) A second maker of sealed values], [Principle 7 restated for sealed programs held in the state; the deferred hint is an evaluation's argument, never stored (by reading, at every site; the referee's reading agrees).], [Stands as "not structural"; redesign: a type of its own for hints.],
-  [O5 (b) Principle 2 lacks the typing hypothesis], [N3 carries it; (I) supplies it at every use (`hwt_of_fit`), @sec-tw-conv.], [Answered.],
-  [O6 The frame property never stated], [@sec-frame: theorem FR, its hypotheses each with its refutation, its uses as corollaries, and the proof (rewritten after the second referee).], [Answered on paper but for the items @sec-frame-found lists; the Lean proof is open.],
-  [O7 Two producers of returned borrows missing], [Blocks and local closures are functions checked inside the derivation; their membership, injectivity included, is proved at their own node by the nested induction (@sec-tw-types, @sec-tw-induction). `QB`, `QB2` re-run: rejected.], [Answered.],
-  [O8 Local recursive functions have no induction], [A third induction, on the local function's rank, nested at its [Def] node (@sec-tw-induction, @sec-tw-close). `AddZ` accepted, `SelfClo` rejected.], [Answered; the closure's fixpoint equation is not stated in Lean.],
-  [O9 Captures read values], [Reduced to N6; on the states the checker reaches the two readings agree by the typing of places, but for one shape (a deferred type over a `⊥`), which the referee ran and which agreed (@sec-tw-split).], [Stands as N6, open for captures.],
-  [O10 Open members undefined], [The plan's definition (field by field, with completions) is used (@sec-tw-defs, @sec-tw-dep).], [Answered.],
-)
-
-*The fourteen items.* 1 (a value in flight with no type; a return check that does nothing): not needed, membership being (I)'s (O3). 2 (the frame property, false four times): @sec-frame, each refutation a hypothesis. 3 (the body run under check): D135, case 1. 4 (a borrow at an unwritten borrow type; a deferred type): the first as the referee found; the second, the relation reads a deferred type as the reference's (case 4's one shape remains under N6). 5 (untyped bindings; an erased call's records): (E4), and principle 6. 6 (the model exists): N1, conditional on its facts, with `WT` accepted and the model's fact (6) open. 7 (futures; an end as a failure point; open members): (II)'s typed futures, strict ends, the plan's open members. 8 (one holder; a place lent twice): N5's (X1), @sec-excl. 9 (a generalisation met again): case 3. 10 (the join; an arm never run): case 4; an arm skipped on a known constructor is skipped at every assignment of that state, since the scrutinee is that constructor there. 11 (conversion of functions): case 6, its runs cases of (II). 12 (impredicativity, universes): N1 and principle 1, not re-argued. 13 (hints): principle 4 and O5 (a). 14 (fuel): principle 5, as the referee found.
-
-*The second referee* (@sec-referee2), answered in @sec-frame and @sec-theorems.
-
-#table(columns: (22%, 50%, 28%), align: left, table.header([*Objection*], [*Where it is addressed*], [*Stands?*]),
-  [R1 The model reads a borrow parameter in a type with no cell; `G1` has no meaning], [(M1) of @sec-frame-model: the definition the model's domains and codomain should have (the generic state $"Gen"$, a cell per borrow parameter, as `fixStep` without the own name). With it statement transfer is corollary C2 of FR, and the step from (II) to the theorem is C6.], [Stands until the model is changed; the definition is given.],
-  [R2 A closure formed in the body nests frames], [(M2): closures and Π-types read in the frame of their captured values, as the checker's [Capture] and the model's `meanV` already do; the clause is then one line of the proof. The relation at a depth is no longer needed: the structural (M2) of @sec-frame-model.], [Answered under (M2).],
-  [R3 Four shapes N4 does not state; the renaming unnamed], [Each shape is a corollary of FR or a definition (C1 to C6, @sec-frame-stmt), but the block, which is N8 (@sec-frame-block); the renaming is RL, FR's case with no caller; N8 and N9 added to @sec-theorems.], [Answered; N8's place renaming #a-np.],
-  [R4 (P) is false], [Replaced by (I) (@sec-frame-inv), about reads, not sites: no meaning of the callee's frame reads a parameter label; ends of parameter labels commute. `P2` and `P4` satisfy it. `P4` also refutes D208's proposed clause "σ monotone on the callee's labels".], [Answered.],
-  [R5 (T) and [End] misstated], [(O1) restated on live labels, with (I1) cited at each test; (O3) covers a label the body made, its sites in the callee's frame corresponding and elsewhere at the caller's frames or the cell.], [Answered.],
-  [R6 Lifting `Id`'s exclusion needs a hypothesis on the call], [(H6) is replaced, not dropped: resolved determination at the call (RD), from N5's (X5) and N1's R through (II)'s relation, which survives ends. Lean's `CellsDetermined` is the wrong form: `run_frame_obs` is false as stated (@sec-frame-id). (M3) made order-free.], [Answered, reduced to N5.],
-  [R7 The fixpoint equation at one state; nothing carries it to a local function], [(a) under (M2) a global's meaning is formed in one state; the equation follows from RecDesc, established at the global's check with no circle. (b) CloDesc, an invariant on closure values, argued and #a-np (@sec-frame-fix).], [(a) answered; (b) stands, with what is missing named.],
-  [R8 (II) lacks hypotheses and conclusions its Lean statement needs], [The hint is N9 (@sec-theorems). The mode, the reading handed down, the table at the run's end, what the run keeps, the deferred types: not restated in @sec-tw-halves by this author, whose brief was the frame property.], [Stands for (II)'s statement.],
-  [R9 Smaller differences], [FR's conclusion carries (H1) to (H5); equal selves are part of `FrameRel` (F5), not a hypothesis; `lentImg` is (F8); (H4) is a number of bindings, (F4) constraining them; `.pi` and the other clauses are in the clause table; the start's counter is above the reserved label.], [Answered.],
-)
-
-*The third referee* (@sec-referee3), answered by `theory5` in @sec-frame, and by `theory6` where marked.
-
-#table(columns: (22%, 50%, 28%), align: left, table.header([*Objection*], [*Where it is addressed*], [*Stands?*]),
-  [T1 (M3) makes FR false at a call with no borrow parameter; the checker rejects such calls], [(M3) restricted to the observing frame's labels (@sec-frame-model). The checker's fault is the first of the five type-safety sites of @sec-obs-today (`S1`, `S1u`), which the excepted patch (B) and the finals design (C) both repair (@sec-obs-compare).], [Answered in the model; the checker's fault stands until (B) or (C) is built.],
-  [T2 (M2)'s "`.pi` likewise" disagrees with the checker], [`.pi` unchanged by (M2); (M2) widened (`theory6`, D220) to host the type runs of a Π-type and of a closure's own types on a copy, with no access and no move, so `PiMove` and `PiLentEq` keep their meaning.], [Answered; (M2) not built.],
-  [T3 (M2) is not a definition; C3 is not "by definition"], [(M2) in its structural form; C3 a lemma, #a-np.], [C3 stands as open.],
-  [T4 Case 1's push uses C2], [Step 2 reduced to C2; a deferred type read late #a-np (@sec-frame-stmt). Under the finals design C2 holds by construction for `Id`, deferred types included (@sec-obs-finals).], [Stands for today's checker.],
-  [T5 C6 cites RL], [C6 is an instance of FR; RL its own lemma.], [Answered.],
-  [T6 The finding against D208 misattributed], [D208's clause is `mono`, true and needed; `P4` refutes its premise.], [Answered.],
-  [T7 Smaller points], [(I3)'s detail (`P5`) in (I3); (M3) stated once; (C1) of (II) at [Id] passes the strict ends (case 2); N8's decoding hypothesis added; (O6)'s goodness inside a clause said; Lean's `FrameInv` carries (H5) (`AccInv.shape`).], [Answered.],
-)
-
-*The fourth referee* (@sec-referee4), answered by `theory6`.
-
-#table(columns: (22%, 50%, 28%), align: left, table.header([*Objection*], [*Where it is addressed*], [*Stands?*]),
-  [F1 The proposed change lets a backward function run on a non-member], [The proposal of @sec-rd-ends now carries the restriction (the tests kept at a caller's borrow with a fill site), and is option (B) of @sec-obs; the leftover site is `S4Z`. The finals design (C), recommended, cannot meet F1's case at all: its formed type compares the callee's finals, never a caller's fill, and F1's `Bad` gets the hypothesis type `False` (@sec-obs-attack).], [Answered; the choice between (B) and (C) is the user's.],
-  [F2 At a proof owner the checker's `Id` is finer than the model's], [@sec-proof-fields: the model must put a witness at the scrutinee's place of an erased match on a proof with data fields, as `Steps/Match.evalMatchByType_step` already assumes; with it the simulation holds at `PB`, `PExT`, `PExF`, `PIdSelf`, and "a proof is irrelevant" means three stated things, each with where it is used. RD's hypothesis (b) excludes proof owners until then; the attack row's "does not arise" is withdrawn; case 2 carries the caveat.], [Stands until the model's `.matchInd` clause and goodness are changed.],
-  [F3 FR is not `RunFrameI`], [@sec-frame-lean, clause by clause, with which side is right in each; FR restated as `RunFrameI` (the start state after the push, (H7) in place only, (H12), (H13) and `ResAtTemp` added, `Id` over a parameter excluded, the model as it is), with (H10) and D220's `let` invariant beside it; the match clause and a call's fixes marked proved in Lean; a Π-type formed in the body, marked argued in full before, now needs (M2) widened.], [Answered; FR open in Lean.],
-  [F4 RD stated at every reached state, proved where the ancestors hold whole members], [RD restated (@sec-rd-stmt) with hypotheses (a), ancestors whole members at every typed future (true wherever today's observation has passed, and argued so), and (b), no proof owner (until @sec-proof-fields is built); assumption 2 by producer, with item 11 for the definition under check and C3 and N8 for the other two; RD1's use of (a) said; RD2's false sentence replaced. Under the finals design what is left is RD within one frame, for the block lemma's `Id` row, where (a) holds by the observation's own tests.], [Answered; RD rests on (X5), not mechanised.],
-  [F5 A side of `Id` can open a caller's owner itself], [@sec-rd-ends and @sec-n7 restated: a caller's owner holds the caller's state with the side's writes put in, open by either's doing; N3's row extended to values the side opened. It is the fifth site of @sec-obs-today (`S5`). Under the finals design no caller owner is compared.], [Answered.],
-  [F6 (X1) is false at a deferred parameter type], [(X1) in @sec-excl states the exception: the record's copy of each borrow argument, read only on a private copy after the live borrow is taken from its holder, and lent nowhere if the label has ended.], [Answered; the sweep does not scan the records.],
-  [F7 Smaller points], [N8's place renaming: (P4)'s shift counts the `ref` captures and, for a borrow-typed match, the reserved result label (@sec-n8). CloFix: read (b) before (a) (@sec-clo-fix). Case 2 and @sec-rd-ends: case 2 now says the two change together. N6's type-parameter route and the stuck `Eq(Unit, (), ⌈Hs(σ0)⌉)` (`FsHs`): recorded by the referee, not changed.], [Answered or recorded.],
-)
-
-= The second referee's report <sec-referee2>
-
-_Written by `referee2`, 27 November 2026, as the second adversarial referee, after reading the first referee's brief and report, the principles and the named theorems (@sec-theorems), the argument in two halves (@sec-twohalves), the frame property (@sec-frame), exclusive access (@sec-excl) and the answers (@sec-answers) closely, and comparing them with the Lean of the branch `origin/spine-lead30` at de20a5369 (`Meaning/Run.lean`, `SState.lean`, `FrameProp.lean`, `CallRef.lean`, `Steps/FrameFrag.lean`, `Steps/FrameRec.lean`, `Steps/FrameEnd.lean`, `Steps/Master.lean`). Every program below was run with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` on the checker of `main` at d877e1082 (D135 included); each is self-contained, "with the `Nat` prelude" meaning `uses Nats`. Nothing in the other sections was changed._
-
-== Verdict
-
-The frame property's proof does not yet exist, and the reduction of consistency to N1 to N7 is not complete; but the design again held, and the faults found are in the proof and in the model, not in the checker. Three things are wrong. First, the model reads a later parameter's type and a function's codomain with every borrow parameter as a plain value, with no label and no cell (`extendBinds`), while the checker's [Def] reads them with a cell for each borrow parameter; the two readings differ on an accepted program, `G1` below, whose type the model reads as empty, so "every accepted definition means a member of its type" is false of the current model, and case 2's "statement transfer is N4 applied to a statement" is false of it (R1). Second, the frame property's induction does not cover a function formed inside the body: the reference builds that function's meaning by running its body in the whole forming state under a fresh bottom frame, so frames nest, and the relation the induction carries cannot relate the two states that arise; the paper's argument for that clause describes a different definition (R2). Third, the frame property is used in four shapes it does not state, each of which is a frame or renaming property of its own, and the renaming of labels (open in Lean, false as first stated) is used without being named, so the list N1 to N7 is incomplete (R3). Beside these: the new invariant (P), "parameter labels stay at the cells", is false, though the lemmas it carries survive with another argument (R4); two of the proof's lemmas are false as written and true when restated (R5); lifting the exclusion of `Id` needs a hypothesis on the caller's state that the statement lacks, and until the model changes the paper's own programs `GT` and `GT2` lie outside the theorem as Lean states it (R6); the fixpoint equation is proved only at the state of the generic check, and for local functions nothing carries it to a call (R7), though I found no circle; and the simulation (II) as stated lacks hypotheses and conclusions that its Lean statement needs, two of them documented there as making the statement false without them (R8). Every attack on the checker itself was rejected or held: [Rec] compares values and refuses a recursive call on a scrutinee overwritten after its match; the call sites of `G1` observe the caller's owners and refuse `refl`; the first referee's programs re-run with the same verdicts.
-
-== Objections, most serious first
-
-=== R1. The model reads a borrow parameter in a type with no cell, and an accepted definition has an empty type there
-
-*Where.* Case 2 (@sec-tw-types): "a type evaluated at the call site ... means the same as the same type evaluated in the function's own frame at the arguments' meanings, with a cell for each borrow parameter ... The two evaluations are strict runs of one term from two states related as the frame property relates them, so this is N4 applied to a statement"; and @sec-tw-concl, "So $d_k$'s result and final contents are members of what its type says, under every γ."
-
-*Objection.* The model's function type does not read its parameter types in the function's own frame with cells. The `.pi` and `.fix` clauses of the strict run read each later domain and the codomain by `runBinds`, in `extendBy s bs acc`: the forming state with the earlier arguments pushed by `extendBinds`, each "bound with `label := none` by a plain `pushBind`" (docs/31, the note at (WF1)), a borrow parameter holding its content and no borrow, with no cell. The checker's [Def] reads the same types in its generic frame, where a borrow parameter holds a borrow whose loan is in a cell, and an observation sees the cell. The two readings differ whenever a side of an `Id` in a parameter type moves or re-points a borrow parameter: after the side, the plain reading has lost what the borrow's lender ends up holding, and the cell has kept it. So the identification case 2 and the step from (II) to the theorem both rest on, "the generic reading" (the checker's) is the model's domain, is false; and N4, which relates the run in place to a closure state with cells (`fixBodyAt`), says nothing about `extendBy`’s states.
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main`:
-```
-def G1 (x : &Nat) (e : Id(Unit, (*x := 0; let z = x; ()), (*x := 1; let z = x; ()))) : False := e
-def G2 (x : &Nat) (y : &Nat) (e : Id(Unit, (*x := 0; x := y; ()), (*x := 1; x := y; ()))) : False := e
-def CallG1 : False := (let a = 7; G1(&a, refl))
-```
-`G1` and `G2` accepted: at the generic check `e` has type `False`, since the cell of `x` ends holding `0` on one side and `1` on the other. `CallG1` rejected ("argument 2 (e) has type ⊤, expected False"): at a call site the observation sees the caller's `a`. In the model, traced clause by clause through `Run.lean`: in `extendBy`, `*x := 0` writes `0` at `x`’s position, `let z = x` moves it out (a borrow is not a copy), the `let` ends nothing (no label is live), so both sides leave `x` moved and the observation is equal: `e`’s domain is `True`. `G1`’s type in the model is `Π(x : &Nat) (e : True). False`, which has no member. `G2` is the same through [Obs-ref]: the plain reading writes the fresh value over `x` itself and forgets `x`’s old content.]
-No closed proof of `False` follows: every call site reads the type with the caller's owners, as the cell reading does, so the checker is consistent with itself; it is the model that disagrees with it. The disagreement goes one way in every case I tried: the plain reading keeps less, so its parameter types are weaker, and an accepted function must then work on more arguments than the checker gave it.
-
-*Kind.* The argument is wrong (an identification false of the model), and the model has a fault the argument did not see.
-
-*What would settle it.* Read later domains and the codomain as [Def] does: a borrow parameter at a fresh label with a cell (as `fixStep` binds it in the body's frame), so that the model's domain is the checker's generic reading; then state the transfer of case 2 as an instance of a frame property between that state and the call site. Or keep `extendBy` and change the checker's [Def] and [Call-type] to read types so, which would change the verdicts of `G1`, `G2` and every hypothesis written about a moved borrow parameter.
-
-=== R2. The induction does not cover a function formed inside the body
-
-*Where.* @sec-frame: "Because the strict run applies the meaning at every call and never runs a body, the induction below is over a single frame: no nesting of frames arises inside it." @sec-frame-proof: "_A closure formed inside the body._ Its meaning is a function of its captured values' meanings and the context. Each capture is read after an access, so holds no live loan (principle 12), so by locality reads no label, so means the same on both sides." #a-full.
-
-*Objection.* The strict run does run a body: the `.fix` clause reads a closure's meaning off runs of its body (`bodyAt`), from `s.under` with `self` and the parameters pushed on the top frame, where `s` is the whole state at the formation, before the captures are accessed (`bodyAt` closes over `s`, not over the state `capStep` leaves). In place that state has a fresh frame 0, the caller's frames, then the callee's frame; in the closure it has a fresh frame 0, the frame of cells, then the frame. The inner body's strict tests read all of it (the test after a write at a field reads every binding), it can name every variable of the forming frame, and it can end a parameter label (by moving the parameter into a `let`). So the meaning is not "a function of its captured values' meanings", and the captures are not read after an access in this run. The relation the induction carries cannot relate the two inner states: `FrameRel.frames` asks the closure for exactly two frames, and (F2), (F4) and (S1) to (S4) are written for one caller block and one cell frame. The Lean records the same: `RunFrameS`’s docstring lists "`.fix` inside the body: the inner closure's runs from states with one more frame (`FrameRel.frames` asks two)", and the thirtieth lead's handoff puts it in group 3, not yet attacked. I believe the clause true (the inner body reaches the caller's frames and the cells only through the parameter labels and the whole-state test, and its finals read only its own returned label), but the induction as stated does not give it. The method exists in Lean: the model lane proved a locality lemma that goes through the `.fix` clause, its body one frame up (`DataModel/Exists/FrameLocal`, `runT_qset`: a run is unchanged when constant bindings the term does not name are changed); its relation varies values at fixed frames and labels, so it is not this one.
-
-*Evidence.* `Run.lean`, the `.fix` clause (`bodyAt`, `s.under.pushBind`; `capStep` applied after); `Steps/FrameFrag.lean`, `RunFrameS`’s docstring; `Steps/LEAD-HANDOFF.md`, item 2 of the next steps.
-
-*Kind.* The argument is incomplete (a clause claimed in full whose induction hypothesis does not apply), and its one sentence describes a different definition.
-
-*What would settle it.* State the frame property for a callee frame with any number of frames below it on both sides (in place the caller's, in the closure the cells and the forming closures' cell frames), with (F4) and (S1) for each block, so that the `.fix` clause is again a case of the induction; or prove separately that a closure's meaning depends only on its captures (the locality lemma R3 (c) needs anyway) and use it here.
-
-=== R3. The frame property is used in four shapes N4 does not state, and the renaming of labels is used unnamed
-
-*Where.* @sec-theorems, the list N1 to N7 and "The argument of @sec-twohalves uses them and nothing else beyond the principles"; case 2, case 3 ([T-Fix]), case 4's third bullet, @sec-frame-fix's start and fixpoint equation.
-
-*Objection.* N4 relates a body run in a frame pushed on the caller's to the same body run in `fixBodyAt`’s state with cells, with the same bindings in the same order. The argument also uses, each time citing N4 or nothing:
-- (a) _Statement transfer_ (case 2): the call site against `extendBy`’s state, where borrow parameters hold no label. Not N4's shape (R1).
-- (b) _The block's run is the arm's run in place_ (case 4): the strict run runs the selected arm directly in the caller's own frame, naming the caller's variables; the block's function runs it in its own frame, where those variables are its parameters, the by-move captures values moved in, the by-`&` captures borrow parameters with cells. No frame is pushed on the in-place side, and the top frames do not have "the same bindings in the same order": a renaming of variables is needed that N4 does not have.
-- (c) _A closure value means what the strict run formed_ (case 3, [T-Fix], (C2) at the formation): the checker's value `⌈clo⌉`’s meaning is the run of the `fix` term from `stateOf 0` of its captures, one frame and the label counter at 0 (`meanV`’s `.clo` clause), while the strict run's `.fix` builds it from the whole forming state with its counter (`start := s.nextLoan`). Equating them is a frame property with the caller's frames removed and a renaming of every label. Case 3 argues only membership there and marks the case #a-full.
-- (d) _The start_ (@sec-frame-fix): "(F3) the same stored type" for the parameters. In place `callFrame` reads the parameter types by `bindsOf` over the caller's state with a frame pushed (`CallRef.lean`); in the closure they are read over the closure's one frame. Equal only by a frame property for type terms ("by reading, since the frames are built alike").
-And the fixpoint equation as Lean states it (`FixEqG`) holds at every forming state, future and counter, while its proof uses [Rec] carried by (II) from one state, the generic check's (R7). Each of these is a frame property with a different relation, or the renaming lemma `run_counter_indep` ("the frame property's case with no caller frame and no parameter"), which is open in Lean and was false as first stated (finding 7). None is N1 to N7, and none is a principle.
-
-*Kind.* A named theorem is missing: the list is incomplete, and the summary's "neither found a place where …” does not see it.
-
-*What would settle it.* One general statement, a frame-and-renaming theorem for a relation between two states that differ in the frames below a block of shared bindings, in a renaming of variables and in a renaming of labels, from which N4, (a) to (d) and the transport of R7 are instances; or each named, with its status, as N8 and on.
-
-=== R4. The invariant (P) is false
-
-*Where.* @sec-frame-proof, (P): "A parameter label is lent only at its cell in the closure and in the caller's frames in place, never in the top frame ... the only operations that move a label's sites are the end of a borrow ... and a call's [Lend]". Used by [Access] ("Parameter labels are never ended by an access (P)") and by the pop ("(P) keeps them so").
-
-*Objection.* A third operation adds sites: [Entry]’s lending (`matchEntry`, `entryLend`). After a borrow-typed match not in tail position, the result's label is lent, as fills, every place the block takes by `&`. That label is whatever the arm returned, and an arm can return a borrow parameter itself. Then a parameter label is lent at a place of the top frame, and an access of that place ends it.
-#measured[With the `Nat` prelude, all accepted on `main`:
-```
-def P2 (n : Nat) (x : &Nat) : Nat := (let q = 5; let r : &Nat = match n { Z => x, S(j) => &q, }; *r := 1; clone(q))
-def UseP2 : Eq(Nat, (let c = 3; P2(Z, &c)), 5) := refl
-def UseP2c : Eq(Nat, (let c = 3; P2(Z, &c); c), 1) := refl
-def P3 (n : Nat) (x : &Nat) (y : &Nat) : Unit := (let q = 5; let r1 : &Nat = match n { Z => x, S(j) => &q, }; let r2 : &Nat = match n { Z => y, S(j) => &q, }; *r2 := 1; ())
-```
-At `n = Z` the strict run of `P2`’s body lends `x`’s parameter label at `q` (taken by `&` by the block), and `clone(q)`’s [Access] ends it: the caller's `c` (in place) and the cell (in the closure) then read `1`. In `P3` the second match's entry, accessing `q`, ends `x`’s parameter label.]
-The lemmas (P) carried still look true to me, for a different reason: the sites [Entry] adds create no dependence of any value on the label (only `borrowPlace` and an end's substitution do), so the second clause of (H3) survives; ends of labels none of whose holders reads another's commute on values; and FrameRel compares only top-frame sites, so where an order changes only sites outside the top frame, nothing compared changes. That is an argument the paper does not give, and the Lean lane would fail to prove (P) as an invariant.
-
-*Kind.* A lemma of the frame proof is false (sent to the orchestrator when found); the lemmas it supports hold with another argument.
-
-*What would settle it.* Replace (P) by what is true: "no top-frame value reads a parameter label; a parameter label's sites in the top frame were added by [Entry]’s lending and are fills”; and prove [Access] and the pop from commutation of ends on values and from FrameRel's comparing top-frame sites only.
-
-=== R5. Two lemmas are false as written and true when restated
-
-*Where.* (T): "every typed future of $s$ restricts to one of $s'$". [End]: "for any other label, the caller's frames do not read it (S1)".
-
-*Objection.* (T) is the fault of D129 again. A typed future agrees with the run's future φ off the live labels. The restriction of an in-place typed future ψ is ψ∘σ, which at a closure label $l$ that is not live gives φ(σ($l$)), not φ($l$): not a typed future of $s'$. What is true is weaker: ψ∘σ agrees on the live labels with a typed future of $s'$, and a test reads no other label by (H3). So (T) must be restated and (H3) cited at every test that uses it, as (R) already does. For [End]: after a call in the body that consumes a parameter label and returns a borrow ([Lend], `callOfL`’s `mapVals` and `lentK`), the caller's frames in place read the fresh label, which is not a parameter label and is at or above the counter; the paper's reason is false there. The lemma holds: (F4) reads the caller's frames at the cells, and the cell reads the fresh label in the closure, which is what Lean's `lowerVal_end` proves (its hypothesis is "a parameter label or one at or above the counter"). Its sentence "the sites of the borrows inside the ended content move ... in place into the caller's frames, in the closure to the cell; neither is in the top frame" is true only for a parameter label; for a label made by the body they move into the top frame, through σ, which (F7) must then be shown to keep.
-
-*Kind.* Two lemmas misstated; both hold restated.
-
-*What would settle it.* Restate (T) on live labels; give [End]’s case of a label made by the body through (F4), as `lowerVal_end` does.
-
-=== R6. Lifting the exclusion of `Id` needs a hypothesis the statement lacks
-
-*Where.* @sec-frame-id: "with it the theorem holds for `Id` over parameter labels with no hypothesis beyond the joint injectivity of the caller's contexts at the call ... (H6) can then be dropped."
-
-*Objection.* The proposal is right in its direction: an end inside an observation made strict is a point the checker's rule passes (D98: no borrow ends over a moved-out content, in an observation as anywhere; its evidence rejects every side that leaves a content moved), and with it each cell's final content is a whole member, which is what makes the caller's contexts comparable. But joint injectivity is a property of the caller's state at the call (Lean's `CellsDetermined`), which none of (S1) to (S4) and (H1) to (H5) says; so (H6) is not dropped, it is replaced by a hypothesis on the call, and the statement in @sec-frame-stmt still has (H6). "N5 gives [it] at the checker's state and (R4) of the simulation transfers [it]": (R4) relates lending sites; what must transfer is the injectivity of the caller's meanings as functions of the parameter labels, which is (R3)'s business, at typed futures, while `CellsDetermined` quantifies over every future. Until the model's change is made, the frame property as Lean states it (`RunFrame`, with `t.idFree = true ∨ ks = []`) excludes every body with an `Id` over a borrow parameter, and the programs this document measured for this shape are such bodies: `F` of `GT` and `GT2` (case 2) runs in place with `Id(Unit, *x := 0, *x := 0)` over its borrow parameter. Case 1's (E4) for them is not covered by N4 as stated.
-
-*Kind.* A hypothesis is missing from the statement; the proposal is right but not enough.
-
-*What would settle it.* State the frame property with a hypothesis that the caller's positions at the call tell apart whole members of the parameters' types, discharge it at each call from N5's injectivity clause through (R3), and make the model's change; or keep (H6) and give case 1's (E4) for bodies with `Id` over a borrow parameter another way.
-
-=== R7. The fixpoint equation is proved at one state, and nothing carries it to a local function's call
-
-*Where.* @sec-frame-fix, the fixpoint equation: "By [Rec] at the generic check's typed sites, carried to the strict run of the body under each assignment by (II) for that check ... #a-full here. For a local closure ... #a-claim".
-
-*Objection.* (a) Lean's `FixEqG` quantifies over every assignment, future and forming state `s`, and builds `G` with the counter `s.nextLoan`; (II) for $g$'s check speaks of one state, the generic check's, with its counter and its frames. Carrying [Rec]’s facts ("every application of $g$ at $a$ is at a smaller rank") to the run from another state is a frame or renaming property (R3), unnamed. (b) For a local function the paper gives membership at its formation by the nested induction; at a later in-place call, case 1 needs its fixpoint equation, and nothing in (II)'s statement carries it from the formation to the call: goodness of a binding gives membership only, and Pre says nothing of closures. In an untyped run a closure is formed again from the body's text and is not checked again; its fixpoint equation must come from the check of the enclosing function, under an assignment that covers the captures' values, and through the transport of (a). _Circle:_ none found. Under D135 the check of $g$ never runs $g$'s body, so (II) for that check needs no fixpoint equation of $g$, and the equation is used only after. The same holds for a local function, whose calls close off while it is checked.
-
-*Kind.* Incomplete (the equation as stated in Lean is wider than the proof; the local case has no carrier).
-
-*What would settle it.* State `FixEqG` at the states the argument needs (the generic check's, and those R3's transport reaches), or prove the transport; add to (II)'s state invariant that every closure value held in the state satisfies its fixpoint equation, and prove it kept at [T-Fix] and by every step.
-
-=== R8. (II) lacks hypotheses and conclusions its Lean statement needs
-
-*Where.* @sec-tw-halves, (E1) to (E4) and (C1) to (C4); @sec-tw-induction, "so every sub-run is covered, typed or untyped".
-
-*Objection.* `EvalAt` (`Steps/Master.lean`), the statement the mechanisation proves (II) from, has more than the paper, and its docstring says of two of them that "without [them] the statement is false":
-- the plain mode (`ModeR`: no head evaluation, not copying, not in place): in copying mode the checker's read of a place leaves it where the strict run moves it (`let x = S(Z); let y = clone(x); x`, at the read inside `clone`). The paper's inner induction says every sub-run is covered; `EvalAt` does not cover a sub-run in copying mode or a call's head read in place, which need statements of their own.
-- the reading handed down (`tailDecl`) is none or the table's: otherwise the checker's pre-pass erases a term the strict run runs.
-- the hint. (C1) and (E4) are at the checker's hint (`hintM … hint`); the paper names no hint. For a body run in place the checker hands `hintLater` of the codomain where `readsHint` says the body reads one, and none otherwise (`runBodyCore`, `Machine.lean` around line 3299); the closure's run in the frame property is at the codomain. So (E4) at the checker's hint needs hint independence (`HintIndep`, only for bodies whose tails read no hint), `readsHint`’s agreement with that, and the deferred hint meaning the codomain: the first referee's O5 (a) is not only "never stored", it enters (E4).
-- the decision table aligned at the END of the run (`DecTab K.D st'`), not at Ω.
-- conclusions: what the run keeps (`Kept`: the mode, the number of frames, the top frame's readings), which sequencing uses; a deferred call type reads as the reference's result type (`LaterOk`), which is the first referee's item 4, here answered in @sec-answers by "the relation reads a deferred type as the reference's" without a clause that says so; and a promised type that is missing reads as `err`.
-Two smaller points. (E1)'s "each global's meaning a member of its declared type" cannot hold of a recursive $d_k$ during its own check, whose meaning there is the stage, a member of the weakened type (`FixEqG` excludes the global being checked). (C2) asks "at every typed future of $S'$", where `EvalAt` asks the one future φ∘π'; the paper's is stronger than what is proved.
-
-*Kind.* (II) is misstated (hypotheses and conclusions missing); the step from (II) to the theorem also needs R1's identification of the generic state with the model's closure state.
-
-*What would settle it.* Restate (II) as `EvalAt` and `TailAt` with each clause explained, and name hint independence and the deferred types among the things the argument rests on.
-
-=== R9. Smaller differences between the paper and the Lean
-
-- The theorem's conclusion: the paper's ends "related states, which again satisfy (H1) to (H4)"; `RunFrame`’s `FrameAgree` concludes FrameRel only. The paper's is what an induction needs; the Lean statement will need strengthening inside its proof.
-- (H5) is implied by `FrameRel.top` (`BindRen` at `self`); Lean has no separate hypothesis, and does not ask `self` to be $G$ at its true type at all.
-- `FrameRel.lentImg` (a held in-place label with a top-frame site is in σ's image) has no counterpart among (F1) to (F8).
-- (H4) in Lean is `ks.length ≤ (s'.env.headD {}).binds.length`: a number of bindings, not that they read the labels; (F4) then constrains them.
-- The list of clauses omits `.pi`, constructors, `J`, `Eq`, ascriptions, `clone`/`peek`/`inplace`, embedded values: each routine (copies, or the induction at an extended state), but `.pi` runs its domains from extended states at every argument tuple, which the induction must allow.
-- For a callee returning a borrow, the in-place call reserves its result's label before the frame is pushed (`runCallRef`), so σ's fresh clause starts above it; the start lemma should say so.
-
-== The frame proof's lemmas
-
-#table(columns: (26%, 18%, 56%), align: left, table.header([*Lemma*], [*Verdict*], [*Why*]),
-  [The statement, (H1) to (H6)], [could not decide], [True for every clause I checked but the inner `fix` (R2); to drop (H6) it needs a hypothesis on the call (R6).],
-  [(P) parameter labels stay at the cells], [false], [`P2`, `P3`: [Entry]’s lending puts a parameter label at a top-frame place, and an access ends it (R4).],
-  [(L) locality is kept], [holds], [Lean's `RInv` (`Inv1`, `Inv2`, `ShapeAt`) through each operation (`LocalityRun.lean`).],
-  [(T) typed futures correspond], [false as stated; holds restated], [Off the live labels ψ∘σ is not typed; agreement on live labels with (H3) is what tests use (R5).],
-  [(R) top-frame reads agree], [holds], [(H3)'s second clause survives (P)'s failure: the added sites carry no value dependence.],
-  [[End] of a label], [holds; argument wrong for made labels], [After [Lend] the caller's frames read a made label; (F4) and `lowerVal_end` cover it (R5).],
-  [[Access] of a top-frame place], [holds with another argument], [Parameter labels can be ended by an access (R4); independent ends commute on values, and only top-frame sites are compared.],
-  [A write at a path], [holds], [Definedness at every typed future of a top-frame value, by (T) restated and (R).],
-  [The whole-state test], [holds], [Top frames related; the rest good by (H1) in place, (H2) in the closure, both carried by N2.],
-  [A fresh label], [holds], [(F1); note the label reserved by `runCallRef` before the push.],
-  [Temporaries, bindings, `let`’s end, discard, invalidation], [holds], [Label-free: Lean (`run_frameS_lf`). With labels: top-frame operations and the end lemma.],
-  [Places, `Z`, `S`, `let`, `;`, assignment without labels], [holds], [Proved in Lean (`run_frameS_lf`).],
-  [Borrow, assignment through a borrow, field paths], [holds], [By the operation lemmas.],
-  [A match], [holds with another argument], [Its entry and lending are where (P) fails; the commuting argument of R4 covers them.],
-  [An erased term], [holds], [Both sides on copies (`SM.erasedIf`, `SM.onCopy`).],
-  [A call inside the body], [holds], [Checked against `callOfL`: holders taken alike, fixes renamed by `renF_upd`, the caller's frames through the cells, [Lend]’s sites at the caller's frames or the cell.],
-  [A closure formed inside the body], [could not decide], [The run nests frames that FrameRel cannot relate; the argument given describes another definition (R2).],
-  [A body that reads its own binding], [holds], [With equal selves the recursive call is an ordinary call (FrameRel's `BindRen` at `self`).],
-  [`Id` over a parameter label], [holds with a named extra hypothesis], [Joint injectivity at the call (`CellsDetermined`) and the model's strict ends in observations (R6).],
-  [The start], [holds with an extra lemma], [(F3)'s types need a frame property for type terms (R3 (d)); (H2)'s "arguments decode" rests on case 2 (R1).],
-  [The pop], [holds with another argument], [Its order argument cites (P); the commuting argument of R4 replaces it.],
-  [The fixpoint equation, a global], [holds at the generic check's state], [At every forming state, as Lean states it, it needs the renaming transport (R7 (a)).],
-  [The fixpoint equation, a local function], [could not decide], [Not stated in Lean; nothing carries it to the call (R7 (b)).],
-  [`callOf` against the call in place], [holds given the pieces], [The pieces above, with R6 for bodies with `Id`.],
-)
-
-== The other targets
-
-*Half (II) as stated* (target 2): see R8. (E1) to (E4) hold at the start of a real check but for (E1)'s clause about the definition under check; they are kept by the cases with N5 and N6 as the paper says. (C1) to (C4) are not enough for the step to the theorem: it also needs the generic state's parameter types to be the model's domains, which R1 shows false, and the generic state's run to be the model's closure run, which is a frame and renaming property (R3).
-
-*The three cases argued in full* (target 3). Erasure (case 7): holds; the reference returns every proof at the true proposition, and (C3) then needs the checker's proposition true, which (I) gives. Recursion (case 9): holds, and the checker held against the attack on it:
-#measured[With the `Nat` prelude, all rejected on `main` with "[Rec] ... is not a strict subterm of that parameter's entry value as refined so far":
-```
-def Bad2 (n : Nat) : Unit by n := match n { Z => (), S p => (n := S(S(Z)); Bad2(p)) }
-def L (n : Nat) (h : Eq(Nat, n, S(Z))) : Eq(Nat, Z, S(Z)) by n := match n { Z => h, S p => (n := S(S(Z)); L(p, refl)) }
-def LB (x : &Nat) (h : Eq(Nat, *x, S(Z))) : Eq(Nat, Z, S(Z)) by x := match *x { Z => h, S p => (*x := S(S(Z)); LB(&p, refl)) }
-```
-A pattern variable read after its scrutinee was overwritten is a part of the new value, not of the entry value; had [Rec] gone by syntax, `L` would be accepted, and a proof call of it, which never runs, would prove `Eq(Nat, Z, S(Z))`.]
-The step from (II) to the theorem: incomplete (R1, R3). The claim for untyped runs, that the strict run succeeds from the function's membership and the frame property: incomplete at three points, the hint (R8), bodies with `Id` over a borrow parameter (R6), and the arguments' decoding at the model's domains (R1).
-
-*The named theorems* (target 4): incomplete (R3: a general frame and renaming property; R8: hint independence and the deferred types, and the checker's facts `EvalAt` and `Kept` take). Of the reductions, "reduced to N4" in case 1 hides the hint and the fixpoint equation's transport; "reduced to N4, N6" in case 4 hides a frame property of another shape (R3 (b)); case 3's [T-Fix] marked in full hides R3 (c).
-
-*The answers to the first referee* (target 5). O1: answered in form; the list it produced is incomplete (R3, R8). O2: answered (the end is an equality of reference states), up to R5's (T). O3: answered in form; its reduction to N4 is not yet one (R6, R8, R1). O4: answered; `Sel` and `Q3` re-run on `main` are rejected, `AddZ` accepted. O5 (a): stands, and matters more than "never stored": the deferred hint's meaning enters (E4). O5 (b): answered. O6: answered by a statement; its proof is incomplete (R2, R4, R5, R7). O7: answered; `QB` re-run, rejected. O8: answered for membership; the local fixpoint equation has no carrier (R7). O9: stands, as N6. O10: answered.
-
-== For a third referee
-
-Not done: the frame property's group 3 (R2) was not attacked with a program, since the clause is about the model and I found no accepted program whose verdict it predicts wrong; the other direction of R1 (a type the checker reads true and the model false, which would break (C1) at a call) was looked for in four shapes and not found; case 4's block captures were not attacked beyond the first referee's shape. The probes are in the scratchpad's `ref2/` (`A1` to `A4`), the runner `ref2/run.sh`.
-
-= The third referee's report <sec-referee3>
-
-_Written by `referee3`, 27 November 2026, as the third adversarial referee, after reading the two earlier referees' briefs and reports, the principles and named theorems (@sec-theorems), the argument in two halves (@sec-twohalves) and the rewritten frame property (@sec-frame) closely, and comparing the frame property clause by clause with the model on `origin/spine` at 0e76096ff (`Meaning/Run.lean` whole; `SState.lean`; `State.lean`'s `Mean.semEnd`; `CallRef.lean`; `FrameProp.lean`; `Steps/FrameRec.lean`; `Strict/Good.lean`; docs/31 D205 to D209), and the three model changes with the checker of `main` at 08ff29a95 (`Machine.lean`: `capture`, the `.pi` and `.fix` cases of `evalCore`, `checkFix`, `convPi`, `convFnRun`, `runBodyCore`, `paramTypes`, `bindTy?`, `endBorrow`, `endAll`, `observe`, `idType`; `Obs.lean`; `Basic.lean`'s `inlineReads`). Every program below was run with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` on that checker; each is self-contained, "with the `Nat` prelude" means `uses Nats`, and every run also held the control `def Ctl : Eq(Nat, Z, S(Z)) := refl`, rejected. Nothing in the other sections was changed._
-
-== Verdict
-
-The rewritten proof is much nearer a proof than the last one, and the design held again: I found no false lemma among the operation lemmas (O1) to (O9) or the lemmas per clause of the run, and the new invariant (I), which is about what positions _read_ rather than where labels are lent, survived every shape I tried, the second referee's `P2`, the author's `P4` and new ones (a parameter label lent at another parameter's lender, a closure formed in the body over a place lent to a parameter, a reborrow through a returned borrow). The checker gave the verdicts the proof predicts on all of them. But each of the three model changes is wrong as written, and with the third the theorem is false. (M3) asks every label an observation ends to end over a whole member; in place the observation also ends the _caller's_ labels, so a caller holding a borrow partly moved makes any callee that forms an `Id` fail in place but not in the closure, with no borrow parameter at all (T1); the checker itself rejects such calls, which is a type-safety fault of its own. (M2) defines a closure's meaning by itself, read literally, and every non-circular reading either leaves the model's structural recursion or turns "a closure's value is what the strict run formed" (C3) back into a lemma (T3); worse, its "`.pi` likewise", built as written, would end borrows and move places that the checker's Π-types leave alone, giving accepted programs no meaning (T2). (M1) is right: it is what [Def], [Conv-pi] and conversion's generic calls do, and it moves one obligation into case 1, whose push now needs C2 (T4). Of the corollaries, C3 needs a renaming of variables, C6 is an instance of FR rather than of the renaming lemma it cites (T5), and the rest hold as stated reductions. Of the author's two findings about Lean, the one about `run_frame_obs` is right; the one about docs/31 D208 is misattributed: the monotonicity D208 proposes is true and insufficient, and what `P4` refutes is D208’s premise (T6). Every repair is small and none touches the checker's consistency; the sharpest is to restrict (M3) to the labels of the observing frame.
-
-== Objections, most serious first
-
-=== T1. (M3) as stated makes the frame property false, at a call with no borrow parameter
-
-*Where.* @sec-frame-model, (M3): "Every end inside an observation is a strict point"; @sec-frame-id, "(M3), made order-free": "an observation is defined only where, after all its ends, each label's final content is a whole member of its type"; theorem FR and its (H6); the section's verdict, "The statement (theorem FR below) survived every clause of the reference run I read it against."
-
-*Objection.* The model's observation ends every live label of the state it is given (`observation`: `s.liveLabels.foldl SState.endLabel s`). In place that state holds the caller's frames, so the observation ends the caller's labels too; in the closure there are none to end. Either form of (M3) therefore tests, on the in-place side only, every borrow the caller holds. A caller holding a borrow whose content is partly moved makes every observation in the callee undefined in place, while the closure's observation, and so `callOf`, is defined. Nothing in (H1) to (H6) or (S1) to (S4) excludes that state: a holder need only hold an _open_ member (`SGood.holder`), and (H6) asks nothing when the callee has no borrow parameter. So FR, and with it C1 and C2, are false under (M3) as written, at the simplest call there is.
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main` at 08ff29a95:
-```
-def FI (n : Nat) : Unit := (let h : Id(Unit, (), ()) = refl; ())
-def CallI : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).0; FI(Z); (*r).0 := z; ())
-def H (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
-def CallH : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).0; let c = 3; H(&c, refl); (*r).0 := z; ())
-```
-`FI` and `H` accepted. `CallI` and `CallH` rejected, both with "[D53] a borrow ends while its content is partly moved out ((⊥, 2))": the observation inside `FI`'s body run in place, and the one inside `H`'s first parameter type read at the call site, end the caller's `r`. `CallI` with `def FN (n : Nat) : Unit := ()` in place of `FI`, and `CallH` without the move out of `(*r).0` and its write-back, accepted.]
-In the model's terms: at `FI(Z)` the in-place state is good (`r` holds `(moved, 2)`, an open member of `Pair(Nat, Nat)`; `p` reads the final of `r`'s label, a whole member at every typed future), the parameter labels are `[]`, and the run of `FI`'s body fails in place under (M3) and succeeds in `FI`'s own frame.
-
-The checker agrees with the run in place: its observation ends every borrow of the whole environment (`endAll` over `allPos`, called from `obsResult`), with D98’s test in `endBorrow`, so it rejects the caller. There is no consistency fault. There are two faults of another kind. The frame property as stated is false once (M3) is made, which the Lean lane would learn only by failing to prove it. And the checker has a type-safety fault: an accepted function cannot be called where the caller holds a borrow partly moved, if its body or a parameter type forms an `Id`, because a private run reaches below its own frame (principle 6, "every borrow it can end is its own frame's"; principle 4’s clause for type safety, "an untyped run can run every form the check accepts").
-
-It is worse than incompleteness: whether the caller is accepted depends on whether the callee ran in place or closed off, so a definition the checker accepts can be rejected at a call with a known argument.
-#measured[*An accepted function whose call at a known argument is rejected* (asked by the orchestrator). With the `Nat` prelude, on `main` at 08ff29a95:
-```
-def FJ (n : Nat) : Unit := match n { Z => (let h : Id(Unit, (), ()) = refl; ()), S(m) => (), }
-def CallK (n : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; (*r).0; FJ(n); (*r).0 := 0; ())
-def UseK : Unit := CallK(Z)
-def UseKS : Unit := CallK(S(Z))
-```
-`FJ`, `CallK` and `UseKS` accepted; `UseK` rejected, "[D53] a borrow ends while its content is partly moved out ((⊥, 2))". At `CallK`'s check `n` is unknown, `FJ`'s match is stuck and the call closes off, so no observation runs; at `CallK(Z)` the run of `CallK`'s body calls `FJ(Z)` in place, the arm `Z` forms the `Id`, and its observation ends the caller's `r`. The orchestrator's unshrunk form (`let z = (*r).0; ...; (*r).0 := z` for `CallJ`, and `UseJ`, `CallJ(S(Z))`) gives the same four verdicts.]
-This is the class principle 4 ("one code, two runs") forbids: the typed check of `CallK` and an untyped run of the same code decide differently. The enforcement site that is missing is principle 6’s: an observation's ends must not leave its frame, and `endAll` (`Machine.lean` around line 1146, called from `obsResult`) ends every borrow of the whole environment, D98’s test included; [Call-type]'s observation (`CallH`) has the same fault.
-
-*Kind.* A model change is misstated, and with it the theorem is false. Separately, principle 6 is not enforced at an observation's ends, which makes principle 4 fail (an accepted definition is rejected at a call with a known argument): a fault of the checker for type safety, not for consistency.
-
-*What would settle it.* State (M3) for the labels the observing body holds, those held in its frame (the parameter labels and the body's own), which is all OBS uses (the cells' labels are held by the parameters): in place and in the closure these are the same labels through σ, their finals agree by (I1) and (I4), and the caller's labels are still ended, unchecked, on the in-place side. The checker's refusal of `CallI` is then a refusal the model does not make, which is harmless to consistency. To remove the type-safety fault, have `endAll` in an observation and in [Call-type] test only the observing frame's borrows, the checker's counterpart of the restricted (M3).
-
-=== T2. (M2)’s "`.pi` likewise" makes the model disagree with the checker
-
-*Where.* @sec-frame-model, (M2), _The definition_: "The `.fix` clause accesses each captured variable in order (`capStep`'s access), records its meaning ..., moves the non-copy ones as now, and means what `meanV` gives the closure value so formed ... `.pi` likewise, with `.tPi`."
-
-*Objection.* The checker captures a Π-type's free variables on a private copy (`Machine.lean` line 2575, `inStatement (capture fuel' t)`: "a type former is erased: even its captures (which access places) run on a copy"), so forming a Π-type accesses nothing and moves nothing. Only a closure's capture is real. A `.pi` clause built "likewise", accessing and moving on the state, ends the borrows lent at its captures and moves its non-copy captures where the checker does neither. The present `.pi` clause does neither, so this would be a regression.
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main` at 08ff29a95:
-```
-def PiMove : Nat := (let a = 5; let T = (Π(u : Unit). Eq(Nat, a, 5)); a)
-def PiLentEq : Eq(Nat, (let a = 5; let r = &a; let T = (Π(u : Unit). Eq(Nat, a, 5)); *r := 6; a), 6) := refl
-def FixMove : Nat := (let a = 5; let f = (λ(u : Unit) : Nat => clone(a)); a)
-def FixLent : Nat := (let a = 5; let r = &a; let f = (λ(u : Unit) : Nat => clone(a)); *r := 6; a)
-```
-`PiMove` and `PiLentEq` accepted; `FixMove` rejected ("[Read] a was moved out or its borrow ended (reading ⊥)"), `FixLent` rejected (`no such place *r: its path does not exist in ⊥`).]
-With `.pi` built like `.fix`, `PiLentEq`'s Π-type ends `r`'s borrow, after which `*r := 6` writes through a moved holder and fails, and `PiMove`'s moves `a`, after which the read of `a` fails: two accepted programs with no meaning.
-
-*Kind.* A model change is wrong as written: it would make the model disagree with the checker.
-
-*What would settle it.* Say that `.pi` reads its captures on a copy (the access and the record made on the copy, the state unchanged), as the checker does and as the present `.pi` clause in effect does.
-
-=== T3. (M2) is not a definition as written, and C3 is not "by definition"
-
-*Where.* @sec-frame-model, (M2), _The definition_ (quoted in T2); @sec-frame-stmt, (C3): "Under (M2), by definition: the strict run's `.fix` and `.pi` mean `meanV` of the value they form"; the verdict's "two become definitions once the model reads closures from their captures".
-
-*Objection.* `meanV`'s `.clo` clause is the strict run of the closure value's code, which is a `.fix` term, from `stateOf 0` of its captures. Read literally, (M2) defines the `.fix` clause as `meanV` of the value it forms, which is the `.fix` clause again, at the capture frame and on `capture`'s rebuilt code; within one more step its captures re-capture to themselves, so the clause is defined as itself. Read charitably (run the stages and `bodyAt` from the capture frame on the rebuilt code), the run recurses on the body that `capture` rebuilds, which is not a subterm of the term being run: `Run.lean`'s `runT` and `meanV` are one structural recursion on terms and values (its header: "Structurally recursive on the term: the only recursion into code is into subterms"; `termination_by structural`), which the kernel-checked concrete runs and the fundamental lemma's induction on the term rely on, and no size measure decreases either, since `capture` replaces each read of a captured proof by `(⋆ : T)` with `T` a value taken from the state (`Machine.lean` line 1992, `Basic.lean`'s `Term.inlineReads`). The reading that stays structural runs the original body in a frame laid out like the forming top frame, holding the captured meanings at their indices and fixed placeholders elsewhere. It keeps what (M2) is for: a closure's meaning depends on its captures alone, the closure has no caller frames, and R2 is removed (the clause in @sec-frame-proof holds with it). But then the strict run's closure and `meanV` of the checker's value are two runs of different terms from different frames, and C3 is a lemma: a renaming of variables and positions, undoing the inlined proofs, of the same kind as the place renaming PR (outlined, not proved). C4 is unaffected: the call in place and the closure both read the closure _value's_ code from its capture frame, so they agree by definition.
-
-*Evidence.* The definitions cited; no program can show it, since it is about the model's definition.
-
-*Kind.* A model change is not a definition; a corollary marked "by definition" is a lemma.
-
-*What would settle it.* Write (M2) as the structural reading above, and add C3’s renaming lemma to the list of what is not proved (beside PR, which it resembles), or choose a well-founded measure for the circular reading and say what it costs the kernel-checked runs.
-
-=== T4. Case 1’s push uses C2 under (M1), and is marked argued in full by reading
-
-*Where.* @sec-tw-callrun, step 2: "The checker's state after its push is related to S after this push (... in general by reading, since the frames are built alike). #a-full"; (M1)’s "Every reading of a parameter type ... uses it: ... and the in-place frame's stored types (`callFrame`'s binders)".
-
-*Objection.* Under (M1) the reference's frame binds each parameter at the type read in the generic state $"Gen"$, with cells. The checker's frame does not: `runBodyCore` evaluates each borrow parameter's type at the call point, in a private frame pushed on the caller's state that takes the caller's borrow (`paramTypes`, `Machine.lean` line 3275), and leaves the others deferred, to be evaluated by `bindTy?` whenever they are read, again on the current state. The relation's skeleton clause asks the two stored types to have the same code, which is the transfer of a statement to a call site, C2, with its hypotheses (resolved determination where a type has an `Id` over an earlier borrow parameter, and so N5). For a deferred type the relation reads the model's `paramTy` (`Env.hintAt`), equal by definition, but each later evaluation by the checker is a transfer at a state that is no longer a call point, which C2 does not state (the second referee's `LaterOk`, R8).
-
-*Kind.* A step marked argued in full rests on a corollary it does not cite.
-
-*What would settle it.* Mark step 2 as reduced to C2, and state the transfer for a deferred type at the state where the checker evaluates it, or prove that every such evaluation agrees with $"Gen"$. One way they differ, by reading and not run: an `Id` over a borrow parameter whose label has ended before the deferred type is read, where `takeArgBorrow` finds no holder, the footprint finds no owner, and the checker's type is the weaker.
-
-=== T5. C6 cites the renaming lemma, which does not cover it; it is an instance of FR
-
-*Where.* @sec-frame-stmt, (C6): "the generic state of [Def], read as a reference state, is `fixBodyAt`'s state ... but for the names of the labels. So the run (II) relates to the checker's is the meaning's run, by the renaming lemma. #a-red[RL]"; theorem RL, "It is FR's case with no caller frame and no parameter label".
-
-*Objection.* RL (Lean `run_counter_indep`) is about one frame of bindings that read no future and carry no label. [Def]'s generic state has a frame 0 of cells and borrow parameters holding labels, so RL does not apply. FR does: take the checker's generic state, read as a reference state, as the in-place side and its frame 0 of cells as the "caller's frames". Then (F2) holds (two frames on each side), (F4) is the identity (each in-place cell reads its own label, which the closure's cell reads through σ), (S1) to (S4) hold (frame 0 holds nothing and lends nothing), (H4) holds, σ is monotone, and resolved determination is trivial (each cell is the identity context around its loan). Conversely RL is not literally FR's case: `FrameRel.frames` asks the closure for exactly two frames and `stateOf` has one, so "its proof is FR's with the caller's-frames clauses deleted" is a second proof, not a specialisation.
-
-*Kind.* A corollary cites the wrong theorem (the right one covers it); a lemma claimed as a special case is a separate proof.
-
-*What would settle it.* Cite FR for C6, and keep RL for C5 (a sealed program runs from an empty frame), stated as its own lemma.
-
-=== T6. The finding against D208 is misattributed
-
-*Where.* @sec-frame-stmt: "Not a hypothesis: σ monotone on the callee's labels (D208’s proposal). It is false at a state an accepted program reaches"; the `P4` block; the verdict's "the clause 'the renaming is monotone on the callee's labels' that docs/31 D208 proposes to carry is false at a state an accepted program reaches (`P4`)".
-
-*Objection.* D208 (docs/31 on `origin/spine`) proposes monotonicity on the labels the _callee makes_: "the label-ordered folds of [Access] end callee labels only (a parameter label has no site in the top frame), in an order that agrees if σ is MONOTONE on the callee's labels ... at the call no callee label exists, and each fresh label keeps it." On those labels σ is the shift of counters, so the clause is true and trivially kept. What `P4` refutes is the premise in the parenthesis, that a parameter label has no site in the callee's frame (already refuted by `P2`), and with it the sufficiency of the clause: one access can end two parameter labels, which σ may order the other way. The author's conclusion, that the commutation (I4) is what the proof needs, is right; the statement that D208’s clause is false is not. `P4` needs no access to break monotonicity on parameter labels: any call whose argument labels are in the reverse of the parameters' order does (`UseP4a`).
-
-*Evidence.* `P4`, `UseP4a`, `UseP4b` re-run on `main` at 08ff29a95: accepted, as reported.
-
-*Kind.* Only unclear: the finding is right in substance and wrong in what it attributes, which matters because the Lean lane could drop a true clause believing it false.
-
-*What would settle it.* Restate the finding: D208’s clause holds but is insufficient, because its premise is false (`P2`, `P4`); the relation carries (I4) instead.
-
-=== T7. Smaller points
-
-- _(I3) is false in a detail._ A borrow-typed match whose block takes two borrow parameters by move lends its result, as fills, wherever both were lent (`entrySnapshot`), so a parameter label can be lent at _another_ parameter's lender in place and at another parameter's _cell_ in the closure, not only "at its cell". Harmless: `FrameRel.lentCl` allows any cell and nothing reads a fill.
-#measured[With the `Nat` prelude, all accepted on `main` at 08ff29a95:
-```
-def P5 (n : Nat) (x : &Nat) (y : &Nat) : Unit := (let r : &Nat = match n { Z => (let w = x; y), S(j) => x, }; *r := 1; ())
-def UseP5a : Eq(Nat, (let a = 3; let b = 4; P5(Z, &a, &b); b), 1) := refl
-def UseP5c : Eq(Nat, (let a = 3; let b = 4; P5(Z, &a, &b); a), 3) := refl
-```
-At `n = Z` the result is `y`'s label, lent after the join at `b` (its own) and at `a` (`x`'s, taken by move).]
-- _(M3) is stated twice._ @sec-frame-model states the order-dependent form ("every end ... is a strict point"), and @sec-frame-id replaces it with the order-free form, which is the one OBS uses; the list of model changes, which the Lean lane builds from, has the other. Both forms are too strong (T1).
-- _(M3) adds an obligation to case 2._ With (M3) the strict `Id` fails unless the finals are whole members, so (C1) of (II) at [Id] must now show that the checker's observation passes it, from D98 (no borrow ends over a content with a hole) and [Repack] (N7) for dependent contents. Case 2’s "Computing `Id` at a state" does not say so.
-- _N8 needs a hypothesis._ `callOf` decodes each argument at the block's domain, so it fails where a captured value is not a member, where the direct run may not. The use in case 4 supplies it (the checker closed the block off, which reads each capture whole), but N8 as stated has no such hypothesis.
-- _(O6) uses a goodness N2 does not state._ After the write and before the whole-state test, the in-place caller frames and the closure's frame 0 must be good while the callee's frame may not be. That is true (they change only by ends, which substitute whole members), but it is the per-operation reasoning inside N2’s proof, not N2’s statement, which is about whole states after a successful clause.
-- _Lean's `RunFrame` has no (H5)._ The paper's FR assumes `ShapeAt`; `Steps/FrameRec.RunFrame` does not (docs/31 D209 says the internal relation must carry it). The other differences R9 lists still stand.
-- _A finding by the way, about the checker._ The observation's `endAll` and [Call-type]'s private frame reach below the observing frame (T1’s programs); this is the one place I found where a private run's _failure_ depends on the caller's state, and with `FJ` and `CallK` (T1) it makes an accepted definition fail at a call with a known argument.
-
-== The frame proof's parts, one verdict each
-
-#table(columns: (24%, 22%, 54%), align: left, table.header([*Part*], [*Verdict*], [*Why*]),
-  [(M1) types read with cells], [holds], [It is what `checkFix`, `convPi` and `convFnRun` do (a fresh loan in a frame-0 cell per borrow parameter, later types evaluated after it). Safe: each type runs on a state that is thrown away, as the checker's does (`W3` below rejected, `W1`, `W2`, `UseW4` accepted). It moves one obligation into case 1 (T4).],
-  [(M2) closures in their capture frame], [false as written], [Circular, or not structural, as written (T3); its "`.pi` likewise" disagrees with the checker (T2). Holds in the structural reading with `.pi` on a copy.],
-  [(M3) ends in an observation whole], [false as written], [FR fails at `CallI`'s state (T1). Holds restricted to the labels the observing frame holds.],
-  [(I1) reads], [holds], [Only `borrowPlace` and a call's fixes make a position read a label, and both a fresh one; an end substitutes its label away.],
-  [(I2) sites in the callee's frame], [holds], [Sites are added only for labels held in the callee's frame (`borrowPlace`, `entryLend`, `callOfL`'s `lentK`) or moved by `relend` to labels lent at a holder there.],
-  [(I3) parameter labels' sites], [false in a detail], [A parameter label can be lent at another parameter's lender or cell (`P5`); harmless (T7).],
-  [(I4) order of ends], [holds], [`SGood.acyc` orders holders after what they read; no callee holder reads a parameter label (I1), so two parameter labels' ends commute, strict tests included.],
-  [(O1) typed futures], [holds], [As restated after R5; the second clause is what tests use.],
-  [(O2) a read], [holds], [Reads are at `typedFuture`; callee positions read no parameter label and no caller label.],
-  [(O3) [End]], [holds], [Including a parameter label lent at a callee place by [Entry] (`P2`) and at another parameter's cell (`P5`).],
-  [(O4) [Access]], [holds], [Labels reached at a callee place are held there (I2); extra in-place rounds end nothing.],
-  [(O5) a write], [holds], [—],
-  [(O6) whole-state test], [holds with another argument], [Needs the caller frames' and frame 0’s goodness inside a clause (T7).],
-  [(O7) to (O9)], [holds], [—],
-  [Places, `Z`, `S`, `let`, `;` without labels], [holds], [Lean, `run_frameS_lf` (over `FrameRelS`).],
-  [Borrow, assignment through a borrow, field paths, `let` and `;` with labels], [holds], [By the operation lemmas.],
-  [A match], [holds], [`P2`, `P4`, `P5`, `P8` (below) by hand against `matchEntry`, `entrySnapshot`, `entryLend`, `joinDrop`.],
-  [`J`; erased terms; constructors and the rest], [holds], [By reading; parts on copies.],
-  [An embedded value; a global], [holds], [An embedded loan reads the run's future at the same number on both sides, unrenamed, which is the same value.],
-  [A call inside the body], [holds], [Including a returned borrow of a parameter reborrowed and written through (`P9`, `P10` below).],
-  [A body that reads its own binding], [holds], [Equal selves.],
-  [A closure or Π-type formed in the body], [holds under a corrected (M2)], [Could not decide under (M2) as written (T3); `P8` below is the shape.],
-  [`Id` over a parameter label (OBS)], [holds with a named extra hypothesis], [Resolved determination and the restricted (M3); false with (M3) as written (T1).],
-  [OI on meanings], [holds], [Two adjacent ends commute under acyclicity.],
-  [RD at a call], [reduced to N5 (X5), N1], [As stated.],
-  [The start], [holds], [Uses C2 for the arguments' decoding (cited) and C4.],
-  [The pop], [holds, given FixEq], [Same labels ended, orders differing among parameter labels only.],
-  [FixEq from RecDesc; RecDesc for a global], [holds; reduced to (II) for the global's check], [No circle under D135.],
-  [CloDesc], [not proved], [As the author says.],
-  [C1 a call in place], [holds with named extra hypotheses], [The restricted (M3); FixEq, for a closure CloDesc; N9 for the hint.],
-  [C2 a statement at a call site], [holds with named extra hypotheses], [(M1), the restricted (M3), RD; at a call point only (T4).],
-  [C3 a closure's value at its forming], [holds with a named extra lemma], [A renaming of variables and positions with the inlined proofs undone, not a definition (T3).],
-  [C4 the start's types], [holds], [By definition under (M1) and a corrected (M2).],
-  [C5 a sealed program's re-run], [reduced to RL], [RL is open; it is its own lemma, not FR's case (T5).],
-  [C6 (II) to the theorem], [holds, as an instance of FR], [Not of RL (T5).],
-  [N8 the block lemma], [holds with a named extra hypothesis], [The captured values decode at the block's domains (T7); PR not proved.],
-  [N9 hints are inert], [could not decide], [Open, as stated.],
-)
-
-#measured[*The shapes named in the table.* With the `Nat` prelude, all accepted on `main` at 08ff29a95:
-```
-def P8 (n : Nat) (x : &Nat) : Nat := (let q = 5; let r : &Nat = match n { Z => x, S(j) => &q, }; *r := 1; let f = (λ(u : Unit) : Nat => clone(q)); f(()))
-def UseP8 : Eq(Nat, (let c = 3; P8(Z, &c); c), 1) := refl
-def UseP8c : Eq(Nat, (let c = 3; P8(S(Z), &c)), 1) := refl
-def P9 (x : &Nat) : Unit := ((let r = TailM(&*x); let s = &*r; *s := 0; ()); let h : Id(Unit, *x := 4, *x := 4) = refl; ())
-def UseP9 : Eq(Nat, (let c = S(S(Z)); P9(&c); c), S(S(Z))) := refl
-def P10 (x : &Nat) : Unit := (let r = TailM(&*x); let s = &*r; *s := 0; ())
-def UseP10 : Eq(Nat, (let c = S(S(Z)); P10(&c); c), S(S(Z))) := refl
-def W1 (x : &Nat) : (AddM(x, 1); Unit) := (*x := 0; ())
-def W2 (x : &Nat) : (*x := 7; Eq(Nat, *x, 7)) := refl
-def W4 (x : &Nat) (y : (*x := 7; Nat)) : Unit := ()
-def UseW4 : Eq(Nat, (let c = 3; W4(&c, 0); c), 3) := refl
-```
-In `P8` at `n = Z` the closure's capture of `q` accesses `q`, which ends `x`'s label lent there by [Entry]. And `def W3 (x : &Nat) (y : (*x := 7; Nat)) : Eq(Nat, *x, 7) := refl` rejected ("the goal is Eq(Nat, σ0, 7)"): a parameter type's run leaves nothing behind, as (M1)’s $"Gen"$ does.]
-
-== The author's two claims about Lean, and what is not proved
-
-*`run_frame_obs` is false as stated: right.* I re-derived the counterexample against the definitions: `Mean.semEnd` makes a holder `.moved`, so after the observation's ends the caller's `r` is moved on both sides and `c` holds `b`'s constant, while the closure's cell holds `0` against `1`; `CellsDetermined` holds because the unresolved `r` reads the parameter label directly; `FrameStart` holds (`r`'s label is below the counter and lent only at `c`), and `SGood.acyc` holds since the parameter label, a reborrow of `r`'s content, is above `r`'s. By reading, as the author's; not kernel-checked.
-
-*D208’s monotonicity is false: misattributed* (T6).
-
-*What is marked proved or by definition and is not.* C3 is a lemma, not a definition (T3); case 1’s push rests on C2 (T4); C6 rests on FR, not RL, and RL is a proof of its own (T5); (O6) rests on a goodness N2 does not state (T7); and FR itself is false with (M3) as written (T1). The author's "not proved" list is otherwise accurate: CloDesc, PR, `Id` through RD and N5, and frames at a depth without (M2).
-
-== For a fourth referee
-
-Not done. The most damaging attack left is on resolved determination itself: an accepted way to give a borrow whose every owner's context is constant would let a function like `def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e`, which the checker accepts, be called with `refl`; I did not attack it beyond the shapes above (the second referee tried four). Neither the renaming of variables C3 needs, nor PR, nor RL was attempted. The checker's type-safety fault of T1 was measured at two sites (a body run in place, [Call-type]); I did not look for others where a private run ends borrows below its frame. The probes are in the scratchpad's `ref3/p/` (`B1` to `B7`; `B7` re-runs the second referee's `P2`, `UseP2`, `UseP2c`, accepted, with `UseP2c` at `3` rejected), the runner `ref3/run.sh`, and running notes in `reports/referee3.md`.
-
-= The fourth referee's report <sec-referee4>
-
-_Written by `referee4`, 27 November 2026, as the fourth adversarial referee. Scope, in the order the orchestrator set: the proposed change to the checker in @sec-rd-ends (that an observation's tests run only at the observing frame), attacked from the history of the faults those tests were added for; resolved determination (@sec-rd); the frame property of @sec-frame against the Lean statements on `origin/spine` at a2025765e (`Steps/FrameOps.lean`: `FrameInv`, `RunFrameI`, `frameInv_of`; `Steps/FrameAccess.lean`: `AccInv`; `Steps/FrameRec.lean`: `RunFrame`; `FrameProp.lean`: `FrameRel`, `FrameStart`; `Run.lean`: `observation`, the `.id` and `.matchInd` clauses); and the new arguments of @sec-clo-fix to @sec-excl, riskiest first. I read the paper whole, `RULES.md` whole, `DECISIONS.md` for D44, D53, D64 (and its amendment), D72 to D76, D98, D99, D106, D113 and D114, and the checker's `endBorrow`, `endAll`, `obsResult`, `observe`, `idType`, `mkEqM`, `repackCheck`, `lentUnknown`, `endTopLoan`, `takeArgBorrow`, `runBodyCore` and `bindTy?`. Every program below was run with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` on the checker of `main` at 0228b0283; each is self-contained, "with the `Nat` prelude" means `uses Nats`, and every run held the control `def Ctl : Eq(Nat, Z, S(Z)) := refl`, rejected. The proposed change is not built, so its verdicts are predicted by reading the code it would change, beside the nearest programs run on today's checker. Nothing in the other sections was changed._
-
-== Verdict
-
-I found no closed proof of `False` and no fault of the checker's consistency, and the revision's new arguments mostly survived attack. Three findings bear on what the document claims, though, and the most urgent bears on a change about to be landed. The proposed change to the observation's tests is sound only with a restriction. As written it would let an observation end a caller's borrow, one returned by a closed-off call, over a content the caller holds partly moved or open. That puts a value with `⊥` inside a sealed program inside a formed type (F1, the program `Bad`). Such a value is not a member of any type, so neither the strict run nor resolved determination can give it a meaning. This is D98's own reason, one frame down. The restriction keeps the two tests at the end of any such borrow (one whose places include a sealed fill), and the three measured sites are still repaired under it.
-
-Resolved determination held against every new shape I gave the checker. As a statement about the model, though, it is false at a proof owner (F2). The checker compares a proof's data fields while the model reads every proof as `•`, and accepted programs rely on the checker's finer reading, which is the necessary one. It is also stated at every state the checker reaches but proved only where the borrows between a parameter and its owners hold whole members (F4). The frame property as written is not Lean's `RunFrameI` (F3). Lean has since added two hypotheses and a conclusion (D219), lacks (H10), and leaves out `Id` over a parameter altogether.
-
-The arguments for conversion on code, [Repack] at a read, the place renaming, hints, a closure's fixpoint equation and (WF12) survived my attacks, with smaller inaccuracies. Two are worth acting on. A side of `Id` can open a caller's owner itself, so the claim that caller owners are "as the caller left them" is false; this is a fifth type-safety site of the measured kind (F5). And (X1) is false at a deferred parameter type, which keeps a copy of every borrow argument (F6).
-
-== Objections, most serious first
-
-=== F1. The proposed change lets a backward function run on a non-member
-
-*Where.* @sec-rd-ends, _What the observation must test_: "Not at the end of a label of $E_2$ or $E_3$ … Ending $E_2$ unchecked puts `⊥` or an open value into an owner, which `eq` compares as it is"; _In the code_: "`endBorrow`'s D98 test and its typing-mode [Repack] apply only to a borrow held at a position of that frame or above"; (M3) in @sec-frame-model, "Every other end the observation makes, of the caller's labels in place, is unchecked: it substitutes and tests nothing."
-
-*Objection.* A label of $E_2$ need not be lent at a plain loan. If the caller's borrow between the parameter and its owner was returned by a call that closed off, its places hold [Close]'s fills. Ending it unchecked over a partly moved content then substitutes that content into the fills' texts. Once no hole is left the fills re-run, their head call is stuck, so they stay sealed with `⊥` inside them, and the comparison keeps them. The checker then holds a sealed program whose text is not a call on members (principle 7). It holds it in the observation's copy, and in the stored type of a binding when the `Id` is a hypothesis. That program's meaning is the strict run of its text, and that run fails under every assignment that unsticks it. It fails at the final copy-read of the cell (D127, a partly moved place is not read by copy) and at its own `let r` drop (D98). The model's `callOf` instead substitutes into the callee's backward function, which N1's relation makes injective on members only. So (II) has nothing to relate the checker's value to, and RD1's use of (X5), stated on whole members, does not apply to the ancestor's final. D98 was decided for exactly this reason ("a backward function is defined only on whole contents", @sec-rd-ends cites it as a site RD rests on). The proposal moves the fault from the observing frame's borrows, which it still tests, to the caller's, which it does not. The same holds for [Repack] with an open content, since a fill's re-run then runs the callee's body on a value its check never covered (principle 9's (P)).
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main` at 0228b0283:
-```
-def G5 (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
-def G5T (x : &Nat) : Prop := Id(Unit, *x := 0, *x := 1)
-def H (x : &Nat) (e : Id(Unit, *x := 0, *x := 0)) : Unit := ()
-def PP (n : Nat) (x : &Pair(Nat, Nat)) : &Pair(Nat, Nat) := match n { Z => x, S(m) => x, }
-def CallF (n : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); let z = (*r).1; H(&(*r).0, refl); (*r).1 := z; ())
-def Bad (n : Nat) (e : (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); let z = (*r).1; let T = G5T(&(*r).0); (*r).1 := z; T)) : False :=
-  (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); let z = (*r).1; let res = G5(&(*r).0, e); (*r).1 := z; res)
-def BadW (n : Nat) (e : (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); G5T(&(*r).0))) : False :=
-  (let p : Pair(Nat, Nat) = Mk(1, 2); let r = PP(n, &p); G5(&(*r).0, e))
-```
-`CallF` and `Bad` rejected, "[D53] a borrow ends while its content is partly moved out ((loan_3, ⊥))": the observation in `H`'s parameter type, and the one in `G5T`'s body, end the caller's `r`, held below the observing frame. `BadW`, the same with the content whole, accepted; its hypothesis is `Eq(Nat × Nat, ⌈let c1 = (1, 2); let r = PP(σ0, &c1); *r := (0, σ3); c1⌉, ⌈let c1 = (1, 2); let r = PP(σ0, &c1); *r := (1, σ3); c1⌉)` (shown by passing it where `True` is expected), and the call-site type of `G5`'s `e` converts to it. The same at a known argument, `PP(Z, &p)`, where `p` holds a mark and not a fill (`CallFZ`): rejected the same way. And with an open content in place of a partly moved one:
-```
-inductive Void : Type
-inductive One := O
-def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
-inductive VW := MkVW(n : Nat, x : Fin1(n), w : Nat)
-def PV (k : Nat) (x : &VW) : &VW := match k { Z => x, S(m) => x, }
-def CallO (k : Nat) : Unit := (let t = MkVW(S(Z), O, 5); let r = PV(k, &t);
-  match *r { MkVW(n, x, w) => (let n0 = clone(n); n := Z; H(&w, refl); n := n0), })
-```
-`CallO` rejected, "[Repack] a borrow of it ends, but it is open: field x of MkVW holds a value of type ⌈Fin1(σ3)⌉, but its type from the earlier fields is Void"; the same with `let q = &w; *q := 0` in place of the call of `H` accepted.]
-Under the change, by reading: `CallF`, `CallFZ`, `CallO` and `Bad` are accepted, `CallFZ` correctly (`CallO`'s observation puts `MkVW(Z, σ, 0)`, open, into `t`'s fill, which stays sealed at `PV(σ, …)`). In `Bad` the hypothesis becomes `Eq(Nat × Nat, ⌈… *r := (0, ⊥); c1⌉, ⌈… *r := (1, ⊥); c1⌉)`. The observation ends `r` first, in the order of Ω, over `(loan, ⊥)`, so the fill keeps a hole and is not run. Then it ends the parameter, and the fill, with no hole left, re-runs and is stuck at `PP(σ0, …)`. Since `BadW` converts, `Bad` converts the same way. Its meaning would need $[| e |]$ empty at every `n`. But both sides of the equation are runs that fail at every assignment, so the model reads them alike, the equation is true, and `Bad` has no meaning. The checker never proves that equation: a refinement of `n` re-runs the fills into a [Seal-err], and at a known `n` the type is `False`. So no closed proof follows. What fails is the argument's step (II), at an accepted definition.
-
-*Kind.* A proposed change is sound only with a restriction. Unrestricted, it breaks principle 7 for sealed programs held in types, and with it (II) and RD.
-
-*What would settle it.* Land the change with the restriction: `endBorrow`'s D98 test and typing-mode [Repack] are skipped below the observing frame only for a label none of whose sites is a sealed fill (a fill site is any sealed program whose text holds the label's loan). A chain through a plain borrow is covered, since its unchecked end puts the content into the next label's content, whose end is then tested. The three measured sites (`UseK2`, `AAncOk`; `UseK3`, `OpenCall`; `OpenAnc`) involve no fill, since any borrow between the parameter and its owner there is plain, so they are still repaired. A fourth site of the same class is left: an accepted function whose in-place call has a fill site there. Measured: with `PickP (n) (x y : &Pair(Nat, Nat)) : &Pair(Nat, Nat)` picking by `n`, and `FJ2` of @sec-rd-ends, `def CallKF (n m : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(1, 2); let q : Pair(Nat, Nat) = Mk(3, 4); let r = PickP(m, &p, &q); *r := Mk(7, 8); let z = (*r).1; FJ2(n, &(*r).0); (*r).1 := z; ())` is accepted, and `def UseKF (m : Nat) : Unit := CallKF(Z, m)` is rejected by D98. Without the write `*r := Mk(7, 8)`, `UseKF` is accepted, because the untyped run is stuck at the projection of the sealed result and the call closes off. The alternative to the restriction is a model in which a backward function is defined, and injective, on open and partly moved contents, and a checker whose re-run of such a fill agrees with it. Today's re-run fails.
-
-What I checked and did not find broken:
-- _Each test, with its offending borrow or owner moved to the caller._ D98's witness (`ObsBorrowThrough`) moved down one frame is `CallF`, which is F1. D53's whole-again rule is the same test. For D64's [Repack] points and D72 to D76 I put the owner in the caller (`UseK3`, `OpenCall`, `OpenAnc`, and `AH8` of F5). `eq` decides on values alone (`mkEqM`: `⊥` apart from every value, then conversion, then injectivity, blocked to a stuck equation where a dependent constructor's index fields differ, then disjointness), so two different writes never compare `⊤` there. The route those faults took, a neutral standing for an open value split by its telescope, needs a fill, which is F1.
-- _D113, D114._ They are keyed on the observing frame (`obsFrame`), and a side can re-point or consume only that frame's bindings, so they are unchanged.
-- _D44._ `QU`, and `QUp` with the `Unit` place a field of a pair, stay rejected; a fill at a `&Unit` place keeps its hole.
-- _D106._ It does not apply in a private copy, and a caller's borrow in flight is never under $E_1$.
-- _The claim that ending only $E_1$ is unsound._ It holds, and AAnc's partial move is not needed: in `AAncWhole` (`let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; G5(&(*r).0, refl)`) the owner `p` would hold `loan_r` on both sides, and `eq` takes two equal loans as reflexive.
-- _The three measured sites._ Re-run as reported: `CallK2`, `UseK2S`, `CallK3`, `CallK3(S(Z))` and the twins with a local borrow in place of the call accepted; the others rejected with the messages quoted.
-- _"The function's own check: the tests are exactly today's."_ This is not true of the code as proposed. `idType`'s [Repack] "only to owners in that frame" skips the cells, which are in frame 0, below the frame that reads the codomain. It is redundant, though: a cell receives the content the parameter label's end tested, with its lent parts as unknowns (D73).
-
-=== F2. At a proof owner the checker's `Id` is finer than the model's, and accepted programs rely on it
-
-*Where.* @sec-rd-attack, the row "A borrow whose lender is a proof, or erased": "In the model every proof is •, so there the `Id` is `True`; the checker's reading is the finer one, which can only reject more, never prove a false `Id` … Does not arise." @sec-rd-stmt, assumption 4: "the comparison is injective at each owner's type". @sec-tw-types, _Computing `Id` at a state_: "So the checker's conjunction means the model's `Id`."
-
-*Objection.* In an erased arm of a match on a proof whose constructor has a data field, the checker binds the field to a fresh unknown, and a borrow of it has the proof binding as owner. The checker's `Id` then compares the proof's constructor fields, while the model compares the proof binding, `•` on both sides. So RD's assumption 4 is false there, and RD is false at that state in the model, since two different writes leave the owner meaning `•` alike. Nor is the checker's reading harmless because it "can only reject more". A stronger proposition used as a hypothesis makes the checker accept more: `PExF` below is accepted, and its local function proves `Eq(Nat, Z, S(Z))` from a hypothesis that the checker computes as `False` and the model as `True`. In the present model the difference comes even earlier, by reading. `Run.lean`'s `.matchInd` clause runs a match on a proof's one arm with the scrutinee left `•`. `Places.lean`'s `Sem.stepField` reads a field of `•` as `•` at `err`. And the `.borrow` clause is strict (`SM.strictS`), while `err` has no members (`Sem.lean`). So the reference's run fails at the borrow `&w` itself, which the checker accepts in the simplest proof (`PB` below). Either way the reference has no counterpart of the checker's run, so (II) fails at accepted definitions (`PB`, `PExT`, `PExF`). The checker's reading is the necessary one, by reading: had it compared the proof as `•`, `PEx` would be accepted, its call-site type being `⊤`, and `PEx(Wit(0, refl))` would be a closed proof of `False`.
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main` at 0228b0283 (`G5`, `G5T` as in F1):
-```
-inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))
-def PEx (e : Ex) : False := match e { Wit(w, h) => G5(&w, refl), }
-def PB (e : Ex) : True := match e { Wit(w, h) => (let r = &w; refl), }
-def PExT (e : Ex) : True := match e { Wit(w, h) => (let t : Prop = G5T(&w); let q : Eq(Prop, t, False) = refl; refl), }
-def PExF (e : Ex) : True := match e { Wit(w, h) => (let t : Prop = G5T(&w); let f = (λ(k : t) : Eq(Nat, Z, S(Z)) => match k {}); refl), }
-```
-`PEx` rejected, "argument 2 (e) has type ⊤, expected False"; `PB`, `PExT` and `PExF` accepted, and so are a read `clone(w)` and a write `w := 5` in the arm. `PExT` with `True` in place of `False` rejected, "the ascribed term has type ⊤, expected Eq(Prop, False, ⊤)". So inside the arm the checker computes `G5T(&w)` as `False`.]
-
-*Kind.* The argument is wrong at one case: RD's assumption 4, the attack row's conclusion, and case 2's claim that the checker's conjunction means the model's `Id` all fail at a proof owner. The checker is right.
-
-*What would settle it.* Decide what the reference holds at a data field of a proof. The statement of `Steps/Match.evalMatchByType_step` already points one way ("an assignment extended at those unknowns by the fields of the proof's witness"), and RD's assumption 4 must then hold at that reading. The other way is to have the checker reject a borrow of a proof's data field (and a read and a write of one, which the model reads as `•` at `err` too). That keeps the model's `•`; I did not measure what it costs the suite. Until one is done, add proof owners to RD's exclusions and drop "does not arise" from the row.
-
-=== F3. Theorem FR is not `RunFrameI`, hypothesis by hypothesis
-
-*Where.* @sec-frame, the verdict ("Theorem FR below is the Lean lane's internal form `RunFrameI` …, with eleven hypotheses") and @sec-frame-stmt ("In Lean, (H1) to (H9) are `FrameInv` (D216)").
-
-*Objection.* On `origin/spine` at a2025765e the Lean statement and the paper's differ both ways.
-- _Lean has more._ `FrameInv` gained two clauses in D219 (lead34, the commit `5d75b73e4`, after the paper's e0a030162). They are `srange`, σ sending every closure label to a parameter label or past the call's counter, dead labels included, where the paper's (F9) `topLabels` covers live labels only; and `bsites`, every site in the callee's frame at a binding, never a temporary. `FrameAgreeI` also concludes `ResAtTemp`: a live result label is held by a temporary of the callee's frame. D219 found all three forced by [Entry]'s lending, which lends a match's result label even when it is dead. The paper's row "A match" (#a-full) argues that lending with neither, and says "the result's label is held in the callee's frame", which is false for a dead label. Lean has since proved that clause (`runFrameI_matchNat`, `runFrameI_matchInd`, `Steps/FrameMatch.lean`), with the two.
-- _The paper has more._ (H10), site faithfulness, is not in Lean, as the paper says. (H11) is not either, and the gap is larger than "awaits the restatement of `run_frame_obs`": `RunFrameI` assumes `t.idFree = true ∨ ks = []`, so it says nothing at all about a body that forms an `Id` when there are parameter labels. FR's `Id` clause is a separate open statement. The conclusion "again satisfying (H1) to (H10)" has no (H10) in Lean.
-- _Differently stated._ (H7) is "on both sides" in the paper and in place only in Lean (`AccInv.pfill` is on `s`), which is where Lean uses it. (H4) is "a cell for each parameter label" in the paper and `ks.length ≤` frame 0's bindings in Lean, the cells being identified by position (`cellsOf`). (F2) and the start lemma call $s_0$ "the call point" and put the callee's frame on top of it ("the caller's frames of $s_0$ and one more"). In Lean, `FrameRel.frames` has `s.env.length = s₀.env.length`, and `s₀.topIdx` is the callee's frame (`Regress/FrameCheck` starts with `s₀ = s`). So $s_0$ is the state after the push, and (S3), "the caller holds none of them", is true only of that state, since at the call point the caller's temporaries hold the arguments.
-- _Matching._ (H1), (H2) (`SGood` at φ); (H3) (`AccInv.rinv'`, `noParam`); (H5) (`AccInv.shape`); (H6) (`LendWF`); (H8) (`order` on the closure's labels; in place from `ks_lt` and `topLabels`); (H9) (`counter`); (S1) to (S4) with `ks_nodup`; `FundCtx`; `valsOk`.
-- _Not hypotheses but definitions:_ (M2) and (M3) are not built, so `RunFrameI` is about today's `.fix` clause and today's `observation`. The latter compares every position of the state, ends every label without a test, and writes [Obs-ref]'s values through the binding (D84's form, not D113's). FR assumes the changed model. So they are statements about different models.
-
-*Evidence.* The definitions cited; `git show 5d75b73e4` for D219.
-
-*Kind.* The paper's statement and Lean's differ in both directions, and a clause marked argued in full (the match) missed two facts that Lean needed.
-
-*What would settle it.* Restate FR as `RunFrameI` plus (H10), minus `idFree`, plus the `Id` clause with RD, and add `srange`, `bsites` and `ResAtTemp`. Say that $s_0$ is the state after the push. Mark the match clause as proved in Lean with D219's clauses.
-
-=== F4. Resolved determination is stated at every reached state, and proved where the ancestors hold whole members
-
-*Where.* @sec-rd-stmt ("Let Ω be a state the checker reaches …"); RD1 ("$Phi(psi_v) = Phi(psi_(v'))$, so $psi_v = psi_(v')$ by (X5)"); (X5) ("Φ is injective on families of whole members"); RD2 ("between a label's making and its end, no step changes the value around any of its sites"); assumption 2.
-
-*Objection.*
-- _Ancestors' finals._ RD1 applies (X5) to the family $psi_v$, whose value at an ancestor $m$ of $K$ is $c_m (v)$, $m$'s content in Ω with $K$'s finals put in. At the call points of `CallF`, `AAncOk` and `OpenAnc` (F1 and @sec-rd-ends), states the checker reaches, that content is partly moved or open, so $c_m (v)$ is not a whole member and (X5) as stated says nothing. Through a plain loan or a mark the context is a substitution and injective anyway. Through a fill the context is a backward function applied to a non-member, and the strict run of such a fill fails (F1). Today this is harmless: those observations fail at the ancestor's end (D98, [Repack]), so RD is never used there. But the statement claims it there, and the proposed change of @sec-rd-ends removes exactly the tests that keep it unused.
-- _RD2's sentence is false; its conclusion stands._ A write to a sibling field (`let r = &p.0; p.1 := 7`) or [Open]'s invalidation of a leaf beside a lent field changes the value around a live site. Injectivity is kept, because a write at a disjoint path keeps a constructor context, and the operation list should say that instead.
-- _Assumption 2 by producer of a fill_ (where the injectivity of a backward function is established, a body that ends stuck included). An earlier global: the outer hypothesis. An unknown function: the assignment, in N1's relation. The definition under check, whose recursive calls close off at once (D135): its stage, a member only below the rank bound, so assumption 2 as written ("every function value … means a member") is false for it at higher ranks. What holds is the Lean lane's item 11, that every sealed call of it carries a decreasing argument below the entry's, which RD must cite. A block's function: N8, reduced to PR, not mechanised. A closure formed in a body: CloFix (b) for membership, but C3, which relates the checker's closure value to the strict run's, is not proved.
-
-*Evidence.* The new shapes the orchestrator listed, all run on `main` at 0228b0283 beside a twin with the true statement, which was accepted each time. None gave an accepted call of `G5`. With the `Nat` prelude and `uses Fixtures` for `Pick`:
-#measured[
-```
-def RB (x : &Pair(Nat, Nat)) : &Nat := (let r = &(*x).0; (*x).1 := 7; r)
-def ARBn (n : Nat) : False := (let p : Pair(Nat, Nat) = Mk(n, 2); G5(RB(&p), refl))
-def G6 (x : &Nat) (y : &Nat) (e : Id(Unit, (*x := 0; *y := 1), (*x := 1; *y := 0))) : False := match e { Intro(l, r) => l, }
-def AG6 : False := (let p : Pair(Nat, Nat) = Mk(5, 5); G6(&p.0, &p.1, refl))
-inductive Void : Type
-inductive One := O
-def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
-inductive VW := MkVW(n : Nat, x : Fin1(n), w : Nat)
-def G7b (a : &Nat) (b : &Nat) (e : Id(Unit, (*a := 1; *b := 0), (*a := 2; *b := 0))) : False := e
-def AG7b : False := (let t = MkVW(S(Z), O, 5); match t { MkVW(n, x, w) => G7b(&n, &w, refl), })
-def GUn (n : Nat) (u : &Unit) (x : &Nat) : &Nat := match n { Z => x, S(m) => x, }
-def AGUn (n : Nat) : False := (let p : Pair(Nat, Unit) = Mk(1, ()); let a = 0; G5(GUn(n, &p.1, &a), refl))
-def APT (n : Nat) (m : Nat) : False := (let a = clone(m); let b = m; let r1 = Pick(n, &a, &b); let r2 = TailM(r1); G5(r2, refl))
-```
-All rejected. For (a), a function that reborrows its argument and overwrites the rest: `ARBn` "expected False", and so is a variant that re-points the argument after reborrowing through it. For (b), two parameters lent one owner's disjoint fields: `AG6` "expected False ∧ False", and through a stuck call it is one stuck equation over the joint fill. For (c), a dependent value's index borrowed with another field: `AG7b` gives a stuck `Eq(VW, MkVW(1, O, 0), MkVW(2, O, 0))`, injectivity being blocked on the index. A leaf cannot be borrowed after its index, the leaf having been invalidated: "[Borrow] t.x was moved out". For (d), a `Unit` place inside a non-`Unit` owner: `AGUn`'s stuck conjunction keeps the hole at `p.1`. And `g : Π(u : &Unit). &Nat` or `Π(u : &Pair(Unit, Unit)). &Nat` applied to such a place stays stuck, where N1's relation is empty, so RD holds vacuously. For (e), a sealed fill inside a sealed fill: `APT` has fills over `Pick`'s inside fills over `TailM`'s at both owners, and its conjunction is stuck. The author's `APick`, `ATwo`, `AFill`, `AFill2`, `AKF` and `AKFn` were re-run as reported.]
-
-*Kind.* A theorem is stated more widely than it is proved. One sentence of the proof is false, and its conclusion is not.
-
-*What would settle it.* State RD with the hypothesis that every label of $E(K)$ above $K$ holds a whole member and that no owner is a proof (F2). It holds at every observation that passes today's tests, and under F1's restriction it holds where it is used. Replace RD2's sentence by "every step that changes the value around a live site writes at a disjoint path". Cite item 11 for fills of the definition under check, and C3 and N8 for the other two producers.
-
-=== F5. A side of `Id` can open a caller's owner itself
-
-*Where.* @sec-rd-ends: "Not at the end of a label of $E_2$ or $E_3$, and not at a caller owner: those hold the caller's state as the caller left it"; @sec-n7: "at `Id`'s owners [Repack] must run only on owners in the observing frame (the caller's owners are held as the caller left them)".
-
-*Objection.* A parameter can be a borrow of an index field of a dependent value the caller owns, since passing it is the caller's business. Writing through it then opens the caller's value, as the side's own act. Today the `Id` over that parameter is rejected by [Repack] at the caller's owner, while the same write with no `Id` is accepted, which makes a fifth type-safety site of the measured kind. Under the proposal it is accepted, which is right (the real call leaves the same open value, and the caller repairs it). The stated reason is wrong, though, and the owner compared is one the side opened, so N3's extension to open members (@sec-theorems) is needed for values the observed run made, not only for values the caller made.
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main` at 0228b0283 (`Void`, `One`, `Fin1` as in F4):
-```
-inductive V := MkV(n : Nat, x : Fin1(n))
-def H8 (a : &Nat) (e : Id(Unit, *a := 0, *a := 0)) : Unit := ()
-def W8 (a : &Nat) : Unit := (*a := 0)
-def AH8 : Unit := (let t = MkV(S(Z), O); match t { MkV(n, x) => (H8(&n, refl); n := S(Z)), })
-def AW8 : Unit := (let t = MkV(S(Z), O); match t { MkV(n, x) => (W8(&n); n := S(Z)), })
-```
-`AH8` rejected, "[Repack] Id observes it, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"; `AW8` accepted.]
-
-*Kind.* The justification is false, and the conclusion holds. There is a type-safety fault of the measured class.
-
-*What would settle it.* Say that a caller's owner holds the caller's state with the side's writes through its labels, and that `eq` compares such a value field by field. N3's row already names open members.
-
-=== F6. (X1) is false at a deferred parameter type
-
-*Where.* @sec-excl, (X1): "each label has at most one borrow, held as the whole value of a binding or temporary, never inside data, a sealed program, a closure, a type or a record"; the row "A call's push and pop": "a deferred parameter type records the arguments as passed (`lazyTy`), borrow arguments included … so the record holds no loan (WF11)".
-
-*Objection.* `runBodyCore` stores `lazyTy := some (piTy, ws.toList, i)` on every parameter whose type it defers, and `ws` are the argument values, `borrow_ℓ c` for each borrow argument. So, while the callee runs, each borrow argument's borrow is a parameter's value and also sits, with its content as at the call, in every deferred parameter's record. That is a second copy of the borrow in a record, which (X1) says never exists. The row argues (WF11) for the record and not (X1). It is harmless as used: the record is read only by `paramTypes` on a private copy, which first takes the live borrow from its holder (`takeArgBorrow`) and then binds the stale copy. D111's assertions and the sweep scan values, not these records.
-
-*Evidence.* `Machine.lean`, `runBodyCore` (the `lazyTy` assignment after `pushBind`) and `bindTy?`; `Obs.lean`, `takeArgBorrow`. By reading; no program can show it, since the records are not values.
-
-*Kind.* A clause of N5 is misstated; the checker holds a borrow inside a record.
-
-*What would settle it.* Except deferred types' records from (X1), saying why (read only on a copy, after the live borrow is taken from its holder). Or store the arguments with each borrow replaced by its label and content. Then add the clause to the sweep.
-
-=== F7. Smaller points
-
-- _N8's place renaming._ (P4)'s shift is the number of `&` captures for a block whose type is not a borrow, and one more for a borrow-typed block, whose call reserves its result's label before the arm runs (D99). The hint row is right in substance: the block's body runs in tail position at the match's type and the direct arm at none.
-- _CloFix._ Proof (a) uses $G$ being a member of its true type for OwnIrr's whole-state test, and that is (b). (b) uses nothing of (a), so the order should be (b) then (a). There is no circle.
-- _Case 2 and @sec-rd-ends disagree._ Case 2's hypothesis direction cites "and checks [Repack] at `Id`'s observed owners", which @sec-rd-ends proposes to remove at the caller's owners. One of them must change with the checker.
-- _N6 for a block's captures, closed by reading._ I tried to give a binding with a deferred type a borrow through a type parameter instantiated at a borrow type (`F (A : Type) (x : A)` called at `&Nat`). It cannot be written: `&Nat` in a term position parses as a borrow of a place ("(surface) Nat is not a place"). The core may admit it; I did not test the core.
-- _Conversion on code (N3c)._ Re-run as reported (`FH`, `TwiceF`, `HintIn` accepted; `TwiceH`, `G12` rejected). With stuck bodies, `Fs (n : Nat) : Unit` and `Hs (n : Nat) : TF(Z)`, both matching on `n` and returning `()`, are convertible (`FsHs` accepted). Yet `Eq(Unit, Fs(n), Hs(n))` is the stuck `Eq(Unit, (), ⌈Hs(σ0)⌉)`, since η reads the head's declared codomain: an incompleteness, safe, and the CV3 reading point that the author names.
-
-== Verdicts, one per item
-
-#table(columns: (30%, 22%, 48%), align: left, table.header([*Item*], [*Verdict*], [*Why*]),
-  [The proposed change to the observation's tests (@sec-rd-ends)], [sound only with a named restriction], [Keep D98 and typing-mode [Repack] at the end of a label held below the observing frame that has a sealed fill among its sites (F1, `Bad`); the measured sites are still repaired; `UseKF` stays a type-safety site.],
-  [Ending only $E_1$ is unsound], [holds], [Even without the partial move (`AAncWhole`).],
-  [The three measured sites], [confirmed], [Re-run on 0228b0283.],
-  [RD, the statement], [false as stated], [At a proof owner (F2); at ancestors with non-whole contents (F4). Holds with both exclusions.],
-  [RD's attack table], [holds but one row], [Re-run; new shapes (a) to (e) rejected (F4); the proof-owner row's "does not arise" is wrong for the model (F2).],
-  [RD1 (readback)], [holds with a named extra hypothesis], [The ancestors of $K$ hold whole members, for (X5).],
-  [RD2 ((X5) kept)], [holds], [One sentence false (sibling writes change a site's context); the conclusion stands.],
-  [Theorem RD], [holds with named extra hypotheses], [No proof owner; ancestors whole; for the definition under check, fills below the rank bound (item 11).],
-  [@sec-rd-ends, the tests the observation must make], [false in a detail], [A caller's owner can be opened by the side (F5).],
-  [FR (H1), (H2)], [matches Lean], [`FrameInv.good`, `good'`.],
-  [FR (H3)], [matches Lean], [`AccInv.rinv'`, `noParam`.],
-  [FR (H4)], [matches in effect], [Lean counts frame 0's bindings; cells by position.],
-  [FR (H5), (H6), (H9)], [match Lean], [`shape`, `lend`, `counter`.],
-  [FR (H7)], [differs], [Paper on both sides, Lean in place only.],
-  [FR (H8)], [matches Lean], [`order` on the closure's labels; in place from (S2) and (F9).],
-  [FR (H10)], [not in Lean], [As the paper says.],
-  [FR (H11), `Id` over a parameter], [not in Lean], [`RunFrameI` excludes every term with an `Id` when $"ks" != []$; `run_frame_obs` is false as stated.],
-  [Lean's `srange`, `bsites`, `ResAtTemp`], [not in the paper], [D219, forced by [Entry]'s lending of a possibly dead result label; the paper's match row lacks them.],
-  [FR's $s_0$ and (F2)], [differs], [Lean's $s_0$ is the state after the push.],
-  [FR's model], [differs], [FR assumes (M2), (M3); `RunFrameI` is over today's `.fix` and `observation`.],
-  [N3c, conversion on code: CV1, CV2, CV4, CV7], [holds], [As stated.],
-  [CV3, sealed programs], [holds with a named extra hypothesis], [Every sealed program's embedded values are members; true today, false under the unrestricted change (F1).],
-  [CV5 [Conv-fun], CV6 [Conv-pi]], [reduced, as stated], [To (II) for untyped runs, FR's C1 and C6, (M1).],
-  [N7, [Repack] at a read], [holds], [No value passing [Repack] found that is not a member at some future; its list of sites is wrong at caller owners (F5).],
-  [N8 and PR, the block lemma], [holds by reading], [Two small inaccuracies (F7).],
-  [N9, hints], [holds by reading], [Re-run as reported (`UseMv`, `UseWr`).],
-  [N6, a block's captures], [holds by reading], [The type-parameter route is not writable in the surface (F7).],
-  [CloFix, a closure's fixpoint equation], [holds], [(b) before (a) (F7).],
-  [(WF11)], [holds], [As argued; but see (X1).],
-  [(X1) at deferred types], [false as stated], [A borrow argument copied into every deferred parameter's record (F6); harmless as used.],
-  [(WF12)], [holds by reading], [`TwoParts`, `TwoPartsBad` as reported; a borrow made in an arm and kept outside it is dropped at the join, so [Entry]'s lending finds none.],
-)
-
-== For a fifth referee
-
-Not done. Three things are open. The first is what the reference holds at a data field of a proof (F2), which decides whether `Steps/Match.evalMatchByType_step` can be true as stated. The second is whether `RunFrameI` over today's `.fix` clause, without (M2), is true at a body that forms a closure (the second referee's R2), which the paper assumes away. The third is the core-level question of a borrow type passed as a type argument (F7). C3, RL and PR were not attempted beyond reading. Whoever lands F1's restricted change should dump every row's verdict against `main`, as the D-entries do: by reading, it changes only rows whose observation ends a caller's borrow over a content that is not whole or not packed; I did not run the suite. My probes are in the scratchpad's `r4/` (`M1`, `M2` the measured sites; `V1` to `V3` the caller variants; `RD1` to `RD4` resolved determination; `FIN` the programs above), and the running notes are in `reports/referee4.md`.
-
-= The fifth referee's report <sec-referee5>
-
-_Written by `referee5`, 27 November 2026, as the fifth adversarial referee. Scope, in the order the orchestrator set: the observation design of @sec-obs and its refinement (C+), which a checker agent is to build on this verdict; the reading of a proof's data fields in @sec-proof-fields; the frame property restated as Lean's in @sec-frame-lean. I read the paper whole, `RULES.md`, @sec-rd, @sec-obs, @sec-proof-fields, @sec-frame and the fourth referee's report; in the checker `idType`, `observe`, `obsResult`, `endAll`, `endBorrow`, `endTopLoan`, `footprint`, `owners`, `takeArgBorrow`, `callType`, `declCallType`, `argHint`, `paramTypes`, `bindTy?`, `runBodyCore`, `callFn`, the `let` clause of `evalCore` and `bindDataFields`; in Lean, on `spine` at f9b411008, `FrameInv`, `RunFrameI` and `frameInv_of` (`Steps/FrameOps.lean`), `FrameRel` (`FrameProp.lean`), the `.pi` clause of `Run.lean` and `evalMatchByType_step_stmt` (`Steps/Statements.lean`). (C+) is not built, so its verdicts are predicted by reading the change that @sec-obs-dl specifies, beside the nearest programs run today. Every program below was run with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` on the checker of `main` at 4d8144736, beside the control `def Ctl : Eq(Nat, Z, S(Z)) := refl`, rejected every time; "with the `Nat` prelude" means `uses Nats`. Nothing in the other sections was changed._
-
-== Verdict
-
-(C+) is sound for consistency as specified, and needs no restriction. I found no state where the detached comparison calls two sides equal that the caller can later tell apart, no label it fails to give a cell, and no fault from the history of the observation's tests that it lets back in. The reason is structural, not a matter of cases. At a call site the detached state is the callee's own generic state at the arguments' values: one cell per borrow parameter, holding that parameter's loan, under the frame of parameters. So a hypothesis or a conclusion read at a call site is, by construction, the proposition the function's own check computed, at those values; a deferred parameter type too, since its frame binds the arguments as passed. The checker relates that proposition to one formed in the caller's frame only by conversion, and conversion relates a callee's comparison of finals to a caller's comparison of its own places only by taking constructors apart, which is true in the model; it never inverts a stuck call's fill. So the injectivity of backward functions is used nowhere I can find, and the block lemma's `Id` row needs only the injectivity of constructors. What does not hold is the account of what (C+) costs and of what it would take to prove. (C+) is finer than today's observation, and than (C), on a borrow that the observing frame holds and lends from one of its own places: two sides that no continuation can tell apart can compute to `False` (V1, measured on the nearest programs). The lemma that replaces the frame property's `Id` clause is not the frame property with one hypothesis restated; three more of Lean's hypotheses are stated over the parameter labels and fail for the detached pair (V3). And "the formed type holds no loan" rests on a property of frames that the checker does not assert inside private copies (V4). What an implementer must not get wrong: detach on the private copy, before computing the footprint; compute the footprint in the detached state, from the labels the roots hold when the `Id` is formed (positions of the real state are not positions of the copy); give a label a second site in the observing frame only as an identity fill, never as a second loan; find a cell's type even where its holder is a temporary of an untyped run; assert at the detach that no position of the observing frame is a site of a label held below it; leave [Conv-fun]'s observation as it is; and dump every verdict of the suite against `main`. Separately, @sec-proof-fields describes a mechanism the checker does not use. The checker binds a proof's data fields as locals of the arm, and the scrutinee stays `⋆` (V2). The witness reading is right in substance, but the model change should mirror those locals; the paper's rule [T-Match-prop] describes the checker wrongly in the same way, and the two disagree on an accepted program. @sec-frame-lean agrees with the Lean on `spine` at f9b411008, row by row.
-
-== Objections, most serious first
-
-=== V1. (C+) is finer than today's observation inside the observing frame, and its list of verdict changes misses two kinds
-
-*Where.* @sec-obs-compare, (C+): "In a function's own check this changes `OwnRx` to `OwnR`'s form (`False`), so the two agree; elsewhere it changes only `Id`s over a borrow made in the observing frame whose loan sits under a fill, from the fill's equation to the final's"; "The cost of (C) and (C+) is one kind of equation (finding 3)". @sec-obs-finals: "So when $K$ is the parameters' labels, $Omega^O$ is Ω and the observation is today's, test for test", which under (C+) is no longer so, since every label the frame holds gets a cell.
-
-*Objection.* Under (C+) a borrow that the observing frame holds and lends from one of its own places is compared by its final, never through the place it lends. Two consequences are missing from the section.
-- _Equations are lost._ If a side ends such a borrow and then writes or moves its lender, what it wrote through the borrow is invisible to every continuation, but (C+) still compares it. In `ConsW` below both sides leave `a` holding `5` and `r` consumed. Today the `Id` is `⊤`, and under (C) too, since the borrow is internal and the footprint follows its loan to `a`. Under (C+) it is `Eq(Nat, 0, 7)`, which is `False`. That is consistent (the model's observation detaches the same way, so the model's `Id` is false as well), but it changes what `Id` means. Under (C+) it compares what was last written through each borrow of the frame, whether or not anything can still see it, and the paper's reading of `Id` ("indistinguishable from where the statement is made"; "equal contents in every place either of them may write", §5) stops being true inside a body. At a call site nothing changes in this respect: the caller's places are out of the side's reach (`ConsP`).
-- _Verdicts change at the whole-again tests._ A borrow of an index field of an owned dependent value, written by a side, leaves the owner open. Today the footprint follows the borrow to the owner, and [Repack] rejects the owner there (`IdxSame`). Under (C+) the footprint compares the borrow's cell, a `Nat`, and the owner is never compared or tested, so `IdxSame` is accepted; with different writes, today's stuck `Eq(VV, MkVV(1, O), MkVV(2, O))` becomes `False` (`IdxDiff`). Both changes are right: the observation's copy is discarded, and the model compares the same cell. But they are changes of verdict in a function's own check of a kind the section says does not occur.
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main` at 4d8144736:
-```
-def ConsW : Unit := (let a = 0; let r = &a; let h : Id(Unit, (let r2 = r; a := 5), (let r2 = r; *r2 := 7; a := 5)) = refl; ())
-def ConsM : Unit := (let a = 0; let r = &a; let h : Id(Unit, (let r2 = r; let z = a; ()), (let r2 = r; *r2 := 7; let z = a; ())) = refl; ())
-def ConsP (x : &Nat) : Unit := (let h : Id(Unit, (let r2 = x; ()), (let r2 = x; *r2 := 7)) = refl; ())
-inductive Void : Type
-inductive One := O
-def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
-inductive VV := MkVV(n : Nat, x : Fin1(n))
-def IdxSame : Unit := (let t = MkVV(S(Z), O); match t { MkVV(k, x) => (let r = &k; let h : Id(Unit, *r := Z, *r := Z) = refl; ()), })
-def IdxDiff : Unit := (let t = MkVV(S(Z), O); match t { MkVV(k, x) => (let r = &k; let q : Eq(Prop, Id(Unit, *r := S(Z), *r := S(S(Z))), False) = refl; ()), })
-```
-`ConsW` and `ConsM` accepted. `ConsP`, whose lender is the caller's, rejected (its sides do differ for the caller). `IdxSame` rejected, "[Repack] Id observes it, but it is open: field x of MkVV holds a value of type One, but its type from the earlier fields is Void"; `IdxDiff` rejected, "the ascribed term has type ⊤, expected Eq(Prop, Eq(VV, MkVV(1, O), MkVV(2, O)), False)". Under (C+), by reading @sec-obs-dl: `ConsW` and `ConsM` rejected (`r`'s cell ends holding `0` on one side and `7` on the other), `ConsP` rejected, `IdxSame` and `IdxDiff` accepted. Under (C), all five keep today's verdicts.]
-
-*Kind.* A claim about the design's cost is incomplete, and the meaning the paper gives `Id` changes. No fault of consistency.
-
-*What would settle it.* The user's choice between (C) and (C+) made knowing it: (C+) buys "no injectivity of a backward function anywhere" with these equations, while (C) keeps them and keeps that injectivity within one frame (finding 2 of @sec-obs-attack). Whichever is built, the paper's definition of `Id` (§5 and the appendix's [Obs]) must say which places are compared. I searched the suite for sides that consume a borrow the observing frame holds and then touch its lender, and for `Id`s over a local borrow of an index field, and found neither. The `DependentFields` rows over `Id` keep their verdicts by reading; `IdMakesBroken` stays rejected, because its root is the borrow parameter, whose whole content is tested when its cell's label ends.
-
-=== V2. The checker binds a proof's data fields as locals of the arm; @sec-proof-fields, the fourth referee's F2 and the paper's [T-Match-prop] say it writes them at the scrutinee
-
-*Where.* @sec-proof-fields: "In that arm the checker puts at the scrutinee's place a constructor value whose proof fields hold `⋆` and whose data fields hold fresh unknowns"; "the reference puts at the scrutinee's place a _witness_"; "(R3) then relates the checker's $ty("C")(overline(sigma); star)$ with the reference's $ty("C")(overline(w); bullet)$"; "at `G5T`'s call in the arm the observation's owner is the proof binding `e`, holding `Wit(σ, ⋆)` on the copy"; "two witnesses of one proposition are not convertible …, and an `Id` there compares witnesses". F2 of @sec-referee4: "a borrow of it has the proof binding as owner". The paper's appendix, [T-Match-prop] and its section on matches on proofs: arm $i$ is checked from $Omega_1 [p |-> ty("C")_i (overline(v); overline(w))]$ with each data field "a fresh abstract value".
-
-*Objection.* `bindDataFields` (`Machine.lean`), which the typed run applies to the arm of such a match (in `evalMatchByType` and in `checkTailAt`; an untyped run leaves the arm as written, and by reading never reaches it, the match being a declared proof), does not touch the scrutinee. It rewrites the arm. Each data field becomes `let g = σ`, σ fresh; for a dependent constructor each proof field becomes `let h = (⋆ : T)`, with `T` computed once from those fresh values; and every place at or under the field's place in the arm (`e.w`, `e.w.0`, …), inside nested matches too, is replaced by the local. The proof binding stays `⋆`. Four consequences, each measured below.
-- _A nested erased match on the same proof sees the outer arm's writes and unknowns._ Its pattern variables name the field's place, so the outer rewrite has already turned them into the outer locals: `Nest` and `TwoW` are accepted. Under the paper's rule the inner match would overwrite the place with fresh unknowns, and `Nest` would be rejected. So the checker and the paper's rule disagree on an accepted program.
-- _A proof field's type is fixed when the arm starts._ Writing an index data field does not make a later match on the proof field see `False`: `Boom` is rejected with "[Match] on h, whose type Eq(Nat, σ1, S(σ2)) is not an inductive type", the type at the original unknowns.
-- _An `Id` over a data field compares the local, at the field's type._ In `LocalForm` it computes to `Eq(Nat, 0, 1)`, which is `False`, where a comparison at the proof binding would be a stuck equation (the constructor is dependent, and its index differs). So in a typed run no proof binding is ever the owner of a place that is written or borrowed. The "proof owner" of F2, and of resolved determination's hypothesis (b), does not occur in the checker; F2's finding stands, but as a fault of the model's match clause alone, which runs the arm as written with the scrutinee `•`.
-- _The witness reading as written relates no state of the checker's._ The reference would hold $ty("C")(overline(w); bullet)$ at `e` and no locals, the checker `⋆` at `e` and the locals, position for position different. Read literally (the witness put at each erased match), it also fails at `Nest`: the inner match would put the witness back over the outer arm's `5`, and `Eq(Nat, w2, 5)`, which the checker accepted by `refl`, would be false in the reference.
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main` at 4d8144736:
-```
-inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))
-def Nest (e : Ex) : True := match e { Wit(w, h) => (w := 5; match e { Wit(w2, h2) => (let q : Eq(Nat, w2, 5) = refl; refl), }), }
-def TwoW (e : Ex) : True := match e { Wit(w, h) => match e { Wit(w2, h2) => (let q : Eq(Nat, w, w2) = refl; refl), }, }
-inductive Succ : Prop := MkSucc(n : Nat, m : Nat, h : Eq(Nat, n, S(m)))
-def Boom (e : Succ) : Eq(Nat, Z, S(Z)) := match e { MkSucc(n, m, h) => (n := Z; match e { MkSucc(n2, m2, h2) => match h2 {}, }), }
-inductive Ex2 : Prop := Wit2(a : Nat, b : Nat, h : Eq(Nat, a, b))
-def LocalForm (e : Ex2) : True := match e { Wit2(a, b, h) => (let t : Prop = Id(Unit, a := 0, a := 1); let q : Eq(Prop, t, False) = refl; refl), }
-def EWhole (e : Ex2) : True := match e { Wit2(a, b, h) => (a := 7; let q : Eq(Ex2, e, e) = refl; refl), }
-```
-`Nest`, `TwoW`, `LocalForm` and `EWhole` accepted; `Boom` rejected with the message above. A split on a data field in the arm (`match w { Z => refl, S(m) => refl }`) is accepted too.]
-
-*Kind.* The section's description of the checker, and F2's, is wrong, and so is the paper's rule; the proposed change to the model does not match the checker. The section's conclusion stands. A classically chosen witness is compatible with the fundamental lemma's clause for a match, with conversion and with proof irrelevance where the argument uses it, since the arm is a declared proof run on a private copy and nothing computed from the witness leaves it: the generalisation and η-records made in the arm survive the copy, but they are keyed by the arm's fresh unknowns, which are never reissued, and nothing outside the arm derives them. I found no accepted program in which two witnesses give results the checker can observe.
-
-*What would settle it.* The model's `.matchInd` clause at a proof tag with data fields runs the arm as `bindDataFields` rewrites it: each data local holding the witness's field, each proof local `•` at its type at the witness, the scrutinee staying `•`, and the assignment extended at the fresh unknowns by the witness's fields, as `evalMatchByType_step_stmt` already says. Goodness then needs no new clause, and resolved determination's hypothesis (b) is vacuous. The paper's [T-Match-prop] and its section on matches on proofs should describe the locals. Whether the rewrite or the paper's rule is the design meant is the user's call; by reading both are sound, and they differ on `Nest`.
-
-=== V3. The lemma DL needs the frame property stated over two sets of labels, not one hypothesis restated
-
-*Where.* @sec-obs-dl: "If $s$ and $s'$ satisfy FR's hypotheses …, then … $"detach"(s)$ and $"detach"(s')$ satisfy them again, at the shape of C6 …, and the labels of $K$ as the cells' labels … One hypothesis of FR is stated too narrowly for the detached pair: (H8)"; @sec-obs-compare: "_DL needs no (I6)_"; "the exclusion `t.idFree = true ∨ ks = []`, `run_frame_obs`, `CellsDetermined` and `CellsAtObs` are deleted".
-
-*Objection.* In Lean's `FrameInv` (`Steps/FrameOps.lean` at f9b411008) three more clauses are stated over the parameter labels `ks`, and each fails when every label of $K$ is taken as a cell's label, as DL takes it.
-- `noParam` (the paper's (H3), with (I1)): no position of the closure's top frame reads a label that σ sends into `ks`. Under (C+), $K$ holds every label the frame holds, among them one lent at a local of the frame (`let r = &a`), and `a` reads it. Under (C) too: a call that consumed a borrow parameter and returned a borrow lent also at a local (`Pick(n, x, &b)`) closes off at the generic call, and `b` then reads the result's label, which is in $K$, through the fill.
-- `pfill` ((H7)): a label of `ks` is lent in the callee's frame only as a fill. In the first example `a` holds that label's plain loan.
-- `srange` ((H12)): every closure label, dead ones included, is sent into `ks` or past the start's counter. If the start is the state at the `Id`'s formation, the labels the body made and ended before it are sent below that counter and outside $K$.
-None of these is a fault of the design. What each protects concerns the original parameter labels (two orders of ends that the renaming may reverse; a record that may differ between the two sides) or the caller's borrows (an entry's lending reaching one), and the detached state's frame 0 holds no borrow. But the `Id` clause becomes "an ordinary clause" only once the frame property is restated with the cells' labels separated from the labels the renaming may reorder and whose records may differ. (H8) (`order`) is the one the section names; `noParam`, `pfill` and `srange` need the same, and (S1) does if the start is the formation state. Under (C+), DL indeed needs no (I6).
-
-*Kind.* A reduction is stated too easily; the Lean lane's cost for (C+) is larger than the section says, though not in kind.
-
-*What would settle it.* State `FrameInv` and `FrameStart` over two lists, the cells' labels and the labels the renaming treats specially (at a call they are the same list), and check that `frameInv_of` and the match and call clauses already proved go through with the second list where they now read `ks`.
-
-=== V4. "The formed `Id` holds no loan" needs, at the detach, that the observing frame lends nothing to a borrow held below it
-
-*Where.* @sec-obs-attack: "_A formed `Id` is a stored type, and holds no loan._ Every label of $Omega^O$ is held in $O$, and the observation ends them all"; @sec-obs-dl, step 1: "every frame below $f$ is dropped".
-
-*Objection.* That every site in the observing frame is a site of a label held in that frame is the frame property's F4. `endTopLoan` asserts it only outside private copies, and its comment records that it fails inside some of them: the checker's scaffolding binds copies of stored values that hold live loans whose borrowers are below, and with the assertion made strict there, rejected rows of `OpenAttacks` and `DepVec` hit it before their own reasons (checked 2026-11-22, by the comment). If an `Id` were formed in such a frame, dropping the frames below would leave in it a loan with no borrow. [End] treats such a loan as inert, so the sides read it, `eq` takes two equal inert loans as reflexive, and the formed type keeps a loan, which (WF11) forbids. By reading, no `Id` is formed in such a frame today: `Id` is not a field type (`IdF` below), and a type function whose body is an `Id` (`IdG`) forms it in its own frame, whose arguments were read with their accesses. But nothing enforces it.
-#measured[With the `Nat` prelude, on `main` at 4d8144736:
-```
-inductive IdF := MkIdF(n : Nat, h : Id(Nat, clone(n), clone(n)))
-def IdT (n : Nat) : Prop := Id(Nat, clone(n), clone(n))
-inductive IdG := MkIdG(n : Nat, h : IdT(n))
-```
-`IdF` rejected, "fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"; `IdT` and `IdG` accepted.]
-
-*Kind.* The specification leaves an invariant unenforced at the one place it is needed.
-
-*What would settle it.* The detach asserts it: if a position of the frame holds a loan, fill or mark of a label held below the frame, an internal error naming the position.
-
-=== V5. Smaller points
-
-- _The model's detach is written for (C)._ @sec-obs-dl defines $K(t)$ as "the labels held in $O$ none of whose sites is at a position of $O$ or that have no site at all"; for (C+) it must be every label held in $O$, with the cell a fill site where $O$ holds another site, as the (C+) paragraph of @sec-obs-compare says for the checker.
-- _The identity fills are sealed programs that no call made._ Under (C+), "Every sealed program the observation makes comes from a call the side made in $O$" (@sec-obs-attack) is false. They are harmless: each re-runs to its label's final once the label ends, before anything compares it, and none leaves the copy. But principle 7's exception, which the section names, and N3's clause for code (every sealed program held in the state has [Close]'s shape), which it does not, must both exclude them.
-- _The five sites have an in-frame twin that (C+) keeps._ The observation ends and tests every label of the detached state, so an `Id` formed while the observing frame itself holds a borrow whose content is partly moved (a `mem::replace` under way) or open is rejected at that borrow's end, though its sides never touch it. Measured: `InFrameMoved`, `(let p : Pair(Nat, Nat) = Mk(1, 2); let r = &p; let z = (*r).1; let h : Id(Unit, (), ()) = refl; (*r).1 := z; ())`, rejected, "[D53] a borrow ends while its content is partly moved out ((1, ⊥))", and the same without the `Id` accepted. Every path rejects it alike, so it is incomplete, not a fault of principle 4; ending and testing only the labels that reach a compared position would repair it, on the checker's side and the model's alike.
-- _The footprint's sufficiency changes form._ Today an owned place of the observing frame lent to a borrow a side writes through is in the footprint, as that borrow's owner, and a place outside the footprint is changed by neither side but by a move (the paper's lemma on footprints). Under (C+) such a place is outside the footprint, compared only through the borrow's cell, and both sides do change it. The model's observation compares every position, so the argument needs instead that each position outside the footprint ends as a function of the compared finals, the same function on both sides (true: by exclusive access its context around the loans is untouched, and `ConsW`'s direct write puts the place itself in the footprint). A lemma to state, not a fault.
-- _A cell's type comes from its holder's stored type._ A borrow argument in flight has one in an untyped run too (`evalCore` types `&p` where its context wants it), but a temporary may have none (D104), so the implementer must not assume one for every holder.
-- _Today a statement read at a call site keeps its truth, not its form._ Its conjuncts come in the order of the caller's owners, not of the parameters, so today's C2 gives an equivalent proposition, not the same one, even through constructors, and a proof in the own check's form is rejected at such a call (`SwapCall2` below). (C+) makes the two forms one, a point for it that the section does not make; it also flips the twin `SwapCall2Ok`, which relies on today's form, from accepted to rejected (one more kind of verdict change for the list of V1, none in the suite as far as I found).
-- _`spine` has moved._ @sec-frame-lean is against f9b411008; `spine` is now at b836c9b9f ("the frame property on the fragment without functions formed in the body and without Id").
-#measured[With the `Nat` prelude, on `main` at 4d8144736:
-```
-def G7 (a : Nat) (b : Nat) (x : &Nat) (y : &Nat) (e : Id(Unit, (*x := clone(a); *y := clone(b)), (*x := clone(b); *y := clone(a)))) : Unit := ()
-def G7T (a : Nat) (b : Nat) (x : &Nat) (y : &Nat) : Prop := Id(Unit, (*x := clone(a); *y := clone(b)), (*x := clone(b); *y := clone(a)))
-def OwnForm (a : Nat) (b : Nat) (x : &Nat) (y : &Nat) : Unit := (let t : Prop = G7T(clone(a), clone(b), x, y); let q : Eq(Prop, t, Eq(Nat, a, b) ∧ Eq(Nat, b, a)) = refl; ())
-def SwapForm2 (a : Nat) (b : Nat) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 5); let t : Prop = G7T(clone(a), clone(b), &p.1, &p.0); let q : Eq(Prop, t, Eq(Nat, b, a) ∧ Eq(Nat, a, b)) = refl; ())
-def SwapCall2 (a : Nat) (b : Nat) (e : Eq(Nat, a, b) ∧ Eq(Nat, b, a)) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 5); G7(clone(a), clone(b), &p.1, &p.0, e))
-def SwapCall2Ok (a : Nat) (b : Nat) (e : Eq(Nat, b, a) ∧ Eq(Nat, a, b)) : Unit := (let p : Pair(Nat, Nat) = Mk(5, 5); G7(clone(a), clone(b), &p.1, &p.0, e))
-```
-`OwnForm`, `SwapForm2` and `SwapCall2Ok` accepted; `SwapCall2` rejected. At `G7`'s own check the conjunction is in the parameters' order, at the call with `p`'s fields swapped in `p`'s field order. Under (C+), by reading, the call has the own check's order: `SwapCall2` accepted and `SwapCall2Ok` rejected.]
-
-== The history of the observation's tests, against (C+)
-
-For each decision behind a test an observation makes: the program it was added for, what (C+) does with it, and what it does with the offending borrow moved into the caller and into the observing frame. "By reading" throughout; the measured programs are those of @sec-obs-today, @sec-rd-attack and V1.
-
-#table(columns: (13%, 29%, 29%, 29%), align: left, table.header([*Decision*], [*(C+) on the original program*], [*Moved into the caller*], [*Moved into the observing frame*]),
-  [D44, D137], [Rejected without either: a label with no site, or whose fill η would drop, is held in $O$ and gets a cell, whose finals are `0` and `1` (`QF`, `QU`).], [Not applicable.], [`let r = g(5); Id(Unit, *r := 0, *r := 1)` in a body: today `⊤` but unwritable, since D44 forbids `g`; under (C+) `False`, so D44 is not needed here either.],
-  [D53 (h), D98], [Rejected: the side's borrow ends in the detached state and is tested (`LeftOpenBoth`, `ObsBorrowThrough`).], [Accepted, rightly (`S1`, `S1u`, `CallF`, `S4`).], [Rejected as today (`ObsAfterBorrow`, `ThroughW`).],
-  [D64, D72 to D76], [Rejected wherever the own check rejects; `IdMakesBroken` stays rejected, its root being the borrow parameter, whose content is tested whole at its end.], [Accepted, rightly (`S2`, `S3`, `S5`, `CallO`).], [`IdxSame` accepted, rightly (V1).],
-  [D106], [Unchanged in $O$ (the check on temporaries held when the `Id` is formed).], [Out of the sides' reach, and now of the ends.], [Unchanged.],
-  [D113], [Unchanged. Worked through by hand: the old label's cell holds its content at the re-pointing, so `HideHide`, `DetourHide`, `TwoHide`, `TwoApart`, `FldHide`, `DiffHide` and `PickHide` stay rejected (each by a differing [Obs-ref] component or old cell) and `HideBoth`, `DetourBoth`, `TwoBoth`, `DiffSame`, `DiffRoutes`, `PickBoth` accepted.], [Not applicable: a side re-points only $O$'s bindings.], [These rows are in-frame already.],
-  [D114], [Unchanged: a consumed label ends into its cell on every path (`A1`, `ByLet`).], [Not applicable.], [Unchanged.],
-)
-
-*What (C+) rejects that is accepted today.* Three kinds, by reading: `Lift`'s, an induction hypothesis about a borrow that a stuck call returned (@sec-obs-attack, finding 3; re-run: `Lift` and `LiftR` accepted, `LiftC` rejected); `ConsW`'s, an `Id` over a borrow of the frame whose lender the side later writes or moves (V1); and any program that relies on a form today's observation gives and (C+) changes: an `Id` over a borrow made in the frame under a fill or into an index field, or a call whose borrow arguments are lent from one owner in another order than the parameters (`SwapCall2Ok`, V5). In the suite, by reading the rows that form or pass an `Id` over a borrow: `GR` stays rejected and `GROk` accepted, `BadD18` stays rejected and `BadD18Ok` and `ClosedD18Ok` accepted, the [Obs-ref] rows above keep theirs, and the hash map's and quicksort's lemmas lift through constructor contexts (`&x`, `&t` after taking `*s` apart), where the two forms are equal once `Eq` takes the constructors apart. I found no row that changes, but I did not run the suite against (C+), which is not built.
-
-== Verdicts, one per claim
-
-#table(columns: (34%, 18%, 48%), align: left, table.header([*Claim*], [*Verdict*], [*Why*]),
-  [@sec-obs-today: five sites, each an accepted function whose call at a known argument is rejected], [confirmed], [`S1Z` to `S5Z` rejected and `S1S` accepted on 4d8144736, with the messages quoted there.],
-  [@sec-obs-finals: $K$ includes the labels with no site (finding 1)], [holds], [Without it `QF` and `QU` are accepted again; under (C+) every label held in $O$ gets a cell, so the question does not arise.],
-  [A function's own check is today's, test for test, but at a consumed parameter], [holds for (C); false for (C+)], [Under (C+) every borrow of the frame is compared at its cell: `OwnRx`, `IdxSame`, `IdxDiff`, `ConsW` (V1).],
-  [A parameter type read at a call site is the own check's statement at those values, by construction, deferred types included], [holds], [`callType`, `declCallType`, `argHint` and `paramTypes` push the captures and the parameters, each borrow argument taken from its holder; a deferred type's frame binds the arguments as passed, the stale borrow then its one holder.],
-  [A body run in place detaches to the closure state, up to the renaming], [holds], [With the restatement of V3 for the lemma that says so.],
-  [The finals, case by case], [holds], [Re-borrowed, closed off, run, returned through a match, a stuck call's result held by the caller, re-pointed, consumed: each worked through.],
-  [The five sites are accepted], [holds by reading], [In each the observing frame is `FJ2`'s and $K$ is `x`'s label alone.],
-  [The attack table], [holds], [With the in-frame variants of the table above.],
-  [A formed `Id` holds no loan, and mentions no caller's place], [holds with a named extra hypothesis], [It is a conjunction of `Eq`s between values (the results, the compared finals, and the fresh value [Obs-ref] makes, which survives the copy as a name); it names no position, a cell or a caller's place included. No loan given F4 at the detach (V4).],
-  [An `Id` between two different writes is `False` whatever the borrow's provenance], [holds], [The finals are what the sides write.],
-  [Finding 2: under (C) a residue of resolved determination at the block lemma], [holds], [`BlkFill1` measured by the author.],
-  [Finding 3: an induction hypothesis loses a stuck call's backward function], [holds], [`Lift`, `LiftC`, `LiftR` re-run.],
-  [Finding 4 and `OwnR`, `OwnRx`], [holds], [Both rejected today with a stuck expected type.],
-  [No wrong acceptance found], [agreed], [Nor by me: none in the history, in the attack table, or by the routes of V1 to V4.],
-  [(C+): finding 2's residue goes], [holds], [The direct arm and the block differ by a constructor path; where the arm writes an index field the direct form is a stuck equation and the block's `False`, the same truth by injectivity of constructors in the model.],
-  [(C+): DL needs no (I6)], [holds], [But DL needs the restatement of V3.],
-  [(C+): N1's relation $R$ is no longer used], [holds], [Checked beyond resolved determination: conversion of functions ([Conv-fun] compares symbolic backward functions, injective or not), `Eq` (never splits a neutral), `J` and `rewrite`, generalisation (never of a fill with a hole), [Rec].],
-  [(C+): the suite's 19 `Id`s over a borrow a call returned keep their verdicts], [holds by sample], [The rows named above; not dumped.],
-  [(C+): its cost, beyond (C), is one more case in the detach and one kind of equation], [incomplete], [V1: `ConsW`'s equations and the verdict changes at whole-again tests; V5: the order of conjuncts at a call (`SwapCall2Ok`).],
-  [@sec-obs-dl: the checker's change], [holds], [With the implementer's notes of the verdict.],
-  [@sec-obs-dl: the model's detach], [incomplete], [Written for (C) (V5).],
-  [No longer needed: OBS and (H11)], [holds], [Given DL as in V3.],
-  [No longer needed: OI over the caller's labels], [holds], [The detached state has none.],
-  [No longer needed: resolved determination at call points, with the fourth referee's exclusions and (X5) over the caller's state], [holds], [The call-site statement is the own check's.],
-  [No longer needed: the restriction of (M3)], [holds], [Every end in the detached state is of a label held in $O$; a content $O$'s own code holds open is tested alike in place and in the closure, and alike by the checker's [Repack] at the end.],
-  [No longer needed: `CellsDetermined`, `CellsAtObs`, `run_frame_obs`], [holds], [Nothing uses them.],
-  [No longer needed: `RunFrameI`'s exclusion of `Id`], [holds with a named extra hypothesis], [Only once FR is restated as in V3.],
-  [No longer needed: N3's extension to open or partly moved owners of the caller], [holds], [Owners of $O$ are tested by [Repack] before they are compared.],
-  [No longer needed, under (C+): resolved determination within one frame; $R$; (X5); D44 and D137 for consistency], [holds], [Resolved determination was the only user of (X5), and the block lemma's was the last.],
-  [@sec-proof-fields: the checker puts a constructor value at the scrutinee], [false], [It binds locals (V2).],
-  [@sec-proof-fields: a witness exists; with several constructors the reference runs an inhabited one's arm], [holds], [The scrutinee is a member, so the proposition is true; `anyArm` takes an arm that runs.],
-  [@sec-proof-fields: any witness serves], [holds], [The checker checked the arm at unknowns.],
-  [@sec-proof-fields: the two changes to the model (a witness written at the scrutinee; goodness admitting it)], [false as written], [They relate no state of the checker's and fail at `Nest`; the locals of V2 instead, and goodness unchanged.],
-  [@sec-proof-fields: the simulation at `PB`, `PExT`, `PExF`, `PIdSelf`], [holds with the locals], [The owner is the local, not `e`; the propositions are the ones stated.],
-  [@sec-proof-fields: "a proof is irrelevant" means three things], [holds], [The third also covers the records the arm makes, which are keyed by its fresh unknowns.],
-  [@sec-frame-lean, every row of the table], [matches Lean], [Checked at f9b411008: `srange`, `bsites`, `ResAtTemp`, `pfill` on the in-place state, `cells` as a count, `FrameRel.frames` with $s_0$ after the push, `RunFrameI`'s exclusion; (H10) and the `let` invariant absent.],
-  [@sec-frame-lean, the two rows marked wrong before: the match row's "the result's label is held in the callee's frame", and the Π-type row's earlier "argued in full"], [confirmed wrong, as now marked], [The match clause is proved only over `FrameInv` with `srange`, `bsites` and `ResAtTemp`; `Run.lean`'s `.pi` clause runs its types from `extendBy s`, the whole forming state.],
-)
-
-== For a sixth referee
-
-Three things are open. The first is the choice V1 puts to the user, between (C) and (C+), and the paper's definition of `Id` that follows from it. The second is the model's clause for a match on a proof with data fields, which should follow the checker's locals (V2); whether the checker or the paper's [T-Match-prop] is the design meant is open, and they differ on `Nest`. The third is the restated frame property of V3, which the Lean lane will meet as soon as it takes the `Id` clause on. Whoever builds (C+) should dump every row's verdict against `main` and check it against the history table above. My probes are in the scratchpad's `r5/` (`B1` the five sites and the in-frame index field, `B3` the lost equations, `B4` `Lift`, `B8` the order of conjuncts at a call, `B9` the in-frame twin, `B2` the field types, `B5` to `B7` a proof's data fields), and the running notes are in `reports/referee5.md`.
-
-= The sixth referee's report <sec-referee6>
-
-_Written by `referee6`, 27 November 2026, as the sixth adversarial referee. Scope, in the order the orchestrator set: the places where @sec-n1 goes beyond Lean's metatheory; the claim that the model may identify types the checker never tells apart; each check of @fig-n1-checks, each step S0 to S9, the eight facts of @fig-n1-facts with the hard case; conversion at a type (@sec-n3t). I read @sec-n1, @sec-n1-attack, @sec-n3t, @sec-theorems, principle 1 and its audit; the plan's section on the set model (`<sec-model>` of `18-consistency-proof-plan.typ`), its definition of the strict reference run and its open questions; the paper whole and `RULES.md`; in the checker `checkInd` and everything it calls, `largeElim`, `fieldTermIsProp`, `evalMatchByType`, `evalCtor`, `mkEqM`, `distinctCtors`, `strictSubterms`, `fieldTele`; on `spine` (a4a83d0c9) `Exists/Assembly.lean` (`DataFacts`), `FieldLevel.lean`, `LeafOk.callOfL_enc`, `Run.callOf`, `Apply.telL`, the codes of `Sem.lean`, `KnotCE.lean`, `PropNestCE.lean` and the lane's `HANDOFF.md`; in Carneiro's thesis §2.6, §2.8, §5.1, §5.4, §6.2, §6.2.1 and Remark 1. Every program below was run with `lake env lean --load-dynlib=.lake/build/lib/libochr_Ochr.so` on the checker of `main` at 44a82dc84, with the `Nat` prelude and beside the control `def Ctl : Eq(Nat, Z, S(Z)) := refl`, rejected every time. The author's 193 programs (`A1` 33, `B1` 23, `F1` 27, `C1` 24, `D1` 20, `E1` 14, `G1` 23, `H1` 9, `I1` 20) and the 23 of @sec-n3t were re-run there too: every verdict is as written. Nothing in the other sections was changed._
-
-== Verdict
-
-N1 survives every program I could aim at it, and its construction is right in its logic. The stage operator of S2 is monotone and preserves unions of increasing chains, for a declaration nested at its own parameter too; its union over ω is small and least; a proposition is built truth first by Knaster and Tarski; and the checks that make this so are enforced at the one entry a declaration has, `checkInd`, with subsingleton elimination enforced at every match on a proof I could reach, through a nested match, `J`, a closure, an argument, a split, the unit laws and a projection. Of my own programs (90 verdicts in the blocks below, and some 150 more in the probes behind them), none accepted an empty type, a false equation or a declaration without a model; every verdict was the one predicted by reading the checker, but three where my prediction was wrong and the checker right (an `Id` not formed for its type-state, an equation stuck for want of η at a type with one constructor, a field rejected for computing to a Π at the generic telescope). The model's identification of types the checker keeps apart is sound, for a structural reason stronger than the four programs the section gives: the checker's `eq` refutes only two constructor values and `⊥`, and every other place it reads two type values beyond their meaning only makes it stuck or makes it reject. What does not hold is the status. First, the paper's model is not the model the Lean theorem builds, and it is defined through an object that neither defines: its families range over every small set, and its field types are "the reference run" in a frame of sets, while the only reference run that exists, Lean's, runs on codes, which identify fewer types and range over fewer arguments; on sets the plan has the run only in prose, checked on slices. So S1 to S7 are argued in full only given three properties of a run on sets (congruence, locality, calls typed at their codomain), which is the status S9 (4) already has, and their marks "proved in Lean" certify steps of the other construction (Y1). Second, the table of checks files under the construction several checks it does not need (D120, D121, the entry that hides the type's constructors while it is declared, no borrow in a type, D105, and the exclusion of the declared type and of nestable parameters from equations and value arguments); each is needed instead by the Lean records or by the simulation, and nine declarations rejected today, each with a least model by S2 to S6, show it (Y2). Third, the Lean plan for the hard case understates its third step (Y3); and the standing assumption is stated too narrowly and justified by a false sentence (Y4). None of these is a fault of consistency.
-
-== Objections, most serious first
-
-=== Y1. The paper's model is not the Lean's, and it is defined through a run that exists only on codes
-
-*Where.* @sec-n1-stmt: a type parameter "ranges over that sort's meaning, a fixed set"; the typed domain is computed by "the strict reference run of the term $X_j$ in the frame binding the earlier parameters"; DM1's field type "is the reference run of the term $B_j$ in the frame that binds the parameters to $overline(a)$"; "this is the faithfulness the simulation reads, and the Lean model's (`FieldsFaithful` …)". @sec-n1-proof: S1 (#a-lean, `Knot.runT_congrN`, `meanV_congrN`), S3a (frame locality #a-lean, `FrameLocal.runT_qset`), S5 ("In Lean the same family is built on records"), S7 (#a-lean, `Knot.knotK_agree`, `Steady.steadyAt_knotK`, `TruthAgree.semP_run`, `Params.pty_faithful`). @sec-theorems, the row of N1: "Proved in Lean under eight named facts".
-
-*Objection.* Three parts.
-- _The run is defined on codes; the loose domain is of sets._ The reference run that exists is Lean's `run` (`Meaning/Run.lean`). It evaluates on meanings whose types are codes (`Meaning/Sem.lean`: `TyM`, whose level-0 codes are a proposition, `Nat`, `Unit`, a data declaration with its record and its carrier, a function telescope, and the error code), and the universe `Type` decodes to the codes of `Type₀` (`Code1.univ1`, carrier `(A : Type) × {c : Code0 A // c.level = some 1}`), so a type parameter ranges over codes. The paper's type parameter ranges over all of #vk(0). At a small set that decodes from no code, which is almost every one, "the run of $B_j$ in the frame that binds $A$ to it" is defined nowhere: not in Lean, and not on paper, where the set-level run is the plan's definition in prose (the plan's definition of the strict reference run, whose last sentence reads "on the slices, test 0 gave the pure part of this definition …; beyond them, Q2"). Nor is the grammar of S2 closed under a structural reading that could stand in for the run: a call of an earlier global runs arbitrary code (`FE` below matches on a proof of an equation), and an equation's sides and a value argument are any terms (`AV` of @sec-n1-attack writes a local through a borrow). So DM1 needs the meaning of every term form, at every tuple of sets, before it is a definition.
-- _The lemmas cited are about the other model._ `runT_congrN`, `runT_qset`, `knotK_agree`, `steadyAt_knotK`, `semP_run` and `pty_faithful` are theorems about the run on codes, over trees that carry a record. The paper's trees carry nothing and its families are indexed by sets, and the section itself says the two models identify different types (`Ph(Nat)` and `Ph(Bool)` in the paper's only). Nothing relates the two: no map from codes to sets that commutes with the run. So the #a-lean marks in S1, S3a, S5 and S7 certify steps of a different construction, and "Proved in Lean under eight named facts" proves another theorem than @sec-n1-stmt. The identifications the section is careful to justify (`Ph(Nat)` with `Ph(Bool)`, and, see Y4, any two data types with no constructors, any two true propositions) are made by no model that is defined.
-- _The same holds of @sec-n3t's discharge of two Lean hypotheses._ TC4 derives "the library's `And`, `True` and `False` mean conjunction, truth and falsity" and "the unit laws keep typing" from the paper's model, while the proof that assumed them (`rules-trial`) is about the Lean's. The derivation transfers (the Lean's truth of `And` is its least predicate, `truth_exists`), but it has to be said.
-
-*What is right.* The construction's logic needs only three properties of the run at the nodes of the grammar: (P1) a node means the same under two data models and two tables of globals that agree at the names it mentions; (P2) it reads its frame only at the variables it mentions, at the same values (on codes this needed `DecLocal`, and a run on sets needs the same of its decisions); (P3) a call of a global gives a member of the global's codomain at the arguments, or the error value (the "typed function" of S4). Given (P1) to (P3), S1 to S8 are proofs as written: I checked S3b's nested case ($X(X(A))$ and the union of a chain, through the diagonal), S4's sizes, S5's least fixed point among monotone families, and S6's lattice of monotone predicates. (P3) is also, verbatim, the paper's proof of `GlobalCallLevels`.
-
-*Evidence.* By reading: `Sem.lean` (`TyM`, `Code0`, `Code1.univ1`), `Run.lean` (`callOf` applies a meaning along its type's code), the plan's definition of the strict reference run and its open question Q2.
-
-*Kind.* Incomplete: the paper's N1 is stated through an object it does not define, its step marks overclaim, and the paper and the Lean prove two theorems.
-
-*What would settle it.* One of two. (a) State N1 on paper for the Lean's model (families on codes, trees with records), keep S0 to S9 as its explanation, and prove the extra identifications separately or drop them. (b) Keep the set model, state (P1) to (P3) of a set-level run as named hypotheses beside S9 (4), whose status they share, mark S1 to S7 "argued in full given (P1)–(P3)", and add the bridge: a decoding of codes to sets under which `exists_dataModel`'s model gives the paper's on decoded tuples.
-
-=== Y2. Several checks serve the Lean records or the simulation, not the construction they are filed under
-
-*Where.* @fig-n1-checks: the rows for D120 ("S3 … Without it: `D2Node(x : D2, p : Pt(D2, x))`: the knot's record equals its own flip (`KnotCE`); `DA2`"), D121 ("S3, S6 … `PropNestCE`; `B11`, `B12`"), the declaring entry ("S3 … `PositivityDeclaring.E` … `DG`, `B5`"), no borrow ("S0: A tree holds no borrow; a parameter is recorded in a type"), D105 ("S7"); and inside the rows for first-order fields, the declared type on the spine and nesting, the parts excluding a call that computes to a Π at the generic telescope, the declared type in an equation or a value argument, and a parameter passed to an equation or a value. S3a's and S3b's uses of D120 and D121.
-
-*Objection.* The question for each check is whether it is the right one or only sufficient. For each of these, weakening the check one notch leaves the paper's construction intact. Every declaration in the block below is rejected today, and every one has a least model by S2 to S6 as written (with S3a read as "an off-spine node means the same under every family at the same values of its variables", which is what (P1) and (P2) give, and S3b's dependent sum through the diagonal rather than through a steady first component):
-- `D2` (D120 at a value argument): the field `x` ranges over the family $X$ and `p`'s type is $fam(ty("Pt"))(X, x) = {ty("MkPt")}$; $Phi(X) = {ty("D2Leaf")} union {ty("D2Node")(x, ty("MkPt")) mid(|) x in X}$, least: the finite chains. A tree of $Phi(union.big_n X_n)$ has its `x` in some $X_n$.
-- `LD` (D120 at an equation): the equation's truth is a function of the tree `xs`, the same under every $X$; least: the finite trees whose list is not empty.
-- `NBD` (D120's parameter half): $fam(ty("NB"))(A) = {ty("MkNB")(x, ty("MkNA")(y)) mid(|) x, y in A}$, monotone and union-preserving in $A$, the applied `NA` read loosely; least: finite trees.
-- `B11` (D121, data inside a proposition): $Phi(X) = {ty("MkB11")(bullet) mid(|) X != emptyset}$, least $emptyset$. `B12` (a proposition inside data): $Psi(T) = [fam(ty("Wrap"))(T) != emptyset] = T$, least $emptyset$. A truth value read off finitely many fields is monotone and preserves unions of chains in a data argument, so the two constructions may apply each other.
-- `B6` (the declared type in an equation): $emptyset$. `TBD` (a parameter passed to an equation): $fam(ty("TB"))(T) = {ty("MkTB")(x, ty("MkTE")(bullet)) mid(|) x in T}$, monotone; least: finite chains.
-- `Q11` (the declaring entry): `L11` is a constant tree and $fam(ty("NA"))(X, ty("L11"))$, read loosely, is ${ty("MkNA")(y) mid(|) y in X}$; least: finite chains.
-- `NT`, a field typed by a call that is a Π at the generic telescope, is rejected, while `DPF`, a field typed by a call that is a Π at one instance, is accepted and stores a function; neither can hold the declared type (it may not stand in a call's argument), so the model treats them alike.
-- No borrow in a type: $\&T$ means $T$'s set and a tree records no parameter, so `RefP (r : &Nat) := MkRefP` would mean ${ty("MkRefP")}$; the check keeps (WF1), N5's "a borrow is the whole value of a binding or temporary". D105 decides which constructor parameter the checker infers; in the paper's model the tree is the same whatever is inferred (`MkTE(refl)` is a member of `TE(U, a)` for every `U` and `a`), so it is the run's agreement with the checker, the simulation's.
-
-What each of these does serve: D120 and D121 are Lean's rules, adopted because the Lean records need them (`KnotCE`: a value parameter carries the knot's own record; `PropNestCE`, `CrossSortCE`: guardedness by the length of a path). The declaring entry keeps the checker's typing of a field type faithful: before it, a match with no arms on a value of the type being declared was vacuous (`W(let k : False = match b {}; k)` was accepted), which made the checker's reading of the field type differ from the strict run's at every tree, a fault of (II) and not a missing model. So the "Without it" programs of D120 and D121 are counterexamples to the Lean construction, not to the one the section proves.
-
-The checks the paper's construction does need, and where one notch weaker breaks it: the telescope (no dependent sum: `LateEq`); the declared type absent from a type function's argument and from under a Π (`B1`, note 4's `Bad`: Curry); nesting only at nestable parameters, own occurrences included (`PositivitySelf.Q`); the Π-free grammar, since a strictly positive field into the type, `WNode(f : Π(n : Nat). WT)`, makes the ω-union no fixed point (Carneiro's §6.2.1 needs a regular bound above the branching); field levels with syntactic sorts and D128 (`U1`; `TL`'s `B` ranges over #vk(1) in the loose domain, so DM5 fails there); the names in order (S1); constructors distinct within one declaration (two arms named alike make one tree, while [Eq-disj] tells them apart by index: `distinctCtors` compares indices); subsingleton elimination; D66 and D44 for S9 (4).
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main` at 44a82dc84:
-```
-inductive Bool := false | true
-inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
-inductive Pt (A : Type) (a : A) := MkPt
-reject inductive D2 := D2Leaf | D2Node(x : D2, p : Pt(D2, x))
-reject inductive LD := LLeaf | LDNode(xs : List(LD), e : Eq(Nat, (match xs { Nil => 0, Cons(h, t) => 1 }), 1))
-inductive NA (A : Type) (a : A) := MkNA(y : A)
-inductive NB (A : Type) := MkNB(x : A, r : NA(A, x))
-reject inductive NBD := LNB | NNB(m : NB(NBD))
-inductive PP (A : Type) : Prop := MkPP(x : A)
-reject inductive B11 := MkB11(q : PP(B11))
-inductive Wrap (P : Prop) := MkWrap(h : P)
-reject inductive B12 : Prop := MkB12(w : Wrap(B12))
-reject inductive B6 := MkB6(b : B6, e : Eq(B6, b, b))
-inductive TE (T : Type) (a : T) := MkTE(e : Eq(T, a, a))
-inductive TB (T : Type) := MkTB(x : T, t : TE(T, x))
-reject inductive TBD := LTB | NTB(m : TB(TBD))
-reject inductive Q11 := L11 | N11(p : NA(Q11, L11))
-def PF (b : Bool) : Type := (match b { false => Nat, true => (Π(x : Nat). Nat) })
-inductive DPF := MkDPF(b : Bool, f : PF(b))
-def dpf : DPF := MkDPF(true, λ(x : Nat) : Nat => S(x))
-def NegT (X : Type) : Type := (Π(x : X). Bool)
-reject inductive NT := MkNT(x : NegT(Nat))
-```
-All 22 verdicts as written. `D2`, `LD`: D120 ("… reads x, whose declared type D2 mentions D2 …"); `NBD`: "NBD occurs at the parameter A of NB, which is not nestable in NB: a field of NB reads … a variable whose declared type mentions it" (D120); `B11`, `B12`: D121; `B6`: D36; `TBD`: "TB passes it to … an equation"; `Q11`: "the constructor L11 reads the constructors of Q11, which are not known while Q11 is declared (D107)"; `NT`: "NegT(Nat) computes to Π(x : κ1). Bool …, which is not first-order data, D36".]
-
-*Kind.* The table is wrong about what the steps need; no fault of consistency. It matters to the redesign that principle 1's audit proposes ("the conditions are a grammar"): the grammar the paper's construction needs is smaller than the checker's, and unless the surplus is recorded with what it serves, a later relaxation can remove a check believing it unused, or keep one believing it load-bearing.
-
-*What would settle it.* Split the table's "Step" column three ways: the paper's construction; the Lean records (with `KnotCE`, `PropNestCE`, `CrossSortCE`); the simulation or N5. Restate S3a and S3b without D120 and D121, or mark the uses as conveniences.
-
-=== Y3. The hard case's Lean plan understates its third step
-
-*Where.* @fig-n1-facts, `GlobalCallLevels`: "(iii) `callOfL_enc` at level 2, as `callsLevel0_of_not_t2` uses it at levels 0 and 1, then the two equations above."
-
-*Objection.* `LeafOk.callOfL_enc` concludes only that a call's value is the encoding at _some_ code of the level: there are `B`, `c` and `x` with the value `L.enc c x`. At levels 0 and 1 every such encoding is a level-0 type value or no type value (`enc0_lvl0`, `enc1_lvl0`), so the existential is enough; at level 2 it is not, because `Code2.enc .univ2 p = .ty (.t1 …)` (`Sem.lean`), a level-1 type value. The step needs to know which code: the terminal code of the call's telescope, `(lvl2 R).codeOf (out.cod acc)` (`Apply.lean`, `telL`), which for a written codomain `Type` is `code2 (univ 1) = .lift _ .univ1`, and only then do the two equations apply (`Code2.enc (.lift _ c) a = c.enc a.down`, `Code1.enc .univ1 p = .ty (.t0 …)`). So the third step is a new lemma, `callOfL_enc` tracking the `.dat` code through `telL`, as the lane's own handoff says (item 1 (c): "needs a version of `LeafOk.callOfL_enc` that tracks the `.dat` code through `telL`"). With it, the three steps suffice; I found nothing else in the way.
-
-*Kind.* A plan stated too easily. The paper argument is right, given (P3).
-
-*What would settle it.* Name the lemma in the row: the value of a call through `callOfL L t` is `L.enc c x` with `c` the terminal code of `t` at the arguments.
-
-=== Y4. The standing assumption is stated too narrowly and justified by a false sentence; its proof is a reading of `mkEqM`
-
-*Where.* @sec-n1-stmt: "The model is then wrong only if the checker refutes such an equation, and it does not: [Eq-disj] fires on two constructor values of different constructors, or on `⊥` against a value, and a type value is neither (a type is a copy, so a place that holds one is never moved). `R1` to `R4` … try"; @sec-n1-facts: "Either is sound only if the checker never refutes an equation between two applications of one type former. It does not, as said under the statement, and `R1` to `R4` confirm it."
-
-*Objection.*
-- _Too narrow._ The paper's model identifies more than two applications of one type former: every data declaration without constructors means $emptyset$ (`E1`, `E2`), and every true proposition means ${bullet}$ (`True`, `T2`). The assumption the model needs is that no equation between two type values is refuted, whatever their formers. It holds (`EE`, `PT` below are stuck).
-- _The parenthesis is false._ A type held at a place whose declared type is a type parameter is moved when read, a type parameter never being a copy type: `MoveTy` below is rejected for reading `⊥`.
-- _The conclusion holds, by a reading that is a proof._ `mkEqM` (`Machine.lean`) returns `False` at two places only: `distinctCtors`, true only of `Z` against `S(…)` and of two constructor values of one declaration with different indices, never of a type value; and one side `⊥` against one that is not. A side of `Eq` is read in an erased position, where reading `⊥` is an error, and the places `Id` compares are moved alike on both sides, by [Id-typestate] (`IdTy` below is not formed). Every other place the checker compares two type values beyond their meanings (conversion in [Eq-refl], in [J], at a goal and in [Rec]; the exact lookup of a generalisation record) gives `True` or stuck, computes or sticks, accepts or rejects, replaces or keeps: on two types the model identifies, each makes the checker less informative, never wrong. That is the whole of target 2: no type case, no refutation of a type equation, and nothing false in the model to be had from a hypothesis `Eq(Type, A, B)`: `NoTEq` below, the nearest, is rejected.
-
-*Evidence.*
-#measured[With the `Nat` prelude, on `main` at 44a82dc84:
-```
-inductive Bool := false | true
-inductive E1 : Type
-inductive E2 : Type
-inductive T2 : Prop := MkT2
-inductive Ph (A : Type) := MkPh
-reject def EE (h : Eq(Type, E1, E2)) : False := match h {}
-reject def PT (h : Eq(Prop, True, T2)) : False := match h {}
-reject def EP (h : Eq(Type, Ph(Nat), Ph(Bool))) : False := match h {}
-reject def MoveTy (U : Type₁) (a : U) : U := (let b = a; let c = a; b)
-def MoveTyOk (U : Type₁) (a : U) : U := (let b = a; b)
-reject def IdTy (U : Type₁) (a : U) (n : U) : Prop := Id(Unit, (let z = a; ()), (let z = a; a := n))
-inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
-reject def CT1 (y : TEq(Type, Ph(Nat), Ph(Nat))) : TEq(Type, Ph(Nat), Ph(Bool)) := y
-reject def NoTEq (t : TEq(Type, Ph(Nat), Ph(Bool))) : False := match t { MkTEq(h) => match h {} }
-```
-All 14 verdicts as written. `EE`, `PT`, `EP`, `NoTEq`: "[Match] on h (t.h), whose type Eq(…) is not an inductive type"; `MoveTy`: "[Read] a was moved out or its borrow ended (reading ⊥)"; `IdTy`: "[Id-typestate] the left side of Id moves a, the right side does not"; `CT1`: not convertible. In the model `TEq(Type, Ph(Nat), Ph(Bool))` is ${ty("MkTEq")(bullet)}$, inhabited, and the checker neither builds nor refutes it.]
-
-*Kind.* One sentence false as written, one statement too narrow; the claim true, with a proof available in place of four samples.
-
-*What would settle it.* State the assumption for any two type values; replace "`R1` to `R4` confirm it" by the reading of `mkEqM` and the list of comparisons above.
-
-=== Y5. Smaller points
-
-- _S0._ "Each universe #univ($s$) is closed under finite tuples" is false at `Prop`, whose meaning ${emptyset, {bullet}}$ holds no pair; the step uses only #vk($i$)'s closure.
-- _S6._ "The data fields of a `Prop`-sorted declaration mention neither $ty("D")$ nor its nestable parameters" is false of a `Type` parameter used as a data field: in `PP (A : Type) : Prop := MkPP(x : A)`, `A` is nestable. It is harmless, since S6 needs monotonicity only in the nestable `Prop` parameters and D121 keeps data out of `PP`'s `A`; "nestable `Prop` parameters" is what is meant.
-- _Two definitions of a function's meaning._ S1 says a definition means "its body's reference run"; S4 says it means the typed function, cut at its codomain. The plan's run applies a callee's meaning and never runs its body, and Lean's `callOfL` encodes at the codomain's code, so S4's is the one used; S1 should say it.
-- _What is taken from the thesis._ §6.2.1 defines W-types as an intersection, bounded through cofinality; it has no stages. The ω-union and its least-ness are S5's own (Kleene's), which is sound for a Π-free grammar but is not "taken from" §6.2.1. What the construction does take is the universes and `Prop` of §6.2, the truth-value reading of ∀, and Remark 1. It takes nothing from §5 or from §5.4's unfinished reduction, and none of Carneiro's soundness theorem; nesting with a varying argument rests on S3b alone.
-- _A place beyond Lean the section does not list._ A value-indexed declaration nested in an earlier one at a field variable, `VL` below, is accepted (and `vl : VL(1)` too). Lean's kernel rejects a local variable in a nested occurrence's parameters; D120 allows it because `m`'s type mentions no `VL`. S3b covers it: $Phi(X)(n)$ reads $X(m)$ for each $m$, and `List` is monotone.
-- _Data holding functions._ `DPB` below stores, at an instance of its field's type, a function returning a borrow, and `UseDPB` calls it and writes through the result. Existence is untouched (S4: the field type is small); the injectivity relation then has to reach inside data, which the plan's R does ("at an inductive type, R holds of a constructor value when it holds of each field"), part of S9 (4). The table's "no Π" is about a field type's term, not its value.
-- _[Rec]'s "only on a `Type₀` inductive"_ is redundant with its strict-subterm test: a parameter whose generic value is `⋆` (or any value [Split] never refines) has no entry value, and `recCheck` fails every candidate that has none, so `qe` would be rejected without it.
-- _An erased match's fresh unknowns leave its arm through its type._ With `Pin : Prop := MkPin(b : Bool, e : Eq(Bool, b, true))`, `Leak (p : Pin) : True := (let q = match p { MkPin(b, e) => e }; refl)` is accepted, and `q`'s stored type is `Eq(Bool, σ, true)`, with σ the arm's fresh unknown for `b`. This is target 1's "an erased match whose data fields become locals": no data leaves the proof, and I found no use of σ (it cannot be written, split, matched or rewritten into a goal), so it is consistent with the witness reading of the fifth referee's V2, provided the model's assignment is extended at those unknowns by the witness's fields for the rest of the run, not only inside the arm; V2's "nothing computed from the witness leaves it" is false of types. Measured on `main` at 44a82dc84 (`Leak`, a second match on the same proof beside it, and `Leak3` over `Wit(n : Nat, e : Eq(Nat, S(n), S(S(Z))))`, whose escaped type computes to `Eq(Nat, σ, S(Z))`: all accepted).
-- _@sec-n3t omits one rule._ [Conv-cong] on two Π-closures with the same code and convertible captures, the checker's fast path, is none of TC1 to TC7; its soundness is CV3's congruence of a run in its embedded values (`RunCongr`), not TC6's.
-#measured[With the `Nat` prelude, on `main` at 44a82dc84:
-```
-inductive Bool := false | true
-inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
-inductive VL (n : Nat) := VLeaf(e : Eq(Nat, n, 0)) | VNode(m : Nat, r : List(VL(m)), e : Eq(Nat, n, S(m)))
-def vl : VL(1) := VNode(0, Cons[VL(0)](VLeaf(refl), Nil[VL(0)]), refl)
-def PB (b : Bool) : Type := (match b { false => Nat, true => (Π(x : &Nat). &Nat) })
-inductive DPB := MkDPB(b : Bool, f : PB(b))
-def dpb : DPB := MkDPB(true, λ(x : &Nat) : &Nat => x)
-def UseDPB (d : DPB) (y : &Nat) : Unit := match d { MkDPB(b, f) => match b { false => (), true => (let r = f(y); *r := 0) } }
-```
-All 8 verdicts as written: every declaration and definition accepted.]
-
-== The places beyond Lean, attacked
-
-The brief's programs for target 1, each aimed at a place where Ochr goes beyond Lean's metatheory. A field type computed by a type function of an earlier field, and of a proof field of an equation (`SelfD`, `DE`); one computed from a nested instance of the type itself (`NI2`, rejected); recursion that looks mutual through a type function choosing between a parameter and a type (`MQ`, rejected, `Pick` passing its parameter to a type function); a proposition with two constructors and data fields, nested at its own `Prop` parameter (`PN`), eliminated into data by every route I found: directly, through its own nested field, through a data field bound as a local of an erased match, through `J`, through a subsingleton wrapper at its `Prop` parameter, inside a closure, after a split on a `Prop`-valued type function, and through the unit law `And(True, PN(…))`, which is a subsingleton. A dependent field whose type's universe depends on an earlier field cannot be written: a type function's codomain is a written sort, and universes are not cumulative (the author's `U5`, `U6`).
-#measured[With the `Nat` prelude, on `main` at 44a82dc84:
-```
-inductive Bool := false | true
-inductive Void : Type
-inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
-def FD (b : Bool) : Type := (match b { false => Unit, true => Nat })
-inductive SelfD := L0 | N0(b : Bool, x : FD(b))
-def FE (n : Nat) (e : Eq(Nat, n, 0)) : Type := (match n { Z => Nat, S _ => (let k : Void = match e {}; Unit) })
-inductive DE := MkDE(n : Nat, e : Eq(Nat, n, 0), x : FE(n, e))
-def de : DE := MkDE(0, refl, 5)
-def Len (A : Type) (xs : List(A)) : Nat by xs := (match xs { Nil => Z, Cons(h, t) => S(Len(A, t)) })
-def TyOfLen (n : Nat) : Type := (match n { Z => Unit, S _ => Void })
-reject inductive NI2 := LN2 | NN2(xs : List(NI2), y : TyOfLen(Len(NI2, xs)))
-def Pick (b : Bool) (A : Type) (B : Type) : Type := (match b { false => A, true => B })
-inductive MP (A : Type) := MkMP(b : Bool, x : Pick(b, A, Nat))
-reject inductive MQ := LQ | NQ(m : MP(MQ))
-inductive PN (P : Prop) (n : Nat) : Prop := PA(z : PN(PN(P, n), 1), k : Nat) | PB(a : P, j : Nat)
-def pn : PN(True, 0) := PB[True, 0](refl, 3)
-reject def D1 (h : PN(True, 0)) : Bool := match h { PA(z, k) => true, PB(a, j) => false }
-reject def D2 (h : PN(True, 0)) : Bool := match h { PA(z, k) => match z { PA(z2, k2) => true, PB(a2, j2) => false }, PB(a, j) => false }
-def D3 (h : PN(True, 0)) : True := match h { PA(z, k) => (let q : Eq(Nat, k, k) = refl; refl), PB(a, j) => refl }
-reject def D4 (h : PN(True, 0)) : Nat := match h { PA(z, k) => k, PB(a, j) => j }
-reject def D5 (h : PN(True, 0)) : Type := J(Bool, match h { PA(z, k) => true, PB(a, j) => false }, true, λ(c : Bool) : Type => Nat, refl, Nat)
-inductive WP (P : Prop) : Prop := MkWP(w : P)
-def D6 (h : WP(PN(True, 0))) : Bool := match h { MkWP(w) => true }
-reject def D7 (h : WP(PN(True, 0))) : Bool := match h { MkWP(w) => match w { PA(z, k) => true, PB(a, j) => false } }
-reject def D9 (h : PN(True, 0)) : Bool := (let f = (λ(u : Unit) : Bool => (match h { PA(z, k) => true, PB(a, j) => false })); f(()))
-def PT (b : Bool) : Prop := (match b { false => True, true => PN(True, 0) })
-reject def D13 (b : Bool) (h : PT(b)) : Bool := match b { false => true, true => match h { PA(z, k) => true, PB(a, j) => false } }
-def D14 (h : And(True, PN(True, 0))) : Bool := match h { Intro(l, r) => true }
-reject def D15 (h : And(True, PN(True, 0))) : Bool := match h { Intro(l, r) => match r { PA(z, k) => true, PB(a, j) => false } }
-```
-All 29 verdicts as written. `NI2`: D36 (the call's argument is not first-order); `MQ`: "MQ occurs at the parameter A of MP, which is not nestable in MP"; `D1`, `D2`, `D4`, `D5`, `D7`, `D9`, `D13`, `D15`: "[D45] a match on a proof of PN returns a non-proof, but PN is not a subsingleton (it has 2 constructors)". `D3`, `D6`, `D14` accepted: a proof built from a data field bound as a local, and constant data from a subsingleton.]
-And for the checks of the names, the levels and the borrows (rows 11, 10 and 16 of the table below):
-#measured[With the `Nat` prelude, on `main` at 44a82dc84:
-```
-inductive Bool := false | true
-reject inductive RZ := Z | S(x : RZ)
-reject inductive Q7 (n : Nat) (x : (match Z { Z => Nat, S(k) => (let w = MkQ7; Nat) })) := MkQ7
-reject inductive Q9 (b : Bool) (x : (match b { false => Nat, true => Q9(b, 0) })) := MkQ9
-inductive Box (A : Type) := MkBox(x : A)
-def SortF (X : Type) : Type₁ := Type
-reject inductive T10 (A : Type) (B : SortF(A)) := MkT10(x : Box(B))
-def PiAll : Type₁ := (Π(X : Type). X)
-reject def BorrowPi (x : &PiAll) : Unit := ()
-def TF1 (n : Nat) : Type₁ := (Π(X : Type). X)
-reject def BorrowCall (n : Nat) (x : &TF1(n)) : Unit := ()
-reject def BorrowProp (P : Prop) (x : &P) : Unit := ()
-reject def BorrowPiProp (x : &(Π(n : Nat). Eq(Nat, n, n))) : Unit := ()
-def IdT (A : Type₁) : Type₁ := A
-reject def BorrowIdT (x : &IdT(Type)) : Unit := ()
-inductive Big (U : Type₁) := MkBig
-def BorrowBig (x : &Big(Type)) : Unit := ()
-```
-All 17 verdicts as written. `RZ`: "(surface) Z is built in"; `Q7`, `Q9`: D133, the own name or its constructor in a dead arm of a parameter's type; `T10`: "[D55] B is written where a type is expected, but its declared type is not a sort" (a value parameter at a type argument; D55 and D128 are what keep one out, since `Term.nestOk` accepts a bare variable at a nestable position whatever its declared type reads, and only a type parameter written as a sort reads nothing); each `Borrow…` rejected: "[D66] … is not in Type₀", the Π over `Type` hidden behind a constant, a call and an identity at `Type₁`.]
-
-== Verdicts, one per item
-
-#table(columns: (27%, 21%, 52%), align: left, table.header([*Item*], [*Verdict*], [*Why, with the program*]),
-  table.cell(colspan: 3)[_The sixteen checks of @fig-n1-checks: enforced where? needed by the paper's construction?_],
-  [1 Fresh names; constructors distinct], [enforced; needed within a declaration], [`checkInd`'s first lines and resolution (`RZ`). Two arms named alike would make one tree while `distinctCtors` tells them apart by index; across declarations a tree records its declaration, so there it serves resolution only.],
-  [2 Sort `Prop` or `Type₀`], [enforced; not needed for existence], [`d.sort > 1`. A data declaration in `Type₁` would have its family in #vk(1), and the restriction serves borrows and the rules that assume data is in `Type₀`.],
-  [3 Fields a telescope], [enforced; needed], [`fieldRefs`; S2's dependent sum.],
-  [4 First-order fields], [enforced; needed in its core], [Needed: no Π over the declared type (`Bad`), and the Π-free grammar, which makes ω stages enough. Not needed: "no call computing to a Π at the generic telescope" (`NT` rejected, `DPF` accepted, alike to the model).],
-  [5 Declared type only on the spine], [enforced; needed at calls only], [`B1` (Curry). At an equation (`B6`, $emptyset$) and a value argument (Y2) the model does not need it.],
-  [6 Nesting at nestable parameters], [enforced; needed in its core], [`nestableSet` with own occurrences, at every path (`MQ`, `NBD`, `TBD`); `PositivitySelf.Q`. Its exclusion of parameters passed to an equation or a value is not needed (`TBD`, `NBD` have least models).],
-  [7 D120], [enforced; not needed by the paper], [`readViolation`, `deepVars`. `D2`, `LD`, `NBD` have least models (Y2). Needed by the Lean records (`KnotCE`).],
-  [8 D121], [enforced; not needed by the paper], [`sortNestViolation`, `passOther`. `B11` and `B12` mean $emptyset$ (Y2). Needed by the Lean records (`PropNestCE`, `CrossSortCE`).],
-  [9 Constructors unreadable while declared], [enforced; serves (II)], [`evalCtor`, `largeElim`, the declaring entry (`Q11`). `Q11` has a least model; the check keeps the checker's typing of field types faithful.],
-  [10 Field levels, D55, D128], [enforced; needed], [`sortOf`, `typePos`, D128 (`U1` to `U10`, `T1` to `T5`, `T10`). DM5 at the loose domain.],
-  [11 Names declared and earlier; own name in fields only], [enforced; needed], [`undeclaredCheck`, twice (`Q7`, `Q9`, the author's `Q3`); S1's recursion.],
-  [12 No borrow in a parameter or field type], [enforced; serves N5], [`typeHasRef`; D48 keeps `&` from being computed. $\&T$ means $T$; (WF1) is what needs it.],
-  [13 D105; a bare constructor at a value argument gets no hint], [enforced; serves (II)], [`inferFrom`, `evalCtor`. A tree does not depend on what is inferred.],
-  [14 Subsingleton elimination, every position], [enforced; needed], [`evalMatchByType` (one arm: the arm's proof flag; several: every arm a proof), `checkTail`, projections; `D1` to `D15`; `IsL`.],
-  [15 Recursion only on a `Type₀` inductive], [enforced; redundant], [A proof parameter has no entry value, and `recCheck` fails every candidate without one, so [Rec] rejects `qe` without it.],
-  [16 Borrows only of `Type₀`; a borrow result takes a borrow], [enforced; needed by S9 (4)], [`BorrowPi`, `BorrowCall`, `BorrowProp`, `BorrowPiProp`, `BorrowIdT` rejected, `BorrowBig` accepted; `Impred`, `QF`.],
-  table.cell(colspan: 3)[_The construction, step by step_],
-  [S0 Universes and trees], [proved], [With "closed under tuples" said of #vk($i$) only (Y5).],
-  [S1 Order of declarations], [proved given (P1)], [The cited `runT_congrN` is the code run's (Y1).],
-  [S2 Grammar and stage operator], [proved], [By reading `checkInd`; in Lean `grammar_of_checks`, with `CheckIndGivesChecks`'s assembly open.],
-  [S3a Steady nodes], [proved given (P1), (P2)], [Uses D120, D121 and `VaryValFact`, none of which it needs once restated (Y2).],
-  [S3b Monotone, union-preserving], [proved], [Including $X(X(A))$ (`DD`, `N2`, `PN`) and value-indexed nesting (`VL`).],
-  [S4 Small], [proved given (P3)], [(P3) is the typed function; the loose domain needs D128 (`TL`).],
-  [S5 Data, the ω-union], [proved], [Least among monotone families; Kleene, not §6.2.1 (Y5).],
-  [S6 Propositions, truth first], [proved], [Knaster–Tarski on monotone predicates; one false side sentence (Y5).],
-  [S7 Faithful], [proved given (P1)–(P3)], [On sets the strict run is the undefined object of Y1; the #a-lean citations are the code model's.],
-  [S8 Stable], [proved], [A set-level run has no state to grow; on codes, `DecStable`.],
-  [S9 (1)–(3)], [proved], [Trees record their declaration and constructor; finite depth; a subsingleton's arm is determined.],
-  [S9 (4) Other type formers], [not proved here], [The plan's; claimed, as the section says.],
-  table.cell(colspan: 3)[#emph[The eight facts of @fig-n1-facts]],
-  [`ItemFacts`], [true by reading], [`checkInd` appends the declaring entry and, last, replaces it by `{ d with nestable := ownSet }`; Lean: all but `CheckIndGivesChecks`'s assembly.],
-  [`NoValFact`], [true by reading], [No clause of `Surface.lean` or `Notation.lean` builds `Term.val`.],
-  [`VaryValFact`], [true by reading], [D128 with `deepVars`; used by the Lean records only, the paper's loose domain does not need it.],
-  [`NamesFact`], [true by reading], [`undeclaredCheck` twice (`Q7`, `Q9`).],
-  [`FieldHeads`], [true by reading], [`U1` to `U10`, `T1` to `T5`, `T10`.],
-  [`GlobalCallLevels`], [proved on paper given (P3); Lean plan incomplete], [Three steps suffice once the third is a new lemma tracking `telL`'s terminal code (Y3).],
-  [`DecLocal`], [true by reading], [The decisions name sub-places of the term's free places or entry places, read from syntax; `DataFacts` asks it at every state, which a syntactic reading supports.],
-  [`DecStable`], [true at reached states], [As stated; false at arbitrary states (`FactsCE`).],
-  table.cell(colspan: 3)[_Where Ochr goes beyond Carneiro (@sec-n1-carneiro)_],
-  [Nesting at own parameters with a varying argument], [proved given (P1)–(P3)], [S3b's $X(X(A))$ with the diagonal; `DD`, `N2`, `PN`.],
-  [Values where Lean has indices], [proved], [`Vec`, `EvV`, `AV`; and `VL`, nested at a field variable, which Lean's kernel rejects.],
-  [Field types computed by running code], [proved given (P1)–(P3)], [`SelfD`, `DE`, `AV`, `HV`, `MV`; the run on sets is Y1's open object.],
-  [Dependent fields read by later fields], [proved], [`ExB`, `SelfD`, `DE`; D120 not needed (Y2).],
-  [Propositions nested at their own `Prop` parameter], [proved], [S6; elimination into data rejected by every route (`D1` to `D15`).],
-  [Erased and proof classes; borrows], [proved for existence], [Data may hold functions at instances (`DPF`, `DPB`); their relation R is part of S9 (4).],
-  [What is taken from the thesis], [as stated, less §6.2.1], [Universes, ∀ as a truth value, Remark 1; nothing from §5, §5.4 or §6.3.],
-  table.cell(colspan: 3)[_The model's identifications, and conversion at a type_],
-  [The checker never refutes an equation between types the model identifies], [proved by reading], [`mkEqM` refutes constructor values and `⊥` only (Y4); `EE`, `PT`, `EP`, `NoTEq`.],
-  [TC1, TC3, TC4], [proved], [TC4's discharge of `rules-trial`'s hypotheses transfers to the Lean model by its least truths (Y1).],
-  [TC2, TC5], [proved given N3 for values], [Paper model; in Lean, records are functions of the parameters' meanings.],
-  [TC6, TC7], [reduced, as stated], [—],
-  [[Conv-cong] on Π-closures by code], [not argued], [Missing from TC1 to TC7; CV3's `RunCongr` covers it (Y5).],
-)
-
-== For a seventh referee
-
-Not done. The choice of Y1, between N1 on codes and N1 on sets with a bridge, is the user's, and whichever is made, the step marks of @sec-n1-proof follow from it. If the set model is kept, (P1) to (P3) of a run on sets are the next obligation, and the first thing to attack is whether any decision of the run reads more of a type value than its meaning; Y4's list says no for the checker, and the reference run's `J` and `Eq` "mean as in the model". If the table of checks is split as Y2 proposes, the relaxations it makes visible (D120, D121, equations and value arguments at nestable parameters) are incompletenesses of the checker, not of the model, and each would need the Lean records rebuilt before it could land. I did not attempt the Lean of Y3, did not read `CheckIndGivesChecks`, and did not sweep the 300 stored declarations. My programs are in the scratchpad's `r6/` (`RA` to `RE` the blocks above; `T0` to `T10` the probes behind them), and the running notes are in `reports/referee6.md`.
+*The residue, and the principles it gave.* Of the 139 rows, 10 are design choices or features. Of the other 129, 67 fit a principle written before 27 November and 62 fit none. The 62 fall into five groups, each one idea nobody had written down: declarations that have no model (principle 1); identifications that fail at some instance (principle 2); readings that are the same on every path but wrong (principle 3); a run of checked code that is not the checked computation (principle 4: D12 is its root, D33 its first instance, the two-paths faults of the generic call against an instance its old half, D124, D125, D134, D135 its new one); values outside the state and state that is not the program's (principle 5, from which exclusive access was later split as principle 12). The seven of 2 November explain most faults found before they were written; of those since, they explain only `EtaBoom`, a sealed program run over a hole (D97), a comparison's leftover record (D103), two of observation (D113, D114) and two of wholeness (D98, D127).
+
+== How this document was made <sec-made>
+
+Seven authors and six adversarial referees worked in alternation on 27 and 28 November 2026; each referee read the current document, the paper and the code, ran programs on the checker of the day, and wrote a report the next author answered. The reports and answers are in git history (this file before 28 November); every objection is now folded into the text, marked as standing where it applies, or recorded as refuted.
+- `theory1` wrote the ledger, found the residue's five principles, and audited principles 4, 3 and 5 against the code. `theory2` revised the principles against a first argument for consistency from the principles alone.
+- _The first referee_ showed that argument to be a reduction: four principles were the proof's open theorems, its induction did not survive the end of a borrow, membership was carried on the checker's side and asserted for untyped runs, and D135 was described as landed when it was not. `theory3` restated consistency as conditional on named theorems, in the two-half form of the mechanisation, and landed D135's consequences.
+- _The second referee_ showed the frame property's proof did not exist (a false invariant, a closure formed in the body not covered, four shapes used and not stated, (II) missing what its Lean statement needs) and found the model's fault `G1`. `theory4` rewrote the frame property; `theory5` brought it to the mechanisation and argued resolved determination, exclusive access, conversion on code, [Repack], the block lemma and hints.
+- _The third referee_ showed all three model changes wrong as written ((M3) made the frame property false at `CallI`, (M2) was circular and its `.pi` clause wrong), and found the observation's first type-safety fault. `theory6` measured the five sites, specified the detached observation and its refinement, and stated the frame property as Lean's.
+- _The fourth referee_ showed the observation patch unsound without a restriction (`Bad`), resolved determination false at a proof owner and at non-whole ancestors, the frame property not Lean's, a fifth site, and (X1) false at deferred types.
+- _The fifth referee_ found the detached observation sound, but its cost understated (`ConsW`, `IdxSame`, `SwapCall2`), the detach lemma needing the frame property over two label lists, and the checker binding a proof's data fields as locals where the paper and this document said otherwise (D138). `theory7` proved a model of the data types exists on paper and attacked the declaration checks with 193 programs.
+- _The sixth referee_ showed the paper's model is not the Lean's and is defined through a run that exists only on codes, that several declaration checks serve Lean's records or the simulation rather than the construction, that the Lean plan for the hard case understated a step, and that the standing assumption was too narrow; and found `Leak`.
+- `theory8` consolidated the document into its present form, settled `Leak` and the question of which model N1 states, and re-ran the evidence. No referee has read this consolidation.
