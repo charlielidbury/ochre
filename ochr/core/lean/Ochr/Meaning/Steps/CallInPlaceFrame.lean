@@ -375,9 +375,21 @@ theorem frameStart_inStart (K : RunCtx) (ρ : Assignment) (φ : Future) (fres : 
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- **The start of a call in place** (MODEL; OPEN; the paper's start lemma, `<sec-frame-fix>`). At a call point `s` of a
+/-- **Each borrow argument's label is recorded at its parameter's content type** (docs/31 D240): the binder's type at the
+earlier arguments, as the callee's frame stores it (`paramBind`) and as the closure records its cell's label (`fixStep`).
+It replaces the start's `BorrowArgsTyped`, which reads the content types off the function type's telescope CODE
+(`refTysOf`): the two agree only through a round trip of codes (each domain fitting the type's level and canonical,
+the knot's `PiCallable`), and at a function of sort `Prop` (`piTyAt 0`, a proposition) `refTysOf` is empty, so
+`BorrowArgsTyped` constrains nothing and `CallStartInvG` as first stated was false there (the caller's record of a
+borrow argument's label is free, the closure's is the binder's); no in-place call of such a function is made (a proof
+call never runs its body), so nothing used the false case. -/
+def ArgsHeld (ds : List Term) (c : Term) (args : List Res) (s : SState) : Prop :=
+  ∀ (j : Nat) (a : Res) (k : Nat), args[j]? = some a → a.2.label = some k →
+    s.heldTy k = (paramBind (fbG K ρ φ ds c).1 ((args.take j).map (·.1)) a).ty.m
+
+/-- **The start of a call in place** (MODEL; PROVED, `CallStartInv.callStartG`; the paper's start lemma, `<sec-frame-fix>`). At a call point `s` of a
 global's code, with arguments `args` that are members of the domains, carrying labels exactly at the borrow parameters
-(held at their parameters' content types: `BorrowArgsTyped`), and the callee's meaning `fres = (selfM, piT)` a member of
+(held at their parameters' content types: `ArgsHeld`, docs/31 D240), and the callee's meaning `fres = (selfM, piT)` a member of
 its type: the in-place state after the push is a call point for the frame property (`FrameStart`, with itself as `s₀`) and
 is related to the closure's state after its push by the internal relation, under `callRen`. Hypotheses on the call point
 beyond goodness: locality (every position reads only live labels, `SState.RInv (fun _ => False)`, which the run keeps,
@@ -386,7 +398,7 @@ relation), and every site at a position (so the fresh frame holds no site). Read
 (docs/31 D230): every clause holds at the start by the push's construction (the two top frames are `self` and the
 parameters, the same meanings, types and readings, the labels `kᵢ` against `lᵢ = i`; frame 0 of the closure is the
 cells, each reading its own label, lent there; the caller's frames are `s₀`'s own, read at `cellFuture`, the identity at
-the start), with `BorrowArgsTyped` giving the held types (`FrameRel.held`, `heldAll`), the domains' membership the
+the start), with `ArgsHeld` giving the held types (`FrameRel.held`, `heldAll`), the domains' membership the
 goodness of both states, and `callRen` the range, order and counter clauses by its definition. -/
 def CallStartG : Prop :=
   ∀ (hs : List Hint) (ds : List Term) (c : Term) (selfM : Sem) (piT : TyM) (args : List Res) (s : SState),
@@ -397,12 +409,12 @@ def CallStartG : Prop :=
     (∀ a ∈ args, ∀ l, a.2.label = some l → s.Live l) → (argLabels args).Nodup →
     DomMembers K.dm.read (psG K ρ φ ds) (args.map (·.1)) →
     (∀ (i : Nat) (a : Res) (d : PiDom), args[i]? = some a → (psG K ρ φ ds)[i]? = some d → (a.2.label.isSome = d.isRef)) →
-    BorrowArgsTyped K.dm.read (selfM, .plain piT) args s →
+    ArgsHeld K ρ φ ds c args s →
     FrameStart (inStart K ρ φ (selfM, .plain piT) ds c args s) (argLabels args) ∧
     FrameInv K φ (callRen (argLabels args) s.nextLoan) (inStart K ρ φ (selfM, .plain piT) ds c args s) (argLabels args)
       (inStart K ρ φ (selfM, .plain piT) ds c args s) (clStart K ρ φ ds c piT selfM (args.map (·.1)))
 
-/-- **The start of a call in place, its internal relation** (MODEL; OPEN): `CallStartG`'s `FrameInv` half, at the same
+/-- **The start of a call in place, its internal relation** (MODEL; PROVED, `CallStartInv.callStartInvG`, docs/31 D240): `CallStartG`'s `FrameInv` half, at the same
 hypotheses; its `FrameStart` half is proved (`frameStart_inStart`). -/
 def CallStartInvG : Prop :=
   ∀ (hs : List Hint) (ds : List Term) (c : Term) (selfM : Sem) (piT : TyM) (args : List Res) (s : SState),
@@ -413,7 +425,7 @@ def CallStartInvG : Prop :=
     (∀ a ∈ args, ∀ l, a.2.label = some l → s.Live l) → (argLabels args).Nodup →
     DomMembers K.dm.read (psG K ρ φ ds) (args.map (·.1)) →
     (∀ (i : Nat) (a : Res) (d : PiDom), args[i]? = some a → (psG K ρ φ ds)[i]? = some d → (a.2.label.isSome = d.isRef)) →
-    BorrowArgsTyped K.dm.read (selfM, .plain piT) args s →
+    ArgsHeld K ρ φ ds c args s →
     FrameInv K φ (callRen (argLabels args) s.nextLoan) (inStart K ρ φ (selfM, .plain piT) ds c args s) (argLabels args)
       (inStart K ρ φ (selfM, .plain piT) ds c args s) (clStart K ρ φ ds c piT selfM (args.map (·.1)))
 
@@ -435,7 +447,7 @@ theorem body_agree (hst : CallStartG K ρ φ) (hc : Strict.FundCtx K) (hs : List
     (hlive : ∀ a ∈ args, ∀ l, a.2.label = some l → s.Live l) (hnd : (argLabels args).Nodup)
     (hdom : DomMembers K.dm.read (psG K ρ φ ds) (args.map (·.1)))
     (hlab : ∀ (i : Nat) (a : Res) (d : PiDom), args[i]? = some a → (psG K ρ φ ds)[i]? = some d → (a.2.label.isSome = d.isRef))
-    (hbt : BorrowArgsTyped K.dm.read (selfM, .plain piT) args s) :
+    (hbt : ArgsHeld K ρ φ ds c args s) :
     FrameAgreeI K φ (callRen (argLabels args) s.nextLoan) (inStart K ρ φ (selfM, .plain piT) ds c args s) (argLabels args)
       (runT K ρ φ true hint body (inStart K ρ φ (selfM, .plain piT) ds c args s))
       (runT K ρ φ true hint body (clStart K ρ φ ds c piT selfM (args.map (·.1)))) := by
@@ -520,7 +532,7 @@ theorem callInPlace_of (hst : CallStartG K ρ φ) (hpop : CallPopG K ρ φ) (hc 
     (hdom : DomMembers K.dm.read (psG K ρ φ ds) (args.map (·.1)))
     (hlab : ∀ (i : Nat) (a : Res) (d : PiDom), args[i]? = some a → (psG K ρ φ ds)[i]? = some d → (a.2.label.isSome = d.isRef))
     (hbt : BorrowArgsTyped K.dm.read (K.C.global g) args s)
-    (hbt' : BorrowArgsTyped K.dm.read (K.C.global g) args (callPre c args s)) :
+    (hheld : ArgsHeld K ρ φ ds c args (callPre c args s)) :
     InPlaceAgree K ρ φ (runCallRef K ρ φ (K.C.global g) [] (.fix self hs ds c dec body) [] args s)
       (callOf K.dm.read (K.C.global g) args s) := by
   -- the fixpoint equation at the global's forming state, at the arguments
@@ -528,10 +540,8 @@ theorem callInPlace_of (hst : CallStartG K ρ φ) (hpop : CallPopG K ρ φ) (hc 
     (hdom : DomMembers K.dm.read (runDoms K ρ φ formG ds) (args.map fun a : Res => a.1))
   -- the start, then the frame property at the body (`body_agree`)
   have hmem' : selfG K ρ φ hs ds c dec body ∈ₛ[K.dm.read] piTG K ρ φ hs ds c := by rw [← hselfV, ← hselfT]; exact hmem
-  have hbt₁ : BorrowArgsTyped K.dm.read (selfG K ρ φ hs ds c dec body, .plain (piTG K ρ φ hs ds c)) args (callPre c args s) :=
-    borrowArgsTyped_ty K (by rw [hselfT]; rfl) hbt'
   have hb := body_agree K ρ φ hst hc hs ds c body hv hf _ _ args (callPre c args s)
-    ((fbG K ρ φ ds c).2.1 (args.map (·.1))) rfl hmem' hg hloc hl hsites hlive hnd hdom hlab hbt₁
+    ((fbG K ρ φ ds c).2.1 (args.map (·.1))) rfl hmem' hg hloc hl hsites hlive hnd hdom hlab hheld
   exact hpop st g gd self hs ds c dec body args s hG hfind hcur hfn hselfV hselfT hg hdom hbt he hb
 
 end
