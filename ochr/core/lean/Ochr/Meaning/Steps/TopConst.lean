@@ -44,15 +44,21 @@ structure ConstWit where
   v : Value
   T : Value
 
-/-- **The constant branch of `checkDef`, inverted** (CHECKER; read true against `Check.checkDef`; the machine lane's to
-prove). The state the body is evaluated from (one frame, the plain mode, no reading handed down, Σ the stage's), the
-body's typed run at the goal, the conversion of its type to the goal (succeeding), [Return] (succeeding), and the entry
-stored: the constant's name, no `fix` code, the goal its type. -/
+/-- **The constant branch of `checkDef`, inverted** (CHECKER; read true against `Check.checkDef`; PROVED at the program
+`def one : Nat := 1`, `Top.One.one_check_inv`). The state the body is evaluated from (one frame, the plain mode, no
+reading handed down, Σ the stage's), the body's typed run at the goal, the conversion of its type to the goal
+(succeeding), [Return] (succeeding), and the entry stored: the constant's name, no `fix` code, the goal its type.
+
+**Restated (docs/31 D258)**: the conversion and [Return] run from a state equal to the one before them BUT FOR THE
+EDITOR'S LOCATIONS (`Machine.LocsEq`): `checkDef` runs the conversion inside `located d.body`, whose inversion
+(`Runs.located_inv`) relates the states only up to `locs`. No consumer reads these two clauses (`const_member` drops
+them); as first stated they asked the runs from `w.st₂` and `w.st₃` exactly, which needs a whole-machine fact (no run
+writes the location table), not provable at one program. -/
 def ConstCheckAt (P : ProgState) (d : Def) (st' : MState) (w : ConstWit) : Prop :=
   ModeR w.st₁ ∧ w.st₁.tailNext = false ∧ 0 < w.st₁.env.size ∧ w.st₁.tailDecl = none ∧ w.st₁.globals = P.globals ∧
   Runs (Ochr.eval w.n true d.body (some w.goal)) w.st₁ w.bh (w.v, some w.T) w.st₂ ∧
-  (∃ f b, Runs (Ochr.conv f w.T w.goal) w.st₂ b true w.st₃) ∧
-  (∃ f b, Runs (Ochr.bodyReturns f s!"{d.name} is defined as it" w.v w.goal [] "") w.st₃ b () w.st₄) ∧
+  (∃ s f b, Machine.LocsEq w.st₂ s ∧ Runs (Ochr.conv f w.T w.goal) s b true w.st₃) ∧
+  (∃ s f b, Machine.LocsEq w.st₃ s ∧ Runs (Ochr.bodyReturns f s!"{d.name} is defined as it" w.v w.goal [] "") s b () w.st₄) ∧
   (∃ g : GDef, st'.globals = P.globals ++ [g] ∧ g.name = d.name ∧ g.fn? = none) ∧
   ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot = w.goal
 
