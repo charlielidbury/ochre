@@ -52,6 +52,26 @@ ochr MatchAtk {
   def A14 (n : Nat) (y : Nat) : Nat := match n { Z => y, S(m) => (let k = m; m := k; y), }
 }
 
+/-! The orchestrator's question on D248: does a proof term get the same verdict as a lemma's body (checked by shape, on
+the real state) and as the right-hand side of a `let` of proposition type (evaluated, on a private copy)? No: a body
+that moves out of a borrow parameter inside a proof is rejected as a lemma, where the frame pops and the borrow ends
+over `⊥` (D53), and accepted in `let` form, where the move is on the copy (`Lc`/`Dc`, the smallest; `La`/`Da`, a field
+of a pair). Writes (`Lb`/`Db`) and `L9`/`P10` (`D9`/`D10`) get the same verdict both ways. An incompleteness of the
+checker: `Lc` is a true lemma. -/
+
+#guard_msgs (drop warning) in
+ochr MatchAtkV {
+  inductive Ex : Prop := Wit(w : Nat, h : Eq(Nat, w, w))
+  reject def Lc (x : &Nat) : True := (*x; refl)
+  def Dc (x : &Nat) : Unit := (let h : True = (*x; refl); ())
+  reject def La (x : &Pair(Nat, Nat)) : True := (let z = (*x).0; refl)
+  def Da (x : &Pair(Nat, Nat)) : Unit := (let h : True = (let z = (*x).0; refl); ())
+  def Lb (x : &Nat) : True := (*x := 5; let e : Eq(Nat, *x, 5) = refl; refl)
+  def Db (x : &Nat) : Unit := (let h : True = (*x := 5; let e : Eq(Nat, *x, 5) = refl; refl); ())
+  def D9 (n : Nat) : Unit := (let h : True = (n := 5; refl); ())
+  def D10 (e : Ex) (n : Nat) : Unit := (let h : True = match e { Wit(w, h) => (n := 5; refl), }; ())
+}
+
 namespace Ochr.Meaning.Steps.MatchAtk
 
 open Ochr Ochr.Meaning
@@ -59,6 +79,10 @@ open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt outVal)
 
 -- every verdict as expected: all accepted
 #guard ((Ochr.Test.runWith (some Prelude) "MatchAtk" MatchAtk {} (located := false)).allAsExpected)
+-- the verdict pairs: `Lc`, `La` rejected (at the pop, D53), their `let` forms accepted
+#guard ((Ochr.Test.runWith (some Prelude) "MatchAtkV" MatchAtkV {} (located := false)).allAsExpected)
+#guard ((Ochr.Test.runWith (some Prelude) "MatchAtkV" MatchAtkV {} (located := false)).rows.find? (·.name == "Lc")).any
+  fun r => match r.verdict with | .rejected m _ => (m.splitOn "[D53] a borrow ends while its content is partly moved out").length > 1 | _ => false
 
 /-- The resolved body of a definition of the block. -/
 def bodyOf (name : String) : Term :=
