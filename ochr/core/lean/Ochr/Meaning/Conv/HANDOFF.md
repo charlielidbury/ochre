@@ -39,3 +39,33 @@ Branch `spine-conv1` (worktree `../ochre-conv1`, from `origin/spine` 73f1a1075).
 - `meanV`'s `.tEq` clause: `rw [meanV_tEq']` rewrites only the first occurrence; the `SideOk` it produces is at `(meanV err A).asTy`, which is `capTy A` only by unfolding (`replace sa : SideOk _ (capTy …) _ := sa`).
 - `simp only [meanV, hd]` on `.tInd` leaves `if paramsOk … (meanParams …)`; rewrite with `if_pos` before rewriting `meanParams` (the decidability instance blocks `rw` inside the condition).
 - Conv's wrapper (D103): `rw [Ochr.conv.eq_1]`, `Runs.bind_inv (runs_get_bind.mp h)`, `Runs.onFail_inv`, then `runs_restoreNames_pure` (in `Refine.lean`); the inner block is matched literally by `conv_inner`'s hypothesis.
+
+# conv2's section (2026-11-28; branch `spine-conv2`, worktree `../ochre-conv2`)
+
+Report: `scratchpad/reports/conv2.md`; docs/31 D282.
+
+## Files added
+
+| File | What | Status |
+|---|---|---|
+| `Ctor.lean` | `FO` (values that hold no code: plain and constructor values); `alike_ind` ([Conv-cong] at constructor values); `FO.beq_alike` (`==` ignores recorded parameters, so it is likeness, not equality); `unitOk_fo`; `convV_alike_fo` (N3 for `FO` values) | PROVED; `alike_ind` assumes NOTHING; `convV_alike_fo` from `PremFn`, `UnitOk FO` |
+| `CtorEq.lean` | `FieldTysOk` (conv1's `FieldTysSound` restated at typed parameters/fields, with a level), `IndAt`, `InjAtInd`, `LeafsOk`; `disj_fo_absurd` ([Eq-disj] at constructor values); `eqTo_fo`/`eqL_fo` (every `Eq` rule on `FO` sides, [Eq-inj] with D64) | PROVED from the named facts |
+| `ComposeFO.lean` | `conv_sound_fo'` (3 facts, as for plain values), `mkEqM_sound_fo` (7 facts; `LeafsOk` and the declarations' prefix discharged from `CtxS`) | composed |
+| `AttackCtor.lean` | blocks `ConvAtkTy` (constructor values at a type unknown), `ConvAtkCtor`, `ConvAtkMoved` (partly moved owners in `Id`), `ConvAtkCode` (code inside compared values; D64 at index fields only convertible) | verdicts and reasons asserted |
+
+## Settled
+- Premise (b) (a type code's declaration vs the program's): the simulation's statement does NOT change (D282). [Conv-cong] needs neither of conv1's premises; [Eq-inj] needs them only at `mkEqM`'s fallback to the values' recorded parameters, dead on the suite (probe: fallback → error, every verdict unchanged). PROPOSAL for main: delete the fallback; then `InjAtInd` and the consumer's `IndAt` hold by construction.
+
+## Open, in the order to take it
+1. **The `Id` step's partly moved sides** (report, "for the theory" 5): decide (i) widen the strict `Eq`'s side condition to open members, or (ii) prove `mkEqM`'s deterministic choice never leaves a partly moved side stuck. Then extend `eqTo_fo` (the congruence for partly moved trees is `alike_ind`'s proof with `OMem` fields, non-dependent constructors only).
+2. **`IndAt` at the consumers** (the `.eq` step, `Id`'s conjuncts, `substV`'s re-made `Eq`s, `J`, `symm`, `trans`): a constructor-valued side's type is its inductive applied (typing); or land the fallback's deletion and drop `IndAt`/`InjAtInd`.
+3. **`FieldTysOk`**: (II) for `fieldTele`'s typed runs + `FieldsFaithful`; its `len` is a checker fact (`fieldTele` errors unless the lengths agree), provable by inverting `Runs` (`DropOne.Runs.bind_inv`, `runs_err_false`).
+4. **`CodeOk`**: a run congruence for texts that differ by alike embedded values with alike types (and up to embedded constructor values' recorded parameters).
+5. **`PremFn`**: the reduction of the report's task 5 (`CallFnGW` at `typed = false` from the generic state, the closure call step, `PremPi`'s transfer, the end-all step).
+
+## Traps (added)
+- `meanFields` and `meanV` unfold by `show` with the explicit next-step form (no equation lemmas needed); `FitsM`'s successor case destructures with `obtain ⟨f, fs', hfs, h1, h2⟩` directly.
+- A recursive call inside a mutual theorem whose section variables are implicit takes NO named section arguments (`FO.hint (v := a) p`, not `(K := K)`).
+- Structural recursion over `EqTo`/`EqL` works for a mutual pair; a THIRD theorem in the block that receives a sub-derivation and passes it on unchanged breaks it (inline it instead).
+- `SideOkV` is a `def`: `generalize` does not see the `meanV` inside it; give the side as `.inr (show meanV … ∈ₛ … by rw …)`.
+- `uShape`'s match on an `Entry` constructor needs `dsimp only` before `rw [if_pos …]`.

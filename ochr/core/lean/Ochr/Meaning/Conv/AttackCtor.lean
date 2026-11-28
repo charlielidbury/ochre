@@ -114,3 +114,33 @@ ochr ConvAtkMoved uses Nats, Fixtures {
 #guard (run "ConvAtkMoved" ConvAtkMoved).rejectedWith [
   ("M3", "[Repack] Id observes it, but it is open: field m of MkPF2: it holds ⊥ (moved out, or a proof invalidated by a write to a field its type mentions)"),
   ("M4", "[Repack] Id observes it, but it is open: in field a of MkW, field m of MkPF2: it holds ⊥ (moved out, or a proof invalidated by a write to a field its type mentions)")]
+
+/-! **Code inside the compared values** (`ConvAtkCode`; `CodeOk`, and D64 at index fields that are only convertible):
+two globals with one generic observation are convertible (`FE`: `Add(Z, x)` and `x`), so are two stuck calls that
+differ only in such a function (`SE`: [Conv-cong] on sealed programs, `CodeOk.sealed`), two closures (`Lam`), stuck
+calls embedding them (`LamS`), constructor values holding them (`BoxF`); a function that differs at its generic call is
+not (`SE3`, false, rejected). A dependent constructor whose index fields are convertible but not identical (two such
+stuck calls) is taken apart (`DPa`, true, accepted): the later field's type is computed from the left side's index,
+which means what the right side's means, so both are read at one hint (what `CtorEq.eqTo_fo`'s walk proves). -/
+
+ochr ConvAtkCode uses Nats, Fixtures {
+  inductive Bool := false | true
+  inductive Box (A : Type) := MkBox(x : A)
+  def ZAdd (x : Nat) : Nat := Add(Z, x)
+  def Idn (x : Nat) : Nat := x
+  def Two (x : Nat) : Nat := S(S(Z))
+  def FE : Eq(Π(x : Nat). Nat, ZAdd, Idn) := refl
+  def App (f : Π(x : Nat). Nat) (n : Nat) : Nat := match n { Z => f(Z), S _ => f(n) }
+  def SE (k : Nat) : Eq(Nat, App(ZAdd, k), App(Idn, k)) := refl
+  reject def SE3 (k : Nat) (e : Eq(Nat, App(Two, k), App(Idn, k))) : False := e
+  def Lam (k : Nat) : Eq(Π(x : Nat). Nat, λ(x : Nat) : Nat => Add(Z, x), λ(y : Nat) : Nat => y) := refl
+  def LamS (k : Nat) : Eq(Nat, App(λ(x : Nat) : Nat => Add(Z, x), k), App(λ(y : Nat) : Nat => y, k)) := refl
+  def BoxF (k : Nat) : Eq(Box(Π(x : Nat). Nat), MkBox(ZAdd), MkBox(Idn)) := refl
+  def TF (n : Nat) : Type := match n { Z => Bool, S _ => Bool }
+  inductive DP := MkDP(n : Nat, v : TF(n))
+  def DPa (k : Nat) (x : TF(App(ZAdd, k))) (y : TF(App(Idn, k)))
+      (e : Eq(DP, MkDP(App(ZAdd, k), x), MkDP(App(Idn, k), y))) : Eq(TF(App(ZAdd, k)), x, y) := e
+}
+
+#guard (run "ConvAtkCode" ConvAtkCode).rejectedWith [
+  ("SE3", "the body of SE3 has type Eq(Nat, ⌈App(Two, σ0)⌉, ⌈App(Idn, σ0)⌉), but the goal is False")]
