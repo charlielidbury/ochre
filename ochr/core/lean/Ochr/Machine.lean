@@ -2244,12 +2244,14 @@ def mkEqM (fuel : Nat) (A a b : Value) : M Value := do
   | .succ a', .succ b' => return ← mkEqM fuel' .tNat a' b'
   | .ind t c _ ps fs, .ind u d _ qs gs =>
     if t == u && c == d && fs.length == gs.length then
-      -- the field types at the parameters: the equation's type `D(ā)`, else the values' own
+      -- the field types at the parameters of the equation's type `D(ā)` (the paper's [Eq-inj]:
+      -- `eq(D(ā), C(ā; v̄), C(ā; w̄))`); at any other type the equation stays (fail-safe). Until
+      -- conv2's proposal (2026-11-28) the values' own recorded parameters were used when `A` was not
+      -- `D(…)`: a case the suite never reaches (every verdict unchanged with it made an error), and
+      -- the one place [Eq-inj]'s soundness would need the values typed at their own declaration
       let args? := match A with
         | .tInd n as => if n == t then some as else none
         | _ => none
-      let args? := args?.orElse fun _ =>
-        if !ps.isEmpty then some ps else if !qs.isEmpty then some qs else none
       if let some args := args? then
         let dd ← lookupInd t
         -- D64 (D52 restricted): a dependent constructor is taken apart only while its index

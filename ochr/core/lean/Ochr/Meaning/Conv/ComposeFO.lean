@@ -51,25 +51,25 @@ theorem conv_sound_fo' {K : RunCtx} {ρ : Assignment} {φ : Future} {fuel : Nat}
 refutation [Eq-disj], injectivity [Eq-inj], [Eq-refl], [Eq-stuck]): the state after is reached from
 the state before, and the proposition `mkEqM` returns means `⟦a⟧ = ⟦b⟧` at `⟦A⟧`, at every hint, when
 the sides hold no code and no `Prop` constructor value, are each `⊥` or a member of `⟦A⟧`, `⟦A⟧` has a
-level, and `A` is the inductive applied when `a` is one of its constructor values (`IndAt`).
-Assumes 7 facts: `FieldTysKept` (C; read true, pinned), `PremFn` (X), `LibDecls` (C+M), `LibAnd` (M),
+level.
+Assumes 6 facts: `FieldTysKept` (C; read true, pinned), `PremFn` (X), `LibDecls` (C+M), `LibAnd` (M),
 `FieldTysSoundT` (X; conv1's `FieldTysSound` restated at typed parameters and fields, with a level; its
 length half is PROVED for the machine, `FieldLen.machPremises_len`),
-`InjAtInd` (C; read true at reached states; true by construction once `mkEqM`'s fallback is deleted),
-and `CtxS` at the start (part of every step's `Pre`). -/
+and `CtxS` at the start (part of every step's `Pre`). (Branch `conv2-eqargs`: `mkEqM` takes [Eq-inj]'s
+parameters from the equation's type only, so no class condition on the sides; 6 facts.) -/
 theorem mkEqM_sound_fo {K : RunCtx} {ρ : Assignment} {φ : Future} {fuel : Nat} {st st' : MState}
     {A a b P : Value} {bh : Nat} (hfk : FieldTysKept) (hp : PremFn K ρ φ (machPremisesR Reach st))
     (hd : LibDecls K) (ha : LibAnd K ρ φ) (hf : FieldTysSoundT K ρ φ (machPremisesR Reach st))
-    (hi : InjAtInd (machPremisesR Reach st)) (hc : CtxS K st.norm)
+    (hc : CtxS K st.norm)
     (h : Runs (Ochr.mkEqM fuel A a b) st bh P st') (pa : FO a) (pb : FO b)
-    (na : NoProp K a) (nb : NoProp K b) (hia : IndAt A a)
+    (na : NoProp K a) (nb : NoProp K b)
     (sa : SideOkV K ρ φ (capTy K ρ φ A) a) (sb : SideOkV K ρ φ (capTy K ρ φ A) b)
     (hA : (capTy K ρ φ A).level.isSome = true) :
     Reach st st' ∧
       PropU K ρ φ P (meanV K ρ φ (.plain (capTy K ρ φ A)) a = meanV K ρ φ (.plain (capTy K ρ φ A)) b) := by
   obtain ⟨d, hk⟩ := mkEqM_refine hfk fuel st st' A a b P bh h
   have hl := libOk_of hd ha
-  exact ⟨hk, eqTo_fo hp (unitOk_fo hl hd.andP) hl ⟨machPremises_len Reach st, hf⟩ hi (leafsOk_ctx hc) (find_ctx hc) d pa pb na nb hia
+  exact ⟨hk, eqTo_fo hp (unitOk_fo hl hd.andP) hl ⟨machPremises_len Reach st, hf⟩ (leafsOk_ctx hc) (find_ctx hc) d pa pb na nb
     sa sb hA⟩
 
 end Ochr.Meaning.Conv
