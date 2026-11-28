@@ -353,6 +353,10 @@ import Ochr.Meaning.Steps.Machine.KindFacts
 import Ochr.Meaning.Steps.Machine.NamesCE
 import Ochr.Meaning.Steps.Machine.BorrowRead
 import Ochr.Meaning.Steps.Machine.JoinLocal
+import Ochr.Meaning.Conv.Compose
+import Ochr.Meaning.Conv.Attack
+import Ochr.Meaning.Conv.FieldIdx
+import Ochr.Meaning.Conv.Lib
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
