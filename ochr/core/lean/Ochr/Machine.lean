@@ -564,8 +564,8 @@ first), the mark of the binding it captures: whether it is some function's bindi
 capture of one. Read from the bindings themselves, never from their values: capturing a function
 value that is not a copy moves it, leaving `⊥` behind, but the binding keeps its mark. Since D139
 a function under check is never kept as a capture, and the only bindings that carry a mark are
-functions' bindings of themselves (D136's amendment), which only a recursive function's body can
-name (D31), where it holds the function under check, and captures marked from them; so every mark
+recursive functions' bindings of themselves (D148; D136's amendment marked every function's), which
+only a recursive function's body can name (D31), where it holds the function under check, and captures marked from them; so every mark
 read here is `none` (measured at D139's landing), and the marks decide nothing a comparison of
 names would not. Kept, as D139 says. -/
 def capMarks (fvs : List Nat) : M (Array (Option Nat)) := do
@@ -584,13 +584,28 @@ def markCapRec (marks : Array (Option Nat)) : M Unit := do
     pure { fr with binds := bs }
 
 /-- D78: mark the top frame's last binding as the binding of itself of the function whose
-mark is `uid` (every function's check takes a fresh one; it is its [Rec] frame's when it declares
-`by`, D136's amendment). -/
+mark is `uid`: its [Rec] frame's. Only a function that declares `by` is marked: any other
+function's slot holds `()` and no mark (D148, reverting D136's amendment, which marked every
+function's). -/
 def markLastRec (uid : Nat) : M Unit := do
   let f ← topIdx
   modifyFrame f fun fr =>
     if fr.binds.size == 0 then fr
     else { fr with binds := fr.binds.modify (fr.binds.size - 1) ({ · with recUid := some uid }) }
+
+/-- D148: push a function's own-name slot, the first binding of its body's frame after the
+captures. It holds the function `fv` itself at its Π-type `T` (read as `.pi cd`) only for a
+function that declares `by` (`rec? = some (fv, T, cd)`): its body calls it, and [Rec] recognises
+those calls by the slot's mark. For every other function (a top-level definition without `by`, a
+λ, a stuck block's function) the slot is `()` at `Unit`, unnamed (`_`) and unmarked: its name is
+not in scope in its body (D31), so nothing reads the slot, and the consistency proof's model has no
+counterpart there for the function itself. The binder stays in the code, so no index changes. The
+one place both frames that run a body take the slot from: the check of the body (`checkFix`) and
+every call (`runBodyCore`). -/
+def pushSelf (self : Hint) (rec? : Option (Value × Value × DeclInfo)) : M Unit :=
+  match rec? with
+  | some (fv, T, cd) => pushBind self (some T) fv false (.pi cd)
+  | none => pushBind ⟨"_"⟩ (some .tUnit) .unit false .unit
 
 /-- D78 [Rec]: the frame mark of a call's head, when the head is a variable: the
 `Binding.recUid` of the binding it names (a function's binding of itself; a closure's capture of
@@ -3302,20 +3317,21 @@ them, moved out of the temporaries (`takeCallTemps`) with nothing run in between
 def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value)
     (B : Option Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let .fix self hs ds c _ body := t | err "internal: not a fix"
+  let .fix self hs ds c dec body := t | err "internal: not a fix"
   -- K2/K3: a model function's body never runs at runtime
   let model ← match fv with
     | .gfn n => do pure (← lookupGlobal n).model
     | _ => pure false
   if model then modify fun s => { s with modelDepth := s.modelDepth + 1 }
-  let r ← onFail (runBodyCore fuel' fv cs t rd ws B self hs ds c body)
+  let r ← onFail (runBodyCore fuel' fv cs t rd ws B self hs ds c dec body)
     (if model then modify fun s => { s with modelDepth := s.modelDepth - 1 } else pure ())
   if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
   pure r
 termination_by structural fuel
 
 def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value)
-    (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term) : M Value := do
+    (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
+    (body : Term) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let d := (← get).depth
   if d ≥ 2000 then exhausted "call depth exceeded (a non-terminating recursion)"
@@ -3330,15 +3346,16 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   -- which is evaluated now
   let piTy := Value.tPi cs (.pi hs ds c) rd
   let tys ← paramTypes fuel' piTy ws.toList ((pds.zipIdx.filter (·.1 matches .ref _)).map (·.2))
-  let selfTy ← funType fuel' fv none
+  -- D148: the own-name slot holds the function only when it declares `by`
+  let selfTy? ← if dec.isSome then some <$> funType fuel' fv none else pure none
   let pds' ← pds.mapM refineDecl
   let f0 ← topIdx
   pushFrame
   pushCaps fuel' cs rd
   -- D115: the head and the arguments leave the caller's temporaries as the frame binds them
   let (fv, ws) ← takeCallTemps f0 ws.size
-  -- `self` has its Π-type
-  pushBind self (some selfTy) fv false (.pi cd)
+  -- `self` has its Π-type, for a function with `by`; any other function's slot is `()` (D148)
+  pushSelf self (selfTy?.map (fv, ·, cd))
   -- D80 (R2): a parameter whose declared type reads as `Unit` is `()`, at every call as at the
   -- generic one (`checkFix`)
   for ((((((h, w), p), pd), A), i), pd') in (((((hs.zip ws.toList).zip pf).zip pds).zip tys.toList).zipIdx).zip pds' do
@@ -4928,10 +4945,11 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
   let F1 ← popFrameRaw
   let piTy := Value.tPi cs (.pi hs ds c) rd
-  -- D78, D136's amendment: every function's binding of itself carries a fresh mark, whether or not
-  -- it recurses. The mark states a fact about the state (this binding is this function's own), which
-  -- the consistency proof's relation reads to find the function in its body's frame; the checker
-  -- reads it only through an entry of the [Rec] stack, which only a function with `by` has (below)
+  -- D78, D148: a function that declares `by` holds itself in its binding of itself (`pushSelf`),
+  -- which carries a fresh mark, its [Rec] entry's (below): the checker reads it through the entry,
+  -- and the consistency proof's relation reads it to find the function in its body's frame. Any
+  -- other function's slot is `()`, unmarked (D148 reverts D136's amendment there). The mark is
+  -- drawn for every function, so the numbering is as before
   let uid := (← get).nextRecUid
   modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
   pushFrame
@@ -4940,8 +4958,8 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   -- recursive call of that function from this closure's body is still recognised by name (since
   -- D139 no closure captures a function under check, so no capture carries a mark: `capMarks`)
   markCapRec capRec
-  pushBind self (some piTy) fv false (.pi cd)
-  markLastRec uid
+  pushSelf self (if dec.isSome then some (fv, piTy, cd) else none)
+  if dec.isSome then markLastRec uid
   for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof b.decl
   -- [Rec]: the stack holds the functions being checked that declare `by xⱼ` (v1.2, D23), which
   -- since D136 is the top-level definition being checked. A local function has no entry: it cannot

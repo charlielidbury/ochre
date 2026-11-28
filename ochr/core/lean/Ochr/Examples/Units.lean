@@ -298,16 +298,19 @@ def failsWith {α : Type} (r : Except String α) (pre : String) : Bool :=
 
 end Ochr.Units
 
-/-! ## Every function's binding of itself is marked (D78, D136's amendment)
+/-! ## A function's own-name slot holds it only when it has `by` (D78, D148)
 
-Where a function's check starts (`checkFix`), its binding of its own name, the first of its body's
-frame after the captures, carries a fresh mark (`Binding.recUid`), whether or not the function
-recurses; only a function that declares `by` also gets an entry on the [Rec] stack, with that mark
-(D136). The checker reads the mark only through such an entry (`recFrameOf`), so for a function
-without `by` it decides nothing, and no verdict depends on it. It states a fact about the state,
-that this binding is the function's own, which the consistency proof's relation reads to find the
-function in its body's frame: D136's deletion commit marked only functions with `by`, and eight of
-the proof's checks of recorded states failed. Pinned here on the states at each function's hole. -/
+The first binding of a body's frame after the captures is the function's own-name slot. Since D148
+it holds the function itself, at its Π-type, with a fresh mark (`Binding.recUid`, its [Rec]
+entry's), only for a function that declares `by`: its body calls it, and [Rec] recognises the calls
+by the mark. For every other function, a top-level definition without `by` or a local function,
+the slot holds `()` at `Unit`, unnamed and unmarked, in the check of the body (`checkFix`) and at
+every call (`runBodyCore`): its name is not in scope in its body (D31), and the consistency proof's
+model has nothing there for the function itself. (D136's amendment had marked every function's
+slot, holding the function; the proof's relation now finds a non-recursive function's slot by its
+position.) Pinned on the states at each function's hole, and on hand-built core terms that read the
+slot, which no checked body can (D31 rejects it in `checkFix`): only a body run without its check
+reaches it, a closure or a global made by hand. -/
 
 namespace Ochr.Units
 
@@ -317,29 +320,60 @@ ochr SelfMarks uses Nats {
   def NR (n : Nat) : Nat := ?
   -- one that does
   def R (n : Nat) : Nat by n := match n { Z => ?, S(m) => R(m), }
-  -- a local function (never recursive, D136) inside one that does not recurse
+  -- a local function (never recursive, D136) inside one that does not recurse, and inside one that does
   def L (n : Nat) : Nat := (fix go (y : Nat) : Nat := ?)(n)
+  def RL (n : Nat) : Nat by n := match n { Z => (fix go (y : Nat) : Nat := ?)(n), S(m) => RL(m), }
 }
 
-/-- At each recorded state of `name`'s own code whose top frame holds a binding named `self` (the
-function's binding of itself: its body, the hole included), that binding's mark and the marks of
-the [Rec] stack's entries (`Config.recordStates`, located). -/
-def selfMarks (name self : String) : List (Option Nat × List Nat) :=
+/-- At each recorded state of `name`'s own code (`Config.recordStates`, located; its body, the
+hole included): the own-name slot of the top frame (its first binding that is not a capture), as
+its name, value, type and mark, and the marks of the [Rec] stack's entries. -/
+def selfMarks (name : String) : List ((String × Value × Option Value × Option Nat) × List Nat) :=
   let r := runWith (some Prelude) "SelfMarks" SelfMarks { recordStates := true } (located := true)
   match r.rows.find? (·.name == name) with
   | some row => row.trace.toList.filterMap fun
-      | .state _ false _ st => (st.env.back!.binds.find? (·.hint.name == self)).map fun b =>
-          (b.recUid, st.recStack.map (·.uid))
+      | .state _ false _ st => (st.env.back!.binds.find? (!·.cap)).map fun b =>
+          ((b.hint.name, b.val, b.ty, b.recUid), st.recStack.map (·.uid))
       | _ => none
   | none => []
 
--- the hole of a non-recursive global's body: its binding of itself carries a mark, and the [Rec]
--- stack is empty (D136's deletion left the mark off)
-#guard !(selfMarks "NR" "NR").isEmpty && (selfMarks "NR" "NR").all fun (m, rs) => m.isSome && rs.isEmpty
--- a recursive global: its mark is its [Rec] entry's, the only one on the stack
-#guard !(selfMarks "R" "R").isEmpty && (selfMarks "R" "R").all fun (m, rs) => m.isSome && rs == m.toList
--- a local function's binding of itself carries a mark too, and it has no [Rec] entry
-#guard !(selfMarks "L" "go").isEmpty && (selfMarks "L" "go").all fun (m, rs) => m.isSome && rs.isEmpty
+/-- The slot of a function without `by`: `()` at `Unit`, unnamed, unmarked. -/
+def unitSlot : String × Value × Option Value × Option Nat → Bool
+  | ("_", .unit, some .tUnit, none) => true
+  | _ => false
+
+-- the hole of a non-recursive global's body: its slot is `()`, and the [Rec] stack is empty (before
+-- D148 it held the global, marked)
+#guard !(selfMarks "NR").isEmpty && (selfMarks "NR").all fun (b, rs) => unitSlot b && rs.isEmpty
+-- a recursive global: its slot holds it, at its Π-type, and its mark is its [Rec] entry's, the
+-- only one on the stack
+#guard !(selfMarks "R").isEmpty && (selfMarks "R").all fun
+  | (("R", .gfn "R", some (.tPi ..), some m), rs) => rs == [m]
+  | _ => false
+-- a local function's slot is `()` too, and it has no [Rec] entry; inside a recursive global, the
+-- stack holds the global's entry only
+#guard !(selfMarks "L").isEmpty && (selfMarks "L").all fun (b, rs) => unitSlot b && rs.isEmpty
+#guard (selfMarks "RL").any (fun (b, rs) => unitSlot b && rs.length == 1)
+
+/-- A body made by hand that reads its own-name slot (`.var 1`, after the parameter `x`), with or
+without `by`. -/
+def readSelf (dec : Option Nat) : Term := .fix ⟨"g"⟩ [⟨"x"⟩] [.nat] .nat dec (.place (.var 1))
+
+/-- The untyped call `f(0)` from the state after `Nats` with the global `G` made by hand from
+`readSelf dec`: its value or its error. -/
+def callSelf (f : Term) (dec : Option Nat) : String :=
+  let G : GDef := { name := "G", ty := .tPi [] (.pi [⟨"x"⟩] [.nat] .nat) [], fn? := some (readSelf dec), val := .gfn "G" }
+  match runM (do pure (← Ochr.eval 1000 false (.call f [.zero] false) none).1)
+      { st Nats 0 with globals := globalsOf Nats ++ [G] } with
+  | .ok v => s!"{v}"
+  | .error m => m
+
+-- a closure without `by` reads `()` in its slot (before D148: the closure itself)
+#guard callSelf (.val (.clo [] (readSelf none) [])) none == "()"
+-- a global without `by` likewise (before D148: `G`)
+#guard callSelf (.const "G") none == "()"
+-- a global with `by`: its slot holds it
+#guard callSelf (.const "G") (some 0) == "G"
 
 end Ochr.Units
 

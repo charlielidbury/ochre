@@ -849,7 +849,8 @@ field by its declared type (v2.0: a parameter declared `: Prop`, or a Prop induc
 sub-places and captured values never are.
 
 D100: by the declared reading, not the binding's `proof` flag. They differ at one kind of
-binding: a proof function's binding of itself in its body (`runBodyCore`, `checkFix`), and a
+binding: a recursive proof function's binding of itself in its body (`runBodyCore`, `checkFix`;
+since D148 only a function with `by` holds itself there, any other's slot being `()`), and a
 closure's capture of it, which hold the function itself rather than `⋆` so that [Rec] sees the
 recursive calls made through them (D78). Their flag stays `false`, since a capture flagged a proof
 has its reads inlined as `(⋆ : T)` (`capture`), which would hide a call that does not decrease
