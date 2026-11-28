@@ -560,6 +560,64 @@ theorem tStepMatchNat_of {K : RunCtx} {φ : Future} (hInv : TailMatchNatInv) (hJ
   · exact tStepMatchNat_proof (K := { K with Δ := Δ }) hInv hJI hPJ hTag hW hG hPA hRE hVC ih' ρ p z u st k s π bh st' hm htn hne htd
       hk hp hr hS hv hab hnh hD hrun h2
 
+/-! ## A match on a known constructor, not at the end of a body (`StepMatchNat`'s known case): STATED, not proved
+
+`evalMatch` on a scrutinee whose content after the access is `Z` or `S(w)`: [Entry] (`joinEnds`, not in tail
+position: `blockEntry`, the captures of the block the match would close off as, accessed in its order), the arm run with
+no hint in a typed run (the match's hint in an untyped run at the end of a body), the join's drop with the arm's result
+in flight (`joinDrop`), and, where the match's declared type is a borrow, the result lent what the block's would be
+(`lendEnv` with a reserved label, D90). The reference: `tagOf`, `matchEntry` (`entryAccess` at `Decisions.blockCaps`,
+`MatchEntryOk`), the arm at `tailHint`, `JoinDropOk` and `joinDrop`, `entryLend` (only a live label, D222). An unknown
+scrutinee closes off as a stuck block in a typed run (out of scope: decision (b) pending) and is stuck in an untyped one
+(no successful run). The facts the step needs, each classed: -/
+
+/-- **[Entry] at a match on a known constructor** (mixed, NEW; D90's static ends, the paper's [Entry]): the checker's
+`blockEntry` (the captures of the block the match would close off as, in `closeBlock`'s order, each accessed, a capture by
+`&` invalidating, D112) against the reference's `matchEntry` (`Decisions.blockCaps` at the places moved after the tag,
+`entryAccess`, its strict test `MatchEntryOk`): the relation after, under an extension, what a run keeps. Its parts: the
+captures and modes the same on both sides (`blockCaps` aligned with `blockCaptures`, the moved places by `joinEntry_stmt`),
+each access `AccessG`'s, the re-rootings `movedPlace`'s. -/
+def MatchEntryG : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (stA stE : MState) (sA : SState) (t : Term)
+    (caps : Array (Place × Nat)) (m bE : Nat),
+    0 < stA.env.size → Pre K ρ stA → Rel K ρ φ π stA sA → Strict.SGood K.dm K.Γ φ sA → DecTab K.D stE →
+    Runs (Ochr.blockEntry m t) stA bE caps stE →
+    MatchEntryOk K φ true t sA ∧ ∃ (ρE : Assignment) (ΔE : Nat → TyS) (πE : Nat → Nat),
+      Ext K ρ π stA stE ρE ΔE πE ∧ Kept stA stE ∧
+      Pre { K with Δ := ΔE } ρE stE ∧ Rel { K with Δ := ΔE } ρE φ πE stE (matchEntry K φ true t sA).1
+
+/-- **The join's drop after an arm, with the arm's result in flight** (mixed, NEW; [Join], D84; the old
+`joinDrop_step_stmt` in the master's form), at a match whose declared type is not a borrow: from the arm's end (its
+result `v : T?` related to the reference's), the checker's drops (`joinDrop`'s loop after `staticJoin`, the result held
+as a temporary) against the reference's `JoinDropOk` and `joinDrop` at the places moved after the entry: the value keeps
+its meaning, type and label; the relation after, under an extension. As first written it took the lending as a FREE
+parameter `lend : M Unit` after the drops (any action plugged in made it false; and `joinEnds` marks the by-move borrow
+variables' lent places BEFORE the arm, so no action after the drops is the lending): the borrow-typed match's lending is
+its own fact, `JoinLendG`, stated in prose below. -/
+def JoinDropG : Prop :=
+  ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st₁ st₂ : MState) (sE s₁ : SState) (t : Term)
+    (v : Value) (T? : Option Value) (r : Res) (m b : Nat),
+    isRefDecl (K.D.declOf (scopeOf sE) t) = false →
+    Pre K ρ (st₁.withTempT v T?) → Rel K ρ φ π (st₁.withTempT v T?) s₁ → Strict.SGood K.dm K.Γ φ s₁ →
+    meanV K ρ (fun l => φ (π l)) r.2 v = r.1 → (∀ T, T? = some T → StrAgree K ρ T r.2) →
+    r.2.label = (Value.heldLabel v).map π →
+    Runs (do let (drops, _) ← Ochr.staticJoin m t
+             Ochr.pushTemp v T? "joinDrop"
+             for q in drops do Ochr.dropAtJoin m (← Ochr.movedPlace m q)
+             discard Ochr.popTemp) st₁ b () st₂ →
+    JoinDropOk K φ (movedPlaces φ sE) t s₁ ∧ ∃ (ρ₂ : Assignment) (Δ₂ : Nat → TyS) (π₂ : Nat → Nat),
+      Ext K ρ π st₁ st₂ ρ₂ Δ₂ π₂ ∧ Kept st₁ st₂ ∧
+      meanV { K with Δ := Δ₂ } ρ₂ (fun l => φ (π₂ l)) r.2 v = r.1 ∧
+      (∀ T, T? = some T → StrAgree { K with Δ := Δ₂ } ρ₂ T r.2) ∧ r.2.label = (Value.heldLabel v).map π₂ ∧
+      Pre { K with Δ := Δ₂ } ρ₂ (st₂.withTempT v T?) ∧
+      Rel { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT v T?) (joinDrop K φ (movedPlaces φ sE) t s₁)
+
+/-! `JoinLendG` (mixed, NOT stated in Lean): at a match whose declared type is a borrow, `joinEnds`' lending, in two parts
+around the arm (before: a label `g` reserved and the by-move borrow variables' lent places marked for it; after the
+drops: the result's label `k` given `g`'s marks, the by-`&` captures' places lent to `k`), against the reference's
+`entrySnapshot` (taken after the entry) and `entryLend` at the result's label, which lends only a live label (D222).
+Attacked on `MatchAtk.A7` (accepted). -/
+
 /-! ## The facts attacked on the real checker (`MatchAtk`'s programs) -/
 
 namespace MatchGuards
