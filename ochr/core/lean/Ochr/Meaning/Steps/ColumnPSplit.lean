@@ -60,13 +60,11 @@ theorem mean_stP_n (ρ : Assignment) (ψ : Future) :
     Env.mean (KP dm D φ Δ).dm (KP dm D φ Δ).M (KP dm D φ Δ).Γ ρ ψ stP.env (.bind 1 1) = ρ 0 := rfl
 
 theorem mean_stP_self (ρ : Assignment) (ψ : Future) :
-    Env.mean (KP dm D φ Δ).dm (KP dm D φ Δ).M (KP dm D φ Δ).Γ ρ ψ stP.env (.bind 1 0) = selfSem dm.read φ := by
-  show ((KP dm D φ Δ).C.global "P").1 = _
-  simp [KP, CP]
+    Env.mean (KP dm D φ Δ).dm (KP dm D φ Δ).M (KP dm D φ Δ).Γ ρ ψ stP.env (.bind 1 0) = .el0 Unit () := rfl
 
 /-- **A reference state related to `P`'s start state reads as `RefP`.** -/
 theorem refP_of_rel {ρ : Assignment} {π : Nat → Nat} {s : SState} (hr : Rel (KP dm D φ Δ) ρ φ π stP s) :
-    RefP ρ φ (selfSem dm.read φ) s := by
+    RefP ρ φ (.el0 Unit ()) s RIu := by
   have hlive : s.liveLabels = [] := liveLabels_of_rel hr noBorrow_stP
   have hF : RelF φ s φ ∧ TypedLive (KP dm D φ Δ) s φ :=
     ⟨fun _ _ => rfl, fun l hl => absurd hl (by show l ∉ s.liveLabels; rw [hlive]; simp)⟩
@@ -116,7 +114,7 @@ theorem setAtE_envN (v w : Value) : Env.setAtE (envN v) (.bind 1 1) w = envN w :
 theorem allPos_envN (v : Value) : allPos (envN v) = [.bind 1 0, .bind 1 1] := by
   rw [allPos_eq]; simp [envN, frameAllPos, List.range_succ]
 
-theorem values_envN (v : Value) : Env.values (envN v) = [.gfn "P", v] := by
+theorem values_envN (v : Value) : Env.values (envN v) = [.unit, v] := by
   rw [Env.values, allPos_envN]; rfl
 
 theorem valAt_envN_n (v : Value) : valAt (envN v) (.bind 1 1) = v := rfl
@@ -167,11 +165,10 @@ variable {dm : DataModel} {D : Decisions} {φ : Future}
 /-- The skeleton of a state with `envN v`'s frames: the function's own binding at `selfTy`, `n` at `Nat`. -/
 theorem skel_envN (Δ : Nat → TyS) (ρ : Assignment) (st : MState) (v : Value) (he : st.env = envN v) :
     (SM' (KP dm D φ Δ) ρ st).env.map (fun fr => fr.binds.map bindSkel) =
-      [[], [(selfTy dm.read, .pi .other), (TyM.nat, .other)]] := by
+      [[], [(TyM.unit, .unit), (TyM.nat, .other)]] := by
   unfold SM' MState.sstate; rw [he]
-  have h0 : Binding.refTy (KP dm D φ Δ).dm (KP dm D φ Δ).M (KP dm D φ Δ).Γ ρ (envN v) 1 0 selfP = .plain (selfTy dm.read) := by
-    rw [Binding.refTy_marked _ _ _ _ _ _ _ _ 0 rfl rfl]
-    simp [KP, CP, selfP, RunCtx.M, codeMeaning]
+  have h0 : Binding.refTy (KP dm D φ Δ).dm (KP dm D φ Δ).M (KP dm D φ Δ).Γ ρ (envN v) 1 0 selfP = .plain TyM.unit := by
+    rw [Binding.refTy_unmarked _ _ _ _ _ _ _ _ rfl]; rfl
   have h1 : Binding.refTy (KP dm D φ Δ).dm (KP dm D φ Δ).M (KP dm D φ Δ).Γ ρ (envN v) 1 1 { nB with val := v } = .plain TyM.nat := by
     rw [Binding.refTy_unmarked _ _ _ _ _ _ _ _ rfl]; rfl
   simp only [envN, List.zipIdx, List.map, Nat.zero_add]
@@ -202,12 +199,12 @@ end
 
 /-- World `Z` after its refinement: `n ↦ Z`, the record `0 := Z`. -/
 def stZ0 : MState :=
-  { env := envN .zero, globals := [gP], nextAbs := 1, absTy := #[.tNat], absDecl := #[.other], goal := some .tNat,
+  { env := envN .zero, nextAbs := 1, absTy := #[.tNat], absDecl := #[.other], goal := some .tNat,
     refs := [(0, .zero)] }
 
 /-- World `S` after its refinement: the fresh `σ1 : Nat`, `n ↦ S(σ1)`, the record `0 := S(σ1)`. -/
 def stS0 : MState :=
-  { env := envN (.succ (.abs 1)), globals := [gP], nextAbs := 2, absTy := #[.tNat, .tNat],
+  { env := envN (.succ (.abs 1)), nextAbs := 2, absTy := #[.tNat, .tNat],
     absDecl := #[.other, .other], goal := some .tNat, refs := [(0, .succ (.abs 1))] }
 
 /-- `ρ` extended by world `S`'s fresh unknown: `σ1` is the predecessor `a`. -/
@@ -313,7 +310,7 @@ def TVals : List Value := [.zero, .abs 1]
 theorem allPos_envT (t : Value) : allPos (envT t) = [.bind 1 0, .bind 1 1, .temp 1 0] := by
   rw [allPos_eq]; simp [envT, frameAllPos, List.range_succ]
 
-theorem values_envT (t : Value) : Env.values (envT t) = [.gfn "P", .bot, t] := by
+theorem values_envT (t : Value) : Env.values (envT t) = [.unit, .bot, t] := by
   rw [Env.values, allPos_envT]; rfl
 
 theorem bind_envT {t : Value} {f i : Nat} {b : Binding} (h : (envT t)[f]?.bind (fun fr => fr.binds[i]?) = some b) :
@@ -327,7 +324,7 @@ theorem bind_envT {t : Value} {f i : Nat} {b : Binding} (h : (envT t)[f]?.bind (
   · simp [envT] at h
 
 theorem mem_values_envT {t v : Value} (ht : t ∈ TVals) (hv : v ∈ Env.values (envT t)) :
-    v = .gfn "P" ∨ v = .bot ∨ v = .zero ∨ v = .abs 1 := by
+    v = .unit ∨ v = .bot ∨ v = .zero ∨ v = .abs 1 := by
   rw [values_envT] at hv
   simp only [TVals, List.mem_cons, List.not_mem_nil, or_false] at hv ht
   rcases hv with rfl | rfl | rfl
@@ -358,7 +355,7 @@ theorem liveLoan_envT {t : Value} (ht : t ∈ TVals) (l : Nat) : liveLoan (envT 
   rcases ht with rfl | rfl <;> rfl
 
 theorem ckContent_envT {t : Value} {p : Place} {v : Value} (h : ckContent (envT t) p = some v) :
-    v = .gfn "P" ∨ v = .bot := by
+    v = .unit ∨ v = .bot := by
   rcases hp : p.steps with ⟨i, path⟩
   simp only [ckContent, hp] at h
   unfold ckVarPos at h
@@ -366,7 +363,7 @@ theorem ckContent_envT {t : Value} {p : Place} {v : Value} (h : ckContent (envT 
   · have hi' : i < (envT t)[(envT t).size - 1]!.binds.size := hi
     rw [if_pos hi'] at h
     simp only [Option.bind_some] at h
-    have hv : ∀ w : Value, (w = .gfn "P" ∨ w = .bot) → w.follow path = some v → v = .gfn "P" ∨ v = .bot := by
+    have hv : ∀ w : Value, (w = .unit ∨ w = .bot) → w.follow path = some v → v = .unit ∨ v = .bot := by
       rintro w hw hf
       cases path with
       | nil => simp [Value.follow] at hf; exact hf ▸ hw
@@ -412,7 +409,7 @@ theorem inv_envT {D : Decisions} {st : MState} {t : Value} (ht : t ∈ TVals) (h
     (hrefs : ∀ σ r, (σ, r) ∈ st.refs → σ < st.absTy.size ∧ ∀ τ, r.hasAbs τ = true → τ < st.absTy.size)
     (hg : st.goal = some .tNat) (hneu : st.neutrals = []) (heta : st.etaRefs = [])
     (hdecl : ∀ (σ l : Nat), st.absDecl[σ]? ≠ some (DeclInfo.sort l)) : Inv D [] st := by
-  have hvals : ∀ v ∈ Env.values st.env, v = .gfn "P" ∨ v = .bot ∨ v = .zero ∨ v = .abs 1 := fun v hv => by
+  have hvals : ∀ v ∈ Env.values st.env, v = .unit ∨ v = .bot ∨ v = .zero ∨ v = .abs 1 := fun v hv => by
     rw [he] at hv; exact mem_values_envT ht hv
   have hpos : ∀ p ∈ allPos st.env, p = .bind 1 0 ∨ p = .bind 1 1 ∨ p = .temp 1 0 := fun p hp => by
     rw [he, allPos_envT] at hp; simpa using hp
@@ -496,12 +493,12 @@ theorem inv_envT {D : Decisions} {st : MState} {t : Value} (ht : t ∈ TVals) (h
 /-- World `Z`'s leaf with `Z` in flight (the kernel; `leafZ.withTempT Z (some Nat)` but for the temporary's
 stored type). -/
 def lzT : MState :=
-  { env := envT .zero, globals := [gP], nextAbs := 1, absTy := #[.tNat], absDecl := #[.other], goal := some .tNat,
+  { env := envT .zero, nextAbs := 1, absTy := #[.tNat], absDecl := #[.other], goal := some .tNat,
     refs := [(0, .zero)] }
 
 /-- World `S`'s leaf with `σ1` in flight. -/
 def lsT : MState :=
-  { env := envT (.abs 1), globals := [gP], nextAbs := 2, absTy := #[.tNat, .tNat], absDecl := #[.other, .other],
+  { env := envT (.abs 1), nextAbs := 2, absTy := #[.tNat, .tNat], absDecl := #[.other, .other],
     goal := some .tNat, refs := [(0, .succ (.abs 1))] }
 
 theorem norm_lzT : lzT.norm = lzT := by simp [lzT, envT, MState.norm, Env.erase, Frame.erase]
@@ -524,33 +521,23 @@ theorem find_gP {n : String} {g : GDef} (h : [gP].find? (·.name == n) = some g)
   · rename_i hn; cases h; exact ⟨(beq_iff_eq.mp hn).symm, rfl⟩
   · cases h
 
-/-- **The context's part at every state of `P`'s body** (any `Δ`): no declarations, `P`'s global its stage-0
-closure, the function being checked. -/
-theorem ctxS_P (Δ : Nat → TyS) {st : MState} (hg : st.globals = [gP]) (hi : st.inds = []) : CtxS (KP dm D φ Δ) st where
+/-- **The context's part at every state of `P`'s body** (any `Δ`): no declarations, no global (`P` enters Σ after its
+check, main's D147), no function under check. -/
+theorem ctxS_P (Δ : Nat → TyS) {st : MState} (hg : st.globals = []) (hi : st.inds = []) : CtxS (KP dm D φ Δ) st where
   inds := hi ▸ List.nil_prefix
   covers := fun _ h => absurd h List.not_mem_nil
   faithful := fun _ h => by rw [hi] at h; exact absurd h List.not_mem_nil
   noLabel := fun n => by simp only [KP, CP]; split <;> rfl
   globals := {
-    ty := fun n g hf hc => by rw [hg] at hf; exact absurd (by rw [(find_gP hf).1]; rfl) hc
-    const := fun n g hf hn => by rw [hg] at hf; rw [(find_gP hf).2] at hn; cases hn
-    fn := fun n g t hf _ hc => by rw [hg] at hf; exact absurd (by rw [(find_gP hf).1]; rfl) hc
-    mem := fun n g hf hc => by rw [hg] at hf; exact absurd (by rw [(find_gP hf).1]; rfl) hc
-    fixEq := fun n _ _ _ _ _ _ _ hf hc _ => by rw [hg] at hf; exact absurd (by rw [(find_gP hf).1]; rfl) hc
-    accepted := fun n _ _ _ _ _ _ _ hf hc _ => by rw [hg] at hf; exact absurd (by rw [(find_gP hf).1]; rfl) hc
-    retKind := fun n _ _ _ _ _ _ _ hf hc _ => by rw [hg] at hf; exact absurd (by rw [(find_gP hf).1]; rfl) hc
-    codeValFree := fun n g t hf ht => by
-      rw [hg] at hf; obtain ⟨-, rfl⟩ := find_gP hf
-      simp only [gP, Option.some.injEq] at ht; subst ht; rfl
-    memBelow := fun n g b hf hcur => by
-      rw [hg] at hf
-      obtain ⟨rfl, rfl⟩ := find_gP hf
-      simp only [KP, Option.some.injEq, Prod.mk.injEq, true_and] at hcur
-      subst hcur
-      refine ⟨1, φ, psI, outI, fun _ => none, ⟨Nat.le_succ_of_le (Nat.le_succ 1), fun _ _ h => absurd h (Nat.not_lt_zero _)⟩,
-        fun _ _ _ h => absurd h (Nat.not_lt_zero _), ?_, ?_, fun _ _ h => absurd h (Nat.not_lt_zero _)⟩
-      · simp only [KP, CP]; rfl
-      · simp only [KP, CP]; rfl }
+    ty := fun n g hf _ => by rw [hg] at hf; cases hf
+    const := fun n g hf _ => by rw [hg] at hf; cases hf
+    fn := fun n g t hf _ _ => by rw [hg] at hf; cases hf
+    mem := fun n g hf _ => by rw [hg] at hf; cases hf
+    fixEq := fun n _ _ _ _ _ _ _ hf _ _ => by rw [hg] at hf; cases hf
+    accepted := fun n _ _ _ _ _ _ _ hf _ _ => by rw [hg] at hf; cases hf
+    retKind := fun n _ _ _ _ _ _ _ hf _ _ => by rw [hg] at hf; cases hf
+    codeValFree := fun n g t hf _ => by rw [hg] at hf; cases hf
+    memBelow := fun n g b hf _ => by rw [hg] at hf; cases hf }
 
 theorem absTyM_nat (K : RunCtx) (ρ : Assignment) {st : MState} {σ : Nat} (h : st.absTy[σ]? = some .tNat) :
     MState.absTyM K.dm K.M K.Γ ρ st σ = TyM.nat := by
@@ -646,7 +633,7 @@ counters in world `Z`, every assignment meeting `Pre` and every reference state 
 the body in tail position succeeds, and at the leaf of the world the assignment selects `k` ran on the checker's value
 and `Out` holds. Assumes the checker fact `SplitPInv` and the decisions `ParDecP` (`parDecP` gives them at the table
 aligned with the checker at `stP`). -/
-theorem split_outP (hSp : SplitPInv) {Δ : Nat → TyS} (hd : ParDecP D) {fuel : Nat} {k : Value → Value → M Unit}
+theorem split_outP (hSp : SplitPInv) {Δ : Nat → TyS} (hd : ParDecP D RIu) {fuel : Nat} {k : Value → Value → M Unit}
     (hk : KeepsAtZ k) {st st' : MState} {bh : Nat} (hkern : Kern stP st) (hm : Mode st) (htd : st.tailDecl = none)
     (hrun : Runs (Ochr.checkTail fuel bodyP k) st bh () st') {ρ : Assignment} {π : Nat → Nat} {s : SState}
     (hpre : Pre (KP dm D φ Δ) ρ st) (hr : Rel (KP dm D φ Δ) ρ φ π st s) (hint : TyS) :
@@ -664,7 +651,7 @@ theorem split_outP (hSp : SplitPInv) {Δ : Nat → TyS} (hd : ParDecP D) {fuel :
     have h := hp0.asg.delta 0 hrefd' (by rw [norm_stP]; decide)
     rw [norm_stP] at h; exact h
   have hP := refP_of_rel hr0
-  obtain ⟨hZ, hS⟩ := runP (K := KP dm D φ Δ) hd hP (movedIn_selfSem dm.read φ) hint
+  obtain ⟨hZ, hS⟩ := runP (K := KP dm D φ Δ) hd hP (fun _ => rfl) hint
   have hsz : st.absTy.size = 1 := by rw [← hkern.absTy]; rfl
   cases m with
   | zero =>
@@ -688,7 +675,7 @@ theorem split_outP (hSp : SplitPInv) {Δ : Nat → TyS} (hd : ParDecP D) {fuel :
     · exact rel_withTempT_inertA ((rel_leafS hr0 hm0).of_kern hkS) (abs_inertA 1) _
 
 /-- **`P`'s body, simulated in the tail form** (`TailSim`): assumes the checker fact `SplitPInv`. -/
-theorem split_simP (hSp : SplitPInv) {Δ : Nat → TyS} (hd : ParDecP D) {fuel : Nat} {k : Value → Value → M Unit}
+theorem split_simP (hSp : SplitPInv) {Δ : Nat → TyS} (hd : ParDecP D RIu) {fuel : Nat} {k : Value → Value → M Unit}
     (hk : KeepsAtZ k) {st : MState} (hkern : Kern stP st) (hm : Mode st) (htd : st.tailDecl = none) (ρ : Assignment) :
     TailSim (KP dm D φ Δ) ρ φ fuel st bodyP k :=
   fun _ _ _ _ hpre hr _ hrun => split_outP hSp hd hk hkern hm htd hrun hpre hr _

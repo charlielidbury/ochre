@@ -24,17 +24,23 @@ def AgreeA (σ : Nat) : Prop := ρ σ = ρ' σ ∧ K.Δ σ = Δ' σ
 /-- The context with the other Δ. -/
 abbrev KA : RunCtx := { K with Δ := Δ' }
 
-theorem fixBodyAt_congrA {body : Term} {fb : List PBind × PBind}
+theorem fixBodyWith_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
-    (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (selfM : Sem) (args : List Sem) :
-    fixBodyAt K ρ φ fb s ps out piT start body selfM args = fixBodyAt (KA K Δ') ρ' φ fb s ps out piT start body selfM args := by
-  unfold fixBodyAt
+    (s : SState) (ps : List PiDom) (out : PiCod) (start : Nat) (sb : SBinding) (args : List Sem) :
+    fixBodyWith K ρ φ fb s ps out start body sb args = fixBodyWith (KA K Δ') ρ' φ fb s ps out start body sb args := by
+  unfold fixBodyWith
   dsimp only
-  generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F
+  generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind sb, [], []) = F
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
   rw [SM.bodyRun_congr (hb _ s₂)]
   rfl
+
+theorem fixBodyAt_congrA {body : Term} {fb : List PBind × PBind}
+    (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
+    (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (selfM : Sem) (args : List Sem) :
+    fixBodyAt K ρ φ fb s ps out piT start body selfM args = fixBodyAt (KA K Δ') ρ' φ fb s ps out piT start body selfM args :=
+  fixBodyWith_congrA K Δ' ρ ρ' φ hb s ps out start _ args
 
 theorem fixStage_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
@@ -54,10 +60,11 @@ theorem fixG_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
     (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (dec : Option Nat) :
     fixG K ρ φ fb l s ps out piT start dec body = fixG (KA K Δ') ρ' φ fb l s ps out piT start dec body := by
-  funext args
-  show fixStage K ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
-    = fixStage (KA K Δ') ρ' φ fb l s ps out dec start body (fixRank dec args + 1) args
-  rw [fixStage_congrA K Δ' ρ ρ' φ hb]
+  cases dec with
+  | none => funext args; exact fixBodyWith_congrA K Δ' ρ ρ' φ hb s ps out start unitSlot args
+  | some j =>
+    funext args
+    exact congrFun (fixStage_congrA K Δ' ρ ρ' φ hb l s ps out (some j) start (fixRank (some j) args + 1)) args
 
 end
 

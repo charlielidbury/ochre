@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.TopFix
+import Ochr.Meaning.Steps.TopFixN
 import Ochr.Meaning.Steps.TopSorts
 
 /-!
@@ -72,7 +72,10 @@ def GlobGrowG (items : List Item) : Prop :=
 /-- **The links of the top** (each a named fact with its class and status in its docstring). -/
 structure TopLinks (items : List Item) : Prop where
   const : ConstG dm D Γ fuel items
+  /-- a function with `by`: the knot -/
   func : FixG dm D Γ fuel items
+  /-- a function without `by`: the constant's route (R-dec, docs/31 D296) -/
+  funcN : FixNG dm D Γ fuel items
   globGrow : GlobGrowG dm D Γ fuel items
 
 end
@@ -81,7 +84,8 @@ end
 section
 variable {dm : DataModel} {D : MState → Decisions} {Γ : List IndDecl} {fuel : Nat}
 
-/-- **An accepted definition keeps the invariant** (assembled): its meaning a member (`const_member` or `fix_member`),
+/-- **An accepted definition keeps the invariant** (assembled): its meaning a member (`const_member`, `fix_member` with
+`by`, `fixN_member` without, R-dec),
 with no label (`defMeaning_label`), and its `GlobalsOk` clauses at every later check (`GlobGrowG`, given the knot's
 output for a function). -/
 theorem stageOk_defn
@@ -105,11 +109,21 @@ theorem stageOk_defn
       obtain ⟨g, hg, hgn, -⟩ := hck.2.2.2.2.2.2.2.2.2.1
       refine ⟨const_member hsteps hsorts items hL.const P d st' hin hd hP hfaith hcov hΓP hr, ⟨g, by rw [hg]; simp, hgn⟩,
         fun h => absurd hd h⟩
-    · obtain ⟨w, hck, hfit, hst, hcg, hlf, hpa, hcl, hfl⟩ := hL.func P d st' hin hd hr hP hfaith hcov hΓP
-      have hmn := fixMeanAt_of dm D Γ P d st' hd hcl hpa hfl
-      refine ⟨fix_member hsteps hsorts P d st' hP w hck hfit hst hcg hlf hmn,
-        ⟨fnEntry d w.model, by rw [hck.2.2.2.2.2.2.2.2.1]; simp, rfl⟩,
-        fun _ ρ φ => fnGoodAt_of_knot hsteps hsorts P d st' hP w hck hfit hst hcg hlf ρ φ⟩
+    · cases hdec : d.dec with
+      | some j =>
+        have hds : d.dec.isSome = true := by rw [hdec]; rfl
+        obtain ⟨w, hck, hfit, hst, hcg, hlf, hpa, hcl, hfl⟩ := hL.func P d st' hin hd hr hP hfaith hcov hΓP hds
+        have hmn := fixMeanAt_of dm D Γ P d st' hd hcl hpa hfl
+        refine ⟨fix_member hsteps hsorts P d st' hP w hck hfit hst hcg hlf hmn hds,
+          ⟨fnEntry d w.model, by rw [hck.2.2.2.2.2.2.2.2.1]; simp, rfl⟩,
+          fun _ ρ φ => hdec ▸ fnGoodAt_of_knot hsteps hsorts P d st' hP w hck hfit hst hcg hlf hds ρ φ⟩
+      | none =>
+        -- R-dec (docs/31 D296): without `by`, the constant's route, no knot
+        obtain ⟨w, hck, hfit, hst, hcg, hlf, hstab, hpa, hcl, hfl⟩ := hL.funcN P d st' hin hd hdec hr hP hfaith hcov hΓP
+        have hmn := fixMeanAt_of dm D Γ P d st' hd hcl hpa hfl
+        refine ⟨fixN_member hsteps hsorts P d st' hP w hdec hck hfit hst hcg hlf hstab hmn,
+          ⟨fnEntry d w.model, by rw [hck.2.2.2.2.2.2.2.2.2.1]; simp, rfl⟩,
+          fun _ ρ φ => hdec ▸ fnGoodAtN hsteps hsorts P d st' hP w hdec hck hfit hst hcg hlf hstab ρ φ⟩
   obtain ⟨⟨m, hdm, hmm⟩, ⟨g, hg, hgn⟩, hknot⟩ := hnew
   have hMM : MeansMember dm (ProgState.step dm D Γ (fun _ => .err) {} fuel P (.defn d)) := by
     rw [hstep]

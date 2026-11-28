@@ -227,7 +227,7 @@ theorem retKindR : RetKindR := by
   -- the stage the function's run is at, and its body's run
   unfold fixG fixStage at h
   replace h : fixBodyAt K ρ φ _ s _ _ _ _ _ _ [a] = some o := h
-  unfold fixBodyAt at h
+  unfold fixBodyAt fixBodyWith at h
   rw [hd] at h
   simp only [List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil] at h
   unfold fixStep at h

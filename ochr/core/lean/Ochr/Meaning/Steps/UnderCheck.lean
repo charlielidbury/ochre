@@ -152,9 +152,9 @@ checked), so at member arguments of rank below `args`', where the two selves agr
 Attacked on `R`, `AH` (two arguments, the second decreasing), `MT`/`MB`/`MB0r` (a recursive call under a match on another
 argument), `TB`/`TBB` (returning a borrow of the argument): `Steps/RecDescAttack`. -/
 def RecDescG (K : RunCtx) (st : MState) : Prop :=
-  ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
+  ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (j : Nat) (body : Term),
     st.globals.find? (·.name == n) = some gd → K.cur.map (·.1) ≠ some n →
-    gd.fn? = some (.fix self hs ds c dec body) →
+    gd.fn? = some (.fix self hs ds c (some j) body) →
     ∀ (ρ : Assignment) (φ : Future) (args : List Sem), DomMembers K.dm.read (psG K ρ φ ds) args →
     ∀ (outX outY : PiCod) (gX gY : List Sem → Option BodyOut),
       outX.isRef = (outG K ρ φ ds c).isRef → outY.isRef = (outG K ρ φ ds c).isRef →
@@ -162,7 +162,7 @@ def RecDescG (K : RunCtx) (st : MState) : Prop :=
       PiFits K.dm.read (lG K hs ds c) (psG K ρ φ ds) outY (fun _ => True) →
       (∀ a, DomMembers K.dm.read (psG K ρ φ ds) a → ∃ o, gX a = some o ∧ OutGood' K.dm.read (psG K ρ φ ds) outX a o) →
       (∀ a, DomMembers K.dm.read (psG K ρ φ ds) a → ∃ o, gY a = some o ∧ OutGood' K.dm.read (psG K ρ φ ds) outY a o) →
-      (∀ bs, DomMembers K.dm.read (psG K ρ φ ds) bs → fixRank dec bs < fixRank dec args →
+      (∀ bs, DomMembers K.dm.read (psG K ρ φ ds) bs → fixRank (some j) bs < fixRank (some j) args →
         gX bs = gY bs ∧ outX.cod bs = outY.cod bs) →
       fixBodyAt K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c)
           (piTyAt K.dm.read (lG K hs ds c) (psG K ρ φ ds) outX) 0 body

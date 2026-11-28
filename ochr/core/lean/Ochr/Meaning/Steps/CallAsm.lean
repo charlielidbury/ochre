@@ -47,13 +47,13 @@ open Classical in
 theorem runBodyRef_eq (fres : Res) (cs : List Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term)
     (dec : Option Nat) (body : Term) (rd : List (DeclInfo × Value)) (args : List Res) (s : SState) :
     runBodyRef K ρ φ fres cs (.fix self hs ds c dec body) rd args s =
-      match runT K ρ φ true (.plain ((bodyFrame K ρ φ fres cs rd ds c args s).2.cod (args.map (·.1)))) body
-          (bodyFrame K ρ φ fres cs rd ds c args s).1 with
+      match runT K ρ φ true (.plain ((bodyFrame K ρ φ fres dec cs rd ds c args s).2.cod (args.map (·.1)))) body
+          (bodyFrame K ρ φ fres dec cs rd ds c args s).1 with
       | some ((r, R), s₁) =>
-        if EndsOk K φ (popEnds s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none) s₁) s₁ then
-        some ((r, ⟨(bodyFrame K ρ φ fres cs rd ds c args s).2.cod (args.map (·.1)),
-            if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none⟩),
-          popCallFrame s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c args s).2.isRef then R.label else none) s₁)
+        if EndsOk K φ (popEnds s.nextLoan (if (bodyFrame K ρ φ fres dec cs rd ds c args s).2.isRef then R.label else none) s₁) s₁ then
+        some ((r, ⟨(bodyFrame K ρ φ fres dec cs rd ds c args s).2.cod (args.map (·.1)),
+            if (bodyFrame K ρ φ fres dec cs rd ds c args s).2.isRef then R.label else none⟩),
+          popCallFrame s.nextLoan (if (bodyFrame K ρ φ fres dec cs rd ds c args s).2.isRef then R.label else none) s₁)
         else none
       | none => none := rfl
 
@@ -61,12 +61,12 @@ theorem runBodyRef_eq (fres : Res) (cs : List Value) (self : Hint) (hs : List Hi
 theorem body_isSome_of_runBodyRef (fres : Res) (cs : List Value) (self : Hint) (hs : List Hint) (ds : List Term)
     (c : Term) (dec : Option Nat) (body : Term) (rd : List (DeclInfo × Value)) (args : List Res) (s : SState)
     (h : (runBodyRef K ρ φ fres cs (.fix self hs ds c dec body) rd args s).isSome) :
-    (runT K ρ φ true (.plain ((bodyFrame K ρ φ fres cs rd ds c args s).2.cod (args.map (·.1)))) body
-      (bodyFrame K ρ φ fres cs rd ds c args s).1).isSome := by
+    (runT K ρ φ true (.plain ((bodyFrame K ρ φ fres dec cs rd ds c args s).2.cod (args.map (·.1)))) body
+      (bodyFrame K ρ φ fres dec cs rd ds c args s).1).isSome := by
   rw [runBodyRef_eq] at h
   revert h
-  cases runT K ρ φ true (.plain ((bodyFrame K ρ φ fres cs rd ds c args s).2.cod (args.map (·.1)))) body
-    (bodyFrame K ρ φ fres cs rd ds c args s).1 <;> simp
+  cases runT K ρ φ true (.plain ((bodyFrame K ρ φ fres dec cs rd ds c args s).2.cod (args.map (·.1)))) body
+    (bodyFrame K ρ φ fres dec cs rd ds c args s).1 <;> simp
 
 /-- The callee's unknowns are in the call's table: its code, its captures and their types. -/
 def CalleeBounded (st : MState) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) : Prop :=
@@ -105,8 +105,8 @@ theorem runBody_front (fuel : Nat) (st st' : MState) (fv : Value) (cs : List Val
       st₁.tailNext = true ∧ (st.withTemps (fv :: ws.toList)).absTy.size ≤ st₁.absTy.size ∧
       (st.withTemps (fv :: ws.toList)).nextLoan ≤ st₁.nextLoan ∧
       Good K.dm K.M K.Γ ρ st₁ ∧ CtxOk K ρ st₁ ∧
-      Rel K ρ φ π st₁ (bodyFrame K ρ φ fres cs rd ds c as s).1 ∧
-      hintM K ρ hint = .plain ((bodyFrame K ρ φ fres cs rd ds c as s).2.cod (as.map (·.1))) := by
+      Rel K ρ φ π st₁ (bodyFrame K ρ φ fres dec cs rd ds c as s).1 ∧
+      hintM K ρ hint = .plain ((bodyFrame K ρ φ fres dec cs rd ds c as s).2.cod (as.map (·.1))) := by
   sorry
 
 open Classical in
@@ -119,14 +119,14 @@ theorem runBodyRef_extend (st : MState) (cs : List Value) (self : Hint) (hs : Li
     (hb : CalleeBounded st cs (.fix self hs ds c dec body) rd) (fres : Res) (as : List Res) (s : SState)
     (ρ₁ ρ₂ : Assignment) (h₁ : ∀ σ, σ < st.absTy.size → ρ₁ σ = ρ σ) (h₂ : ∀ σ, σ < st.absTy.size → ρ₂ σ = ρ σ)
     (r : Res) (s₂ : SState)
-    (hrun : runT K ρ₁ φ true (.plain ((bodyFrame K ρ φ fres cs rd ds c as s).2.cod (as.map (·.1)))) body
-      (bodyFrame K ρ φ fres cs rd ds c as s).1 = some (r, s₂)) :
+    (hrun : runT K ρ₁ φ true (.plain ((bodyFrame K ρ φ fres dec cs rd ds c as s).2.cod (as.map (·.1)))) body
+      (bodyFrame K ρ φ fres dec cs rd ds c as s).1 = some (r, s₂)) :
     -- model3: the pop is guarded by its strict ends since ruling (A) (`CallRef.runBodyRef`)
     runBodyRef K ρ₂ φ fres cs (.fix self hs ds c dec body) rd as s =
-      if EndsOk K φ (popEnds s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂ then
-      some ((r.1, ⟨(bodyFrame K ρ φ fres cs rd ds c as s).2.cod (as.map (·.1)),
-          if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none⟩),
-        popCallFrame s.nextLoan (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂)
+      if EndsOk K φ (popEnds s.nextLoan (if (bodyFrame K ρ φ fres dec cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂ then
+      some ((r.1, ⟨(bodyFrame K ρ φ fres dec cs rd ds c as s).2.cod (as.map (·.1)),
+          if (bodyFrame K ρ φ fres dec cs rd ds c as s).2.isRef then r.2.label else none⟩),
+        popCallFrame s.nextLoan (if (bodyFrame K ρ φ fres dec cs rd ds c as s).2.isRef then r.2.label else none) s₂)
       else none := by
   sorry
 
@@ -140,9 +140,9 @@ theorem runBody_back (fuel : Nat) (st₂ st' : MState) (s₂ : SState) (π : Nat
     (hg : GoodF K.dm K.M K.Γ ρ (st₂.withTemp v₀) (flightOf r.2)) (hctx : CtxOk K ρ st₂)
     (hs : Rel K ρ φ π (st₂.withTemp v₀) s₂)
     (K₀ : RunCtx) (ρ₀ ρ₁ : Assignment) (fres : Res) (cs : List Value) (rd : List (DeclInfo × Value)) (ds : List Term)
-    (c : Term) (body : Term) (as : List Res) (s : SState)
-    (hrun : runT K₀ ρ₁ φ true (.plain ((bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.cod (as.map (·.1)))) body
-      (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).1 = some (r, s₂))
+    (c : Term) (dec : Option Nat) (body : Term) (as : List Res) (s : SState)
+    (hrun : runT K₀ ρ₁ φ true (.plain ((bodyFrame K₀ ρ₀ φ fres dec cs rd ds c as s).2.cod (as.map (·.1)))) body
+      (bodyFrame K₀ ρ₀ φ fres dec cs rd ds c as s).1 = some (r, s₂))
     (hr : meanV K ρ (fun l => φ (π l)) r.2 v₀ = r.1)
     (d : Nat) (model : Bool) (B : Option Value) (b : Nat) (v : Value) (h : Runs (bodyTail fuel d model B v₀) st₂ b v st')
     (hD : DecTab K.D st') :
@@ -150,14 +150,14 @@ theorem runBody_back (fuel : Nat) (st₂ st' : MState) (s₂ : SState) (π : Nat
       st₂.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st₂.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
       (∀ l, l < st₂.nextLoan → π' l = π l) ∧
       meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l))
-        ⟨(bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.cod (as.map (·.1)),
-          if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none⟩ v = r.1 ∧
+        ⟨(bodyFrame K₀ ρ₀ φ fres dec cs rd ds c as s).2.cod (as.map (·.1)),
+          if (bodyFrame K₀ ρ₀ φ fres dec cs rd ds c as s).2.isRef then r.2.label else none⟩ v = r.1 ∧
       CtxOk { K with Δ := Δ' } ρ' st' ∧
       Rel { K with Δ := Δ' } ρ' φ π' (st'.withTemp v)
-        (popCallFrame s.nextLoan (if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) ∧
+        (popCallFrame s.nextLoan (if (bodyFrame K₀ ρ₀ φ fres dec cs rd ds c as s).2.isRef then r.2.label else none) s₂) ∧
       GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp v)
-        (flightOf ⟨(bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.cod (as.map (·.1)),
-          if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none⟩) := by
+        (flightOf ⟨(bodyFrame K₀ ρ₀ φ fres dec cs rd ds c as s).2.cod (as.map (·.1)),
+          if (bodyFrame K₀ ρ₀ φ fres dec cs rd ds c as s).2.isRef then r.2.label else none⟩) := by
   sorry
 
 /-! ### [Call]: the assembly -/
@@ -171,14 +171,14 @@ theorem runBody_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : runBody_step_st
   obtain ⟨self, hs', ds, c, dec, body, hint, st₁, st₂, b₁, b₂, d, model, v₀, T₀, rfl, hev, htail, htl, habs₁, hnl₁,
     hg₁, hctx₁, hs₁, hhint⟩ := runBody_front K ρ φ fuel st st' fv cs t rd ws B v hg hctx s π hs hfix fres hf as has bh h
   have hok' : false = false →
-      (runT K ρ φ st₁.tailNext (hintM K ρ hint) body (bodyFrame K ρ φ fres cs rd ds c as s).1).isSome := by
+      (runT K ρ φ st₁.tailNext (hintM K ρ hint) body (bodyFrame K ρ φ fres dec cs rd ds c as s).1).isSome := by
     intro _; rw [htl, hhint]; exact body_isSome_of_runBodyRef K ρ φ fres cs self hs' ds c dec body rd as s hok
   obtain ⟨ρ₁, Δ₁, π₁, habs₂, hnl₂, hext₁, hπ₁, r, s₂, hrun, hmean, -, hctx₂, hs₂, hg₂⟩ :=
     (ih (fuel - 1) (Nat.sub_le fuel 1) K ρ φ).eval_step st₁ st₂ false body hint v₀ T₀ hg₁ hctx₁ _ π hs₁ hok'
       (hD.of_rest (grows_bodyTail _ _ _ _ _) htail) b₁ hev
   rw [htl, hhint] at hrun
   obtain ⟨ρ₂, Δ₂, π₂, habs₃, hnl₃, hext₂, hπ₂, hmean', hctx₃, hs₃, hg₃⟩ :=
-    runBody_back { K with Δ := Δ₁ } ρ₁ φ (fuel - 1) st₂ st' s₂ π₁ v₀ r hg₂ hctx₂ hs₂ K ρ ρ₁ fres cs rd ds c body as s hrun
+    runBody_back { K with Δ := Δ₁ } ρ₁ φ (fuel - 1) st₂ st' s₂ π₁ v₀ r hg₂ hctx₂ hs₂ K ρ ρ₁ fres cs rd ds c dec body as s hrun
       hmean d model B b₂ v htail hD
   have hb := callee_bounded K ρ st fv cs (.fix self hs' ds c dec body) rd ws hg hfix
   have hρ₁ : ∀ σ, σ < (st.withTemps (fv :: ws.toList)).absTy.size → ρ₁ σ = ρ σ := fun σ hσ =>
@@ -188,10 +188,10 @@ theorem runBody_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : runBody_step_st
   -- the pop's strict ends hold: the run in place succeeds (`hok`), read under the extension
   have hend := runBodyRef_extend K ρ φ _ cs self hs' ds c dec body rd hb fres as s ρ₁ ρ hρ₁ (fun _ _ => rfl) r s₂ hrun
   replace hend : EndsOk K φ (popEnds s.nextLoan
-      (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂ := by
+      (if (bodyFrame K ρ φ fres dec cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂ := by
     rw [hend] at hok
     by_cases he : EndsOk K φ (popEnds s.nextLoan
-      (if (bodyFrame K ρ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂
+      (if (bodyFrame K ρ φ fres dec cs rd ds c as s).2.isRef then r.2.label else none) s₂) s₂
     · exact he
     · rw [if_neg he] at hok; cases hok
   refine ⟨ρ₂, Δ₂, π₂, _, _, Nat.le_trans habs₁ (Nat.le_trans habs₂ habs₃),

@@ -255,12 +255,15 @@ def FixFlagAt (P : ProgState) (d : Def) (st' : MState) : Prop :=
   ((P.ctx dm D Γ st').D.flags (scopeOf (emptyState 0)) (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body)).2 = true →
     lG (P.ctx dm D Γ st') d.hs d.doms d.cod = 0
 
-/-- **A function's links, about its own check**: an accepted function at a stage meeting the invariant has a witness
-meeting all eight (`FixMeanAt` is derived from the last three, `fixMeanAt_of`, docs/31 D257). -/
+/-- **A function's links, about its own check**: an accepted function WITH `by` at a stage meeting the invariant has a
+witness meeting all eight (`FixMeanAt` is derived from the last three, `fixMeanAt_of`, docs/31 D257). A function without
+`by` goes the constant's way (`FixNG`, `Steps/TopFixN.lean`; R-dec, docs/31 D296), so `FixStartAt`'s stack clause, false
+at a function without `by`, is asked only where it holds. -/
 def FixG (items : List Item) : Prop :=
   ∀ (P : ProgState) (d : Def) (st' : MState), AtStage dm D Γ fuel items P (.defn d) → d.doms ≠ [] →
     (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st' →
     StageOk dm D Γ P → DataFaithful dm D Γ P → (∀ d' ∈ Γ, dm.covers d') → P.inds <+: Γ →
+    d.dec.isSome = true →
     ∃ w : FixWit, FixCheckAt P d st' w ∧ FixFitsAt dm D Γ P d st' ∧ FixStartAt dm D Γ P d st' w ∧
       BodyCongrAt dm D Γ P d st' ∧ FixLeafAt dm D Γ P d st' w ∧ FixPartsAt dm D Γ P d st' ∧ FixClosedAt d ∧
       FixFlagAt dm D Γ P d st'
@@ -382,6 +385,14 @@ theorem knot_step
 
 end
 
+/-- With `by`, the global's function is its stage `rank + 1` (`FixEqDesc.GG_eq`, for any `dec` known to be `some`). -/
+theorem GG_isSome (K : RunCtx) (ρ : Assignment) (φ : Future) (hs : List Hint) (ds : List Term) (c : Term)
+    {dec : Option Nat} (body : Term) (hdec : dec.isSome = true) (a : List Sem) :
+    GG K ρ φ hs ds c dec body a = stG K ρ φ hs ds c dec body (fixRank dec a + 1) a := by
+  cases dec with
+  | none => cases hdec
+  | some j => rfl
+
 section
 variable {dm : DataModel} {D : MState → Decisions} {Γ : List IndDecl} {fuel : Nat}
 
@@ -391,10 +402,13 @@ theorem fnGoodAt_of_knot
     (hsteps : ∀ (K : RunCtx) (φ : Future), (∀ Δ, Strict.FundCtx { K with Δ := Δ }) → AllSteps K φ)
     (hsorts : SortsG Γ) (P : ProgState) (d : Def) (st' : MState) (hP : StageOk dm D Γ P) (w : FixWit)
     (hck : FixCheckAt P d st' w) (hfits : FixFitsAt dm D Γ P d st') (hstart : FixStartAt dm D Γ P d st' w)
-    (hcongr : BodyCongrAt dm D Γ P d st') (hleaf : FixLeafAt dm D Γ P d st' w) (ρ : Assignment) (φ : Future) :
+    (hcongr : BodyCongrAt dm D Γ P d st') (hleaf : FixLeafAt dm D Γ P d st' w) (hdec : d.dec.isSome = true)
+    (ρ : Assignment) (φ : Future) :
     FnGoodAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body :=
-  ⟨hfits ρ φ, fun a ha => Steps.stages_below (stG (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body)
-    (fixRank d.dec) _ _ (fun b hb => knot_step hsteps hsorts P d st' hP w hck hfits hstart hcongr hleaf ρ φ b hb) a ha⟩
+  ⟨hfits ρ φ, fun a ha => by
+    rw [GG_isSome _ _ _ _ _ _ _ hdec]
+    exact Steps.stages_below (stG (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body)
+      (fixRank d.dec) _ _ (fun b hb => knot_step hsteps hsorts P d st' hP w hck hfits hstart hcongr hleaf ρ φ b hb) a ha⟩
 
 /-- **An accepted function means a member of its type** (assembled in Lean; THE KNOT): the witness of its check
 (`FixG`), the knot's step at every bound, the induction on the bound and the closure's membership
@@ -404,14 +418,18 @@ theorem fix_member
     (hsteps : ∀ (K : RunCtx) (φ : Future), (∀ Δ, Strict.FundCtx { K with Δ := Δ }) → AllSteps K φ)
     (hsorts : SortsG Γ) (P : ProgState) (d : Def) (st' : MState) (hP : StageOk dm D Γ P) (w : FixWit)
     (hck : FixCheckAt P d st' w) (hfits : FixFitsAt dm D Γ P d st') (hstart : FixStartAt dm D Γ P d st' w)
-    (hcongr : BodyCongrAt dm D Γ P d st') (hleaf : FixLeafAt dm D Γ P d st' w) (hmean : FixMeanAt dm D Γ P d st') :
+    (hcongr : BodyCongrAt dm D Γ P d st') (hleaf : FixLeafAt dm D Γ P d st' w) (hmean : FixMeanAt dm D Γ P d st')
+    (hdec : d.dec.isSome = true) :
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D Γ st') d
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
   have hk := knot_member dm.read _ noFuture _ _
     (stG (P.ctx dm D Γ st') (fun _ => .err) noFuture d.hs d.doms d.cod d.dec d.body) (fixRank d.dec) (hfits _ _)
     (fun b hb => knot_step hsteps hsorts P d st' hP w hck hfits hstart hcongr hleaf _ _ b hb)
+  have hGG : GG (P.ctx dm D Γ st') (fun _ => .err) noFuture d.hs d.doms d.cod d.dec d.body =
+      fun args => stG (P.ctx dm D Γ st') (fun _ => .err) noFuture d.hs d.doms d.cod d.dec d.body (fixRank d.dec args + 1) args :=
+    funext (GG_isSome _ _ _ _ _ _ _ hdec)
   rw [hck.2.2.2.2.2.2.2.2.2]
-  exact hmean hk
+  exact hmean (by rw [hGG]; exact hk)
 
 end
 

@@ -27,9 +27,9 @@ variable {K : RunCtx} {ρ ρ₀ : Assignment} {φ : Future} {g : Sem} {s : SStat
 /-- **`I`'s body `S(#0)` from a state reading like `I`'s frame** (`ColumnP.RefP`: `n` at `(1, 1)` holding the number
 `a`), at a table deciding the body and the read as neither a statement nor a proof and `n` moved: `a + 1` at `Nat`, `n`
 moved. -/
-theorem runT_bodyI_ref (hfl : K.D.flags [.other, .pi .other] bodyI = (false, false))
-    (hfx : K.D.flags [.other, .pi .other] (.place (.var 0)) = (false, false))
-    (hcp : K.D.copy (K.D.placeDecl [.other, .pi .other] (.var 0)) = false) (h : RefP ρ₀ φ g s) {a : Nat}
+theorem runT_bodyI_ref (hfl : K.D.flags [.other, .unit] bodyI = (false, false))
+    (hfx : K.D.flags [.other, .unit] (.place (.var 0)) = (false, false))
+    (hcp : K.D.copy (K.D.placeDecl [.other, .unit] (.var 0)) = false) (h : RefP ρ₀ φ g s [.other, .unit]) {a : Nat}
     (h0 : ρ₀ 0 = .el0 Nat a) (tl : Bool) (hint : TyS) :
     runT K ρ φ tl hint bodyI s = some ((.el0 Nat (a + 1), .plain TyM.nat), dropN K s) := by
   have hfl' : K.D.flags (scopeOf s) (.succ (.place (.var 0))) = (false, false) := by rw [h.scope]; exact hfl
@@ -65,7 +65,7 @@ end
 
 /-- **The closure's state reads like `I`'s frame** (`ColumnP.RefP` at `σ0 ↦ a`). -/
 theorem refP_closureJ2 (R : DataRead) (φ : Future) (a : Nat) :
-    RefP (fun _ => .el0 Nat a) φ (selfSem R φ) (closureJ2 R φ a) := by
+    RefP (fun _ => .el0 Nat a) φ (.el0 Unit ()) (closureJ2 R φ a) [.other, .unit] := by
   have he := closureJ2_env R φ a
   have hlive : (closureJ2 R φ a).liveLabels = [] := by
     unfold SState.liveLabels
@@ -75,22 +75,22 @@ theorem refP_closureJ2 (R : DataRead) (φ : Future) (a : Nat) :
   · unfold resolve; simp [SState.varPos, he, SState.topIdx, Place.steps]
   · unfold SState.topIdx; rw [he]; rfl
   · simp [SState.valAt, he, nBind]
-  · simp [SState.valAt, he]
+  · simp [SState.valAt, he, unitSlot]
   · simp [SState.tyAt, he, nBind]; rfl
 
 section
 variable {dm : DataModel} {D : Decisions} {ρ : Assignment} {φ : Future}
 
-/-- **`I`'s body inside `J2`'s closure of `I`, at every number**: `fixBodyAt` (stage 1, `self` the stage-0 closure)
-starts from `closureJ2 a` and returns `a + 1` and no final, at a table aligned with the checker at `J2`'s start. No
-fact assumed. -/
+/-- **`I`'s body inside `J2`'s closure of `I`, at every number**: `fixBodyU` (no `by`: `()` in the slot, R-dec, docs/31
+D296) starts from `closureJ2 a` and returns `a + 1` and no final, at a table aligned with the checker at `J2`'s start.
+No fact assumed. -/
 theorem fixBodyAt_J2 (hd : DecTab D FrameJ2.Guards.stJ2) (K : RunCtx) (hKD : K.D = D) (fb : List PBind × PBind)
     (h1 : fb.1 = [(fun _ => .plain TyM.nat, .other)]) (h2 : fb.2.2 = .other) (a : Nat) :
-    fixBodyAt K ρ φ fb (emptyState 0) psI outI (selfTy K.dm.read) 0 bodyI (selfSem K.dm.read φ) [.el0 Nat a]
+    fixBodyU K ρ φ fb (emptyState 0) psI outI 0 bodyI [.el0 Nat a]
       = some ⟨.el0 Nat (a + 1), [], none⟩ := by
   have hpd := parDecJ2 hd
   have hfl := flags_bodyI_J2 hd
-  have hcp : D.copy (D.placeDecl [.other, .pi .other] (.var 0)) = false := by
+  have hcp : D.copy (D.placeDecl [.other, .unit] (.var 0)) = false := by
     have e2 : D.placeDecl Aux.RI (.var 0) = .other := by
       rw [hd.placeDecl 100 Aux.RI (.var 0) _ 1000 _ (Regress.GenNeutralContent.runs_out Aux.pdRun _ 1000 Aux.ok_pd)]
       exact ColumnC.Aux.isOther_eq Aux.val_pd
@@ -100,8 +100,8 @@ theorem fixBodyAt_J2 (hd : DecTab D FrameJ2.Guards.stJ2) (K : RunCtx) (hKD : K.D
     show D.copy (D.placeDecl Aux.RI (.var 0)) = false
     rw [e2, e3]
   have hst : ([Sem.el0 Nat a].zip psI).foldl (fixStep fb)
-      ((emptyState 0).under.pushBind { ty := .plain (selfTy K.dm.read), val := fun _ => selfSem K.dm.read φ, decl := .pi fb.2.2 }, [], []) = (closureJ2 K.dm.read φ a, [.el0 Nat a], []) := by
-    simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1, h2,
+      ((emptyState 0).under.pushBind unitSlot, [], []) = (closureJ2 K.dm.read φ a, [.el0 Nat a], []) := by
+    simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1,
       Bool.false_eq_true, if_false, List.length_nil, List.getElem?_cons_zero, List.nil_append]
     rfl
   have hrun := runT_bodyI_ref (K := K) (ρ := ρ) (hKD ▸ hfl) (hKD ▸ hpd.1) (hKD ▸ hcp) (refP_closureJ2 K.dm.read φ a)
@@ -109,7 +109,7 @@ theorem fixBodyAt_J2 (hd : DecTab D FrameJ2.Guards.stJ2) (K : RunCtx) (hKD : K.D
   have hl : (dropN K (closureJ2 K.dm.read φ a)).liveLabels = [] := by
     unfold dropN; rw [Strict.liveLabels_setAt]; unfold SState.liveLabels
     rw [List.filterMap_eq_nil_iff.mpr (fun p _ => closureJ2_shape _ φ a p), List.mergeSort_nil]
-  unfold fixBodyAt
+  unfold fixBodyU fixBodyWith
   dsimp only
   rw [hst]
   dsimp only

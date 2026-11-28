@@ -30,7 +30,7 @@ variable {dm : DataModel} {D : Decisions} {ρ : Assignment} {φ : Future}
 
 /-- **The checker's start state, read as a reference state** under `σ0 ↦ a`: the frames `[{}, frI]`. -/
 theorem env_SM (a : Nat) : (SM' (KI dm D φ) (ρAt ρ a) stI).env = [{}, frI dm.read φ a] := by
-  have hv0 : ∀ ψ, Env.mean (KI dm D φ).dm (KI dm D φ).M (KI dm D φ).Γ (ρAt ρ a) ψ stI.env (.bind 1 0) = selfSem dm.read φ :=
+  have hv0 : ∀ ψ, Env.mean (KI dm D φ).dm (KI dm D φ).M (KI dm D φ).Γ (ρAt ρ a) ψ stI.env (.bind 1 0) = .el0 Unit () :=
     fun ψ => by
       have := Aux.valAt_SM_eq (dm := dm) (D := D) (φ := φ) (ρ := ρAt ρ a) (.bind 1 0) ψ
       unfold SM' at this; rw [sstate_valAt] at this; exact this
@@ -38,40 +38,42 @@ theorem env_SM (a : Nat) : (SM' (KI dm D φ) (ρAt ρ a) stI).env = [{}, frI dm.
     fun ψ => by
       have := Aux.valAt_SM_eq (dm := dm) (D := D) (φ := φ) (ρ := ρAt ρ a) (.bind 1 1) ψ
       unfold SM' at this; rw [sstate_valAt] at this; exact this
-  have ht0 : Binding.refTy (KI dm D φ).dm (KI dm D φ).M (KI dm D φ).Γ (ρAt ρ a) stI.env 1 0 selfB = .plain (selfTy dm.read) := by
-    rw [Binding.refTy_marked _ _ _ _ _ _ _ _ 0 rfl rfl]
-    simp [KI, CI, selfB, RunCtx.M, codeMeaning]
+  have ht0 : Binding.refTy (KI dm D φ).dm (KI dm D φ).M (KI dm D φ).Γ (ρAt ρ a) stI.env 1 0 unitB = .plain TyM.unit := by
+    rw [Binding.refTy_unmarked _ _ _ _ _ _ _ _ rfl]
+    rfl
   have ht1 : Binding.refTy (KI dm D φ).dm (KI dm D φ).M (KI dm D φ).Γ (ρAt ρ a) stI.env 1 1 nB = .plain TyM.nat := by
     rw [Binding.refTy_unmarked _ _ _ _ _ _ _ _ rfl]
     rfl
   unfold SM' MState.sstate
   simp only [stI, List.zipIdx, List.map, frI, Nat.zero_add]
-  rw [show (#[{}, { binds := #[selfB, nB] }] : Env) = stI.env from rfl, ht0, ht1]
+  rw [show (#[{}, { binds := #[unitB, nB] }] : Env) = stI.env from rfl, ht0, ht1]
   simp only [List.cons.injEq, SFrame.mk.injEq, SBinding.mk.injEq, and_true, true_and]
-  exact ⟨⟨funext hv0, rfl⟩, funext hv1, rfl⟩
+  refine ⟨?_, funext hv1, rfl⟩
+  unfold unitSlot
+  rw [funext hv0]
+  rfl
 
 
 /-- `stI` lends nothing. -/
 theorem sitesOf_stI (l : Nat) : Env.sitesOf stI.env l = [] := by
   unfold Env.sitesOf; rw [Aux.allPos_stI]
-  simp [valAt, stI, selfB, nB, Value.sitesOf]
+  simp [valAt, stI, unitB, nB, Value.sitesOf]
 
 /-- Two reference states with the same fields are equal. -/
 theorem sstate_ext {s t : SState} (h1 : s.env = t.env) (h2 : s.shape = t.shape) (h3 : s.nextLoan = t.nextLoan)
     (h4 : s.lent = t.lent) (h5 : s.heldTy = t.heldTy) (h6 : s.heldMem = t.heldMem) : s = t := by
   cases s; cases t; simp_all
 
-/-- **`fixBodyAt`'s state for `I` is the checker's start state** (docs/31 D126): `self` (the stage-0
-closure at the weakened type) and the parameter `a`, pushed on the empty state under its fresh bottom
-frame, give exactly `SM'` of `stI` under `σ0 ↦ a`; no bridge between frame shapes is left. For any `fb`
-that reads the parameter at `Nat`, `.other` and the codomain `.other` (the `.fix` clause's, `fixDecI`). -/
-theorem start_I (fb : List PBind × PBind) (h1 : fb.1 = [(fun _ => .plain TyM.nat, .other)]) (h2 : fb.2.2 = .other)
+/-- **`fixBodyU`'s state for `I` is the checker's start state** (docs/31 D126; R-dec, D296): the own-name slot `()`
+at `Unit` and the parameter `a`, pushed on the empty state under its fresh bottom frame, give exactly `SM'` of `stI`
+under `σ0 ↦ a`; no bridge between frame shapes is left. For any `fb` that reads the parameter at `Nat`, `.other`
+(the `.fix` clause's, `fixDecI`). -/
+theorem start_I (fb : List PBind × PBind) (h1 : fb.1 = [(fun _ => .plain TyM.nat, .other)])
     (a : Nat) :
-    ([Sem.el0 Nat a].zip psI).foldl (fixStep fb)
-        ((emptyState 0).under.pushBind { ty := .plain (selfTy dm.read), val := fun _ => selfSem dm.read φ, decl := .pi fb.2.2 }, [], [])
+    ([Sem.el0 Nat a].zip psI).foldl (fixStep fb) ((emptyState 0).under.pushBind unitSlot, [], [])
       = (SM' (KI dm D φ) (ρAt ρ a) stI, [.el0 Nat a], []) := by
   have he := env_SM (dm := dm) (D := D) (ρ := ρ) (φ := φ) a
-  simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1, h2,
+  simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1,
     Bool.false_eq_true, if_false, List.length_nil, List.getElem?_cons_zero, List.nil_append, Prod.mk.injEq, and_true]
   apply sstate_ext
   · rw [he]; rfl
@@ -86,7 +88,7 @@ theorem start_I (fb : List PBind × PBind) (h1 : fb.1 = [(fun _ => .plain TyM.na
   · rfl
 
 
-/-- **`I`'s body run inside the `.fix` clause** (stage 1, rank 0): at every number `a`, `fixBodyAt`
+/-- **`I`'s body run inside the `.fix` clause** (no `by`: one run, `()` in the slot): at every number `a`, `fixBodyU`
 returns `S(a)` and no final (no borrow parameter), from the checker's successful run of the body
 (`body_runI`; the run reads neither the assignment, the tail flag nor the hint, `runT_bodyI`, and leaves
 no live label, so the pop's ends are `EndsOk []`). -/
@@ -95,13 +97,13 @@ theorem fixBodyAt_I (hE : EvalInv) (hS : SuccInv) (hI : InvSteps) (hV : VarNumAI
     (hDI : DecTab D stI) {n : Nat} {hint : Option Value} {st st' : MState} {bh : Nat} {v : Value} {T? : Option Value}
     (hk : Kern stI st) (hm : Mode st) (htd : st.tailDecl = none) (hD : DecTab D st')
     (h : Runs (Ochr.eval n true bodyI hint) st bh (v, T?) st') (a : Nat) :
-    ∃ o, fixBodyAt (KI dm D φ) ρ φ fb (emptyState 0) psI outI (selfTy dm.read) 0 bodyI (selfSem dm.read φ) [.el0 Nat a]
+    ∃ o, fixBodyU (KI dm D φ) ρ φ fb (emptyState 0) psI outI 0 bodyI [.el0 Nat a]
         = some o ∧ o.result = .el0 Nat (a + 1) ∧ o.finals = [] := by
   obtain ⟨r, s', hr, hr1, -, hl⟩ := body_runI hE hS hI hV hN hlow dm D ρ φ a hDI hk hm htd hD h
   refine ⟨⟨r.1, [], r.2.label⟩, ?_, hr1, rfl⟩
-  unfold fixBodyAt
+  unfold fixBodyU fixBodyWith
   dsimp only
-  rw [start_I (dm := dm) (D := D) (ρ := ρ) (φ := φ) fb h1 h2 a]
+  rw [start_I (dm := dm) (D := D) (ρ := ρ) (φ := φ) fb h1 a]
   dsimp only
   rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: `I` returns data
   rw [runT_bodyI (KI dm D φ) φ ρ (ρAt ρ a) true st.tailNext (fb.2.1 [.el0 Nat a])
@@ -117,7 +119,8 @@ theorem capOrder_fixI : capOrder fixI = [] := rfl
 /-- **`I`'s closure, as the reference's `.fix` clause forms it from the empty state** (where a global's
 function is formed, `Program.defMeaning`): the run succeeds, at the Π-type `Π(n : Nat). Nat`
 (`piTyAt _ 1 psI outI`), leaves the state as it was, and the closure is a MEMBER of that type
-(`Witness.fixClo_mem_nonrec`: at every member argument the body runs to a member of `Nat`; `run_fix_of_mem`).
+(`Witness.fixClo_mem_nonrec`: at every member argument the body, run once with `()` in the slot, gives a member of
+`Nat`, no stage; `run_fix_of_mem`).
 From the checker's successful run of the body from a state with `stI`'s kernel, at a table aligned with
 the checker at `stI` and at the run's end. The checker facts are hypotheses: `EvalInv`, `SuccInv`,
 `InvSteps`, `EvalLow` (proved by the machine lane; discharged in `column_I_ff`), `VarNumAInv`, `InvNumA`

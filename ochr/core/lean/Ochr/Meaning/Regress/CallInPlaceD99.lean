@@ -133,12 +133,12 @@ theorem holderOf_end_SPr2 (T : TyM) (c : Sem) : ((SPr2 selfB d T c r).endLabel 0
 end
 
 theorem callFrame_id1r (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) :
-    callFrame (Kc dm) ρ φ [] [] (fresId1 dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] S₂r
+    callFrame (Kc dm) ρ φ [] [] (fresId1 dm ρ φ) none cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] S₂r
       = SPr (selfId1P dm ρ φ cd) ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) (.el0 Nat 2) := by
   subst hb
   simp [callFrame, capsState, capsVals, capsTys, SState.pushFrame, SState.pushBind, SState.topIdx, pushBindShaped,
     SState.takeLabel, SState.holderOf, SState.positions, List.range', S₂r, Attack.S₂, SState.freshLoan, SState.setLent,
-    SState.setAt, SPr, yFrame, selfId1P, xB, bindsOf, runBinds, mkBind]
+    SState.setAt, SPr, yFrame, selfId1P, xB, bindsOf, runBinds, mkBind, selfSlot]
   refine ⟨rfl, ?_, ?_⟩
   · funext p
     by_cases h1 : p = Pos.bind 1 1 <;> by_cases h2 : p = Pos.temp 0 0 <;> simp [h1, h2]

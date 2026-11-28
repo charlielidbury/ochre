@@ -49,8 +49,8 @@ noncomputable def fbInc : List PBind × (List Sem → TyS) × DeclInfo :=
 /-- `Inc`'s type: `Π(x : &Nat). Unit`'s code. -/
 noncomputable def piInc : TyM := piTyAt dm.read 1 psInc outInc
 
-/-- `Inc`'s function (`Run.lean`'s `.fix` clause, named in `RunCongr`): no decreasing parameter, so
-stage `1` at rank `0`, `self` the weakened stage `0` (docs/31 D113). -/
+/-- `Inc`'s function (`Run.lean`'s `.fix` clause, named in `RunCongr`): no `by`, so one run of the body with `()` in
+the own-name slot (R-dec, docs/31 D296; it was stage `1` at rank `0`, `self` the weakened stage `0`, D113). -/
 noncomputable def gInc : List Sem → Option BodyOut :=
   fixG (Kc dm) ρ φ (fbInc dm ρ φ) 1 (stateOf 0 []) psInc outInc (piInc dm) 0 none incBody
 
@@ -61,8 +61,8 @@ noncomputable def selfIncM : Sem := closureAt dm.read 1 φ psInc (weakCod 1 (fix
 
 /-! ## `Inc`'s body run in its own frame -/
 
-/-- `self`'s binding in `Inc`'s frame (`Inc` does not recurse: stage `0`, never read). -/
-noncomputable def selfInc : SBinding := { ty := .plain (selfIncT dm), val := fun _ => selfIncM dm ρ φ, decl := .pi (fbInc dm ρ φ).2.2 }
+/-- The own-name slot in `Inc`'s frame: `()` at `Unit` (`Inc` has no `by`, R-dec, docs/31 D296). -/
+noncomputable def selfInc (_dm : DataModel) (_ρ : Assignment) (_φ : Future) : SBinding := unitSlot
 
 /-- The parameter's declared reading, as the clause reads it. -/
 noncomputable def dInc : DeclInfo := ((Kc dm).D.paramDecls [] [.ref .nat]).getD 0 .other
@@ -200,11 +200,9 @@ theorem endLabel_SB_cell (c : Sem) (ψ : Future) : ((SB dm ρ φ c r).endLabel 0
 /-- **`Inc`'s body run at `a`**: `()`, and `x`'s final content `a + 1`. -/
 theorem gInc_eval (a : Nat) :
     gInc dm ρ φ [.el0 Nat a] = some ⟨.el0 Unit (), [fun _ => .el0 Nat (a + 1)], none⟩ := by
-  show fixBodyAt (Kc dm) ρ φ (fbInc dm ρ φ) (stateOf 0 []) psInc outInc (selfIncT dm) 0 incBody (selfIncM dm ρ φ)
-    [.el0 Nat a] = _
-  unfold fixBodyAt
-  rw [show ({ ty := .plain (selfIncT dm), val := fun _ => selfIncM dm ρ φ, decl := .pi (fbInc dm ρ φ).2.2 } : SBinding)
-      = selfInc dm ρ φ from rfl]
+  show fixBodyWith (Kc dm) ρ φ (fbInc dm ρ φ) (stateOf 0 []) psInc outInc 0 incBody unitSlot [.el0 Nat a] = _
+  unfold fixBodyWith
+  rw [show (unitSlot : SBinding) = selfInc dm ρ φ from rfl]
   dsimp only
   rw [frame_inc]
   dsimp only
@@ -448,8 +446,7 @@ theorem useInc_callOf (hint : TyS) :
 noncomputable def fresInc : Res := (closureAt dm.read 1 φ psInc outInc (gInc dm ρ φ), .plain (piInc dm))
 
 /-- `self`'s binding in the callee's frame pushed in place. -/
-noncomputable def selfP (cd : DeclInfo) : SBinding :=
-  { ty := { (fresInc dm ρ φ).2 with label := none }, val := fun _ => (fresInc dm ρ φ).1, decl := .pi cd }
+noncomputable def selfP (_dm : DataModel) (_ρ : Assignment) (_φ : Future) (_cd : DeclInfo) : SBinding := unitSlot
 
 /-- The caller's frame after `&y` and the borrow's holder moved into the callee's parameter. -/
 def yFrame : SFrame := { binds := [{ yB with val := fun φ' => φ' 0 }], temps := [fun _ => .moved] }
@@ -463,12 +460,12 @@ noncomputable def SP (cd d : DeclInfo) (c r : Sem) : SState :=
     heldMem := fun m => if m = 0 then r else .err }
 
 theorem callFrame_inc (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) :
-    callFrame (Kc dm) ρ φ [] [] (fresInc dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
+    callFrame (Kc dm) ρ φ [] [] (fresInc dm ρ φ) none cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
       = SP dm ρ φ cd ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) (.el0 Nat 2) := by
   subst hb
   simp [callFrame, capsState, capsVals, capsTys, SState.pushFrame, SState.pushBind, SState.topIdx, pushBindShaped,
     SState.takeLabel, SState.holderOf, SState.positions, List.range', Attack.S₂, SState.setAt, SP, yFrame, selfP, xB,
-    bindsOf, runBinds, mkBind]
+    bindsOf, runBinds, mkBind, selfSlot]
   refine ⟨rfl, ?_⟩
   funext p
   by_cases h1 : p = Pos.bind 1 1 <;> by_cases h2 : p = Pos.temp 0 0 <;> simp [h1, h2]
@@ -806,7 +803,8 @@ theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl
   rw [if_pos]
   exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps])⟩
 
-noncomputable def selfId1 : SBinding := { ty := .plain (selfId1T dm), val := fun _ => selfId1M dm ρ φ, decl := .pi (fbId1 dm ρ φ).2.2 }
+/-- The own-name slot in `Id1`'s frame: `()` at `Unit` (no `by`, R-dec, docs/31 D296). -/
+noncomputable def selfId1 (_dm : DataModel) (_ρ : Assignment) (_φ : Future) : SBinding := unitSlot
 
 theorem frame_id1 (c : Sem) :
     ([c].zip psInc).foldl (fixStep (fbId1 dm ρ φ)) ((stateOf 0 []).under.pushBind (selfId1 dm ρ φ), [], [])
@@ -853,11 +851,9 @@ theorem endLabel_SB2_cell (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) 
 
 theorem gId1_eval (a : Nat) :
     gId1 dm ρ φ [.el0 Nat a] = some ⟨.el0 Nat a, [fun ψ => ψ 1], some 1⟩ := by
-  show fixBodyAt (Kc dm) ρ φ (fbId1 dm ρ φ) (stateOf 0 []) psInc outId1 (selfId1T dm) 0 id1Body (selfId1M dm ρ φ)
-    [.el0 Nat a] = _
-  unfold fixBodyAt
-  rw [show ({ ty := .plain (selfId1T dm), val := fun _ => selfId1M dm ρ φ, decl := .pi (fbId1 dm ρ φ).2.2 } : SBinding)
-      = selfId1 dm ρ φ from rfl]
+  show fixBodyWith (Kc dm) ρ φ (fbId1 dm ρ φ) (stateOf 0 []) psInc outId1 0 id1Body unitSlot [.el0 Nat a] = _
+  unfold fixBodyWith
+  rw [show (unitSlot : SBinding) = selfId1 dm ρ φ from rfl]
   dsimp only
   rw [frame_id1]
   dsimp only
@@ -1392,16 +1388,15 @@ theorem holderOf_end_SPg2 (T : TyM) (c : Sem) : ((SPg2 selfB d T c r).endLabel 0
 end SPgLemmas
 
 /-- `Id1`'s `self` in the callee's frame pushed in place. -/
-noncomputable def selfId1P (cd : DeclInfo) : SBinding :=
-  { ty := { (fresId1 dm ρ φ).2 with label := none }, val := fun _ => (fresId1 dm ρ φ).1, decl := .pi cd }
+noncomputable def selfId1P (_dm : DataModel) (_ρ : Assignment) (_φ : Future) (_cd : DeclInfo) : SBinding := unitSlot
 
 theorem callFrame_id1 (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) :
-    callFrame (Kc dm) ρ φ [] [] (fresId1 dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
+    callFrame (Kc dm) ρ φ [] [] (fresId1 dm ρ φ) none cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
       = SPg (selfId1P dm ρ φ cd) ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) (.el0 Nat 2) := by
   subst hb
   simp [callFrame, capsState, capsVals, capsTys, SState.pushFrame, SState.pushBind, SState.topIdx, pushBindShaped,
     SState.takeLabel, SState.holderOf, SState.positions, List.range', Attack.S₂, SState.setAt, SPg, yFrame, selfId1P, xB,
-    bindsOf, runBinds, mkBind]
+    bindsOf, runBinds, mkBind, selfSlot]
   refine ⟨rfl, ?_⟩
   funext p
   by_cases h1 : p = Pos.bind 1 1 <;> by_cases h2 : p = Pos.temp 0 0 <;> simp [h1, h2]

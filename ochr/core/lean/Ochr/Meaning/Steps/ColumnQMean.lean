@@ -13,7 +13,7 @@ namespace Ochr.Meaning.Steps.Form.ColumnQ
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form Ochr.Meaning.Strict.Witness
 open Ochr.Meaning.Steps.Form.ColumnI (piNat nB psI outI selfTy selfSem)
-open Ochr.Meaning.Steps.Form.ColumnP (RI pn0 ParDecP RefJ RefP dropN setN0 nBot)
+open Ochr.Meaning.Steps.Form.ColumnP (RIu pn0 ParDecP RefJ RefP dropN setN0 nBot)
 
 /-! ## The match, run directly -/
 
@@ -36,7 +36,7 @@ theorem dropN_setN0 (K : RunCtx) (s : SState) : dropN K (setN0 K s) = dropN K s 
 /-- **[Entry] at `Q`'s match** (not in tail position): the captures are `n` by move (the decision `ParDecQ.caps`); its
 access changes nothing on a state with no live label, its ends are strict-OK, and the lending after the arm does
 nothing to a result with no label. -/
-theorem entryQ (hd : ParDecQ K.D) (h : RefP ρ φ g s) (hmv : movedPlaces φ s = []) :
+theorem entryQ (hd : ParDecQ K.D) (h : RefP ρ φ g s RIu) (hmv : movedPlaces φ s = []) :
     optCheck (MatchEntryOk K φ true matchQ s) = some ⟨⟩ ∧ (matchEntry K φ true matchQ s).1 = s ∧
       ∀ s₂, (matchEntry K φ true matchQ s).2 none s₂ = s₂ := by
   have hbc : K.D.blockCaps (scopeOf s) (movedPlaces φ s) matchQ = ([.var 0], [(.var 0, 2)]) := by
@@ -57,7 +57,7 @@ theorem entryQ (hd : ParDecQ K.D) (h : RefP ρ φ g s) (hmv : movedPlaces φ s =
 
 /-- **The match, not in tail position, at both tags** (as `ColumnP.runP`, with [Entry] first): on `0` the arm `Z`, on
 `a + 1` the arm's read of `n.0`; then the join's drop of `n`. The state after is `n` moved in both. -/
-theorem runMatchQ (hd : ParDecQ K.D) (h : RefP ρ φ g s) (hg : ∀ q, Sem.movedIn g q = []) (hint : TyS) :
+theorem runMatchQ (hd : ParDecQ K.D) (h : RefP ρ φ g s RIu) (hg : ∀ q, Sem.movedIn g q = []) (hint : TyS) :
     (ρ 0 = .el0 Nat 0 → runT K ρ φ false hint matchQ s = some ((.el0 Nat 0, .plain TyM.nat), dropN K s)) ∧
     (∀ a, ρ 0 = .el0 Nat (a + 1) →
       runT K ρ φ false hint matchQ s = some ((.el0 Nat a, .plain TyM.nat), dropN K s)) := by
@@ -69,7 +69,7 @@ theorem runMatchQ (hd : ParDecQ K.D) (h : RefP ρ φ g s) (hg : ∀ q, Sem.moved
     intro k hk
     rw [SM.guarded_of htag]; unfold tagOf; rw [h.resolve0]; dsimp only
     rw [h.access, h.typedFuture, h.valN, hk]; rfl
-  have hj : ∀ s', RefJ s' → optCheck (JoinDropOk K φ [] (.matchNat (.var 0) .zero (.place pn0)) s') = some ⟨⟩ ∧
+  have hj : ∀ s', RefJ s' RIu → optCheck (JoinDropOk K φ [] (.matchNat (.var 0) .zero (.place pn0)) s') = some ⟨⟩ ∧
       joinDrop K φ [] (.matchNat (.var 0) .zero (.place pn0)) s' = dropN K s' := fun s' h' => by
     obtain ⟨hjok, hjd⟩ := ColumnP.joinP (φ := φ) hd.p h'
     exact ⟨by unfold optCheck; exact if_pos hjok, hjd⟩
@@ -97,7 +97,7 @@ theorem runMatchQ (hd : ParDecQ K.D) (h : RefP ρ φ g s) (hg : ∀ q, Sem.moved
     change ∀ s₂, (matchEntry K φ true (.matchNat (.var 0) .zero (.place pn0)) s).2 none s₂ = s₂ at hent2
     have hnt : natTag (.el0 Nat (a + 1)) (s.tyAt (.bind 1 1)) = .el0 Nat 1 := by simp [natTag, Sem.asNat_el0]
     have harm := ColumnP.runArmS (K := K) hd.p h h0 false (.plain TyM.err)
-    have hj₁ : RefJ (setN0 K s) := h.toRefJ.setAt _ _
+    have hj₁ : RefJ (setN0 K s) RIu := h.toRefJ.setAt _ _
     show runT K ρ φ false hint (.matchNat (.var 0) .zero (.place pn0)) s = _
     rw [runT]
     simp only [SM.erasedIf, SM.stmtIf, hfl, Bool.false_eq_true, if_false]
@@ -108,7 +108,7 @@ theorem runMatchQ (hd : ParDecQ K.D) (h : RefP ρ φ g s) (hg : ∀ q, Sem.moved
     rw [hme]
 
 /-- **`Q`'s body, run directly**: `S(ρ σ0 - 1)` at `Nat`, `n` moved. -/
-theorem runBodyQ (hd : ParDecQ K.D) (h : RefP ρ φ g s) (hg : ∀ q, Sem.movedIn g q = []) (tl : Bool) (hint : TyS)
+theorem runBodyQ (hd : ParDecQ K.D) (h : RefP ρ φ g s RIu) (hg : ∀ q, Sem.movedIn g q = []) (tl : Bool) (hint : TyS)
     {m : Nat} (h0 : ρ 0 = .el0 Nat m) :
     runT K ρ φ tl hint bodyQ s = some ((.el0 Nat (m - 1 + 1), .plain TyM.nat), dropN K s) := by
   have hfl : K.D.flags (scopeOf s) (.succ matchQ) = (false, false) := by rw [h.scope]; exact hd.flBody
@@ -154,7 +154,7 @@ noncomputable def fbA (K : RunCtx) (ρ : Assignment) (φ : Future) : List PBind 
     fixCod K ρ φ (emptyState 0) (bindsOf K ρ φ (emptyState 0) [.val .tNat]) ([.val .tNat].map Term.isRefTy) (.val .tNat),
     K.D.typeDecl (K.D.teleDecls (scopeOf (emptyState 0)) [.val .tNat]) (.val .tNat))
 
-/-- **The block's function** (stage 1 at rank 0: the block does not recurse). -/
+/-- **The block's function** (no `by`: one run of its body, `()` in the slot; R-dec, docs/31 D296). -/
 noncomputable def gA (K : RunCtx) (ρ : Assignment) (φ : Future) : List Sem → Option BodyOut :=
   fixG K ρ φ (fbA K ρ φ) 1 (emptyState 0) psI outI (piTyAt K.dm.read 1 psI outI) 0 none matchQ
 
@@ -162,8 +162,8 @@ theorem paramDecls_A (hd : ParDecQ K.D) : K.D.paramDecls (scopeOf (emptyState 0)
   show K.D.paramDecls [] [.val .tNat] = [.other]
   simp [Decisions.paramDecls, Decisions.teleDecls, hd.td0]
 
-/-- **The block's body in its closure's frame, at every number**: `fixBodyAt` starts from `FrameJ2.closureJ2 a` (the
-frame `[{}, {_ ↦ stage 0, n ↦ a}]`) and the body `matchQ` runs there in tail position (`ColumnP.runP`): `a - 1`, no
+/-- **The block's body in its closure's frame, at every number**: `fixBodyU` starts from `FrameJ2.closureJ2 a` (the
+frame `[{}, {_ ↦ (), n ↦ a}]`) and the body `matchQ` runs there in tail position (`ColumnP.runP`): `a - 1`, no
 final. -/
 theorem gA_run (hd : ParDecQ K.D) (a : Nat) : gA K ρ φ [.el0 Nat a] = some ⟨.el0 Nat (a - 1), [], none⟩ := by
   have h1 : (fbA K ρ φ).1 = [(fun _ => .plain TyM.nat, .other)] := bindsOf_valNat _ (paramDecls_A hd)
@@ -171,12 +171,12 @@ theorem gA_run (hd : ParDecQ K.D) (a : Nat) : gA K ρ φ [.el0 Nat a] = some ⟨
     show K.D.typeDecl (K.D.teleDecls [] [.val .tNat]) (.val .tNat) = .other
     simp [Decisions.teleDecls, hd.td0, hd.td1]
   have hst : ([Sem.el0 Nat a].zip psI).foldl (fixStep (fbA K ρ φ))
-      ((emptyState 0).under.pushBind { ty := .plain (selfTy K.dm.read), val := fun _ => selfSem K.dm.read φ, decl := .pi (fbA K ρ φ).2.2 }, [], []) = (FrameJ2.closureJ2 K.dm.read φ a, [.el0 Nat a], []) := by
-    simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1, h2,
+      ((emptyState 0).under.pushBind unitSlot, [], []) = (FrameJ2.closureJ2 K.dm.read φ a, [.el0 Nat a], []) := by
+    simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1,
       Bool.false_eq_true, if_false, List.length_nil, List.getElem?_cons_zero, List.nil_append]
     rfl
   have hP := CallJ2.refP_closureJ2 K.dm.read φ a
-  obtain ⟨hZ, hS⟩ := ColumnP.runP (K := K) hd.p hP (ColumnP.movedIn_selfSem K.dm.read φ) ((fbA K ρ φ).2.1 [.el0 Nat a])
+  obtain ⟨hZ, hS⟩ := ColumnP.runP (K := K) hd.p hP (fun _ => rfl) ((fbA K ρ φ).2.1 [.el0 Nat a])
   have hl : ∀ s', (s' = dropN K (FrameJ2.closureJ2 K.dm.read φ a) ∨ s' = dropN K (setN0 K (FrameJ2.closureJ2 K.dm.read φ a))) →
       s'.liveLabels = [] := by
     intro s' hs'
@@ -184,8 +184,8 @@ theorem gA_run (hd : ParDecQ K.D) (a : Nat) : gA K ρ φ [.el0 Nat a] = some ⟨
     rcases hs' with rfl | rfl
     · unfold dropN; rw [Strict.liveLabels_setAt]; exact hc
     · unfold dropN; rw [Strict.liveLabels_setAt]; unfold setN0; rw [Strict.liveLabels_setAt]; exact hc
-  show fixBodyAt K ρ φ (fbA K ρ φ) (emptyState 0) psI outI (selfTy K.dm.read) 0 matchQ (selfSem K.dm.read φ) [.el0 Nat a] = _
-  unfold fixBodyAt
+  show fixBodyU K ρ φ (fbA K ρ φ) (emptyState 0) psI outI 0 matchQ [.el0 Nat a] = _
+  unfold fixBodyU fixBodyWith
   dsimp only
   rw [hst]
   dsimp only

@@ -22,8 +22,9 @@ open Ochr.Meaning.Steps.Form.FrameJ2 (inPlaceJ2 nBind inPlaceJ2_env)
 /-- `x`, holding `v`, at `Nat`. -/
 def xB (v : Value) : Binding := { hint := ⟨"x"⟩, ty := some .tNat, val := v, decl := .other }
 
-/-- The callee's binding of itself at a call: `I`'s global at its declared type, NOT marked. -/
-def selfU : Binding := { hint := ⟨"I"⟩, ty := some piNat, val := .gfn "I", decl := .pi .other }
+/-- The callee's own-name slot at a call: `()` at `Unit`, unnamed, unmarked (`I` has no `by`: main's D148; it was `I`'s
+global at its declared type before the model's half of R-dec, docs/31 D297). -/
+def selfU : Binding := { hint := ⟨"_"⟩, ty := some .tUnit, val := .unit, decl := .unit }
 
 /-- The callee's parameter at a call: the argument, its type DEFERRED to `I`'s Π-type at the argument. -/
 def nLazy (w : Value) : Binding :=
@@ -39,9 +40,8 @@ namespace Guards
 
 open Ochr.Meaning.Steps.Form.ParGuards (bindOk)
 
-/-- The recorded callee state agrees with `stCJ2` on its kernel, but for the own-name slot: since main's D148 the
-checker's callee slot is `()` (`I` has no `by`; flipped: it was `I` at its Π-type, `stCJ2`'s, which the model's half
-of R-dec re-makes, lead49). -/
+/-- The recorded callee state agrees with `stCJ2` on its kernel: since main's D148 the checker's callee slot is `()`
+(`I` has no `by`), and since the model's half of R-dec (lead50, docs/31 D297) `stCJ2`'s slot is `()` too (`selfU`). -/
 def calleeKernOk (st : MState) : Bool :=
   st.env.size == 2 && st.env[0]!.binds.size == 1 && bindOk st.env[0]!.binds[0]! "x" .bot .tNat .other none &&
   st.env[0]!.temps.isEmpty && st.env[1]!.temps.isEmpty && st.env[1]!.binds.size == 2 &&
@@ -135,7 +135,7 @@ theorem rel_calleeJ2 {π : Nat → Nat} {s₂ : SState} {f : Sem} (hr : Rel K ρ
     rcases he : s₂.env with _ | ⟨fr0, _ | ⟨fr1, rest⟩⟩ <;> rw [he] at hlen <;> simp at hlen
     exact ⟨fr0, rfl⟩
   have henv : (inPlaceJ2 K.dm.read s₂ f 1).env =
-      [fr0, { binds := [{ ty := .plain (piTyAt K.dm.read 1 psI outI), val := fun _ => f, decl := .pi .other }, nBind 1] }] := by
+      [fr0, { binds := [unitSlot, nBind 1] }] := by
     rw [inPlaceJ2_env, hen]; rfl
   have hval0 : ∀ i, (inPlaceJ2 K.dm.read s₂ f 1).valAt (.bind 0 i) = s₂.valAt (.bind 0 i) := fun i => by
     unfold SState.valAt; rw [henv, hen]; rfl
@@ -146,11 +146,11 @@ theorem rel_calleeJ2 {π : Nat → Nat} {s₂ : SState} {f : Sem} (hr : Rel K ρ
   refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   -- the skeleton: the caller's frame, then `I` at its Π-type and `n` at `Nat`
   · have hlhs : (SM' K ρ stCJ2).env.map (fun fr => fr.binds.map bindSkel) =
-        [[(TyM.nat, .other)], [(piTyAt K.dm.read 1 psI outI, .pi .other), (TyM.nat, .other)]] := by
+        [[(TyM.nat, .other)], [(TyM.unit, .unit), (TyM.nat, .other)]] := by
       unfold SM' MState.sstate
       simp only [stCJ2, List.zipIdx, List.map, Nat.zero_add]
       simp only [bindSkel, List.cons.injEq, Prod.mk.injEq, and_true, List.map_nil]
-      exact ⟨⟨rfl, rfl⟩, ⟨hpi, rfl⟩, ⟨hn, rfl⟩⟩
+      exact ⟨⟨rfl, rfl⟩, ⟨rfl, rfl⟩, ⟨hn, rfl⟩⟩
     have hcaller : s₂.env.map (fun fr => fr.binds.map bindSkel) = [[(TyM.nat, .other)]] := by
       rw [← hr.skel]
       unfold SM' MState.sstate
@@ -170,8 +170,7 @@ theorem rel_calleeJ2 {π : Nat → Nat} {s₂ : SState} {f : Sem} (hr : Rel K ρ
       · rw [hval0, ← hr.sim.1 ψ (hF ψ hψ) (.bind 0 i) (by simp [IsTemp])]
         rcases i with _ | i <;> rfl
       · rcases i with _ | _ | i
-        · show (K.C.global "I").1 = (inPlaceJ2 K.dm.read s₂ f 1).valAt (.bind 1 0) ψ
-          rw [hgl]; unfold SState.valAt; rw [henv]; rfl
+        · unfold SState.valAt; rw [henv]; rfl
         · show (Value.mean K.dm K.M K.Γ ρ _ (.plain TyM.nat) Value.zero).succ =
             (inPlaceJ2 K.dm.read s₂ f 1).valAt (.bind 1 1) ψ
           unfold SState.valAt; rw [henv]
@@ -272,7 +271,7 @@ theorem closureRun_J2 (hB : BodyLazyInv) (hN : InvNumA)
 theorem allPos_stCJ2 : allPos stCJ2.env = [.bind 0 0, .bind 1 0, .bind 1 1] := by
   rw [allPos_eq]; simp [stCJ2, frameAllPos, List.range_succ]
 
-theorem values_stCJ2 : Env.values stCJ2.env = [.bot, .gfn "I", .succ .zero] := by
+theorem values_stCJ2 : Env.values stCJ2.env = [.bot, .unit, .succ .zero] := by
   rw [Env.values, allPos_stCJ2]; rfl
 
 theorem bind_stCJ2 {f i : Nat} {b : Binding} (h : stCJ2.env[f]?.bind (fun fr => fr.binds[i]?) = some b) :
@@ -288,7 +287,7 @@ theorem bind_stCJ2 {f i : Nat} {b : Binding} (h : stCJ2.env[f]?.bind (fun fr => 
   · simp [stCJ2] at h
 
 theorem ckContent_stCJ2 {p : Place} {v : Value} (h : ckContent stCJ2.env p = some v) :
-    v = .gfn "I" ∨ v = .succ .zero ∨ v = .zero := by
+    v = .unit ∨ v = .succ .zero ∨ v = .zero := by
   rcases hp : p.steps with ⟨i, path⟩
   simp only [ckContent, hp] at h
   unfold ckVarPos at h
@@ -296,8 +295,8 @@ theorem ckContent_stCJ2 {p : Place} {v : Value} (h : ckContent stCJ2.env p = som
   · have hi' : i < stCJ2.env[stCJ2.env.size - 1]!.binds.size := hi
     rw [if_pos hi'] at h
     simp only [Option.bind_some] at h
-    have hv : ∀ w : Value, (w = .gfn "I" ∨ w = .succ .zero) → w.follow path = some v →
-        v = .gfn "I" ∨ v = .succ .zero ∨ v = .zero := by
+    have hv : ∀ w : Value, (w = .unit ∨ w = .succ .zero) → w.follow path = some v →
+        v = .unit ∨ v = .succ .zero ∨ v = .zero := by
       rintro w hw hf
       rcases path with _ | ⟨s, _ | ⟨s', ss⟩⟩
       · simp [Value.follow] at hf; rcases hw with rfl | rfl
@@ -341,7 +340,7 @@ theorem norm_stCJ2 : stCJ2.norm = stCJ2 := by simp [stCJ2, MState.norm, Env.eras
 
 /-- **`Inv` at the callee state.** -/
 theorem inv_stCJ2 (D : Decisions) : Inv D [] stCJ2 := by
-  have hvals : ∀ v ∈ Env.values stCJ2.env, v = .bot ∨ v = .gfn "I" ∨ v = .succ .zero := fun v hv => by
+  have hvals : ∀ v ∈ Env.values stCJ2.env, v = .bot ∨ v = .unit ∨ v = .succ .zero := fun v hv => by
     rw [values_stCJ2] at hv; simpa using hv
   have hpos : ∀ p ∈ allPos stCJ2.env, p = .bind 0 0 ∨ p = .bind 1 0 ∨ p = .bind 1 1 := fun p hp => by
     rw [allPos_stCJ2] at hp; simpa using hp
@@ -412,7 +411,7 @@ theorem pre_stCJ2 (hc : CtxS K stX.norm) (hΓ : K.Γ = []) : Pre K ρ stCJ2 := b
 /-- **`LazyNum` at the callee state** (what the untyped body step asks), at every table reading `Nat` as a
 parameter `.other` at the empty scope. -/
 theorem lazyNum_stCJ2 (hpd : K.D.paramDecls [] [.nat] = [.other]) {st : MState} (hk : Kern stCJ2 st)
-    (htd : st.tailDecl = none) : CallBody.LazyNum K ρ [.other, .pi .other] st := by
+    (htd : st.tailDecl = none) : CallBody.LazyNum K ρ [.other, .unit] st := by
   have hck : ckVarPos st.env 0 = some (.bind 1 1) := by rw [← ckVarPos_erase, ← hk.env, ckVarPos_erase]; rfl
   have hb : st.env[1]?.bind (fun fr : Frame => fr.binds[1]?) = some (nLazy (.succ .zero)) := by
     rw [← lookup_erase, ← hk.env, lookup_erase]; rfl
@@ -427,15 +426,15 @@ end
 
 `J2`'s check has one table, aligned with the checker at `J2`'s start `stJ2`. In place, `I`'s body reads
 the flags of the read and of the body and the read's reading at the callee frame's readings
-`[.other, .pi .other]` (`ParDecI`), and the read's copy decision at the callee state (`CallBody.CopyDec`).
-Kernel evaluation of the checker's procedures at `scopeState stJ2 [.other, .pi .other]` and at `stJ2`
+`[.other, .unit]` (`ParDecI`), and the read's copy decision at the callee state (`CallBody.CopyDec`).
+Kernel evaluation of the checker's procedures at `scopeState stJ2 [.other, .unit]` and at `stJ2`
 gives each, as `ColumnI.parDecI` does at `stI`: no checker fact. -/
 
 namespace Aux
 
 open Ochr.Meaning.Regress.GenNeutralContent (isOk outVal)
 
-abbrev RI : List DeclInfo := [.other, .pi .other]
+abbrev RI : List DeclInfo := [.other, .unit]
 abbrev stJ2 : MState := FrameJ2.Guards.stJ2
 abbrev flagsRun (t : Term) : M (Bool × Bool) := Ochr.Meaning.Steps.Form.ColumnC.Aux.flagsRun t
 abbrev declRun (t : Term) : M DeclInfo := Ochr.Meaning.Steps.Form.ColumnC.Aux.declRun t
@@ -465,7 +464,7 @@ end Aux
 
 open Ochr.Meaning.Regress.GenNeutralContent (runs_out) in
 /-- **`ParDecI` for `I`'s body in place, at `J2`'s table.** -/
-theorem parDecJ2 {D : Decisions} (hd : DecTab D FrameJ2.Guards.stJ2) : ParDecI D [.other, .pi .other] := by
+theorem parDecJ2 {D : Decisions} (hd : DecTab D FrameJ2.Guards.stJ2) : ParDecI D [.other, .unit] := by
   refine ⟨?_, ?_, ?_⟩
   · show D.flags Aux.RI _ = _
     rw [hd.flags 100 Aux.RI (.place (.var 0)) _ 1000 _
@@ -481,7 +480,7 @@ theorem parDecJ2 {D : Decisions} (hd : DecTab D FrameJ2.Guards.stJ2) : ParDecI D
 open Ochr.Meaning.Regress.GenNeutralContent (runs_out) in
 /-- `I`'s body in place is neither a statement nor a proof, at `J2`'s table. -/
 theorem flags_bodyI_J2 {D : Decisions} (hd : DecTab D FrameJ2.Guards.stJ2) :
-    D.flags [.other, .pi .other] bodyI = (false, false) := by
+    D.flags [.other, .unit] bodyI = (false, false) := by
   show D.flags Aux.RI _ = _
   rw [hd.flags 100 Aux.RI bodyI _ 1000 _ (runs_out (Aux.flagsRun bodyI) _ 1000 Aux.ok_flags_body),
     Aux.val_flags_body]

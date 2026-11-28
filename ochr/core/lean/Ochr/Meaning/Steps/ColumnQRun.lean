@@ -20,14 +20,14 @@ same number: `mean_vQ` and `runMatchQ` give the same result at every assignment.
 
 The decisions read are got by kernel evaluation of the checker's procedures at `stQ` (`parDecQ`); the block's captures
 are not in `DecTab` (they read values: `Decisions.blockCaps`, `DecAligned.blockCaps`) and are taken as the decision
-`D.blockCaps RI [] matchQ = ([n], [(n, move)])`, which `ckBlockCaps` computes at `stQ` (`Aux.val_bc`).
+`D.blockCaps RIu [] matchQ = ([n], [(n, move)])`, which `ckBlockCaps` computes at `stQ` (`Aux.val_bc`).
 -/
 
 namespace Ochr.Meaning.Steps.Form.ColumnQ
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form Ochr.Meaning.Strict.Witness
 open Ochr.Meaning.Steps.Form.ColumnI (piNat nB psI outI selfTy selfSem)
-open Ochr.Meaning.Steps.Form.ColumnP (RI pn0 ParDecP RefJ RefP dropN setN0 nBot)
+open Ochr.Meaning.Steps.Form.ColumnP (RIu pn0 ParDecP RefJ RefP dropN setN0 nBot)
 
 /-! ## The decisions -/
 
@@ -35,14 +35,14 @@ open Ochr.Meaning.Steps.Form.ColumnP (RI pn0 ParDecP RefJ RefP dropN setN0 nBot)
 def anonPi : Term := .pi [⟨"n"⟩] [.val .tNat] (.val .tNat)
 
 /-- **The decisions the reference's run of `Q`'s body and the meaning of its block read**: `P`'s (`ParDecP`: the match
-and its arm in the scope `RI`, which is also the block's body's scope); the body `S(…)` neither a statement nor a proof;
+and its arm in the scope `RIu`, which is also the block's body's scope); the body `S(…)` neither a statement nor a proof;
 the block's captures (`n` by move; the place `movedPlace` is asked of, `n`); and, at the empty scope where the sealed
 program runs, its call and its `fix` neither a statement nor a proof, its parameter and codomain read `.other`, its sort
 `1`. -/
 structure ParDecQ (D : Decisions) : Prop where
-  p : ParDecP D
-  flBody : D.flags RI bodyQ = (false, false)
-  caps : D.blockCaps RI [] matchQ = ([.var 0], [(.var 0, 2)])
+  p : ParDecP D RIu
+  flBody : D.flags RIu bodyQ = (false, false)
+  caps : D.blockCaps RIu [] matchQ = ([.var 0], [(.var 0, 2)])
   flSeal : D.flags [] sealQ = (false, false)
   flFix : D.flags [] anonFix = (false, false)
   td0 : D.typeDecl [] (.val .tNat) = .other
@@ -56,20 +56,20 @@ open Ochr.Meaning.Steps.Form.ColumnC.Aux (flagsRun isOther isOther_eq)
 open Ochr.Meaning.Steps.Form.ColumnI.Aux (typeDeclRun piSortRun)
 open Ochr.Meaning.Steps.Form.ColumnP.Aux (pdRun jmRun cpRun)
 
-theorem ok_fl_body : isOk (flagsRun bodyQ) (scopeState stQ RI) 1000 = true := by decide +kernel
-theorem val_fl_body : outVal (flagsRun bodyQ) (scopeState stQ RI) 1000 = (false, false) := by decide +kernel
-theorem ok_fl_m : isOk (flagsRun matchQ) (scopeState stQ RI) 1000 = true := by decide +kernel
-theorem val_fl_m : outVal (flagsRun matchQ) (scopeState stQ RI) 1000 = (false, false) := by decide +kernel
-theorem ok_fl_n0 : isOk (flagsRun (.place pn0)) (scopeState stQ RI) 1000 = true := by decide +kernel
-theorem val_fl_n0 : outVal (flagsRun (.place pn0)) (scopeState stQ RI) 1000 = (false, false) := by decide +kernel
-theorem ok_pd_n0 : isOk (pdRun pn0) (scopeState stQ RI) 1000 = true := by decide +kernel
-theorem val_pd_n0 : isOther (outVal (pdRun pn0) (scopeState stQ RI) 1000) = true := by decide +kernel
-theorem ok_pd_n : isOk (pdRun (.var 0)) (scopeState stQ RI) 1000 = true := by decide +kernel
-theorem val_pd_n : isOther (outVal (pdRun (.var 0)) (scopeState stQ RI) 1000) = true := by decide +kernel
+theorem ok_fl_body : isOk (flagsRun bodyQ) (scopeState stQ RIu) 1000 = true := by decide +kernel
+theorem val_fl_body : outVal (flagsRun bodyQ) (scopeState stQ RIu) 1000 = (false, false) := by decide +kernel
+theorem ok_fl_m : isOk (flagsRun matchQ) (scopeState stQ RIu) 1000 = true := by decide +kernel
+theorem val_fl_m : outVal (flagsRun matchQ) (scopeState stQ RIu) 1000 = (false, false) := by decide +kernel
+theorem ok_fl_n0 : isOk (flagsRun (.place pn0)) (scopeState stQ RIu) 1000 = true := by decide +kernel
+theorem val_fl_n0 : outVal (flagsRun (.place pn0)) (scopeState stQ RIu) 1000 = (false, false) := by decide +kernel
+theorem ok_pd_n0 : isOk (pdRun pn0) (scopeState stQ RIu) 1000 = true := by decide +kernel
+theorem val_pd_n0 : isOther (outVal (pdRun pn0) (scopeState stQ RIu) 1000) = true := by decide +kernel
+theorem ok_pd_n : isOk (pdRun (.var 0)) (scopeState stQ RIu) 1000 = true := by decide +kernel
+theorem val_pd_n : isOther (outVal (pdRun (.var 0)) (scopeState stQ RIu) 1000) = true := by decide +kernel
 theorem ok_cp : isOk cpRun stQ 1000 = true := by decide +kernel
 theorem val_cp : outVal cpRun stQ 1000 = false := by decide +kernel
-theorem ok_jm : isOk (jmRun matchQ) (scopeState stQ RI) 1000 = true := by decide +kernel
-theorem val_jm0 : (match outVal (jmRun matchQ) (scopeState stQ RI) 1000 with
+theorem ok_jm : isOk (jmRun matchQ) (scopeState stQ RIu) 1000 = true := by decide +kernel
+theorem val_jm0 : (match outVal (jmRun matchQ) (scopeState stQ RIu) 1000 with
     | [.var 0] => true
     | _ => false) = true := by decide +kernel
 theorem ok_fl_seal : isOk (flagsRun sealQ) (scopeState stQ []) 1000 = true := by decide +kernel
@@ -84,10 +84,10 @@ theorem val_td (sc : List DeclInfo) (hsc : sc = [] ∨ sc = [.other]) :
   rcases hsc with rfl | rfl <;> decide +kernel
 theorem ok_sort : isOk (piSortRun anonPi) (scopeState stQ []) 1000 = true := by decide +kernel
 theorem val_sort : outVal (piSortRun anonPi) (scopeState stQ []) 1000 = 1 := by decide +kernel
-theorem val_jm : outVal (jmRun matchQ) (scopeState stQ RI) 1000 = [.var 0] := by
+theorem val_jm : outVal (jmRun matchQ) (scopeState stQ RIu) 1000 = [.var 0] := by
   have h := val_jm0
   revert h
-  generalize outVal (jmRun matchQ) (scopeState stQ RI) 1000 = x
+  generalize outVal (jmRun matchQ) (scopeState stQ RIu) 1000 = x
   intro h
   split at h
   · rfl
@@ -98,13 +98,13 @@ end Aux
 /-- **`ParDecQ` at every table aligned with the checker at `stQ`** whose block captures are the checker's there (the one
 block of the body is entered at a state with `stQ`'s kernel: `DecAligned.blockCaps` at that state). -/
 theorem parDecQ {D : Decisions} (hd : DecTab D stQ)
-    (hbc : D.blockCaps RI [] matchQ = ([.var 0], [(.var 0, 2)])) : ParDecQ D := by
+    (hbc : D.blockCaps RIu [] matchQ = ([.var 0], [(.var 0, 2)])) : ParDecQ D := by
   open Ochr.Meaning.Regress.GenNeutralContent in
-  have hpd : D.placeDecl RI pn0 = .other :=
-    (hd.placeDecl 100 RI pn0 _ 1000 _ (runs_out (ColumnP.Aux.pdRun pn0) _ 1000 Aux.ok_pd_n0)).trans
+  have hpd : D.placeDecl RIu pn0 = .other :=
+    (hd.placeDecl 100 RIu pn0 _ 1000 _ (runs_out (ColumnP.Aux.pdRun pn0) _ 1000 Aux.ok_pd_n0)).trans
       (ColumnC.Aux.isOther_eq Aux.val_pd_n0)
-  have hpd0 : D.placeDecl RI (.var 0) = .other :=
-    (hd.placeDecl 100 RI (.var 0) _ 1000 _ (runs_out (ColumnP.Aux.pdRun (.var 0)) _ 1000 Aux.ok_pd_n)).trans
+  have hpd0 : D.placeDecl RIu (.var 0) = .other :=
+    (hd.placeDecl 100 RIu (.var 0) _ 1000 _ (runs_out (ColumnP.Aux.pdRun (.var 0)) _ 1000 Aux.ok_pd_n)).trans
       (ColumnC.Aux.isOther_eq Aux.val_pd_n)
   have hcp : D.copy .other = false := by
     rw [hd.copy 100 .other _ 1000 _ (runs_out ColumnP.Aux.cpRun _ 1000 Aux.ok_cp), Aux.val_cp]
@@ -119,7 +119,7 @@ theorem parDecQ {D : Decisions} (hd : DecTab D stQ)
   · rw [hfl _ _ Aux.ok_fl_n0, Aux.val_fl_n0]
   · rw [hpd]; exact hcp
   · rw [hpd0]; exact hcp
-  · rw [hd.joinMoves 100 RI [] matchQ _ 1000 _ (runs_out (ColumnP.Aux.jmRun matchQ) _ 1000 Aux.ok_jm), Aux.val_jm]
+  · rw [hd.joinMoves 100 RIu [] matchQ _ 1000 _ (runs_out (ColumnP.Aux.jmRun matchQ) _ 1000 Aux.ok_jm), Aux.val_jm]
   · rw [hfl _ _ Aux.ok_fl_body, Aux.val_fl_body]
   · rw [hfl _ _ Aux.ok_fl_seal, Aux.val_fl_seal]
   · rw [hfl _ _ Aux.ok_fl_fix, Aux.val_fl_fix]

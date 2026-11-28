@@ -6,7 +6,7 @@ import Ochr.Meaning.Strict.WitnessFix
 
 The reference's `.fix` clause forms `I`'s closure (for a global, in the empty state) and runs its body,
 at each argument, in the checker's frames (`RunCongr.fixBodyAt` under `SState.under`, docs/31 D126):
-`[{}, frI]`, `self` (the stage-0 closure at the weakened type), then the parameter. Here: the clause's
+`[{}, frI]`, the own-name slot (`()` at `Unit`: `I` has no `by`, R-dec), then the parameter. Here: the clause's
 reading of `Π(n : Nat). Nat` (`runDoms = psI`, `codOf = outI`), the body's run reading neither the
 assignment, the tail flag nor the hint (`runT_bodyI`), `EndsOk []`, and the body frame `frI`. The
 assembly (the two start states equal, the closure a member, the `.fix` run) is `Steps/ColumnIRun.lean`.
@@ -45,9 +45,8 @@ theorem endsOk_nil (s : SState) : EndsOk K φ [] s := by
 
 end
 
-/-- The body's frame, on both sides: `self` the stage-0 closure at the weakened type, `n` the number `a`. -/
-noncomputable def frI (R : DataRead) (φ : Future) (a : Nat) : SFrame :=
-  { binds := [{ ty := .plain (selfTy R), val := fun _ => selfSem R φ, decl := .pi .other },
-      { ty := .plain TyM.nat, val := fun _ => .el0 Nat a, decl := .other }] }
+/-- The body's frame, on both sides: the own-name slot `()` at `Unit` (R-dec, docs/31 D296), `n` the number `a`. -/
+noncomputable def frI (_R : DataRead) (_φ : Future) (a : Nat) : SFrame :=
+  { binds := [unitSlot, { ty := .plain TyM.nat, val := fun _ => .el0 Nat a, decl := .other }] }
 
 end Ochr.Meaning.Steps.Form.ColumnI

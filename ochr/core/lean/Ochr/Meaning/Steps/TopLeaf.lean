@@ -172,7 +172,7 @@ theorem fixLeafG_of (hRet : LeafReturnG) (hConv : LeafConvG) (hPop : LeafPopG)
     foldl_fixStep_cells (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod)
       (a.zip (psG (P.ctx dm D Γ st') ρ φ d.doms)) s₀ [] [] (fun p hp => hnoref p.2 (List.of_mem_zip hp).2)
   rw [stG_succ]
-  unfold fixBodyAt
+  unfold fixBodyAt fixBodyWith
   dsimp only
   generalize hF : List.foldl (fixStep (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod)) _
     (a.zip (psG (P.ctx dm D Γ st') ρ φ d.doms)) = F
@@ -371,7 +371,7 @@ theorem fixLeafG_ofRef (hRet : LeafReturnG) (hConv : LeafConvG)
     · exact absurd (hty ▸ he) hcod
   obtain ⟨hends, hfin⟩ := hPop ρ ρa Δa φ b a v T stl stk bk ρ' Δ' π' s' ha hk hpl hrl hsg
   rw [stG_succ]
-  unfold fixBodyAt
+  unfold fixBodyAt fixBodyWith
   dsimp only
   generalize hF : List.foldl (fixStep (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod)) _
     (a.zip (psG (P.ctx dm D Γ st') ρ φ d.doms)) = F

@@ -537,6 +537,13 @@ theorem fixG_one (dm : DataModel) {items : List Item} (hr : ResolvesTo pq F item
   obtain ⟨rfl, -, -⟩ := atStage_one hr hin
   exact absurd rfl hd
 
+/-- `one` is a constant: the route of a function without `by` is vacuous at its program. -/
+theorem fixNG_one (dm : DataModel) {items : List Item} (hr : ResolvesTo pq F items) :
+    FixNG dm (chainDecisions F) (indsOf {} F items) F items := by
+  intro P d st' hin hd
+  obtain ⟨rfl, -, -⟩ := atStage_one hr hin
+  exact absurd rfl hd
+
 theorem succ_el0 : (Sem.el0 Nat 0).succ = Sem.el0 Nat 1 := by simp [Sem.succ, Sem.asNat, Sem.as]
 
 /-- The stage after `one`. -/
@@ -639,7 +646,7 @@ theorem hlinks_one : ∀ items, ResolvesTo pq F items →
       (∀ k, k ≤ items.length → DataFaithful dm (chainDecisions F) (indsOf {} F items)
         (progMeaning dm (chainDecisions F) (indsOf {} F items) (fun _ => .err) {} F (items.take k))) →
       TopLinks dm (chainDecisions F) (indsOf {} F items) F items :=
-  fun _ hr dm _ _ => ⟨constG_one dm hr, fixG_one dm hr, globGrow_one dm hr⟩
+  fun _ hr dm _ _ => ⟨constG_one dm hr, fixG_one dm hr, fixNG_one dm hr, globGrow_one dm hr⟩
 
 /-- The declared type of `one`, unlocated, is not `False`. -/
 def retIsFalse (d : SDecl) : Bool :=

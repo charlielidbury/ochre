@@ -25,7 +25,7 @@ the eight links: `FixCheckAt` (the inversion), `FixFitsAt`, `FixStartAt` (`fixSt
 `FixPartsAt`, `FixClosedAt`, `FixFlagAt`. -/
 theorem fixG_R (hkt : KeepsTabFixR) (dm : DataModel) {items : List Item} (hr : ResolvesTo pq F items) :
     FixG dm (chainDecisions F) (indsOf {} F items) F items := by
-  intro P d st' hin _ hrun _ hfaith hcov hΓP
+  intro P d st' hin _ hrun _ hfaith hcov hΓP _
   obtain ⟨rfl, hPg, hPm⟩ := atStage_R hr hin
   have hrun' := hrun
   rw [hPg] at hrun'

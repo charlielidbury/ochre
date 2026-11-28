@@ -41,7 +41,7 @@ theorem column_K_run (ρ : Assignment) (hDK : DecTab D stK) (tl : Bool) (hint' :
       ∈ₛ[dm.read] piTyAt dm.read 1 psW outK := by
     unfold fixClo
     rw [hty, hsort, runDoms_ref _ ρ φ _ hpd, codOf_refK]
-    exact closure_mem_K (K := KB "K" outK dm D φ) _ h1 (by simp [h2]) _ (by rw [h2]; exact hflb) (by rw [h2]; exact hcp)
+    exact closure_mem_K (K := KB "K" outK dm D φ) _ h1 (by simp [h2]) _ (flagsU_K hDK).1 (flagsU_K hDK).2
   refine ⟨_, ?_, hmem⟩
   unfold fixK
   rw [run_fix_of_mem tl hint' ⟨"K"⟩ [⟨"r"⟩] [.ref .nat] (.ref .nat) none bodyK (emptyState 0) hfl

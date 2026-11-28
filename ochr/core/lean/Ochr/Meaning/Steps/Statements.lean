@@ -260,15 +260,17 @@ the global's function (`GG`, the `.fix` clause's `fixG` at the global's forming 
 run of the body with `self` the global's own closure at its true function type. Stated at `formG` only (D232: a global is
 formed there and nowhere else; at another state the body's variables are not its own, and the right side's closure is `err`
 wherever the function is not good everywhere). Since D232 a THEOREM, not an assumed clause: `FixEqDesc.fixEqG_of`, from
-the descent clause `RecDescG` and the knot's goodness `FnGoodG`. -/
+the descent clause `RecDescG` and the knot's goodness `FnGoodG`. RESTATED by R-dec (docs/31 D296): the right side's
+own-name slot is by `dec` (`selfSlot`): with `by`, the global's own closure at its true type (the equation as before);
+without, `()` at `Unit`, where both sides are `fixBodyU` and the equation is a definition. -/
 def FixEqG (K : RunCtx) (st : MState) : Prop :=
   ∀ (n : String) (gd : GDef) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term),
     st.globals.find? (·.name == n) = some gd → K.cur.map (·.1) ≠ some n →
     gd.fn? = some (.fix self hs ds c dec body) →
     ∀ (ρ : Assignment) (φ : Future) (args : List Sem), DomMembers K.dm.read (psG K ρ φ ds) args →
       GG K ρ φ hs ds c dec body args =
-        fixBodyAt K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) (piTG K ρ φ hs ds c) 0 body
-          (selfG K ρ φ hs ds c dec body) args
+        fixBodyWith K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) 0 body
+          (selfSlot dec (selfG K ρ φ hs ds c dec body) (.plain (piTG K ρ φ hs ds c)) (fbG K ρ φ ds c).2.2) args
 
 namespace Master
 
@@ -2310,12 +2312,12 @@ def etaUnit_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
 
 /-- The callee's (or a closure's) frame and codomain as the run in place computes them
 (`runBodyRef`'s `let`s; `bodyAt`'s at a global, whose captures are none). -/
-noncomputable def bodyFrame (fres : Res) (cs : List Value) (rd : List (DeclInfo × Value)) (ds : List Term) (c : Term)
-    (args : List Res) (s : SState) : SState × PiCod :=
+noncomputable def bodyFrame (fres : Res) (dec : Option Nat) (cs : List Value) (rd : List (DeclInfo × Value)) (ds : List Term)
+    (c : Term) (args : List Res) (s : SState) : SState × PiCod :=
   -- docs/31 D230: the closure value's forming state (`runBodyRef`)
   let s₀ := stateOf 0 (capsState (capsVals K ρ φ cs) (capsTys K ρ φ rd))
   let bs := bindsOf K ρ φ s₀ ds
-  (callFrame K ρ φ cs rd fres (K.D.typeDecl (K.D.teleDecls (scopeOf s₀) ds) c) bs args s, codOf K ρ φ s₀ bs (ds.map Term.isRefTy) c)
+  (callFrame K ρ φ cs rd fres dec (K.D.typeDecl (K.D.teleDecls (scopeOf s₀) ds) c) bs args s, codOf K ρ φ s₀ bs (ds.map Term.isRefTy) c)
 
 /-- The end of `checkFix` at each leaf of the body (`Machine.checkFix`'s continuation): the value
 returned whole, [Return] (`bodyReturns`), the frame popped with the value parked below, the value's
@@ -2357,10 +2359,10 @@ def generic_good_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
         ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π : Nat → Nat), ExtOk K ρ st stgen ρ' Δ' ∧
           Rel { K with Δ := Δ' } ρ' φ π stgen
             (bodyFrame K ρ' φ (meanV K ρ φ (.plain .err) fv, .plain (meanV K ρ φ (.plain .err) (.tPi cs (.pi hs ds c) rd)).asTy)
-              cs rd ds c args (emptyState 0)).1 ∧
+              dec cs rd ds c args (emptyState 0)).1 ∧
           stgen.goal.map (fun G => (meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) G).asTy) =
             some ((bodyFrame K ρ' φ (meanV K ρ φ (.plain .err) fv, .plain (meanV K ρ φ (.plain .err) (.tPi cs (.pi hs ds c) rd)).asTy)
-              cs rd ds c args (emptyState 0)).2.cod (args.map (·.1)))
+              dec cs rd ds c args (emptyState 0)).2.cod (args.map (·.1)))
 
 /-- **`checkTail`** (a body checked in tail position, splitting at its matches, `fixReturn` or the
 caller's continuation at each leaf), in the simulation form (docs/31 D80): from a related state, for

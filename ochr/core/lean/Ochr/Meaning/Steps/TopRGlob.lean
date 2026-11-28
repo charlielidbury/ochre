@@ -297,6 +297,13 @@ theorem constG_R (dm : DataModel) (hr : ResolvesTo pq F items) :
   obtain ⟨rfl, -, -⟩ := atStage_R hr hin
   cases hd
 
+/-- `R` declares `by`, so the route of a function without `by` is vacuous at `R`'s program (R-dec, docs/31 D296). -/
+theorem fixNG_R (dm : DataModel) {items : List Item} (hr : ResolvesTo pq F items) :
+    FixNG dm (chainDecisions F) (indsOf {} F items) F items := by
+  intro P d st' hin _ hdec
+  obtain ⟨rfl, -, -⟩ := atStage_R hr hin
+  cases hdec
+
 /-- **The links of the top at `R`'s program** (`hlinks` exactly as `consistency_of_master` takes it, at `R`'s program):
 PROVED but for TWO facts, `KeepsTabFixR` (whole-machine, the machine lane's) and `RetKindR` (`R`'s function at an
 arbitrary forming state returns an unlabelled result; PROVED since lead48, `Steps/TopRRet.retKindR`, so `hlinks_R1`
@@ -306,7 +313,7 @@ theorem hlinks_R (hkt : KeepsTabFixR) (hret : RetKindR) : ∀ items, ResolvesTo 
       (∀ k, k ≤ items.length → DataFaithful dm (chainDecisions F) (indsOf {} F items)
         (progMeaning dm (chainDecisions F) (indsOf {} F items) (fun _ => .err) {} F (items.take k))) →
       TopLinks dm (chainDecisions F) (indsOf {} F items) F items :=
-  fun _ hr dm _ _ => ⟨constG_R dm hr, fixG_R hkt dm hr, globGrow_R hret dm hr⟩
+  fun _ hr dm _ _ => ⟨constG_R dm hr, fixG_R hkt dm hr, fixNG_R dm hr, globGrow_R hret dm hr⟩
 
 end
 

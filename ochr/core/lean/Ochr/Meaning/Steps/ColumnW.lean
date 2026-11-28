@@ -36,9 +36,21 @@ theorem isRefOther_eq {d : DeclInfo} (h : isRefOther d = true) : d = .ref .other
   rename_i A
   cases A <;> simp [isRefOther] at h ⊢
 
-/-- `W`'s and `K`'s top-frame readings in the body: `self` (`.pi cod`), then `r` (`.ref .other`), innermost first. -/
+/-- `W`'s and `K`'s top-frame readings in the body at the column's hand-built start kernels `stW`, `stK` (the states
+before main's D148: `self` read `.pi cod`), then `r` (`.ref .other`), innermost first. -/
 def RW : List DeclInfo := [.ref .other, .pi .other]
 def RK : List DeclInfo := [.ref .other, .pi (.ref .other)]
+
+/-- The top-frame readings of `W`'s and `K`'s closure frames since R-dec (docs/31 D296): the own-name slot `()` read
+`.unit`, then `r`. -/
+def RWu : List DeclInfo := [.ref .other, .unit]
+
+theorem ok_fl_bodyWu : isOk (flagsRun bodyW) (scopeState stW RWu) 1000 = true := by decide +kernel
+theorem val_fl_bodyWu : outVal (flagsRun bodyW) (scopeState stW RWu) 1000 = (false, false) := by decide +kernel
+theorem ok_fl_bodyKu : isOk (flagsRun bodyK) (scopeState stK RWu) 1000 = true := by decide +kernel
+theorem val_fl_bodyKu : outVal (flagsRun bodyK) (scopeState stK RWu) 1000 = (false, false) := by decide +kernel
+theorem ok_pd_Ku : isOk pdR (scopeState stK RWu) 1000 = true := by decide +kernel
+theorem val_pd_Ku : isRefOther (outVal pdR (scopeState stK RWu) 1000) = true := by decide +kernel
 
 theorem ok_fl_bodyW : isOk (flagsRun bodyW) (scopeState stW RW) 1000 = true := by decide +kernel
 theorem val_fl_bodyW : outVal (flagsRun bodyW) (scopeState stW RW) 1000 = (false, false) := by decide +kernel
@@ -89,6 +101,19 @@ theorem fixDecW {D : Decisions} (hd : DecTab D stW) :
   · rw [hd.piSort 100 [] _ _ 1000 _ (runs_out (Aux.piSortRun _) _ 1000 Aux.ok_ps_W), Aux.val_ps_W]
   · rw [hd.flags 100 [] fixW _ 1000 _ (runs_out (Aux.flagsRun fixW) _ 1000 Aux.ok_fl_fixW), Aux.val_fl_fixW]
   · rw [hd.flags 100 Aux.RW bodyW _ 1000 _ (runs_out (Aux.flagsRun bodyW) _ 1000 Aux.ok_fl_bodyW), Aux.val_fl_bodyW]
+
+/-- **`W`'s body at its closure frame's readings since R-dec** (`()` in the slot). -/
+theorem flagsU_W {D : Decisions} (hd : DecTab D stW) : D.flags Aux.RWu bodyW = (false, false) := by
+  rw [hd.flags 100 Aux.RWu bodyW _ 1000 _ (runs_out (Aux.flagsRun bodyW) _ 1000 Aux.ok_fl_bodyWu), Aux.val_fl_bodyWu]
+
+/-- **`K`'s body and read at its closure frame's readings since R-dec** (`()` in the slot). -/
+theorem flagsU_K {D : Decisions} (hd : DecTab D stK) :
+    D.flags Aux.RWu bodyK = (false, false) ∧ D.copy (D.placeDecl Aux.RWu (.var 0)) = false := by
+  refine ⟨?_, ?_⟩
+  · rw [hd.flags 100 Aux.RWu bodyK _ 1000 _ (runs_out (Aux.flagsRun bodyK) _ 1000 Aux.ok_fl_bodyKu), Aux.val_fl_bodyKu]
+  · rw [(hd.placeDecl 100 Aux.RWu (.var 0) _ 1000 _ (runs_out Aux.pdR _ 1000 Aux.ok_pd_Ku)).trans
+      (Aux.isRefOther_eq Aux.val_pd_Ku)]
+    rw [hd.copy 100 (.ref .other) _ 1000 _ (runs_out Aux.cpRun _ 1000 Aux.ok_cp_K), Aux.val_cp_K]
 
 /-- **The decisions `K`'s `.fix` clause and body read**, at every table aligned with the checker at `stK`: as `W`'s,
 the codomain `&Nat` read `.ref .other`, and `r` (read `.ref .other`) is not copied. -/
@@ -159,7 +184,7 @@ theorem column_W_run (ρ : Assignment) (hDW : DecTab D stW) (tl : Bool) (hint' :
       ∈ₛ[dm.read] piTyAt dm.read 1 psW outW := by
     unfold fixClo
     rw [hty, hsort, runDoms_ref _ ρ φ _ hpd, codOf_natW]
-    exact closure_mem_W (K := KB "W" outW dm D φ) _ h1 (by simp [h2]) _ (by rw [h2]; exact hflb)
+    exact closure_mem_W (K := KB "W" outW dm D φ) _ h1 (by simp [h2]) _ (flagsU_W hDW)
   refine ⟨_, ?_, hmem⟩
   unfold fixW
   rw [run_fix_of_mem tl hint' ⟨"W"⟩ [⟨"r"⟩] [.ref .nat] .nat none bodyW (emptyState 0) hfl

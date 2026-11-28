@@ -42,13 +42,14 @@ section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- The in-place state after the push (`runBodyRef`'s, at a global: no captures). -/
-noncomputable def inStart (fres : Res) (ds : List Term) (c : Term) (args : List Res) (s : SState) : SState :=
-  callFrame K ρ φ [] [] fres (fbG K ρ φ ds c).2.2 (fbG K ρ φ ds c).1 args s
+noncomputable def inStart (fres : Res) (dec : Option Nat) (ds : List Term) (c : Term) (args : List Res) (s : SState) : SState :=
+  callFrame K ρ φ [] [] fres dec (fbG K ρ φ ds c).2.2 (fbG K ρ φ ds c).1 args s
 
-/-- The closure's state after the push (`fixBodyAt`'s `s₂`), at `self` meaning `selfM` at `piT`. -/
-noncomputable def clStart (ds : List Term) (c : Term) (piT : TyM) (selfM : Sem) (args : List Sem) : SState :=
+/-- The closure's state after the push (`fixBodyWith`'s `s₂`), the own-name slot by `dec` (R-dec, docs/31 D296): with
+`by`, `self` meaning `selfM` at `piT` (`fixBodyAt`); without, `()` at `Unit` (`fixBodyU`). -/
+noncomputable def clStart (dec : Option Nat) (ds : List Term) (c : Term) (piT : TyM) (selfM : Sem) (args : List Sem) : SState :=
   ((args.zip (psG K ρ φ ds)).foldl (fixStep (fbG K ρ φ ds c))
-    ((formG.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi (fbG K ρ φ ds c).2.2 }), [], [])).1
+    ((formG.under.pushBind (selfSlot dec selfM (.plain piT) (fbG K ρ φ ds c).2.2)), [], [])).1
 
 end
 
@@ -111,8 +112,8 @@ theorem callRen_mono {ks : List Nat} {n : Nat} (l l' : Nat) (h : callRen ks n l 
 /-- The push reads the callee's meaning and its type's code only (`self` is bound at `{fres.2 with label := none}`):
 `K.C.global g` and `(selfG, .plain piTG)` push the same frame where they agree there. -/
 theorem inStart_fres (K : RunCtx) (ρ : Assignment) (φ : Future) {fres fres' : Res} (h1 : fres.1 = fres'.1)
-    (h2 : fres.2.m = fres'.2.m) (ds : List Term) (c : Term) (args : List Res) (s : SState) :
-    inStart K ρ φ fres ds c args s = inStart K ρ φ fres' ds c args s := by
+    (h2 : fres.2.m = fres'.2.m) (dec : Option Nat) (ds : List Term) (c : Term) (args : List Res) (s : SState) :
+    inStart K ρ φ fres dec ds c args s = inStart K ρ φ fres' dec ds c args s := by
   obtain ⟨a, ⟨m, l⟩⟩ := fres
   obtain ⟨a', ⟨m', l'⟩⟩ := fres'
   simp only at h1 h2
@@ -176,10 +177,10 @@ noncomputable def callStep (bs : List PBind) (sa : SState × List Sem) (a : Res)
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-theorem inStart_eq (fres : Res) (ds : List Term) (c : Term) (args : List Res) (s : SState) :
-    inStart K ρ φ fres ds c args s =
+theorem inStart_eq (fres : Res) (dec : Option Nat) (ds : List Term) (c : Term) (args : List Res) (s : SState) :
+    inStart K ρ φ fres dec ds c args s =
       (args.foldl (callStep (fbG K ρ φ ds c).1)
-        (s.pushFrame.pushBind { ty := { fres.2 with label := none }, val := fun _ => fres.1, decl := .pi (fbG K ρ φ ds c).2.2 },
+        (s.pushFrame.pushBind (selfSlot dec fres.1 fres.2 (fbG K ρ φ ds c).2.2),
           [])).1 := by
   simp only [inStart, callFrame, capsState, capsVals, capsTys, List.zip_nil_left, List.map_nil, List.foldl_nil]
   rfl
@@ -330,18 +331,17 @@ theorem frameOf_lt_of_mem {s : SState} {p : Pos} (hp : p ∈ s.positions) : p.fr
 from locality at the call point (every position reads only live labels, `RInv`), unique holders, every site at a
 position, and the arguments' labels live and distinct. The push binds `self` and the parameters in a new frame, takes
 each argument's label from its holder in the caller's frames, and touches no site and no counter. -/
-theorem frameStart_inStart (K : RunCtx) (ρ : Assignment) (φ : Future) (fres : Res) (ds : List Term) (c : Term)
+theorem frameStart_inStart (K : RunCtx) (ρ : Assignment) (φ : Future) (fres : Res) (dec : Option Nat) (ds : List Term) (c : Term)
     (args : List Res) (s : SState) (hloc : SState.RInv (fun _ => False) s) (hu : s.Uniq)
     (hsites : ∀ l (y : Site), y ∈ s.lent l → y.pos ∈ s.positions)
     (hlive : ∀ a ∈ args, ∀ l, a.2.label = some l → s.Live l) (hnd : (argLabels args).Nodup) :
-    FrameStart (inStart K ρ φ fres ds c args s) (argLabels args) := by
+    FrameStart (inStart K ρ φ fres dec ds c args s) (argLabels args) := by
   rw [inStart_eq]
-  generalize hb₀ : ({ ty := { fres.2 with label := none }, val := fun _ => fres.1, decl := .pi (fbG K ρ φ ds c).2.2 } :
-    SBinding) = b₀
+  generalize hb₀ : selfSlot dec fres.1 fres.2 (fbG K ρ φ ds c).2.2 = b₀
   have hsa := hloc.2.2
-  have hb₀v : b₀.val = fun _ => fres.1 := by rw [← hb₀]
+  have hb₀v : b₀.val = fun _ => slotVal dec fres.1 := by rw [← hb₀]; exact selfSlot_val dec fres.1 fres.2 _
   have ht₀r : SState.RInv (fun _ => False) (s.pushFrame.pushBind b₀) :=
-    SState.pushBind_rinv (PushFrame.rinv_pushFrame hloc) b₀ fres.1 hb₀v
+    SState.pushBind_rinv (PushFrame.rinv_pushFrame hloc) b₀ _ hb₀v
   have hsa₀ : SState.ShapeAt s.pushFrame := (PushFrame.rinv_pushFrame hloc).2.2
   obtain ⟨_, _, hlen, hn, hlent, _, hsh⟩ := fold_start (fbG K ρ φ ds c).1 s args (s.pushFrame.pushBind b₀) [] []
     ht₀r (hu.pushBind b₀) (by simp [SState.pushBind, SState.pushFrame]) rfl rfl
@@ -401,7 +401,7 @@ cells, each reading its own label, lent there; the caller's frames are `s₀`'s 
 the start), with `ArgsHeld` giving the held types (`FrameRel.held`, `heldAll`), the domains' membership the
 goodness of both states, and `callRen` the range, order and counter clauses by its definition. -/
 def CallStartG : Prop :=
-  ∀ (hs : List Hint) (ds : List Term) (c : Term) (selfM : Sem) (piT : TyM) (args : List Res) (s : SState),
+  ∀ (hs : List Hint) (dec : Option Nat) (ds : List Term) (c : Term) (selfM : Sem) (piT : TyM) (args : List Res) (s : SState),
     piT = piTyAt K.dm.read (K.D.piSort (scopeOf formG) (.pi hs ds c)) (psG K ρ φ ds) (outG K ρ φ ds c) →
     selfM ∈ₛ[K.dm.read] piT →
     Strict.SGood K.dm K.Γ φ s → SState.RInv (fun _ => False) s → LendWF s →
@@ -410,14 +410,14 @@ def CallStartG : Prop :=
     DomMembers K.dm.read (psG K ρ φ ds) (args.map (·.1)) →
     (∀ (i : Nat) (a : Res) (d : PiDom), args[i]? = some a → (psG K ρ φ ds)[i]? = some d → (a.2.label.isSome = d.isRef)) →
     ArgsHeld K ρ φ ds c args s →
-    FrameStart (inStart K ρ φ (selfM, .plain piT) ds c args s) (argLabels args) ∧
-    FrameInv K φ (callRen (argLabels args) s.nextLoan) (inStart K ρ φ (selfM, .plain piT) ds c args s) (argLabels args)
-      (inStart K ρ φ (selfM, .plain piT) ds c args s) (clStart K ρ φ ds c piT selfM (args.map (·.1)))
+    FrameStart (inStart K ρ φ (selfM, .plain piT) dec ds c args s) (argLabels args) ∧
+    FrameInv K φ (callRen (argLabels args) s.nextLoan) (inStart K ρ φ (selfM, .plain piT) dec ds c args s) (argLabels args)
+      (inStart K ρ φ (selfM, .plain piT) dec ds c args s) (clStart K ρ φ dec ds c piT selfM (args.map (·.1)))
 
 /-- **The start of a call in place, its internal relation** (MODEL; PROVED, `CallStartInv.callStartInvG`, docs/31 D240): `CallStartG`'s `FrameInv` half, at the same
 hypotheses; its `FrameStart` half is proved (`frameStart_inStart`). -/
 def CallStartInvG : Prop :=
-  ∀ (hs : List Hint) (ds : List Term) (c : Term) (selfM : Sem) (piT : TyM) (args : List Res) (s : SState),
+  ∀ (hs : List Hint) (dec : Option Nat) (ds : List Term) (c : Term) (selfM : Sem) (piT : TyM) (args : List Res) (s : SState),
     piT = piTyAt K.dm.read (K.D.piSort (scopeOf formG) (.pi hs ds c)) (psG K ρ φ ds) (outG K ρ φ ds c) →
     selfM ∈ₛ[K.dm.read] piT →
     Strict.SGood K.dm K.Γ φ s → SState.RInv (fun _ => False) s → LendWF s →
@@ -426,19 +426,19 @@ def CallStartInvG : Prop :=
     DomMembers K.dm.read (psG K ρ φ ds) (args.map (·.1)) →
     (∀ (i : Nat) (a : Res) (d : PiDom), args[i]? = some a → (psG K ρ φ ds)[i]? = some d → (a.2.label.isSome = d.isRef)) →
     ArgsHeld K ρ φ ds c args s →
-    FrameInv K φ (callRen (argLabels args) s.nextLoan) (inStart K ρ φ (selfM, .plain piT) ds c args s) (argLabels args)
-      (inStart K ρ φ (selfM, .plain piT) ds c args s) (clStart K ρ φ ds c piT selfM (args.map (·.1)))
+    FrameInv K φ (callRen (argLabels args) s.nextLoan) (inStart K ρ φ (selfM, .plain piT) dec ds c args s) (argLabels args)
+      (inStart K ρ φ (selfM, .plain piT) dec ds c args s) (clStart K ρ φ dec ds c piT selfM (args.map (·.1)))
 
 /-- `CallStartG` from its `FrameInv` half: the `FrameStart` half is `frameStart_inStart`. -/
 theorem callStartG_of (h : CallStartInvG K ρ φ) : CallStartG K ρ φ :=
-  fun hs ds c selfM piT args s hpi hself hg hloc hl hsites hlive hnd hdom hlab hbt =>
-    ⟨frameStart_inStart K ρ φ _ ds c args s hloc hg.uniq hsites hlive hnd,
-      h hs ds c selfM piT args s hpi hself hg hloc hl hsites hlive hnd hdom hlab hbt⟩
+  fun hs dec ds c selfM piT args s hpi hself hg hloc hl hsites hlive hnd hdom hlab hbt =>
+    ⟨frameStart_inStart K ρ φ _ dec ds c args s hloc hg.uniq hsites hlive hnd,
+      h hs dec ds c selfM piT args s hpi hself hg hloc hl hsites hlive hnd hdom hlab hbt⟩
 
 /-- **The first use of the frame property** (PROVED from `CallStartG`): at a call of a global whose body is frame-free, the
 body's run in place (from the pushed frame) and its run in the closure (from the closure's pushed frame), at the same
 hint, both fail or agree: the same result, its label renamed by `callRen`, the internal relation at the end. -/
-theorem body_agree (hst : CallStartG K ρ φ) (hc : Strict.FundCtx K) (hs : List Hint) (ds : List Term) (c : Term)
+theorem body_agree (hst : CallStartG K ρ φ) (hc : Strict.FundCtx K) (hs : List Hint) (dec : Option Nat) (ds : List Term) (c : Term)
     (body : Term) (hv : body.valsOk (Strict.ValsP K ρ φ)) (hf : body.frameFree = true) (selfM : Sem) (piT : TyM)
     (args : List Res) (s : SState) (hint : TyS)
     (hpi : piT = piTyAt K.dm.read (K.D.piSort (scopeOf formG) (.pi hs ds c)) (psG K ρ φ ds) (outG K ρ φ ds c))
@@ -448,10 +448,10 @@ theorem body_agree (hst : CallStartG K ρ φ) (hc : Strict.FundCtx K) (hs : List
     (hdom : DomMembers K.dm.read (psG K ρ φ ds) (args.map (·.1)))
     (hlab : ∀ (i : Nat) (a : Res) (d : PiDom), args[i]? = some a → (psG K ρ φ ds)[i]? = some d → (a.2.label.isSome = d.isRef))
     (hbt : ArgsHeld K ρ φ ds c args s) :
-    FrameAgreeI K φ (callRen (argLabels args) s.nextLoan) (inStart K ρ φ (selfM, .plain piT) ds c args s) (argLabels args)
-      (runT K ρ φ true hint body (inStart K ρ φ (selfM, .plain piT) ds c args s))
-      (runT K ρ φ true hint body (clStart K ρ φ ds c piT selfM (args.map (·.1)))) := by
-  obtain ⟨hs₀, hI⟩ := hst hs ds c selfM piT args s hpi hself hg hloc hl hsites hlive hnd hdom hlab hbt
+    FrameAgreeI K φ (callRen (argLabels args) s.nextLoan) (inStart K ρ φ (selfM, .plain piT) dec ds c args s) (argLabels args)
+      (runT K ρ φ true hint body (inStart K ρ φ (selfM, .plain piT) dec ds c args s))
+      (runT K ρ φ true hint body (clStart K ρ φ dec ds c piT selfM (args.map (·.1)))) := by
+  obtain ⟨hs₀, hI⟩ := hst hs dec ds c selfM piT args s hpi hself hg hloc hl hsites hlive hnd hdom hlab hbt
   exact runFrameI_frameFree K ρ φ _ _ _ true hint body _ _ hc hs₀ hv hf hI
 
 /-- The state the body's run in place starts from, before the push (`runCallRef`): at a borrow codomain the call first
@@ -499,14 +499,14 @@ def CallPopG : Prop :=
     Strict.SGood K.dm K.Γ φ (callPre c args s) →
     DomMembers K.dm.read (psG K ρ φ ds) (args.map (·.1)) →
     BorrowArgsTyped K.dm.read (K.C.global g) args s →
-    GG K ρ φ hs ds c dec body (args.map (·.1)) = fixBodyAt K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c)
-      (piTG K ρ φ hs ds c) 0 body (selfG K ρ φ hs ds c dec body) (args.map (·.1)) →
+    GG K ρ φ hs ds c dec body (args.map (·.1)) = fixBodyWith K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) 0 body
+      (selfSlot dec (selfG K ρ φ hs ds c dec body) (.plain (piTG K ρ φ hs ds c)) (fbG K ρ φ ds c).2.2) (args.map (·.1)) →
     FrameAgreeI K φ (callRen (argLabels args) (callPre c args s).nextLoan)
-      (inStart K ρ φ (selfG K ρ φ hs ds c dec body, .plain (piTG K ρ φ hs ds c)) ds c args (callPre c args s)) (argLabels args)
+      (inStart K ρ φ (selfG K ρ φ hs ds c dec body, .plain (piTG K ρ φ hs ds c)) dec ds c args (callPre c args s)) (argLabels args)
       (runT K ρ φ true ((fbG K ρ φ ds c).2.1 (args.map (·.1))) body
-        (inStart K ρ φ (selfG K ρ φ hs ds c dec body, .plain (piTG K ρ φ hs ds c)) ds c args (callPre c args s)))
+        (inStart K ρ φ (selfG K ρ φ hs ds c dec body, .plain (piTG K ρ φ hs ds c)) dec ds c args (callPre c args s)))
       (runT K ρ φ true ((fbG K ρ φ ds c).2.1 (args.map (·.1))) body
-        (clStart K ρ φ ds c (piTG K ρ φ hs ds c) (selfG K ρ φ hs ds c dec body) (args.map (·.1)))) →
+        (clStart K ρ φ dec ds c (piTG K ρ φ hs ds c) (selfG K ρ φ hs ds c dec body) (args.map (·.1)))) →
     InPlaceAgree φ (runCallRef K ρ φ (K.C.global g) [] (.fix self hs ds c dec body) [] args s)
       (callOf K.dm.read (K.C.global g) args s)
 
@@ -543,7 +543,7 @@ theorem callInPlace_of (hst : CallStartG K ρ φ) (hpop : CallPopG K ρ φ) (hc 
     (hdom : DomMembers K.dm.read (runDoms K ρ φ formG ds) (args.map fun a : Res => a.1))
   -- the start, then the frame property at the body (`body_agree`)
   have hmem' : selfG K ρ φ hs ds c dec body ∈ₛ[K.dm.read] piTG K ρ φ hs ds c := by rw [← hselfV, ← hselfT]; exact hmem
-  have hb := body_agree K ρ φ hst hc hs ds c body hv hf _ _ args (callPre c args s)
+  have hb := body_agree K ρ φ hst hc hs dec ds c body hv hf _ _ args (callPre c args s)
     ((fbG K ρ φ ds c).2.1 (args.map (·.1))) rfl hmem' hg hloc hl hsites hlive hnd hdom hlab hheld
   exact hpop st g gd self hs ds c dec body args s hG hfind hcur hfn hselfV hselfT hg hdom hbt he hb
 

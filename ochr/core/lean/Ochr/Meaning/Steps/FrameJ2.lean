@@ -127,22 +127,23 @@ open ColumnI
 noncomputable def nBind (a : Nat) : SBinding := { ty := .plain TyM.nat, val := fun _ => .el0 Nat a, decl := .other }
 
 /-- **In place** (`CallRef.callFrame` at `J2`'s call, as the checker's `runBodyCore`): the caller's
-reference state `s₂`, the callee's frame pushed on it holding `I ↦ f` at `I`'s declared Π-type
-`Π(n : Nat). Nat` (the context's global), then `n ↦ a`. -/
-noncomputable def inPlaceJ2 (R : DataRead) (s₂ : SState) (f : Sem) (a : Nat) : SState :=
-  (s₂.pushFrame.pushBind { ty := .plain (piTyAt R 1 psI outI), val := fun _ => f, decl := .pi .other }).pushBind (nBind a)
+reference state `s₂`, the callee's frame pushed on it holding the own-name slot `()` at `Unit` (`I` has no `by`:
+R-dec, docs/31 D296; it held `I ↦ f` at `I`'s Π-type before), then `n ↦ a`. -/
+noncomputable def inPlaceJ2 (_R : DataRead) (s₂ : SState) (_f : Sem) (a : Nat) : SState :=
+  (s₂.pushFrame.pushBind unitSlot).pushBind (nBind a)
 
-/-- **The closure's state** (the `.fix` clause's `fixBodyAt` for `I` at `a`, column `I`'s `start_I`): a fresh
-bottom frame, then `I ↦` stage 0 at the weakened type `Π(n : Nat). Unit`, then `n ↦ a`, counter 0. -/
-noncomputable def closureJ2 (R : DataRead) (φ : Future) (a : Nat) : SState :=
-  ((emptyState 0).under.pushBind { ty := .plain (selfTy R), val := fun _ => selfSem R φ, decl := .pi .other }).pushBind (nBind a)
+/-- **The closure's state** (the `.fix` clause's `fixBodyU` for `I` at `a`, column `I`'s `start_I`): a fresh
+bottom frame, then the own-name slot `()` at `Unit` (R-dec; it held stage 0 at the weakened type before), then
+`n ↦ a`, counter 0. -/
+noncomputable def closureJ2 (_R : DataRead) (_φ : Future) (a : Nat) : SState :=
+  ((emptyState 0).under.pushBind unitSlot).pushBind (nBind a)
 
 /-- **`inPlaceJ2` is `CallRef.callFrame` at `J2`'s call** (glue (c) of docs/31 D128's plan, first part):
 with no capture, the global's result `(f, Π(n : Nat). Nat)`, the reading `.other` and the binders the
 `.fix` clause reads at `.nat` (`ColumnIFix.bindsOf_nat`), by definition. -/
 theorem callFrame_J2 (K : RunCtx) (ρ : Assignment) (φ : Future) (s₂ : SState) (f : Sem) (a : Nat)
     (bs : List PBind) (hbs : bs = [(fun _ => .plain TyM.nat, .other)]) :
-    callFrame K ρ φ [] [] (f, .plain (piTyAt K.dm.read 1 psI outI)) .other bs [(.el0 Nat a, .plain TyM.nat)] s₂ =
+    callFrame K ρ φ [] [] (f, .plain (piTyAt K.dm.read 1 psI outI)) none .other bs [(.el0 Nat a, .plain TyM.nat)] s₂ =
       inPlaceJ2 K.dm.read s₂ f a := by
   subst hbs
   rfl
@@ -224,11 +225,11 @@ theorem closureJ2_lent (R : DataRead) (φ : Future) (a : Nat) (l : Nat) : (closu
   simp [closureJ2, SState.pushBind, SState.under, emptyState]
 
 theorem closureJ2_env (R : DataRead) (φ : Future) (a : Nat) : (closureJ2 R φ a).env =
-    [{}, { binds := [{ ty := .plain (selfTy R), val := fun _ => selfSem R φ, decl := .pi .other }, nBind a] }] := by
+    [{}, { binds := [unitSlot, nBind a] }] := by
   simp [closureJ2, SState.pushBind, SState.under, emptyState, SState.topIdx]
 
 theorem inPlaceJ2_env (R : DataRead) (s₂ : SState) (f : Sem) (a : Nat) : (inPlaceJ2 R s₂ f a).env =
-    s₂.env ++ [{ binds := [{ ty := .plain (piTyAt R 1 psI outI), val := fun _ => f, decl := .pi .other }, nBind a] }] := by
+    s₂.env ++ [{ binds := [unitSlot, nBind a] }] := by
   simp [inPlaceJ2, SState.pushBind, SState.pushFrame, SState.topIdx, modify_append_len]
 
 
@@ -237,15 +238,15 @@ uses it, kernel-checked): the in-place state and the closure's state are related
 the renaming `l ↦ c + l`, when the global's meaning is a member of `I`'s declared type and the
 caller's holders and lent sites are its own positions. -/
 theorem frameRelS_start (R : DataRead) (φ : Future) (s₂ : SState) (f : Sem) (a : Nat)
-    (hf : f ∈ₛ[R] piTyAt R 1 psI outI)
+    (_hf : f ∈ₛ[R] piTyAt R 1 psI outI)
     (hsh : ∀ p : Pos, p.frameOf = s₂.env.length → s₂.shape p = none)
     (hlent : ∀ l (x : Site), (∃ p, s₂.shape p = some l) → x ∈ s₂.lent l → x.pos.frameOf < s₂.env.length) :
     FrameRelS R (fun l => s₂.nextLoan + l) (inPlaceJ2 R s₂ f a) [] 0 (inPlaceJ2 R s₂ f a) (closureJ2 R φ a) := by
-  let bIn : SBinding := { ty := .plain (piTyAt R 1 psI outI), val := fun _ => f, decl := .pi .other }
-  let bCl : SBinding := { ty := .plain (selfTy R), val := fun _ => selfSem R φ, decl := .pi .other }
+  let bIn : SBinding := unitSlot
+  let bCl : SBinding := unitSlot
   have hti : topBind? (inPlaceJ2 R s₂ f a) 0 = some bIn := by simp [topBind?, inPlaceJ2_env, bIn]
   have htc : topBind? (closureJ2 R φ a) 0 = some bCl := by simp [topBind?, closureJ2_env, bCl]
-  refine ⟨bIn, bCl, hti, htc, ⟨fun _ => hf, fun _ => selfSem_mem R φ, rfl, rfl, rfl, rfl⟩, ?_⟩
+  refine ⟨bIn, bCl, hti, htc, ⟨fun _ => unit_mem R, fun _ => unit_mem R, rfl, rfl, rfl, rfl⟩, ?_⟩
   have hcl : (setTopBind (closureJ2 R φ a) 0 bIn).env = [{}, { binds := [bIn, nBind a] }] := by
     simp [setTopBind, closureJ2_env, SState.topIdx]
   have hclsh : ∀ p, (setTopBind (closureJ2 R φ a) 0 bIn).shape p = none := fun p => closureJ2_shape R φ a p

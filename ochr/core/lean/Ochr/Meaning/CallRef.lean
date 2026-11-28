@@ -19,16 +19,48 @@ open Ochr
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
+/-- **The own-name slot of a body's frame** (R-dec, docs/31 D255, D296; the checker's `pushSelf`, main's D148): with `by`
+(`dec = some j`), the function `fv` at its type `T` (label-free), read `.pi cd`; without, `()` at `Unit` (`unitSlot`). The
+closure's run (`RunCongr.fixBodyAt`, at `some`; `fixBodyU`, at `none`) and the run in place (`callFrame`) push it alike. -/
+def selfSlot (dec : Option Nat) (fv : Sem) (T : TyS) (cd : DeclInfo) : SBinding :=
+  match dec with
+  | some _ => { ty := { T with label := none }, val := fun _ => fv, decl := .pi cd }
+  | none => unitSlot
+
+/-- The value the own-name slot holds: the function with `by`, `()` without. -/
+def slotVal (dec : Option Nat) (fv : Sem) : Sem := match dec with
+  | some _ => fv
+  | none => .el0 Unit ()
+
+theorem selfSlot_val (dec : Option Nat) (fv : Sem) (T : TyS) (cd : DeclInfo) :
+    (selfSlot dec fv T cd).val = fun _ => slotVal dec fv := by cases dec <;> rfl
+
+theorem selfSlot_label (dec : Option Nat) (fv : Sem) (T : TyS) (cd : DeclInfo) :
+    (selfSlot dec fv T cd).ty.label = none := by cases dec <;> rfl
+
+theorem selfSlot_recBound (dec : Option Nat) (fv : Sem) (T : TyS) (cd : DeclInfo) :
+    (selfSlot dec fv T cd).recBound = none := by cases dec <;> rfl
+
+/-- `()` is a member of `Unit`. -/
+theorem unit_mem (R : DataRead) : Sem.el0 Unit () ∈ₛ[R] TyM.unit := ⟨(), rfl⟩
+
+/-- The slot's value is a member of the slot's type when the function is a member of its type. -/
+theorem selfSlot_mem (R : DataRead) (dec : Option Nat) (fv : Sem) (T : TyS) (cd : DeclInfo) (h : fv ∈ₛ[R] T.m) :
+    slotVal dec fv ∈ₛ[R] (selfSlot dec fv T cd).ty.m := by
+  cases dec
+  · exact unit_mem R
+  · exact h
+
 /-- The callee's frame pushed on `s`, as `Machine.runBodyCore` pushes it: the captures at their
-recorded types (`capsState`, as `meanV` reads a closure), `self` (the callee's reading `fres`, at the
-reading `.pi cd`), then the parameters, each at its type at the earlier arguments and its declared
-reading (`bs`). A borrow parameter is held at the argument's own label: its holder moves from the
-caller's temporary to the parameter (`pushBindShaped`), where the closure's meaning issues a fresh
+recorded types (`capsState`, as `meanV` reads a closure), the own-name slot (`selfSlot`: with `by`, the callee's
+reading `fres` at the reading `.pi cd`; without, `()` at `Unit`, R-dec), then the parameters, each at its type at the
+earlier arguments and its declared reading (`bs`). A borrow parameter is held at the argument's own label: its holder
+moves from the caller's temporary to the parameter (`pushBindShaped`), where the closure's meaning issues a fresh
 label and a cell. -/
-noncomputable def callFrame (cs : List Value) (rd : List (DeclInfo × Value)) (fres : Res) (cd : DeclInfo)
+noncomputable def callFrame (cs : List Value) (rd : List (DeclInfo × Value)) (fres : Res) (dec : Option Nat) (cd : DeclInfo)
     (bs : List PBind) (args : List Res) (s : SState) : SState :=
   let s := (capsState (capsVals K ρ φ cs) (capsTys K ρ φ rd)).foldl SState.pushBind s.pushFrame
-  let s := s.pushBind { ty := { fres.2 with label := none }, val := fun _ => fres.1, decl := .pi cd }
+  let s := s.pushBind (selfSlot dec fres.1 fres.2 cd)
   let step (sa : SState × List Sem) (a : Res) : SState × List Sem :=
     let (s, acc) := sa
     let T : TyS := match bs[acc.length]? with | some b => b.1 acc | none => .plain TyM.err
@@ -68,7 +100,7 @@ in the closure's (`bindsOf`, `codOf`). -/
 noncomputable def runBodyRef (fres : Res) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
     (args : List Res) : SM Res := fun s =>
   match t with
-  | .fix _ _ ds c _ body =>
+  | .fix _ _ ds c dec body =>
     -- docs/31 D230: the parameter types, the codomain and its reading are the closure value's, read in ITS
     -- forming state (`meanV`'s `.clo` clause: `stateOf 0` of the captures), as the closure's own run reads them
     -- (the paper's C4, `<sec-frame-stmt>`: "equal by definition"). Read on the caller's state with the
@@ -79,7 +111,7 @@ noncomputable def runBodyRef (fres : Res) (cs : List Value) (t : Term) (rd : Lis
     let out := codOf K ρ φ s₀ bs (ds.map Term.isRefTy) c
     let cd := K.D.typeDecl (K.D.teleDecls (scopeOf s₀) ds) c
     let start := s.nextLoan
-    match runT K ρ φ true (.plain (out.cod (args.map (·.1)))) body (callFrame K ρ φ cs rd fres cd bs args s) with
+    match runT K ρ φ true (.plain (out.cod (args.map (·.1)))) body (callFrame K ρ φ cs rd fres dec cd bs args s) with
     | some ((r, R), s₁) =>
       let keep : Option Nat := if out.isRef then R.label else none
       -- STRICT END (ruling (A), docs/31 D106): the pop's ends, as `bodyAt`'s

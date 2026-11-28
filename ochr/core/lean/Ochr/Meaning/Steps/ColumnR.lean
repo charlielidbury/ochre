@@ -343,7 +343,7 @@ theorem fixBodyAt_R (hd : ParDecR D) {Δ₀ : Nat → TyS} {G₀ : Sem × TyS} {
   have hl : ∀ x : SState, x.liveLabels = [] → (dropN (KR dm D Δ₀ G₀ b₀) x).liveLabels = [] := fun x hx => by
     unfold dropN; rw [Strict.liveLabels_setAt]; exact hx
   have hl0 : (SM' (KR dm D ΔP (GR dm.read φ b fn) b) (ρAt ρ a) stR).liveLabels = [] := liveLabels_SMR _
-  unfold fixBodyAt
+  unfold fixBodyAt fixBodyWith
   dsimp only
   rw [hst]
   dsimp only

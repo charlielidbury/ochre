@@ -43,8 +43,8 @@ theorem everyState_fixEq_forces (K : RunCtx) (h : ∀ st, FixEqG K st) (g : Stri
     (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) (ρ : Assignment)
     (φ : Future) (args : List Sem) (ha : DomMembers K.dm.read (psG K ρ φ ds) args) :
     GG K ρ φ hs ds c dec body args =
-      fixBodyAt K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) (piTG K ρ φ hs ds c) 0 body
-        (selfG K ρ φ hs ds c dec body) args :=
+      fixBodyWith K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) 0 body
+        (selfSlot dec (selfG K ρ φ hs ds c dec body) (.plain (piTG K ρ φ hs ds c)) (fbG K ρ φ ds c).2.2) args :=
   h (stOf g (.fix self hs ds c dec body)) g _ self hs ds c dec body (find_stOf _ _) hcur rfl ρ φ args ha
 
 end Ochr.Meaning.Steps.Form.Master.EveryStateCE

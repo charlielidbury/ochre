@@ -32,24 +32,24 @@ abbrev pdRun (p : Place) : M DeclInfo := withLive true (Ochr.placeDecl 100 [] p)
 abbrev jmRun (t : Term) : M (List Place) := withLive true (Ochr.jdMoves 100 [] [] t [])
 abbrev cpRun : M Bool := Ochr.declCopy 100 .other
 
-theorem ok_flags_body : isOk (flagsRun bodyP) (scopeState stP RI) 1000 = true := by decide +kernel
-theorem val_flags_body : outVal (flagsRun bodyP) (scopeState stP RI) 1000 = (false, false) := by decide +kernel
-theorem ok_flags_n0 : isOk (flagsRun (.place pn0)) (scopeState stP RI) 1000 = true := by decide +kernel
-theorem val_flags_n0 : outVal (flagsRun (.place pn0)) (scopeState stP RI) 1000 = (false, false) := by decide +kernel
-theorem ok_pd_n0 : isOk (pdRun pn0) (scopeState stP RI) 1000 = true := by decide +kernel
-theorem val_pd_n0 : isOther (outVal (pdRun pn0) (scopeState stP RI) 1000) = true := by decide +kernel
-theorem ok_pd_n : isOk (pdRun (.var 0)) (scopeState stP RI) 1000 = true := by decide +kernel
-theorem val_pd_n : isOther (outVal (pdRun (.var 0)) (scopeState stP RI) 1000) = true := by decide +kernel
+theorem ok_flags_body : isOk (flagsRun bodyP) (scopeState stP RIu) 1000 = true := by decide +kernel
+theorem val_flags_body : outVal (flagsRun bodyP) (scopeState stP RIu) 1000 = (false, false) := by decide +kernel
+theorem ok_flags_n0 : isOk (flagsRun (.place pn0)) (scopeState stP RIu) 1000 = true := by decide +kernel
+theorem val_flags_n0 : outVal (flagsRun (.place pn0)) (scopeState stP RIu) 1000 = (false, false) := by decide +kernel
+theorem ok_pd_n0 : isOk (pdRun pn0) (scopeState stP RIu) 1000 = true := by decide +kernel
+theorem val_pd_n0 : isOther (outVal (pdRun pn0) (scopeState stP RIu) 1000) = true := by decide +kernel
+theorem ok_pd_n : isOk (pdRun (.var 0)) (scopeState stP RIu) 1000 = true := by decide +kernel
+theorem val_pd_n : isOther (outVal (pdRun (.var 0)) (scopeState stP RIu) 1000) = true := by decide +kernel
 theorem ok_cp : isOk cpRun stP 1000 = true := by decide +kernel
 theorem val_cp : outVal cpRun stP 1000 = false := by decide +kernel
-theorem ok_jm : isOk (jmRun bodyP) (scopeState stP RI) 1000 = true := by decide +kernel
-theorem val_jm0 : (match outVal (jmRun bodyP) (scopeState stP RI) 1000 with
+theorem ok_jm : isOk (jmRun bodyP) (scopeState stP RIu) 1000 = true := by decide +kernel
+theorem val_jm0 : (match outVal (jmRun bodyP) (scopeState stP RIu) 1000 with
     | [.var 0] => true
     | _ => false) = true := by decide +kernel
-theorem val_jm : outVal (jmRun bodyP) (scopeState stP RI) 1000 = [.var 0] := by
+theorem val_jm : outVal (jmRun bodyP) (scopeState stP RIu) 1000 = [.var 0] := by
   have h := val_jm0
   revert h
-  generalize outVal (jmRun bodyP) (scopeState stP RI) 1000 = x
+  generalize outVal (jmRun bodyP) (scopeState stP RIu) 1000 = x
   intro h
   split at h
   · rfl
@@ -58,24 +58,24 @@ theorem val_jm : outVal (jmRun bodyP) (scopeState stP RI) 1000 = [.var 0] := by
 end Aux
 
 /-- **`ParDecP` at every table aligned with the checker at `stP`.** -/
-theorem parDecP {D : Decisions} (hd : DecTab D stP) : ParDecP D := by
+theorem parDecP {D : Decisions} (hd : DecTab D stP) : ParDecP D RIu := by
   open Ochr.Meaning.Regress.GenNeutralContent in
-  have hpd : D.placeDecl RI pn0 = .other :=
-    (hd.placeDecl 100 RI pn0 _ 1000 _ (runs_out (Aux.pdRun pn0) _ 1000 Aux.ok_pd_n0)).trans
+  have hpd : D.placeDecl RIu pn0 = .other :=
+    (hd.placeDecl 100 RIu pn0 _ 1000 _ (runs_out (Aux.pdRun pn0) _ 1000 Aux.ok_pd_n0)).trans
       (Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther_eq Aux.val_pd_n0)
-  have hpd0 : D.placeDecl RI (.var 0) = .other :=
-    (hd.placeDecl 100 RI (.var 0) _ 1000 _ (runs_out (Aux.pdRun (.var 0)) _ 1000 Aux.ok_pd_n)).trans
+  have hpd0 : D.placeDecl RIu (.var 0) = .other :=
+    (hd.placeDecl 100 RIu (.var 0) _ 1000 _ (runs_out (Aux.pdRun (.var 0)) _ 1000 Aux.ok_pd_n)).trans
       (Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther_eq Aux.val_pd_n)
   have hcp : D.copy .other = false := by
     rw [hd.copy 100 .other _ 1000 _ (runs_out Aux.cpRun _ 1000 Aux.ok_cp), Aux.val_cp]
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
-  · rw [hd.flags 100 RI bodyP _ 1000 _ (runs_out (Ochr.Meaning.Steps.Form.ColumnC.Aux.flagsRun bodyP) _ 1000
+  · rw [hd.flags 100 RIu bodyP _ 1000 _ (runs_out (Ochr.Meaning.Steps.Form.ColumnC.Aux.flagsRun bodyP) _ 1000
       Aux.ok_flags_body), Aux.val_flags_body]
-  · rw [hd.flags 100 RI (.place pn0) _ 1000 _ (runs_out (Ochr.Meaning.Steps.Form.ColumnC.Aux.flagsRun (.place pn0)) _ 1000
+  · rw [hd.flags 100 RIu (.place pn0) _ 1000 _ (runs_out (Ochr.Meaning.Steps.Form.ColumnC.Aux.flagsRun (.place pn0)) _ 1000
       Aux.ok_flags_n0), Aux.val_flags_n0]
   · rw [hpd]; exact hcp
   · rw [hpd0]; exact hcp
-  · rw [hd.joinMoves 100 RI [] bodyP _ 1000 _ (runs_out (Aux.jmRun bodyP) _ 1000 Aux.ok_jm), Aux.val_jm]
+  · rw [hd.joinMoves 100 RIu [] bodyP _ 1000 _ (runs_out (Aux.jmRun bodyP) _ 1000 Aux.ok_jm), Aux.val_jm]
 
 namespace Aux
 
@@ -124,7 +124,7 @@ theorem bind_envN {v : Value} {f i : Nat} {b : Binding} (h : (envN v)[f]?.bind (
     · simp [envN] at h
   · simp [envN] at h
 
-theorem ckContent_stP {p : Place} {v : Value} (h : ckContent stP.env p = some v) : v = .gfn "P" ∨ v = .abs 0 := by
+theorem ckContent_stP {p : Place} {v : Value} (h : ckContent stP.env p = some v) : v = .unit ∨ v = .abs 0 := by
   rcases hp : p.steps with ⟨i, path⟩
   simp only [ckContent, hp] at h
   unfold ckVarPos at h
@@ -132,7 +132,7 @@ theorem ckContent_stP {p : Place} {v : Value} (h : ckContent stP.env p = some v)
   · have hi' : i < stP.env[stP.env.size - 1]!.binds.size := hi
     rw [if_pos hi'] at h
     simp only [Option.bind_some] at h
-    have hv : ∀ w : Value, (w = .gfn "P" ∨ w = .abs 0) → w.follow path = some v → v = .gfn "P" ∨ v = .abs 0 := by
+    have hv : ∀ w : Value, (w = .unit ∨ w = .abs 0) → w.follow path = some v → v = .unit ∨ v = .abs 0 := by
       rintro w hw hf
       cases path with
       | nil => simp [Value.follow] at hf; exact hf ▸ hw
@@ -166,7 +166,7 @@ theorem refd_stP {σ : Nat} (h : stP.Refd σ) : σ < 1 := by
 
 theorem inv_stP (D : Decisions) : Inv D [] stP := by
   have ha : Value.abs 0 ∈ NVals := by simp [NVals]
-  have hvals : ∀ v ∈ Env.values stP.env, v = .gfn "P" ∨ v = .abs 0 := fun v hv => by
+  have hvals : ∀ v ∈ Env.values stP.env, v = .unit ∨ v = .abs 0 := fun v hv => by
     rw [stP_env, values_envN] at hv; simpa using hv
   have hpos : ∀ p ∈ allPos stP.env, p = .bind 1 0 ∨ p = .bind 1 1 := fun p hp => by
     rw [stP_env, allPos_envN] at hp; simpa using hp
@@ -274,7 +274,7 @@ theorem body_runP (hSp : SplitPInv) (ρ : Assignment) (a : Nat) (hDP : DecTab D 
   have hrel0 := rel_stP (dm := dm) (D := D) (φ := φ) (ρAt ρ a) φ
   obtain ⟨stl, v, T, -, ρ', Δ', π', r, s', -, hx, -⟩ :=
     split_outP hSp hpd hk hkern hm htd h hpre (hrel0.of_kern hkern) hint
-  obtain ⟨hZ, hS⟩ := runP (K := KP dm D φ ΔP) hpd (refP_of_rel hrel0) (movedIn_selfSem dm.read φ) hint
+  obtain ⟨hZ, hS⟩ := runP (K := KP dm D φ ΔP) hpd (refP_of_rel hrel0) (fun _ => rfl) hint
   have hl : ∀ x : SState, x.liveLabels = [] → (dropN (KP dm D φ ΔP) x).liveLabels = [] := fun x hx => by
     unfold dropN; rw [Strict.liveLabels_setAt]; exact hx
   cases a with
@@ -303,31 +303,32 @@ theorem runT_bodyP (K : RunCtx) (ρ ρ' : Assignment) (h h' : TyS) (s : SState) 
 /-- **The checker's start state, read as a reference state** under `σ0 ↦ a`: the frames `[{}, frI]`, as for `I`. -/
 theorem env_SMP (ρ : Assignment) (a : Nat) : (SM' (KP dm D φ ΔP) (ρAt ρ a) stP).env = [{}, frI dm.read φ a] := by
   have h0 : Binding.refTy (KP dm D φ ΔP).dm (KP dm D φ ΔP).M (KP dm D φ ΔP).Γ (ρAt ρ a) stP.env 1 0 selfP =
-      .plain (selfTy dm.read) := by
-    rw [Binding.refTy_marked _ _ _ _ _ _ _ _ 0 rfl rfl]
-    simp [KP, CP, selfP, RunCtx.M, codeMeaning]
+      .plain TyM.unit := by
+    rw [Binding.refTy_unmarked _ _ _ _ _ _ _ _ rfl]; rfl
   have h1 : Binding.refTy (KP dm D φ ΔP).dm (KP dm D φ ΔP).M (KP dm D φ ΔP).Γ (ρAt ρ a) stP.env 1 1 nB = .plain TyM.nat := by
     rw [Binding.refTy_unmarked _ _ _ _ _ _ _ _ rfl]; rfl
   have hv0 : ∀ ψ, Env.mean (KP dm D φ ΔP).dm (KP dm D φ ΔP).M (KP dm D φ ΔP).Γ (ρAt ρ a) ψ stP.env (.bind 1 0) =
-      selfSem dm.read φ := mean_stP_self _
+      .el0 Unit () := mean_stP_self _
   have hv1 : ∀ ψ, Env.mean (KP dm D φ ΔP).dm (KP dm D φ ΔP).M (KP dm D φ ΔP).Γ (ρAt ρ a) ψ stP.env (.bind 1 1) =
       .el0 Nat a := mean_stP_n _
   unfold SM' MState.sstate
   simp only [stP, List.zipIdx, List.map, frI, Nat.zero_add]
   rw [show (#[{}, { binds := #[selfP, nB] }] : Env) = stP.env from rfl, h0, h1]
   simp only [List.cons.injEq, SFrame.mk.injEq, SBinding.mk.injEq, and_true, true_and]
-  exact ⟨⟨funext hv0, rfl⟩, funext hv1, rfl⟩
+  refine ⟨?_, funext hv1, rfl⟩
+  unfold unitSlot
+  rw [funext hv0]
+  rfl
 
 theorem sitesOf_stP (l : Nat) : Env.sitesOf stP.env l = [] := sitesOf_envN (by simp [NVals]) l
 
-/-- **`fixBodyAt`'s state for `P` is the checker's start state** (as `ColumnI.start_I`). -/
+/-- **`fixBodyU`'s state for `P` is the checker's start state** (as `ColumnI.start_I`; `()` in the slot, R-dec). -/
 theorem start_P (ρ : Assignment) (fb : List PBind × PBind) (h1 : fb.1 = [(fun _ => .plain TyM.nat, .other)])
-    (h2 : fb.2.2 = .other) (a : Nat) :
-    ([Sem.el0 Nat a].zip psI).foldl (fixStep fb)
-        ((emptyState 0).under.pushBind { ty := .plain (selfTy dm.read), val := fun _ => selfSem dm.read φ, decl := .pi fb.2.2 }, [], [])
+    (a : Nat) :
+    ([Sem.el0 Nat a].zip psI).foldl (fixStep fb) ((emptyState 0).under.pushBind unitSlot, [], [])
       = (SM' (KP dm D φ ΔP) (ρAt ρ a) stP, [.el0 Nat a], []) := by
   have he := env_SMP (dm := dm) (D := D) (φ := φ) ρ a
-  simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1, h2,
+  simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1,
     Bool.false_eq_true, if_false, List.length_nil, List.getElem?_cons_zero, List.nil_append, Prod.mk.injEq, and_true]
   apply ColumnI.sstate_ext
   · rw [he]; rfl
@@ -341,19 +342,19 @@ theorem start_P (ρ : Assignment) (fb : List PBind × PBind) (h1 : fb.1 = [(fun 
   · rfl
   · rfl
 
-/-- **`P`'s body run inside the `.fix` clause**, at every number `a`: `fixBodyAt` returns `a - 1` and no final,
+/-- **`P`'s body run inside the `.fix` clause**, at every number `a`: `fixBodyU` returns `a - 1` and no final,
 from the checker's one run of the body. ASSUMES `SplitPInv`. -/
 theorem fixBodyAt_P (hSp : SplitPInv) (ρ : Assignment) (fb : List PBind × PBind)
     (h1 : fb.1 = [(fun _ => .plain TyM.nat, .other)]) (h2 : fb.2.2 = .other) (hDP : DecTab D stP) {fuel : Nat}
     {k : Value → Value → M Unit} (hk : KeepsAtZ k) {st st' : MState} {bh : Nat} (hkern : Kern stP st) (hm : Mode st)
     (htd : st.tailDecl = none) (h : Runs (Ochr.checkTail fuel bodyP k) st bh () st') (a : Nat) :
-    ∃ o, fixBodyAt (KP dm D φ ΔP) ρ φ fb (emptyState 0) psI outI (selfTy dm.read) 0 bodyP (selfSem dm.read φ)
+    ∃ o, fixBodyU (KP dm D φ ΔP) ρ φ fb (emptyState 0) psI outI 0 bodyP
         [.el0 Nat a] = some o ∧ o.result = .el0 Nat (a - 1) ∧ o.finals = [] := by
   obtain ⟨r, s', hr, hr1, -, hl⟩ := body_runP (dm := dm) (φ := φ) hSp ρ a hDP hk hkern hm htd h (fb.2.1 [.el0 Nat a])
   refine ⟨⟨r.1, [], r.2.label⟩, ?_, hr1, rfl⟩
-  unfold fixBodyAt
+  unfold fixBodyU fixBodyWith
   dsimp only
-  rw [start_P (dm := dm) (D := D) (φ := φ) ρ fb h1 h2 a]
+  rw [start_P (dm := dm) (D := D) (φ := φ) ρ fb h1 a]
   dsimp only
   rw [h2, fnErasedD_other, SM.bodyRun_false]     -- main's D142: `P` returns data
   rw [runT_bodyP (KP dm D φ ΔP) ρ (ρAt ρ a) (fb.2.1 [.el0 Nat a]) (fb.2.1 [.el0 Nat a]), hr]

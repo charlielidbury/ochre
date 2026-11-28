@@ -154,9 +154,9 @@ noncomputable def refHint (K : RunCtx) (ρ : Assignment) (φ : Future) (ds : Lis
   (fbG K ρ φ ds c).2.1 (asR.map (·.1))
 
 /-- The reference's state at the body's start: `runCallRef`'s reservation at a borrow codomain, then the push. -/
-noncomputable def refStart (K : RunCtx) (ρ : Assignment) (φ : Future) (g : String) (ds : List Term) (c : Term)
-    (asR : List Res) (sc : SState) : SState :=
-  inStart K ρ φ (K.C.global g) ds c asR (callPre c asR sc)
+noncomputable def refStart (K : RunCtx) (ρ : Assignment) (φ : Future) (g : String) (dec : Option Nat) (ds : List Term)
+    (c : Term) (asR : List Res) (sc : SState) : SState :=
+  inStart K ρ φ (K.C.global g) dec ds c asR (callPre c asR sc)
 
 /-! ## The body's start: what the entry gives -/
 
@@ -174,7 +174,7 @@ structure CallEntry (K : RunCtx) (φ : Future) (Δ : Nat → TyS) (ρ : Assignme
   tail : stP.tailNext = true
   decl : stP.tailDecl = none
   pre : Pre { K with Δ := Δ₁ } ρ₁ stP
-  rel : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stP (refStart { K with Δ := Δ } ρ φ g ds c asR sc)
+  rel : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stP (refStart { K with Δ := Δ } ρ φ g dec ds c asR sc)
   noVal : (Term.fix sf hs ds c dec body).anyAtom (fun _ => true) = false
   hole : body.hasHolePrim = false
   hform : BodyHint body (.tPi [] (.pi hs ds c) []) ws stP hint
@@ -252,7 +252,7 @@ def CallExitG (K : RunCtx) (φ : Future) : Prop :=
     CallEntry K φ Δ ρ π stc sc g ws asR self hs ds c dec body stP hint ρ₁ Δ₁ π₁ → ExitFits π₁ sc c e →
     Ext { K with Δ := Δ₁ } ρ₁ π₁ stP stE ρ₂ Δ₂ π₂ →
     runT { K with Δ := Δ } ρ φ true (refHint { K with Δ := Δ } ρ φ ds c asR) body
-      (refStart { K with Δ := Δ } ρ φ g ds c asR sc) = some (r, s₂) →
+      (refStart { K with Δ := Δ } ρ φ g dec ds c asR sc) = some (r, s₂) →
     meanV { K with Δ := Δ₂ } ρ₂ (fun l => φ (π₂ l)) r.2 v₀ = r.1 → r.2.label = (Value.heldLabel v₀).map π₂ →
     Pre { K with Δ := Δ₂ } ρ₂ (stE.withTempT v₀ T₀) → Rel { K with Δ := Δ₂ } ρ₂ φ π₂ (stE.withTempT v₀ T₀) s₂ →
     hintM { K with Δ := Δ₂ } ρ₂ stE.goal = hintM { K with Δ := Δ₁ } ρ₁ stP.goal →
@@ -320,15 +320,15 @@ at a borrow codomain is `callPre`'s, the push is `inStart`, the hint `refHint`).
 theorem body_isSome_of_runCallRef (K : RunCtx) (ρ : Assignment) (φ : Future) (fres : Res) (self : Hint) (hs : List Hint)
     (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) (args : List Res) (s : SState)
     (h : (runCallRef K ρ φ fres [] (.fix self hs ds c dec body) [] args s).isSome) :
-    (runT K ρ φ true ((fbG K ρ φ ds c).2.1 (args.map (·.1))) body (inStart K ρ φ fres ds c args (callPre c args s))).isSome := by
+    (runT K ρ φ true ((fbG K ρ φ ds c).2.1 (args.map (·.1))) body (inStart K ρ φ fres dec ds c args (callPre c args s))).isSome := by
   have key : ∀ s', (runBodyRef K ρ φ fres [] (.fix self hs ds c dec body) [] args s').isSome →
-      (runT K ρ φ true ((fbG K ρ φ ds c).2.1 (args.map (·.1))) body (inStart K ρ φ fres ds c args s')).isSome := by
+      (runT K ρ φ true ((fbG K ρ φ ds c).2.1 (args.map (·.1))) body (inStart K ρ φ fres dec ds c args s')).isSome := by
     intro s' h'
     unfold runBodyRef at h'
     simp only at h'
     split at h'
     · rename_i r R s₁ heq
-      have e : runT K ρ φ true ((fbG K ρ φ ds c).2.1 (args.map (·.1))) body (inStart K ρ φ fres ds c args s') =
+      have e : runT K ρ φ true ((fbG K ρ φ ds c).2.1 (args.map (·.1))) body (inStart K ρ φ fres dec ds c args s') =
           some ((r, R), s₁) := heq
       rw [e]; rfl
     · simp at h'
@@ -451,18 +451,18 @@ theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex :
   -- the reference's start is good: the frame lemma's start (`callStartG`, PROVED)
   have hmem' : selfG { K with Δ := Δ } ρ φ hs ds c dec body ∈ₛ[K.dm.read] piTG { K with Δ := Δ } ρ φ hs ds c := by
     rw [← hselfV, ← hselfT]; exact hmem
-  have hstart := callStartG { K with Δ := Δ } ρ φ hs ds c _ _ asR (callPre c asR sc) rfl hmem' hgood hloc hlw hsites
+  have hstart := callStartG { K with Δ := Δ } ρ φ hs dec ds c _ _ asR (callPre c asR sc) rfl hmem' hgood hloc hlw hsites
     hlive hnd hdom hlab hheld
-  have hSG : Strict.SGood K.dm K.Γ φ (refStart { K with Δ := Δ } ρ φ g ds c asR sc) := by
+  have hSG : Strict.SGood K.dm K.Γ φ (refStart { K with Δ := Δ } ρ φ g dec ds c asR sc) := by
     unfold refStart
     rw [inStart_fres { K with Δ := Δ } ρ φ (fres' := (selfG { K with Δ := Δ } ρ φ hs ds c dec body,
-      .plain (piTG { K with Δ := Δ } ρ φ hs ds c))) hselfV hselfT]
+      .plain (piTG { K with Δ := Δ } ρ φ hs ds c))) hselfV hselfT dec]
     exact hstart.2.good
   -- the induction hypothesis at the body, at the push's context, untyped, at the checker's hint
-  have hH := hint_run hhn hhd hhc hcp hE (refStart { K with Δ := Δ } ρ φ g ds c asR sc)
+  have hH := hint_run hhn hhd hhc hcp hE (refStart { K with Δ := Δ } ρ φ g dec ds c asR sc)
   obtain ⟨hnv, -⟩ := noVal_parts hE.noVal
   obtain ⟨⟨ρ₂, Δ₂, π₂, r, s₂, hext₂, hx, hmean, -, hlab₂, hpre₂, hrel₂, -, -, hgl₂⟩, hkept⟩ :=
-    (ih m hmn Δ₁ ρ₁).1 body stP stE false hint v₀ T₀ (refStart { K with Δ := Δ } ρ φ g ds c asR sc) π₁
+    (ih m hmn Δ₁ ρ₁).1 body stP stE false hint v₀ T₀ (refStart { K with Δ := Δ } ρ φ g dec ds c asR sc) π₁
       hE.mode (fun h => by cases h) hE.size (Or.inl hE.decl) hE.pre
       (hrt.move hE.stack hE.ext.abs fun σ hσ => (hE.ext.agree σ hσ).1) hE.rel hSG
       (acceptedGlobalG_of hG g gd self hs ds c dec body hfind hcur hfn Δ₁ ρ₁ φ).2.2.2

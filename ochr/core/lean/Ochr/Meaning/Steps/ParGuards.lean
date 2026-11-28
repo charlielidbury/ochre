@@ -18,8 +18,8 @@ frame 0 empty; frame 1 holding the function's own-name slot, then `n ↦ σ0` at
 `absTy = [Nat]`, `nextAbs = 1`, no loan, the goal `Nat`, typed, no refinement. Since main's D147 and D148 the
 slot is `()` at `Unit`, unmarked, and Σ does not hold the function during its check (`kernelOk148`); before
 them the slot held `f ↦ .gfn f` at `Π(n : Nat). Nat`, read `.pi .other`, MARKED (`recUid = some 0`), and Σ held
-the function's own global (`kernelOk`), which is still the hand-built kernel `ColumnI.stI`, where `Pre`, `Rel`
-and `SGood` are proved (`Steps/ColumnIStart.lean`), until the model's half of R-dec re-proves it (lead49).
+the function's own global (`kernelOk`). The hand-built kernel `ColumnI.stI`, where `Pre`, `Rel` and `SGood` are proved
+(`Steps/ColumnIStart.lean`), is the new state since the model's half of R-dec (lead50, docs/31 D296).
 It does not depend on the body (two bodies below).
 -/
 
@@ -66,6 +66,7 @@ def entries (b : Block) (name : String) : List MState :=
 
 def declIs : DeclInfo → DeclInfo → Bool
   | .other, .other => true
+  | .unit, .unit => true
   | .pi a, .pi b => declIs a b
   | _, _ => false
 
@@ -112,8 +113,8 @@ def to148 (k : MState) (f : String) (i : Nat := 0) : MState :=
 
 /-- The checker's start state of a function without `by` since main's D147 and D148: `kernelOk`'s, except that the
 own-name slot is `()` (`unitSlotOk`) and Σ does not hold the function (it enters Σ after its check, as a constant
-does; here no item precedes it, so Σ is empty). The hand-built kernel `ColumnI.stI` is still the state before them
-(the slot holding the global, marked; Σ holding it) until the model's half of R-dec re-proves the column (lead49). -/
+does; here no item precedes it, so Σ is empty). The hand-built kernel `ColumnI.stI` is this state since the model's
+half of R-dec (lead50, docs/31 D296). -/
 def kernelOk148 (st : MState) : Bool :=
   st.env.size == 2 && st.env[0]!.binds.isEmpty && st.env[0]!.temps.isEmpty && st.env[1]!.temps.isEmpty &&
   st.env[1]!.binds.size == 2 &&
@@ -143,8 +144,10 @@ def modeOk (f : String) (st : MState) : Bool :=
 def stI : MState :=
   { ColumnI.stI with typing := true, nextRecUid := 1 }
 
--- the hand-built kernel passes the same test
-#guard kernelOk "I" bodyI ColumnI.stI && kernelOk "I" bodyI stI && modeOk "I" stI
+-- the hand-built kernel passes the same test (since the model's half of R-dec, docs/31 D296: the checker's start, the
+-- slot `()` and Σ empty; it was `kernelOk`, the state before main's D147/D148)
+#guard kernelOk148 ColumnI.stI && kernelOk148 stI && modeOk "I" stI
+#guard !kernelOk "I" bodyI ColumnI.stI
 
 /-- `I` and `P` as core definitions: accepted by `checkDef`, which leaves exactly their global. -/
 def defI : Def := { name := "I", hs := [⟨"n"⟩], doms := [.nat], cod := .nat, body := bodyI }
@@ -158,7 +161,7 @@ def defP : Def := { name := "P", hs := [⟨"n"⟩], doms := [.nat], cod := .nat,
 
 #guard outVal (Ochr.eval 100 true bodyI (some .tNat)) stI 100000 == (.succ (.abs 0), some .tNat)
 #guard ((outSt (Ochr.eval 100 true bodyI (some .tNat)) stI 100000).env[1]!.binds.map (·.val)) ==
-  #[.gfn "I", .bot]
+  #[.unit, .bot]
 -- the run makes no unknown and no loan, and keeps the frames
 #guard (outSt (Ochr.eval 100 true bodyI (some .tNat)) stI 100000).nextAbs == 1
 #guard (outSt (Ochr.eval 100 true bodyI (some .tNat)) stI 100000).env.size == 2
@@ -178,7 +181,7 @@ def readN (typed : Bool) : M (Value × Option Value) := Ochr.evalCore 100 typed 
 #guard [Value.abs 0, .succ (.abs 0), .succ (.succ .zero)].all fun v =>
   outVal (readN true) (withN v) 100000 == (v, some .tNat) &&
   -- moved: the copy decision at `.other` is false
-  ((outSt (readN true) (withN v) 100000).env[1]!.binds.map (·.val)) == #[.gfn "I", .bot] &&
+  ((outSt (readN true) (withN v) 100000).env[1]!.binds.map (·.val)) == #[.unit, .bot] &&
   -- in tail position and under a handed-down reading: the same
   outVal (readN true) { withN v with curTail := true } 100000 == (v, some .tNat) &&
   outVal (Ochr.eval 100 true (.place (.var 0)) none) { withN v with tailDecl := some .other } 100000 == (v, some .tNat) &&
@@ -189,7 +192,7 @@ def readN (typed : Bool) : M (Value × Option Value) := Ochr.evalCore 100 typed 
   modeOf (outSt (readN true) (withN v) 100000) == (false, false, false, 0)
 -- in `clone`'s mode the read copies: the binding keeps its value
 #guard ((outSt (readN true) { withN (.abs 0) with copying := true } 100000).env[1]!.binds.map
-  (·.val)) == #[.gfn "I", .abs 0]
+  (·.val)) == #[.unit, .abs 0]
 
 end ParGuards
 

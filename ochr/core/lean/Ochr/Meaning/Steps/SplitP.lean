@@ -39,15 +39,16 @@ def fixP : Term := .fix ⟨"P"⟩ [⟨"n"⟩] [.nat] .nat none bodyP
 /-- `P`'s global, as `checkDef` pushes it before checking the body. -/
 def gP : GDef := { name := "P", ty := piNat, fn? := some fixP, val := .gfn "P" }
 
-/-- The function's binding of itself, marked (`recUid`). -/
-def selfP : Binding := { hint := ⟨"P"⟩, ty := some piNat, val := .gfn "P", decl := .pi .other, recUid := some 0 }
+/-- The own-name slot: `()` at `Unit`, unnamed, read `.unit`, unmarked (`P` has no `by`: main's D148, `pushSelf`; until
+the model's half of R-dec, docs/31 D296, it was `P ↦ .gfn "P"` at its Π-type, MARKED). -/
+def selfP : Binding := { hint := ⟨"_"⟩, ty := some .tUnit, val := .unit, decl := .unit }
 
 /-- The parameter's binding after the join's drop. -/
 def nBot : Binding := { nB with val := .bot }
 
 /-- The kernel of the body's start state. -/
 def stP : MState :=
-  { env := #[{}, { binds := #[selfP, nB] }], globals := [gP], nextAbs := 1, absTy := #[.tNat], absDecl := #[.other],
+  { env := #[{}, { binds := #[selfP, nB] }], nextAbs := 1, absTy := #[.tNat], absDecl := #[.other],
     goal := some .tNat }
 
 /-- The frames at a leaf: `n` dropped by the join. -/
@@ -55,18 +56,18 @@ def envBot : Env := #[{}, { binds := #[selfP, nBot] }]
 
 /-- The kernel at world `Z`'s leaf: `n` dropped by the join, the refinement `σ0 := Z` recorded. -/
 def leafZ : MState :=
-  { env := envBot, globals := [gP], nextAbs := 1, absTy := #[.tNat], absDecl := #[.other], goal := some .tNat,
+  { env := envBot, nextAbs := 1, absTy := #[.tNat], absDecl := #[.other], goal := some .tNat,
     refs := [(0, .zero)] }
 
 /-- The kernel at world `S`'s leaf: the fresh unknown `σ1 : Nat`, the refinement `σ0 := S(σ1)` recorded, `n`
 dropped by the join. -/
 def leafS : MState :=
-  { env := envBot, globals := [gP], nextAbs := 2, absTy := #[.tNat, .tNat], absDecl := #[.other, .other],
+  { env := envBot, nextAbs := 2, absTy := #[.tNat, .tNat], absDecl := #[.other, .other],
     goal := some .tNat, refs := [(0, .succ (.abs 1))] }
 
 /-- The kernel after the split: the snapshot back, the fresh unknown's type kept. -/
 def endP : MState :=
-  { env := #[{}, { binds := #[selfP, nB] }], globals := [gP], nextAbs := 2, absTy := #[.tNat, .tNat],
+  { env := #[{}, { binds := #[selfP, nB] }], nextAbs := 2, absTy := #[.tNat, .tNat],
     absDecl := #[.other, .other], goal := some .tNat }
 
 /-- The globals: `P` means its stage-0 closure (the weakened `Π(n : Nat). Unit`, as for `I`). -/
@@ -81,9 +82,10 @@ def ΔP : Nat → TyS := fun σ => if σ = 0 then .plain TyM.nat else .plain TyM
 /-- Δ in world `S`: `σ0` and the fresh `σ1` are numbers. -/
 def ΔPS : Nat → TyS := fun σ => if σ < 2 then .plain TyM.nat else .plain TyM.err
 
-/-- The run's context while `P`'s body is checked, at the unknowns' types `Δ`. -/
+/-- The run's context while `P`'s body is checked, at the unknowns' types `Δ`: no function under check (`P` has no
+`by`, main's D147). -/
 noncomputable def KP (dm : DataModel) (D : Decisions) (φ : Future) (Δ : Nat → TyS) : RunCtx :=
-  { dm := dm, Γ := [], C := CP dm.read φ, D := D, Δ := Δ, cur := some ("P", 0) }
+  { dm := dm, Γ := [], C := CP dm.read φ, D := D, Δ := Δ, cur := none }
 
 /-! ## The fact about the checker -/
 

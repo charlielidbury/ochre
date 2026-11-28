@@ -272,6 +272,11 @@ def stateOf (n : Nat) (bs : List SBinding) : SState :=
 def capsState (vs : List Sem) (tys : List (DeclInfo × TyS)) : List SBinding :=
   (vs.zip tys).map fun (v, (d, T)) => { ty := T, val := fun _ => v, decl := d }
 
+/-- **The own-name slot of a function without `by`** (R-dec, docs/31 D255, D296; main's D148, `Machine.pushSelf`): `()` at
+`Unit`, read `.unit`, as the checker binds it. A function has a self exactly when it has `by`: the slot holds the function
+(at its Π-type, read `.pi cd`) only then. -/
+def unitSlot : SBinding := { ty := .plain TyM.unit, val := fun _ => .el0 Unit (), decl := .unit }
+
 /-- The declared-type readings of the top frame, innermost first (`Decide.placeDecl`'s scope). -/
 def scopeOf (s : SState) : List DeclInfo :=
   match s.env.getLast? with
@@ -1512,14 +1517,14 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- type was moved by its first read, and a call through `self` or a function parameter was
     -- never classified as a statement or a proof)
     let cd := K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c
-    let bodyAt (selfT : TyM) (selfM : Sem) (args : List Sem) : Option BodyOut :=
-      -- the frame: `self`, then the parameters. A borrow parameter is set up as the generic call
+    let bodyWith (sb : SBinding) (args : List Sem) : Option BodyOut :=
+      -- the frame: the own-name slot `sb`, then the parameters. A borrow parameter is set up as the generic call
       -- is ([Def]): a fresh label `lᵢ`, a *cell* (a binding of frame 0, below the body's frame,
       -- docs/31 D126) reading `lᵢ`'s final content, and the parameter holding the content as the
       -- borrow's holder (D14). Returning the parameter returns its label.
       -- docs/31 D126: under a fresh bottom frame (`SState.under`), as the checker's `checkFix`
-      -- frames the body: frame 0 for the cells, the top frame the captures, `self`, the parameters
-      let s₁ := s.under.pushBind { ty := .plain selfT, val := fun _ => selfM, decl := .pi cd }
+      -- frames the body: frame 0 for the cells, the top frame the captures, the slot, the parameters
+      let s₁ := s.under.pushBind sb
       -- each parameter is bound at its type (its code) and at its declared reading (`bs`), a borrow parameter at a
       -- fresh label with a cell of frame 0 (`paramPush`: docs/31 D126, D138; the same step reads a later domain and the
       -- codomain, `extendBy`, D210)
@@ -1541,6 +1546,9 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
           some ⟨r, finals, R.label⟩
         else none
       | none => none
+    -- with `by`, the slot holds the function at its Π-type, read `.pi cd` (a stage below, at the weakened type)
+    let bodyAt (selfT : TyM) (selfM : Sem) (args : List Sem) : Option BodyOut :=
+      bodyWith { ty := .plain selfT, val := fun _ => selfM, decl := .pi cd } args
     let closureOf (g : List Sem → Option BodyOut) : Sem := closureAt K.dm.read l φ ps out g
     let rankOf (args : List Sem) : Nat := match dec with
       | some j =>
@@ -1555,12 +1563,14 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
         (fun k gk => bodyAt (piTyAt K.dm.read l ps (weakCod l rankOf k out))
           (closureAt K.dm.read l φ ps (weakCod l rankOf k out) (stageFn l ps rankOf k gk)))
-    -- a non-recursive `fix` is the recursive one at rank `0` (`rankOf` is `0` without `dec`): its
-    -- `self` is stage 0's closure at the weakened type, a member of it (`stage_mem`), never read (the
-    -- checker has no `self` in scope there, D31). It was `err`, an open member of nothing, and the
-    -- strict test after a write at a field path, which reads every binding, failed on every such
-    -- body (`Strict/FrameCE`: `SetFstOwned`, `PartMove`, accepted, had no meaning; docs/31 D113)
-    let g : List Sem → Option BodyOut := fun args => stage (rankOf args + 1) args
+    -- R-dec (docs/31 D255, D296; main's D148): a function has a self exactly when it has `by`. Without, the closure's
+    -- function is ONE run of the body with `()` at `Unit` in the slot (`unitSlot`), as the checker's `pushSelf` binds
+    -- it: no stage, no rank, no weakened type. (Until D296 it was the recursive one at rank `0`, its `self` stage 0's
+    -- closure at the weakened type; before D113 `err`, which the strict test after a write at a field path, reading
+    -- every binding, failed on: `Strict/FrameCE`. `()` is a member of `Unit`, so that test passes.)
+    let g : List Sem → Option BodyOut := match dec with
+      | none => bodyWith unitSlot
+      | some _ => fun args => stage (rankOf args + 1) args
     -- forming the closure (`Machine.capture`) accesses each captured variable, oldest binding
     -- first, and then moves it unless its declared reading is copy (D80): the checker's [Access]
     -- before the capture ends the borrows lent at it (docs/31 D29 point 2, D37)

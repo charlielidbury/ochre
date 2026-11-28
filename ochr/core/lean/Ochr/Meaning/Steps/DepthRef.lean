@@ -118,8 +118,8 @@ structure ParDecCap (D : Decisions) (sc : List DeclInfo) : Prop where
   td1 : D.typeDecl (.other :: sc) .nat = .other
   srt : D.piSort sc (.pi [⟨"m"⟩] [.nat] .nat) = 1
   cpN : D.copy (D.placeDecl sc (.var 0)) = false
-  flRd : D.flags (.other :: .pi .other :: sc) (.place (.var 2)) = (false, false)
-  cpRd : D.copy (D.placeDecl (.other :: .pi .other :: sc) (.var 2)) = false
+  flRd : D.flags (.other :: .unit :: sc) (.place (.var 2)) = (false, false)
+  cpRd : D.copy (D.placeDecl (.other :: .unit :: sc) (.var 2)) = false
 
 section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
@@ -128,13 +128,12 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 noncomputable def fbC (K : RunCtx) (ρ : Assignment) (φ : Future) (s : SState) : List PBind × PBind :=
   (bindsOf K ρ φ s [.nat], fixCod K ρ φ s (bindsOf K ρ φ s [.nat]) ([.nat].map Term.isRefTy) .nat, K.D.typeDecl (K.D.teleDecls (scopeOf s) [.nat]) .nat)
 
-/-- **The closure's function** (stage 1 at rank 0: it does not recurse), formed in `s`. -/
+/-- **The closure's function** (no `by`: one run of the body, `()` in the slot; R-dec), formed in `s`. -/
 noncomputable def gCap (K : RunCtx) (ρ : Assignment) (φ : Future) (s : SState) : List Sem → Option BodyOut :=
   fixG K ρ φ (fbC K ρ φ s) 1 s psI outI (piTyAt K.dm.read 1 psI outI) s.nextLoan none (.place (.var 2))
 
-/-- The closure's `self` in its body: the stage-0 closure at the weakened type (`ColumnI.selfSem`), read `.pi .other`. -/
-noncomputable def selfIn (R : DataRead) (φ : Future) : SBinding :=
-  { ty := .plain (selfTy R), val := fun _ => selfSem R φ, decl := .pi .other }
+/-- The closure's own-name slot in its body: `()` at `Unit`, read `.unit` (a λ has no `by`; R-dec, docs/31 D296). -/
+noncomputable def selfIn (_R : DataRead) (_φ : Future) : SBinding := unitSlot
 
 /-- The closure body's state at the argument `m`: the forming state under a fresh bottom frame, with the closure's
 `self` (the stage-0 closure at the weakened type, read `.pi .other`) and `m` pushed on its top frame. -/
@@ -165,7 +164,7 @@ theorem RefCap.in_shape (h : RefCap b a s) (R : DataRead) (m : Nat) (p : Pos) : 
   cases p.down? <;> simp [h.shape]
 
 theorem RefCap.in_scope (h : RefCap b a s) (R : DataRead) (m : Nat) :
-    scopeOf (sIn R φ s m) = .other :: .pi .other :: scopeOf s := by
+    scopeOf (sIn R φ s m) = .other :: .unit :: scopeOf s := by
   unfold scopeOf; rw [h.in_env R m, h.env]; rfl
 
 theorem RefCap.in_varPos2 (h : RefCap b a s) (R : DataRead) (m : Nat) : (sIn R φ s m).varPos 2 = some (.bind 2 1) := by
@@ -190,20 +189,18 @@ theorem gCap_run (h : RefCap b a s) (hd : ParDecCap K.D (scopeOf s)) (m : Nat) :
   have h1 := fbC_1 (ρ := ρ) (φ := φ) (s := s) hd
   have h2 := fbC_22 (ρ := ρ) (φ := φ) (s := s) hd
   have hst : ([Sem.el0 Nat m].zip psI).foldl (fixStep (fbC K ρ φ s))
-      (s.under.pushBind { ty := .plain (selfTy K.dm.read), val := fun _ => selfSem K.dm.read φ, decl := .pi (fbC K ρ φ s).2.2 },
-        [], []) = (sIn K.dm.read φ s m, [.el0 Nat m], []) := by
-    simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1, h2,
+      (s.under.pushBind unitSlot, [], []) = (sIn K.dm.read φ s m, [.el0 Nat m], []) := by
+    simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep, h1,
       Bool.false_eq_true, if_false, List.length_nil, List.getElem?_cons_zero, List.nil_append]
     rfl
-  have hsc : scopeOf (sIn K.dm.read φ s m) = .other :: .pi .other :: scopeOf s := h.in_scope K.dm.read m
+  have hsc : scopeOf (sIn K.dm.read φ s m) = .other :: .unit :: scopeOf s := h.in_scope K.dm.read m
   have hrd := runRead_num (K := K) (ρ := ρ) (φ := φ) (s := sIn K.dm.read φ s m) (j := 2) (pos := .bind 2 1) (a := a)
     (h.in_shape K.dm.read m) (h.in_varPos2 K.dm.read m) (by unfold SState.valAt; rw [h.in_env]; rfl)
     (by unfold SState.tyAt; rw [h.in_env]; rfl) (by rw [hsc]; exact hd.flRd) (by rw [hsc]; exact hd.cpRd)
   have hl : ((sIn K.dm.read φ s m).setAt (.bind 2 1) fun _ => .moved).liveLabels = [] := by
     rw [Strict.liveLabels_setAt]; exact liveLabels_noShape (h.in_shape K.dm.read m)
-  show fixBodyAt K ρ φ (fbC K ρ φ s) s psI outI (selfTy K.dm.read) s.nextLoan (.place (.var 2)) (selfSem K.dm.read φ)
-    [.el0 Nat m] = _
-  unfold fixBodyAt
+  show fixBodyU K ρ φ (fbC K ρ φ s) s psI outI s.nextLoan (.place (.var 2)) [.el0 Nat m] = _
+  unfold fixBodyU fixBodyWith
   dsimp only
   rw [hst]
   dsimp only
@@ -298,7 +295,7 @@ def coreBody (nm : String) : Option Term :=
 #guard coreBody "CapE" == some bodyCapE
 
 /-- `CapE`'s body scope: `n`, then `self`, read `.pi (.sort 1)` (the codomain `Type` read as a type, `typeDecl`). -/
-abbrev scCap : List DeclInfo := [.other, .pi (.sort 1)]
+abbrev scCap : List DeclInfo := [.other, .unit]
 
 /-- A state at erased depth 1 (where the checker checks `CapE`'s body: it returns a type, `withErasedIf`), with no
 global and no declaration; the decisions below read neither (no constant, no inductive in the terms). -/
@@ -311,7 +308,7 @@ open Ochr.Meaning.Steps.Form.ColumnC.Aux (flagsRun isOther isOther_eq)
 open Ochr.Meaning.Steps.Form.ColumnI.Aux (typeDeclRun piSortRun)
 open Ochr.Meaning.Steps.Form.ColumnP.Aux (pdRun cpRun)
 
-abbrev scIn : List DeclInfo := .other :: .pi .other :: scCap
+abbrev scIn : List DeclInfo := .other :: .unit :: scCap
 
 theorem ok_fl_body : isOk (flagsRun bodyCapE) (scopeState stCapE scCap) 1000 = true := by decide +kernel
 theorem val_fl_body : outVal (flagsRun bodyCapE) (scopeState stCapE scCap) 1000 = (false, false) := by decide +kernel
@@ -558,7 +555,7 @@ argument, for every binding of `self` read `.pi (.sort 1)` (the codomain's readi
 and leaves `n` moved. -/
 theorem fix_typeFn (hX : Hint) (t : Term) (hd : ParDecDef K.D (.fix hX [⟨"n"⟩] [.nat] (.sort 1) none t))
     (hcap : capOrder (.fix hX [⟨"n"⟩] [.nat] (.sort 1) none t) = [])
-    (hbody : ∀ (b : SBinding) (a : Nat) (tl : Bool) (hint : TyS), b.decl = .pi (.sort 1) →
+    (hbody : ∀ (b : SBinding) (a : Nat) (tl : Bool) (hint : TyS), b.decl = .unit →
       runT K ρ φ tl hint t (sX b a) = some ((.ty TyM.nat, .plain (TyM.univ 1)), (sX b a).setAt (.bind 1 1) fun _ => .moved))
     (tl : Bool) (hint : TyS) :
     ∃ f, runT K ρ φ tl hint (.fix hX [⟨"n"⟩] [.nat] (.sort 1) none t) (emptyState 0) =
@@ -582,11 +579,8 @@ theorem fix_typeFn (hX : Hint) (t : Term) (hd : ParDecDef K.D (.fix hX [⟨"n"�
     let fb : List PBind × PBind := (bindsOf K ρ φ (emptyState 0) [.nat],
       fixCod K ρ φ (emptyState 0) (bindsOf K ρ φ (emptyState 0) [.nat]) ([.nat].map Term.isRefTy) (.sort 1),
       K.D.typeDecl (K.D.teleDecls (scopeOf (emptyState 0)) [.nat]) (.sort 1))
-    let selfM : Sem := closureAt K.dm.read 2 φ psI (weakCod 2 (fixRank none) 0 outT)
-      (stageFn 2 psI (fixRank none) 0 (fun _ => none))
-    let selfT : TyM := piTyAt K.dm.read 2 psI (weakCod 2 (fixRank none) 0 outT)
-    let b : SBinding := { ty := .plain selfT, val := fun _ => selfM, decl := .pi fb.2.2 }
-    have hb : b.decl = .pi (.sort 1) := by show DeclInfo.pi fb.2.2 = _; rw [show fb.2.2 = .sort 1 from h2]
+    let b : SBinding := unitSlot
+    have hb : b.decl = .unit := rfl
     have hst : ([Sem.el0 Nat a].zip psI).foldl (fixStep fb) ((emptyState 0).under.pushBind b, [], []) =
         (sX b a, [.el0 Nat a], []) := by
       simp only [psI, List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil, fixStep,
@@ -595,8 +589,8 @@ theorem fix_typeFn (hX : Hint) (t : Term) (hd : ParDecDef K.D (.fix hX [⟨"n"�
     have hl : ((sX b a).setAt (.bind 1 1) fun _ => .moved).liveLabels = [] := by
       rw [Strict.liveLabels_setAt]; exact liveLabels_noShape (refCap_start b a).shape
     refine ⟨⟨.ty TyM.nat, [], none⟩, ?_, ⟨Strict.ty_univ1_mem Code0.nat rfl, fun i d hi hd' => ?_⟩, rfl⟩
-    · show fixBodyAt K ρ φ fb (emptyState 0) psI outT _ 0 t _ [.el0 Nat a] = _
-      unfold fixBodyAt
+    · show fixBodyU K ρ φ fb (emptyState 0) psI outT 0 t [.el0 Nat a] = _
+      unfold fixBodyU fixBodyWith
       dsimp only
       rw [hst]
       dsimp only

@@ -83,19 +83,24 @@ theorem stG_succ (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
           (stageFn (lG K hs ds c) (psG K ρ φ ds) (fixRank dec) k (stG K ρ φ hs ds c dec body k))) a := rfl
 
 /-- The global's function is the stage `rank + 1`. -/
-theorem GG_eq (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) (a : List Sem) :
-    GG K ρ φ hs ds c dec body a = stG K ρ φ hs ds c dec body (fixRank dec a + 1) a := rfl
+theorem GG_eq (hs : List Hint) (ds : List Term) (c : Term) (j : Nat) (body : Term) (a : List Sem) :
+    GG K ρ φ hs ds c (some j) body a = stG K ρ φ hs ds c (some j) body (fixRank (some j) a + 1) a := rfl
+
+/-- Without `by` (R-dec, docs/31 D296), the global's function is one run of its body with `()` in the slot. -/
+theorem GG_none (hs : List Hint) (ds : List Term) (c : Term) (body : Term) :
+    GG K ρ φ hs ds c none body =
+      fixBodyU K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) 0 body := rfl
 
 /-- **Every stage agrees with the global's function below its bound** (the stabilisation, from `RecDescG` and the
 function's goodness, by strong induction on the bound). -/
 theorem stage_agree {st : MState} (hd : RecDescG K st) (hg : FnGoodG K st) {n : String} {gd : GDef} {self : Hint}
-    {hs : List Hint} {ds : List Term} {c : Term} {dec : Option Nat} {body : Term}
+    {hs : List Hint} {ds : List Term} {c : Term} {j : Nat} {body : Term}
     (hfind : st.globals.find? (·.name == n) = some gd) (hcur : K.cur.map (·.1) ≠ some n)
-    (hfn : gd.fn? = some (.fix self hs ds c dec body)) :
-    ∀ m a, DomMembers K.dm.read (psG K ρ φ ds) a → fixRank dec a < m →
-      stG K ρ φ hs ds c dec body m a = GG K ρ φ hs ds c dec body a := by
-  obtain ⟨hfit, hgood⟩ := hg n gd self hs ds c dec body hfind hcur hfn ρ φ
-  have hdesc := hd n gd self hs ds c dec body hfind hcur hfn ρ φ
+    (hfn : gd.fn? = some (.fix self hs ds c (some j) body)) :
+    ∀ m a, DomMembers K.dm.read (psG K ρ φ ds) a → fixRank (some j) a < m →
+      stG K ρ φ hs ds c (some j) body m a = GG K ρ φ hs ds c (some j) body a := by
+  obtain ⟨hfit, hgood⟩ := hg n gd self hs ds c (some j) body hfind hcur hfn ρ φ
+  have hdesc := hd n gd self hs ds c j body hfind hcur hfn ρ φ
   intro m
   induction m using Nat.strongRecOn with
   | _ m ih =>
@@ -104,21 +109,21 @@ theorem stage_agree {st : MState} (hd : RecDescG K st) (hg : FnGoodG K st) {n : 
     | zero => exact absurd hlt (Nat.not_lt_zero _)
     | succ k =>
       have hk := ih k (Nat.lt_succ_self k)
-      have hr := ih (fixRank dec a) hlt
-      have gk : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank dec b < k →
-          ∃ o, stG K ρ φ hs ds c dec body k b = some o ∧ OutGood' K.dm.read (psG K ρ φ ds) (outG K ρ φ ds c) b o :=
+      have hr := ih (fixRank (some j) a) hlt
+      have gk : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank (some j) b < k →
+          ∃ o, stG K ρ φ hs ds c (some j) body k b = some o ∧ OutGood' K.dm.read (psG K ρ φ ds) (outG K ρ φ ds c) b o :=
         fun b hb hl => by rw [hk b hb hl]; exact hgood b hb
-      have gr : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank dec b < fixRank dec a →
-          ∃ o, stG K ρ φ hs ds c dec body (fixRank dec a) b = some o ∧
+      have gr : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank (some j) b < fixRank (some j) a →
+          ∃ o, stG K ρ φ hs ds c (some j) body (fixRank (some j) a) b = some o ∧
             OutGood' K.dm.read (psG K ρ φ ds) (outG K ρ φ ds c) b o :=
         fun b hb hl => by rw [hr b hb hl]; exact hgood b hb
       rw [stG_succ, GG_eq, stG_succ]
       refine hdesc a ha _ _ _ _ rfl rfl (piFits_weakCod hfit _ _) (piFits_weakCod hfit _ _)
         (stageFn_good' hfit gk) (stageFn_good' hfit gr) (fun b hb hlt' => ⟨?_, ?_⟩)
-      · have h1 : fixRank dec b < k := by omega
+      · have h1 : fixRank (some j) b < k := by omega
         simp only [stageFn, if_pos h1, if_pos hlt']
         rw [hk b hb h1, hr b hb hlt']
-      · have h1 : fixRank dec b < k := by omega
+      · have h1 : fixRank (some j) b < k := by omega
         simp only [weakCod, if_pos h1, if_pos hlt']
 
 /-- **THE FIXPOINT EQUATION of every accepted global** (docs/31 D232, D234): from the descent clause and the knot's
@@ -126,14 +131,18 @@ goodness. Assumes the two clauses of the context (`RecDescG`: read true, its est
 `FnGoodG`: the knot's output, `fix_split` and `stages_below`). -/
 theorem fixEqG_of {st : MState} (hd : RecDescG K st) (hg : FnGoodG K st) : FixEqG K st := by
   intro n gd self hs ds c dec body hfind hcur hfn ρ φ args hargs
-  obtain ⟨hfit, hgood⟩ := hg n gd self hs ds c dec body hfind hcur hfn ρ φ
+  -- R-dec (docs/31 D296): without `by` the equation is the definition (`fixBodyU` on both sides)
+  cases dec with
+  | none => rfl
+  | some j =>
+  obtain ⟨hfit, hgood⟩ := hg n gd self hs ds c (some j) body hfind hcur hfn ρ φ
   have hagree := stage_agree K ρ φ hd hg hfind hcur hfn
-  have gr : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank dec b < fixRank dec args →
-      ∃ o, stG K ρ φ hs ds c dec body (fixRank dec args) b = some o ∧
+  have gr : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank (some j) b < fixRank (some j) args →
+      ∃ o, stG K ρ φ hs ds c (some j) body (fixRank (some j) args) b = some o ∧
         OutGood' K.dm.read (psG K ρ φ ds) (outG K ρ φ ds c) b o :=
     fun b hb hl => by rw [hagree _ b hb hl]; exact hgood b hb
   rw [GG_eq, stG_succ]
-  refine hd n gd self hs ds c dec body hfind hcur hfn ρ φ args hargs _ _ _ _ rfl rfl (piFits_weakCod hfit _ _) hfit
+  refine hd n gd self hs ds c j body hfind hcur hfn ρ φ args hargs _ _ _ _ rfl rfl (piFits_weakCod hfit _ _) hfit
     (stageFn_good' hfit gr) hgood (fun b hb hlt => ⟨?_, ?_⟩)
   · simp only [stageFn, if_pos hlt]
     exact hagree _ b hb hlt

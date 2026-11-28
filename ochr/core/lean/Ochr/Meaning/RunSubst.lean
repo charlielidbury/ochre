@@ -145,12 +145,19 @@ theorem joinDropOk_substLoan (hD : DecInvariant K.D l w) (φ : Future) (t : Term
 theorem capOrder_substLoan (t : Term) : capOrder (Term.substLoan l w t) = capOrder t := by
   unfold capOrder; rw [freeVars_substLoan]
 
+theorem fixBodyWith_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hint body' = runT K ρ ψ true hint body)
+    (s : SState) (ps : List PiDom) (out : PiCod) (start : Nat) :
+    fixBodyWith K ρ ψ fb s ps out start body' = fixBodyWith K ρ ψ fb s ps out start body := by
+  funext sb args
+  unfold fixBodyWith
+  simp only [hb]
+
 theorem fixBodyAt_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hint body' = runT K ρ ψ true hint body)
     (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) :
     fixBodyAt K ρ ψ fb s ps out piT start body' = fixBodyAt K ρ ψ fb s ps out piT start body := by
   funext selfM args
   unfold fixBodyAt
-  simp only [hb]
+  rw [fixBodyWith_bodyEq K ρ ψ hb]
 
 theorem fixStage_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hint body' = runT K ρ ψ true hint body)
     (lv : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (dec : Option Nat) (start : Nat) :
@@ -166,9 +173,11 @@ theorem fixStage_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hi
 theorem fixG_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hint body' = runT K ρ ψ true hint body)
     (lv : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (dec : Option Nat) :
     fixG K ρ ψ fb lv s ps out piT start dec body' = fixG K ρ ψ fb lv s ps out piT start dec body := by
-  funext args
-  simp only [fixG]
-  exact congrFun (fixStage_bodyEq K ρ ψ hb lv s ps out dec start _) args
+  cases dec with
+  | none => exact congrFun (fixBodyWith_bodyEq K ρ ψ hb s ps out start) unitSlot
+  | some j =>
+    funext args
+    exact congrFun (fixStage_bodyEq K ρ ψ hb lv s ps out (some j) start (fixRank (some j) args + 1)) args
 
 theorem fixMoves_substLoan (t : Term) (s : SState) : fixMoves K (Term.substLoan l w t) s = fixMoves K t s := by
   unfold fixMoves capOrder; rw [freeVars_substLoan]

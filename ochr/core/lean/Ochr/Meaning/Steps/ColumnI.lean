@@ -37,11 +37,11 @@ theorem kern_absTy {a b : MState} (h : Kern a b) : a.absTy = b.absTy := h.absTy
 /-- **The checker's run of `I`'s body**: its value is `S(σ0)`, at `Nat`, and its end state holds no
 borrow. -/
 theorem run_bodyI (hE : EvalInv) (hS : SuccInv) (hV : VarNumAInv) (hlow : EvalLow) {D : Decisions}
-    (hd : ParDecI D [.other, .pi .other]) {n : Nat} {hint : Option Value} {st st' : MState} {bh : Nat}
+    (hd : ParDecI D [.other, .unit]) {n : Nat} {hint : Option Value} {st st' : MState} {bh : Nat}
     {v : Value} {T? : Option Value} (hk : Kern stI st) (hm : Mode st) (htd : st.tailDecl = none)
     (hD : DecTab D st') (h : Runs (Ochr.eval n true bodyI hint) st bh (v, T?) st') :
     v = .succ (.abs 0) ∧ T? = some .tNat ∧ NoBorrow st'.env := by
-  have hR : DecideScope.topReadings st = [.other, .pi .other] := by
+  have hR : DecideScope.topReadings st = [.other, .unit] := by
     rw [← ColumnC.topReadings_kern hk]; rfl
   by_cases hn : n < 3
   · exact absurd h (hlow n true _ hint st st' bh _ hn (fun _ e => by cases e))
@@ -52,7 +52,7 @@ theorem run_bodyI (hE : EvalInv) (hS : SuccInv) (hV : VarNumAInv) (hlow : EvalLo
   obtain ⟨sa, sb, v₀, T₀, bh₁, hka, hma, -, htda, ha, rfl, rfl, hq₁, -, hDb, -⟩ :=
     hS m true (.place (.var 0)) hint st₀ st₁ bh' v T? hm₀ htn₀ htd₀ h₀
   have hDsb : DecTab D sb := hDb D (DecTab.of_kern hk₁.symm hD)
-  have hRa : DecideScope.topReadings sa = [.other, .pi .other] := by
+  have hRa : DecideScope.topReadings sa = [.other, .unit] := by
     rw [← ColumnC.topReadings_kern hka, ← ColumnC.topReadings_kern hk₀, hR]
   by_cases hm3 : m < 3
   · exact absurd ha (hlow m true _ none sa sb bh₁ _ hm3 (fun _ e => by cases e))
@@ -71,7 +71,7 @@ theorem run_bodyI (hE : EvalInv) (hS : SuccInv) (hV : VarNumAInv) (hlow : EvalLo
     rcases hsa : sa'.env[1]? with _ | fr
     · rw [hsa] at e; simp [stI] at e
     · rw [hsa] at e
-      have e' : Frame.erase { binds := #[selfB, nB] } = fr.erase := Option.some.inj e
+      have e' : Frame.erase { binds := #[unitB, nB] } = fr.erase := Option.some.inj e
       have eb := congrArg (fun F : Frame => F.binds[1]?) e'
       simp only [Frame.erase] at eb
       exact ⟨fr, rfl, by rw [← eb]; rfl⟩
@@ -151,7 +151,7 @@ theorem body_runI (hE : EvalInv) (hS : SuccInv) (hI : InvSteps) (hV : VarNumAInv
   have hpd := parDecI hDI
   obtain ⟨rfl, rfl, hnb⟩ := run_bodyI hE hS hV hlow hpd hk hm htd hD h
   have hρ : ∃ m, ρAt ρ a 0 = .el0 Nat m := ⟨a, rfl⟩
-  have hsc : scopeOf (SM' (KI dm D φ) (ρAt ρ a) stI) = [.other, .pi .other] := by
+  have hsc : scopeOf (SM' (KI dm D φ) (ρAt ρ a) stI) = [.other, .unit] := by
     rw [scopeOf_sstate']; rfl
   obtain ⟨ρ', Δ', π', r, s', hext, hx, hmean, hagree, -, -, hrel⟩ :=
     body_simI (K := KI dm D φ) (ρ := ρAt ρ a) (φ := φ) hE hS hI hV hN hlow hpd n st st' true hint _ _

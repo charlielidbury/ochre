@@ -211,10 +211,10 @@ theorem inFold {s : SState} (bs : List PBind) (args : List Res) (selfB : SBindin
     exact ⟨(accOf_succ ha).symm, ih2.step hnd ha⟩
 
 /-- `inStart` is the fold over every argument. -/
-theorem inStart_fold (K : RunCtx) (ρ : Assignment) (φ : Future) (fres : Res) (ds : List Term) (c : Term)
+theorem inStart_fold (K : RunCtx) (ρ : Assignment) (φ : Future) (fres : Res) (dec : Option Nat) (ds : List Term) (c : Term)
     (args : List Res) (s : SState) :
-    inStart K ρ φ fres ds c args s = ((args.take args.length).foldl (callStep (fbG K ρ φ ds c).1)
-      (s.pushFrame.pushBind { ty := { fres.2 with label := none }, val := fun _ => fres.1, decl := .pi (fbG K ρ φ ds c).2.2 },
+    inStart K ρ φ fres dec ds c args s = ((args.take args.length).foldl (callStep (fbG K ρ φ ds c).1)
+      (s.pushFrame.pushBind (selfSlot dec fres.1 fres.2 (fbG K ρ φ ds c).2.2),
         [])).1 := by
   rw [List.take_length, inStart_eq]
 
@@ -986,16 +986,24 @@ section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- `clStart` is the closure's fold over every parameter. -/
-theorem clStart_fold (ds : List Term) (c : Term) (piT : TyM) (selfM : Sem) (args : List Sem) :
-    clStart K ρ φ ds c piT selfM args = ((((args.zip (psG K ρ φ ds))).take (args.zip (psG K ρ φ ds)).length).foldl
+theorem clStart_fold (dec : Option Nat) (ds : List Term) (c : Term) (piT : TyM) (selfM : Sem) (args : List Sem) :
+    clStart K ρ φ dec ds c piT selfM args = ((((args.zip (psG K ρ φ ds))).take (args.zip (psG K ρ φ ds)).length).foldl
       (fixStep (fbG K ρ φ ds c)) (formG.under.pushBind
-        { ty := .plain piT, val := fun _ => selfM, decl := .pi (fbG K ρ φ ds c).2.2 }, [], [])).1 := by
+        (selfSlot dec selfM (.plain piT) (fbG K ρ φ ds c).2.2), [], [])).1 := by
   rw [List.take_length]; rfl
 
 /-- **`CallStartInvG`, PROVED** (docs/31 D240): the in-place state after the push and the closure's state after its push
 are related by the frame property's internal relation under the call's renaming. -/
 theorem callStartInvG : CallStartInvG K ρ φ := by
-  intro hs ds c selfM piT args s _ hself hg hloc hl hsites hlive hnd hdom hlab hheld
+  intro hs dec ds c selfM piT args s _ hself hg hloc hl hsites hlive hnd hdom hlab hheld
+  -- the own-name slot, the same binding on both sides (R-dec, docs/31 D296: the function with `by`, `()` without)
+  have hsv := selfSlot_val dec selfM (.plain piT) (fbG K ρ φ ds c).2.2
+  have hsl := selfSlot_label dec selfM (.plain piT) (fbG K ρ φ ds c).2.2
+  have hsm := selfSlot_mem K.dm.read dec selfM (.plain piT) (fbG K ρ φ ds c).2.2 hself
+  have hbr : BindRen (callRen (argLabels args) s.nextLoan) (selfSlot dec selfM (.plain piT) (fbG K ρ φ ds c).2.2)
+      (selfSlot dec selfM (.plain piT) (fbG K ρ φ ds c).2.2) := by
+    cases dec <;> exact ⟨rfl, rfl, rfl, fun _ => rfl⟩
+
   have hsa : ∀ p l, s.shape p = some l → p ∈ s.positions := fun p l h => (hloc.2.2 p l h).1
   have hlen : (args.map (·.1)).length = (psG K ρ φ ds).length := hdom.1
   have hxl : ((args.map (·.1)).zip (psG K ρ φ ds)).length = args.length := by simp at hlen ⊢; omega
@@ -1016,12 +1024,13 @@ theorem callStartInvG : CallStartInvG K ρ φ := by
       s.heldTy k = (paramBind (fbG K ρ φ ds c).1 (accOf args j) a).ty.m := hheld
   -- the two pushes, characterised
   rw [inStart_fold, clStart_fold]
+  dsimp only
+  generalize slotVal dec selfM = m at hsv hsm
+  generalize selfSlot dec selfM (.plain piT) (fbG K ρ φ ds c).2.2 = sb at hsv hsl hsm hbr ⊢
   obtain ⟨-, hin⟩ := inFold (s := s) (fbG K ρ φ ds c).1 args _ hsa hnd args.length (Nat.le_refl _)
-  have hgin := inFold_good K φ (s := s) (fbG K ρ φ ds c).1 args
-    { ty := { (selfM, TyS.plain piT).2 with label := none }, val := fun _ => selfM, decl := .pi (fbG K ρ φ ds c).2.2 }
-    rfl rfl (.inl hself) hg hloc hnd hlive hmemIn hheld' args.length (Nat.le_refl _)
-  obtain ⟨-, hcl⟩ := clFold (fbG K ρ φ ds c) ((args.map (·.1)).zip (psG K ρ φ ds))
-    { ty := .plain piT, val := fun _ => selfM, decl := .pi (fbG K ρ φ ds c).2.2 } _ (Nat.le_refl _)
+  have hgin := inFold_good K φ (s := s) (fbG K ρ φ ds c).1 args sb
+    hsv hsl (.inl hsm) hg hloc hnd hlive hmemIn hheld' args.length (Nat.le_refl _)
+  obtain ⟨-, hcl⟩ := clFold (fbG K ρ φ ds c) ((args.map (·.1)).zip (psG K ρ φ ds)) sb _ (Nat.le_refl _)
   rw [hxl] at hcl
   have hmemCl : ∀ k x, k < args.length → ((args.map (·.1)).zip (psG K ρ φ ds))[k]? = some x →
       x.1 ∈ₛ[K.dm.read] (clT (fbG K ρ φ ds c) ((args.map (·.1)).zip (psG K ρ φ ds)) k).m := by
@@ -1030,32 +1039,28 @@ theorem callStartInvG : CallStartInvG K ρ φ := by
     rw [hx] at hx'; cases hx'
     obtain ⟨b, hb⟩ := hps k d hd
     rw [← (param_corr (ps := psG K ρ φ ds) rfl hlen ha hb).1]; exact hmemIn k a ha
-  have hgcl := hcl.good K φ (by rw [hxl]; exact Nat.le_refl _) rfl hself hmemCl
+  have hgcl := hcl.good K φ (by rw [hxl]; exact Nat.le_refl _) hsv hsm hmemCl
   -- the in-place fold's lower holders
-  have hl0 : SState.RInv (fun _ => False) (s.pushFrame.pushBind
-      { ty := { (selfM, TyS.plain piT).2 with label := none }, val := fun _ => selfM, decl := .pi (fbG K ρ φ ds c).2.2 }) :=
-    SState.pushBind_rinv (PushFrame.rinv_pushFrame hloc) _ selfM rfl
+  have hl0 : SState.RInv (fun _ => False) (s.pushFrame.pushBind sb) :=
+    SState.pushBind_rinv (PushFrame.rinv_pushFrame hloc) _ m hsv
   have hsa₀ : SState.ShapeAt s.pushFrame := (PushFrame.rinv_pushFrame hloc).2.2
-  have hfs := fold_start (fbG K ρ φ ds c).1 s (args.take args.length) _ [] [] hl0 (hg.uniq.pushBind
-    { ty := { (selfM, TyS.plain piT).2 with label := none }, val := fun _ => selfM, decl := .pi (fbG K ρ φ ds c).2.2 })
+  have hfs := fold_start (fbG K ρ φ ds c).1 s (args.take args.length) _ [] [] hl0 (hg.uniq.pushBind sb)
     (by simp [SState.pushBind, SState.pushFrame]) rfl rfl
     (fun l hl => (SState.live_pushBind hsa₀ _ l).2 ((PushFrame.live_pushFrame s l).2 hl))
     (fun p l _ hl => ⟨hl, by simp⟩) (fun a' ha' => hlive a' (List.mem_of_mem_take ha'))
   have hlowsh := hfs.2.2.2.2.2.2
   rw [List.take_length] at hin hgin hlowsh ⊢
-  generalize (args.foldl (callStep (fbG K ρ φ ds c).1) (s.pushFrame.pushBind
-      { ty := { (selfM, TyS.plain piT).2 with label := none }, val := fun _ => selfM,
-        decl := .pi (fbG K ρ φ ds c).2.2 }, [])).1 = t at hin hgin hlowsh ⊢
+  generalize (args.foldl (callStep (fbG K ρ φ ds c).1) (s.pushFrame.pushBind sb, [])).1 = t at hin hgin hlowsh ⊢
   have htk : ((args.map (·.1)).zip (psG K ρ φ ds)).take args.length = (args.map (·.1)).zip (psG K ρ φ ds) := by
     rw [← hxl, List.take_length]
   rw [htk] at hcl hgcl; rw [List.take_length]
-  generalize (((args.map (·.1)).zip (psG K ρ φ ds)).foldl (fixStep (fbG K ρ φ ds c)) (formG.under.pushBind
-      { ty := .plain piT, val := fun _ => selfM, decl := .pi (fbG K ρ φ ds c).2.2 }, [], [])).1 = t' at hcl hgcl ⊢
+  generalize (((args.map (·.1)).zip (psG K ρ φ ds)).foldl (fixStep (fbG K ρ φ ds c)) (formG.under.pushBind sb, [], [])).1 = t'
+    at hcl hgcl ⊢
   have hksn : ∀ k ∈ argLabels args, k < s.nextLoan := fun k hk => by
     obtain ⟨a, ha, hak⟩ := List.mem_filterMap.1 hk
     obtain ⟨q, _, hq⟩ := (SState.live_iff s k).1 (hlive a ha k hak)
     exact (hloc.2.2 q k hq).2
-  have hrel := startRel (s := s) (ps := psG K ρ φ ds) rfl rfl hps hin hcl ⟨rfl, rfl, rfl, fun _ => rfl⟩ hlen hlab hnd hksn
+  have hrel := startRel (s := s) (ps := psG K ρ φ ds) rfl rfl hps hin hcl hbr hlen hlab hnd hksn
     hsites hheld'
   have hM : refBefore ((args.map (·.1)).zip (psG K ρ φ ds)) args.length = (argLabels args).length := by
     rw [← argLabels_corr hlen hlab args.length (Nat.le_refl _), List.take_length]
@@ -1085,7 +1090,7 @@ theorem callStartInvG : CallStartInvG K ρ φ := by
         rcases hcl.bindAt (by rw [hxl]; exact Nat.le_refl _) hb with ⟨rfl, hi, rfl⟩ | ⟨rfl, rfl, rfl⟩ |
           ⟨k, x, rfl, rfl, hk, hx, rfl⟩
         · intro ψ ψ' e; exact e i ((hcl.live_iff (by rw [hxl]; exact Nat.le_refl _) i).2 hi)
-        · exact FT.const _ _
+        · rw [hsv]; exact FT.const _ _
         · exact FT.const _ _
   · -- the closure's frame 1 holds constants
     cases p with
@@ -1099,7 +1104,7 @@ theorem callStartInvG : CallStartInvG K ρ φ := by
         rcases hcl.bindAt (by rw [hxl]; exact Nat.le_refl _) hb with ⟨e, -, -⟩ | ⟨-, -, rfl⟩ |
           ⟨k, x, -, -, -, -, rfl⟩
         · cases e
-        · exact FT.const _ _
+        · rw [hsv]; exact FT.const _ _
         · exact FT.const _ _
   · -- a cell per parameter label
     have : t'.env.headD {} = F0 := by

@@ -47,7 +47,7 @@ theorem fixBodyAt_R_self (hd : ParDecR D) {Δ₀ : Nat → TyS} {G₀ : Sem × T
     have hts := tySelf_of_rel hrel
     obtain ⟨hZ, -⟩ := runR (K := KR dm D Δ₀ G₀ b₀) (ρ := ρ) hd hP hmv hts hgw (.inl hgm) (fb.2.1 [.el0 Nat 0])
     have hl0 : (SM' (KR dm D ΔP G 0) (ρAt ρ 0) stR).liveLabels = [] := liveLabels_SMR _
-    unfold fixBodyAt
+    unfold fixBodyAt fixBodyWith
     dsimp only
     rw [hst]
     dsimp only
@@ -62,7 +62,7 @@ theorem fixBodyAt_R_self (hd : ParDecR D) {Δ₀ : Nat → TyS} {G₀ : Sem × T
     have hts := tySelf_of_rel hrel
     obtain ⟨-, hS⟩ := runR (K := KR dm D Δ₀ G₀ b₀) (ρ := ρ) hd hP hmv hts hgw (.inl hgm) (fb.2.1 [.el0 Nat (a + 1)])
     have hl0 : (SM' (KR dm D ΔP G 0) (ρAt ρ (a + 1)) stR).liveLabels = [] := liveLabels_SMR _
-    unfold fixBodyAt
+    unfold fixBodyAt fixBodyWith
     dsimp only
     rw [hst]
     dsimp only

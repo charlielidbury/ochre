@@ -55,14 +55,14 @@ def FnGoodAt (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (bo
 def FixEqAt (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term) : Prop :=
   ∀ (args : List Sem), DomMembers K.dm.read (psG K ρ φ ds) args →
     GG K ρ φ hs ds c dec body args =
-      fixBodyAt K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) (piTG K ρ φ hs ds c) 0 body
-        (selfG K ρ φ hs ds c dec body) args
+      fixBodyWith K ρ φ (fbG K ρ φ ds c) formG (psG K ρ φ ds) (outG K ρ φ ds c) 0 body
+        (selfSlot dec (selfG K ρ φ hs ds c dec body) (.plain (piTG K ρ φ hs ds c)) (fbG K ρ φ ds c).2.2) args
 
 /-- `stage_agree` at one code. -/
-theorem stage_agreeAt {hs : List Hint} {ds : List Term} {c : Term} {dec : Option Nat} {body : Term}
-    (hdesc : RecDescAt K ρ φ hs ds c dec body) (hg : FnGoodAt K ρ φ hs ds c dec body) :
-    ∀ m a, DomMembers K.dm.read (psG K ρ φ ds) a → fixRank dec a < m →
-      stG K ρ φ hs ds c dec body m a = GG K ρ φ hs ds c dec body a := by
+theorem stage_agreeAt {hs : List Hint} {ds : List Term} {c : Term} {j : Nat} {body : Term}
+    (hdesc : RecDescAt K ρ φ hs ds c (some j) body) (hg : FnGoodAt K ρ φ hs ds c (some j) body) :
+    ∀ m a, DomMembers K.dm.read (psG K ρ φ ds) a → fixRank (some j) a < m →
+      stG K ρ φ hs ds c (some j) body m a = GG K ρ φ hs ds c (some j) body a := by
   obtain ⟨hfit, hgood⟩ := hg
   intro m
   induction m using Nat.strongRecOn with
@@ -72,21 +72,21 @@ theorem stage_agreeAt {hs : List Hint} {ds : List Term} {c : Term} {dec : Option
     | zero => exact absurd hlt (Nat.not_lt_zero _)
     | succ k =>
       have hk := ih k (Nat.lt_succ_self k)
-      have hr := ih (fixRank dec a) hlt
-      have gk : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank dec b < k →
-          ∃ o, stG K ρ φ hs ds c dec body k b = some o ∧ OutGood' K.dm.read (psG K ρ φ ds) (outG K ρ φ ds c) b o :=
+      have hr := ih (fixRank (some j) a) hlt
+      have gk : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank (some j) b < k →
+          ∃ o, stG K ρ φ hs ds c (some j) body k b = some o ∧ OutGood' K.dm.read (psG K ρ φ ds) (outG K ρ φ ds c) b o :=
         fun b hb hl => by rw [hk b hb hl]; exact hgood b hb
-      have gr : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank dec b < fixRank dec a →
-          ∃ o, stG K ρ φ hs ds c dec body (fixRank dec a) b = some o ∧
+      have gr : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank (some j) b < fixRank (some j) a →
+          ∃ o, stG K ρ φ hs ds c (some j) body (fixRank (some j) a) b = some o ∧
             OutGood' K.dm.read (psG K ρ φ ds) (outG K ρ φ ds c) b o :=
         fun b hb hl => by rw [hr b hb hl]; exact hgood b hb
       rw [stG_succ, GG_eq, stG_succ]
       refine hdesc a ha _ _ _ _ rfl rfl (piFits_weakCod hfit _ _) (piFits_weakCod hfit _ _)
         (stageFn_good' hfit gk) (stageFn_good' hfit gr) (fun b hb hlt' => ⟨?_, ?_⟩)
-      · have h1 : fixRank dec b < k := by omega
+      · have h1 : fixRank (some j) b < k := by omega
         simp only [stageFn, if_pos h1, if_pos hlt']
         rw [hk b hb h1, hr b hb hlt']
-      · have h1 : fixRank dec b < k := by omega
+      · have h1 : fixRank (some j) b < k := by omega
         simp only [weakCod, if_pos h1, if_pos hlt']
 
 /-- **The fixpoint equation at one code** (`fixEqG_of` per code): from the two clauses' bodies at that code. -/
@@ -94,10 +94,14 @@ theorem fixEqAt_of {hs : List Hint} {ds : List Term} {c : Term} {dec : Option Na
     (hd : RecDescAt K ρ φ hs ds c dec body) (hg : FnGoodAt K ρ φ hs ds c dec body) :
     FixEqAt K ρ φ hs ds c dec body := by
   intro args hargs
+  -- R-dec (docs/31 D296): without `by` the equation is the definition
+  cases dec with
+  | none => rfl
+  | some j =>
   obtain ⟨hfit, hgood⟩ := hg
   have hagree := stage_agreeAt K ρ φ hd ⟨hfit, hgood⟩
-  have gr : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank dec b < fixRank dec args →
-      ∃ o, stG K ρ φ hs ds c dec body (fixRank dec args) b = some o ∧
+  have gr : ∀ b, DomMembers K.dm.read (psG K ρ φ ds) b → fixRank (some j) b < fixRank (some j) args →
+      ∃ o, stG K ρ φ hs ds c (some j) body (fixRank (some j) args) b = some o ∧
         OutGood' K.dm.read (psG K ρ φ ds) (outG K ρ φ ds c) b o :=
     fun b hb hl => by rw [hagree _ b hb hl]; exact hgood b hb
   rw [GG_eq, stG_succ]
@@ -139,7 +143,7 @@ theorem fixBodyAt_RK (K : RunCtx) (hd : ParDecR K.D) (ρ : Assignment)
   have hl : ∀ x : SState, x.liveLabels = [] → (dropN K x).liveLabels = [] := fun x hx => by
     unfold dropN; rw [Strict.liveLabels_setAt]; exact hx
   have hl0 : (SM' (KR K.dm K.D ΔP (GR K.dm.read φ b fn) b) (ρAt ρ a) stR).liveLabels = [] := liveLabels_SMR _
-  unfold fixBodyAt
+  unfold fixBodyAt fixBodyWith
   dsimp only
   rw [hst]
   dsimp only
@@ -181,7 +185,7 @@ theorem fixBodyAt_R_anyK (K : RunCtx) (hd : ParDecR K.D) (ρ : Assignment)
     have hts := tySelf_of_rel hrel
     obtain ⟨hZ, -⟩ := runR (K := K) (ρ := ρ) hd hP hmv hts hgw (.inl hgm) (fb.2.1 [.el0 Nat 0])
     have hl0 : (SM' (KR K.dm K.D ΔP G 0) (ρAt ρ 0) stR).liveLabels = [] := liveLabels_SMR _
-    unfold fixBodyAt
+    unfold fixBodyAt fixBodyWith
     dsimp only
     rw [hst]
     dsimp only
@@ -196,7 +200,7 @@ theorem fixBodyAt_R_anyK (K : RunCtx) (hd : ParDecR K.D) (ρ : Assignment)
     have hts := tySelf_of_rel hrel
     obtain ⟨-, hS⟩ := runR (K := K) (ρ := ρ) hd hP hmv hts hgw (.inl hgm) (fb.2.1 [.el0 Nat (a + 1)])
     have hl0 : (SM' (KR K.dm K.D ΔP G 0) (ρAt ρ (a + 1)) stR).liveLabels = [] := liveLabels_SMR _
-    unfold fixBodyAt
+    unfold fixBodyAt fixBodyWith
     dsimp only
     rw [hst]
     dsimp only

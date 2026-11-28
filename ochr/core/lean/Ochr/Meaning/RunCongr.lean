@@ -533,10 +533,10 @@ noncomputable def fixStep (sa : SState × List Sem × List Pos) (ap : Sem × PiD
   else
     (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
 
-/-- The closure's body run, at a meaning of `self` and arguments (`bodyAt`). -/
-noncomputable def fixBodyAt (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (body : Term)
-    (selfM : Sem) (args : List Sem) : Option BodyOut :=
-  let s₁ := s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }
+/-- The closure's body run, with the own-name slot `sb` and arguments (`bodyWith`). -/
+noncomputable def fixBodyWith (s : SState) (ps : List PiDom) (out : PiCod) (start : Nat) (body : Term)
+    (sb : SBinding) (args : List Sem) : Option BodyOut :=
+  let s₁ := s.under.pushBind sb
   let (s₂, _, cells) := (args.zip ps).foldl (fixStep fb) (s₁, [], [])
   -- main's D142: an erased function's body is a statement, its pop seeing the start's state (`SM.bodyRun`)
   match SM.bodyRun (fnErasedD fb.2.2) (runT K ρ φ true (fb.2.1 args) body) s₂ with
@@ -548,6 +548,17 @@ noncomputable def fixBodyAt (s : SState) (ps : List PiDom) (out : PiCod) (piT : 
       some ⟨r, finals, R.label⟩
     else none
   | none => none
+
+/-- The closure's body run, at a meaning of `self` and arguments (`bodyAt`): the slot holds `self` at the function type
+`piT`, read `.pi cd` (a function with `by`, and its stages). -/
+noncomputable def fixBodyAt (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (body : Term)
+    (selfM : Sem) (args : List Sem) : Option BodyOut :=
+  fixBodyWith K ρ φ fb s ps out start body { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } args
+
+/-- The closure's body run without `by` (R-dec, docs/31 D296): the slot holds `()` at `Unit` (`unitSlot`). -/
+noncomputable abbrev fixBodyU (s : SState) (ps : List PiDom) (out : PiCod) (start : Nat) (body : Term) :
+    List Sem → Option BodyOut :=
+  fixBodyWith K ρ φ fb s ps out start body unitSlot
 
 /-- The decreasing argument's rank (φ-free). -/
 noncomputable def fixRank (dec : Option Nat) (args : List Sem) : Nat := match dec with
@@ -565,11 +576,21 @@ noncomputable def fixStage (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod
     (fun k gk => fixBodyAt K ρ φ fb s ps out (piTyAt K.dm.read l ps (weakCod l (fixRank dec) k out)) start body
       (closureAt K.dm.read l φ ps (weakCod l (fixRank dec) k out) (stageFn l ps (fixRank dec) k gk)))
 
-/-- The closure's function: the guarded fixpoint by stages; without a decreasing parameter, stage 1 at
-rank `0` (`self` the weakened stage 0, never read). `piT` is no longer read (kept for the callers). -/
+/-- The closure's function: with `by`, the guarded fixpoint by stages; without (R-dec, docs/31 D296), one run of the body
+with `()` in the slot (`fixBodyU`): no stage. `piT` is no longer read (kept for the callers). -/
 noncomputable def fixG (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat)
     (dec : Option Nat) (body : Term) : List Sem → Option BodyOut :=
-  fun args => fixStage K ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
+  match dec with
+  | none => fixBodyU K ρ φ fb s ps out start body
+  | some _ => fun args => fixStage K ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
+
+theorem fixG_none (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (body : Term) :
+    fixG K ρ φ fb l s ps out piT start none body = fixBodyU K ρ φ fb s ps out start body := rfl
+
+theorem fixG_some (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (j : Nat)
+    (body : Term) (args : List Sem) :
+    fixG K ρ φ fb l s ps out piT start (some j) body args =
+      fixStage K ρ φ fb l s ps out (some j) start body (fixRank (some j) args + 1) args := rfl
 
 /-- Forming the closure accesses each capture, oldest first, and moves the non-copy ones. -/
 noncomputable def fixMoves (t : Term) (s : SState) : SState :=
@@ -905,15 +926,16 @@ theorem formInv_init {s : SState} (hi : RInv L s) (ht : 0 < s.topIdx) (b : SBind
     FormInv L s.nextLoan (s.pushBind b, [], []) :=
   ⟨pushBind_rinv hi b c hb, Nat.le_refl _, by rw [topIdx_pushBind']; exact ht, fun _ hc => by cases hc⟩
 
-theorem fixBodyAt_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
+theorem fixBodyWith_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
     (hb : ∀ hint s₂, RInv L s₂ → runT K ρ φ true hint body s₂ = runT K ρ φ' true hint body s₂)
-    {s : SState} (hi : RInv L s) (ps : List PiDom) (out : PiCod) (piT : TyM) (selfM : Sem) (args : List Sem) :
-    fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args = fixBodyAt K ρ φ' fb s ps out piT s.nextLoan body selfM args := by
-  unfold fixBodyAt
+    {s : SState} (hi : RInv L s) (ps : List PiDom) (out : PiCod) (sb : SBinding) (selfM : Sem)
+    (hsb : sb.val = fun _ => selfM) (args : List Sem) :
+    fixBodyWith K ρ φ fb s ps out s.nextLoan body sb args = fixBodyWith K ρ φ' fb s ps out s.nextLoan body sb args := by
+  unfold fixBodyWith
   dsimp only
   have hF := foldl_fixStep_inv (fb := fb) (args.zip ps) _
-    (formInv_init (L := L) (rinv_under hi) (under_topIdx_pos s) { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
-  generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F at hF ⊢
+    (formInv_init (L := L) (rinv_under hi) (under_topIdx_pos s) sb selfM hsb)
+  generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind sb, [], []) = F at hF ⊢
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
   rw [SM.bodyRun_congr (hb _ s₂ hF.1)]
@@ -929,6 +951,12 @@ theorem fixBodyAt_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none
     dsimp only
     rw [propext (endsOk_congr K hφ _ hi₃)]
 
+theorem fixBodyAt_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
+    (hb : ∀ hint s₂, RInv L s₂ → runT K ρ φ true hint body s₂ = runT K ρ φ' true hint body s₂)
+    {s : SState} (hi : RInv L s) (ps : List PiDom) (out : PiCod) (piT : TyM) (selfM : Sem) (args : List Sem) :
+    fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args = fixBodyAt K ρ φ' fb s ps out piT s.nextLoan body selfM args :=
+  fixBodyWith_congr K ρ hK hφ hb hi ps out _ selfM rfl args
+
 /-- After the pop, a cell reads `L` and the kept label (`ordered_after_pop`; a state with no frame
 has no positions). -/
 theorem finals_of_pop {s₂ s₃ : SState} {start : Nat} (hi₃ : RInv L s₃) (e₃ : EnvLe s₂ s₃) (o₃ : OrdKeep L s₂ s₃)
@@ -940,14 +968,15 @@ theorem finals_of_pop {s₂ s₃ : SState} {start : Nat} (hi₃ : RInv L s₃) (
   obtain ⟨ht, hcm, ho⟩ := hcells c hc
   exact ordered_after_pop hi₃.1 hi₃.2.1 _ _ (o₃.2 _ c hst₂ ht hcm ho)
 
-theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState} (hi : RInv L s)
-    (ps : List PiDom) (out : PiCod) (piT : TyM) (body : Term) (selfM : Sem) (args : List Sem) (o : BodyOut)
-    (h : fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args = some o) : FinalsIn L out.isRef o := by
+theorem fixBodyWith_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState} (hi : RInv L s)
+    (ps : List PiDom) (out : PiCod) (body : Term) (sb : SBinding) (selfM : Sem) (hsb : sb.val = fun _ => selfM)
+    (args : List Sem) (o : BodyOut)
+    (h : fixBodyWith K ρ φ fb s ps out s.nextLoan body sb args = some o) : FinalsIn L out.isRef o := by
   have hF := foldl_fixStep_inv (fb := fb) (args.zip ps) _
-    (formInv_init (L := L) (rinv_under hi) (under_topIdx_pos s) { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
-  unfold fixBodyAt at h
+    (formInv_init (L := L) (rinv_under hi) (under_topIdx_pos s) sb selfM hsb)
+  unfold fixBodyWith at h
   dsimp only at h
-  generalize hFF : (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F at hF h
+  generalize hFF : (args.zip ps).foldl (fixStep fb) (s.under.pushBind sb, [], []) = F at hF h
   obtain ⟨s₂, acc, cells⟩ := F
   obtain ⟨hi₂, hst₂, -, hcells⟩ := hF
   dsimp only at h hi₂ hst₂ hcells
@@ -975,6 +1004,11 @@ theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState
       exact (hcell c₀ hc₀).mono fun y hy => hy.imp_right fun e => by
         simp only [if_true] at e; simp only at hk; rw [hk] at e; exact Option.some.inj e
   · cases h
+
+theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState} (hi : RInv L s)
+    (ps : List PiDom) (out : PiCod) (piT : TyM) (body : Term) (selfM : Sem) (args : List Sem) (o : BodyOut)
+    (h : fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args = some o) : FinalsIn L out.isRef o :=
+  fixBodyWith_finals K ρ hK hi ps out body _ selfM rfl args o h
 
 /-- **The stages of a recursive closure** agree at the two futures, and every stage's finals read
 only `L` and the returned label: by induction on the stage, with `closureAt_congr` for `self` (the
@@ -1024,9 +1058,15 @@ theorem fixG_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (h�
     {s : SState} (hi : RInv L s) (l : Nat) (ps : List PiDom) (out : PiCod) (piT : TyM) (dec : Option Nat) :
     fixG K ρ φ fb l s ps out piT s.nextLoan dec body = fixG K ρ φ' fb l s ps out piT s.nextLoan dec body ∧
       ∀ args o, fixG K ρ φ fb l s ps out piT s.nextLoan dec body args = some o → FinalsIn L out.isRef o := by
+  cases dec with
+  | none =>
+    -- R-dec (docs/31 D296): one run of the body with `()` in the slot
+    exact ⟨funext fun args => fixBodyWith_congr K ρ hK hφ hb hi ps out unitSlot _ rfl args,
+      fun args o h => fixBodyWith_finals K ρ hK hi ps out body unitSlot _ rfl args o h⟩
+  | some j =>
   refine ⟨funext fun args => ?_, fun args o h => ?_⟩
-  · exact congrFun (fixStage_congr K ρ hK hφ hb hi l ps out dec (fixRank dec args + 1)).1 args
-  · exact (fixStage_congr K ρ hK hφ hb hi l ps out dec (fixRank dec args + 1)).2 args o h
+  · exact congrFun (fixStage_congr K ρ hK hφ hb hi l ps out (some j) (fixRank (some j) args + 1)).1 args
+  · exact (fixStage_congr K ρ hK hφ hb hi l ps out (some j) (fixRank (some j) args + 1)).2 args o h
 
 end FixCongr
 

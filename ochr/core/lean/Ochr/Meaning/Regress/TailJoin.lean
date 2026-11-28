@@ -38,12 +38,9 @@ open Ochr.Meaning.Regress.GenNeutralContent (isOk outVal)
 
 def bodyP : Term := .matchNat (.var 0) .zero (.place (.proj 0 (.var 0)))
 
-/-- `P`'s body start state (as `ColumnI.stI`, `I` renamed `P`), in `checkFix`'s mode. -/
-def stP : MState :=
-  let selfP : Binding := { ColumnI.selfB with hint := ⟨"P"⟩, val := .gfn "P" }
-  let gP : GDef := { name := "P", ty := ColumnI.piNat, fn? := some (.fix ⟨"P"⟩ [⟨"n"⟩] [.nat] .nat none bodyP), val := .gfn "P" }
-  let env : Env := #[{}, { binds := #[selfP, ColumnI.nB] }]
-  { ColumnI.stI with env := env, globals := [gP], typing := true, nextRecUid := 1 }
+/-- `P`'s body start state (as `ColumnI.stI`: since main's D147/D148 and the model's half of R-dec, docs/31 D296, the
+own-name slot `()` at `Unit` and Σ empty, so the same for `I` and `P`), in `checkFix`'s mode. -/
+def stP : MState := { ColumnI.stI with typing := true, nextRecUid := 1 }
 
 /-- A return continuation that records the leaf it is run at (the state, the value and its type). -/
 def kRec (v T : Value) : M Unit := do

@@ -519,22 +519,22 @@ theorem VarsAvoid.body {Q : Pos → Prop} {s X : SState} {T body : Term} {k : Na
 /-- **The closure's body output across the transform**, at a full argument list: its frame is the
 transform's (one frame up), its run commutes by the body's induction hypothesis `hb`, and its
 finals are read at cells of frame 0, which the transform does not touch. -/
-theorem fixBodyAt_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop} {β β' : Pos → SBinding}
+theorem fixBodyWith_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop} {β β' : Pos → SBinding}
     {s : SState} (hA : Adm K Q β β' s) (hR : RInv (fun _ => True) s) {T body : Term} (hV : VarsAvoid Q s T)
     (n : Nat) (hsub : ∀ x ∈ body.placeOccs (n + 1), x ∈ T.placeOccs 0)
     (hb : ∀ (hint : TyS) (X : SState) (Q₁ : Pos → Prop) (β₁ β₁' : Pos → SBinding), Adm K Q₁ β₁ β₁' X →
       VarsAvoid Q₁ X body → RInv (fun _ => True) X → Comm Q₁ β₁' (runT K ρ φ true hint body) X)
     {fb fb' : List PBind × PBind} (hB : BAgree 0 fb.1 fb'.1) (hd2 : fb.2.2 = fb'.2.2)
     {ps ps' : List PiDom} (hps : DomAgree 0 ps ps') (hpl : ps.length = n) {out out' : PiCod}
-    (hco : out.isRef = out'.isRef) (piT : TyM) (selfM : Sem) (args : List Sem) (ha : args.length = n)
+    (hco : out.isRef = out'.isRef) (sb : SBinding) (c : Sem) (hsb : sb.val = fun _ => c) (args : List Sem) (ha : args.length = n)
     (hcod : fb.2.1 args = fb'.2.1 args) :
-    fixBodyAt K ρ φ fb' (qset Q β' s) ps' out' piT (qset Q β' s).nextLoan body selfM args =
-      fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args := by
-  unfold fixBodyAt
+    fixBodyWith K ρ φ fb' (qset Q β' s) ps' out' (qset Q β' s).nextLoan body sb args =
+      fixBodyWith K ρ φ fb s ps out s.nextLoan body sb args := by
+  unfold fixBodyWith
   dsimp only
   have hA₀ := hA.under
   rw [qset_under, ← hd2, qset_pushBind s.under hA₀.twin.pre.pos]
-  generalize hself : ({ ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } : SBinding) = b
+  generalize hself : sb = b
   have hA₁ := hA₀.pushBind b
   have hI : FInv (Qup Q) (βup β) (βup β') (s.under.pushBind b) := ⟨hA₁.twin.pre, hA₁.twin.pre', hA₁.twin.fix⟩
   have hz : ZipAgree ([] : List Sem).length (args.zip ps) (args.zip ps') := by
@@ -542,7 +542,7 @@ theorem fixBodyAt_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → 
   obtain ⟨hfold, hI₂⟩ := foldl_fixStep_qset hB (args.zip ps) (args.zip ps') _ [] [] hz hI
   rw [hfold]
   have hRF := (foldl_fixStep_inv (fb := fb) (args.zip ps) _
-    (formInv_init (L := fun _ => True) (rinv_under hR) (under_topIdx_pos s) b selfM (by rw [← hself]))).1
+    (formInv_init (L := fun _ => True) (rinv_under hR) (under_topIdx_pos s) b c (by rw [← hself]; exact hsb))).1
   have hG : TopGrow s.under ((args.zip ps).foldl (fixStep fb) (s.under.pushBind b, [], [])).1 (n + 1) := by
     have h1 := topGrow_pushBind s.under b
     have h2 := foldl_fixStep_topGrow fb (args.zip ps) (s.under.pushBind b) [] []
@@ -591,6 +591,22 @@ theorem fixBodyAt_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → 
       simp only [Option.map_some, qset_nextLoan, hco, qset_liveLabels hP.shape, fun ls => endsOk_qset K φ ls hP,
         qset_foldl_endLabel hP.temp hP.const _ _ hP.shape, hfin]
       try (split <;> rename_i hE <;> simp only [hE, if_true, if_false, not_false_eq_true])
+
+/-- `fixBodyWith_qset` at the Π-typed slot (a function with `by`). -/
+theorem fixBodyAt_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop} {β β' : Pos → SBinding}
+    {s : SState} (hA : Adm K Q β β' s) (hR : RInv (fun _ => True) s) {T body : Term} (hV : VarsAvoid Q s T)
+    (n : Nat) (hsub : ∀ x ∈ body.placeOccs (n + 1), x ∈ T.placeOccs 0)
+    (hb : ∀ (hint : TyS) (X : SState) (Q₁ : Pos → Prop) (β₁ β₁' : Pos → SBinding), Adm K Q₁ β₁ β₁' X →
+      VarsAvoid Q₁ X body → RInv (fun _ => True) X → Comm Q₁ β₁' (runT K ρ φ true hint body) X)
+    {fb fb' : List PBind × PBind} (hB : BAgree 0 fb.1 fb'.1) (hd2 : fb.2.2 = fb'.2.2)
+    {ps ps' : List PiDom} (hps : DomAgree 0 ps ps') (hpl : ps.length = n) {out out' : PiCod}
+    (hco : out.isRef = out'.isRef) (piT : TyM) (selfM : Sem) (args : List Sem) (ha : args.length = n)
+    (hcod : fb.2.1 args = fb'.2.1 args) :
+    fixBodyAt K ρ φ fb' (qset Q β' s) ps' out' piT (qset Q β' s).nextLoan body selfM args =
+      fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args := by
+  unfold fixBodyAt
+  rw [← hd2]
+  exact fixBodyWith_qset K ρ φ hK hA hR hV n hsub hb hB hd2 hps hpl hco _ selfM rfl args ha hcod
 
 /-- **The frame a later domain or the codomain is read in, across the transform** (docs/31 D210): `extendBy` is the
 forming state under a fresh bottom frame with the parameters bound as [Def] binds them (`paramPush`, a borrow

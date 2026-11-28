@@ -6,17 +6,15 @@ import Ochr.Meaning.ClosureStage
 # The column `I` at its body's start: the start-state bundles (lead14)
 
 `def I (n : Nat) : Nat := S(n)` (the core body `S(#0)`, `ParBody.bodyI`; the surface's `S(n)` is a call
-of `succFn`, whose body this is, docs/31 D124). `checkDef` pushes `I`'s global, then `checkFix` checks
-the body from the generic state (`Steps/ParGuards.lean` records it): frame 0 empty, frame 1 holding
-`I ↦ .gfn "I"` at `Π(n : Nat). Nat` read `.pi .other`, MARKED as the function being checked (D78's
-`recUid`), then `n ↦ σ0` at `Nat` read `.other`; `Δ = [Nat]`, the goal `Nat`. Its kernel (`MState.norm`)
-is `stI`.
+of `succFn`, whose body this is, docs/31 D124). `I` has no `by`, so `checkDef` checks it with `I` NOT in Σ (main's
+D147: it is added after its check, as a constant is): `checkFix` checks the body from the generic state
+(`Steps/ParGuards.lean` records it): frame 0 empty, frame 1 holding the own-name slot `()` at `Unit`, unnamed, read
+`.unit`, unmarked (main's D148, `pushSelf`), then `n ↦ σ0` at `Nat` read `.other`; `Δ = [Nat]`, the goal `Nat`, Σ
+empty. Its kernel (`MState.norm`) is `stI`. (Until the model's half of R-dec, docs/31 D296, the kernel held
+`I ↦ .gfn "I"` at its Π-type, MARKED, and Σ held `I`, the states before D147/D148.)
 
-The run context `KI dm D φ`: no declarations; the function being checked is `I` at bound `0`
-(`cur = ("I", 0)`), and its global means the stage-0 closure at the weakened type
-(`Π(n : Nat). Unit`, returning `()` everywhere: `stageFn` at bound `0`), exactly the `self` that
-`RunCongr.fixBodyAt` binds for a non-recursive function (`Witness.fixClo_mem_nonrec`); `Δ 0 = Nat`.
-The relation reads the marked binding at that type (docs/31 D123, `Binding.refTy`).
+The run context `KI dm D φ`: no declarations; no function under check (`cur = none`: a check without `by` names none);
+`Δ 0 = Nat`. The reference's closure frame binds the slot `()` at `Unit` (`unitSlot`), as the checker does.
 
 Every bundle a step takes is instantiated here at `stI` and `KI dm D φ`, for an assignment giving
 `σ0` a number (`ρ 0 ∈ Nat`): `Pre` (`CtxS`, `Inv`, `Asg`), `Rel` (by `Rel.start_noLive`: no label),
@@ -36,15 +34,20 @@ def fixI : Term := .fix ⟨"I"⟩ [⟨"n"⟩] [.nat] .nat none bodyI
 /-- `I`'s global, as `checkDef` pushes it before checking the body. -/
 def gI : GDef := { name := "I", ty := piNat, fn? := some fixI, val := .gfn "I" }
 
-/-- The function's binding of itself, marked (`recUid`). -/
+/-- The function's binding of itself, marked (`recUid`), as the checker made it before main's D148 (kept for the
+guards that pin the difference). -/
 def selfB : Binding := { hint := ⟨"I"⟩, ty := some piNat, val := .gfn "I", decl := .pi .other, recUid := some 0 }
+
+/-- The own-name slot of a function without `by` (main's D148, `pushSelf`): `()` at `Unit`, unnamed, read `.unit`,
+unmarked. -/
+def unitB : Binding := { hint := ⟨"_"⟩, ty := some .tUnit, val := .unit, decl := .unit }
 
 /-- The parameter's binding: the unknown `σ0`. -/
 def nB : Binding := { hint := ⟨"n"⟩, ty := some .tNat, val := .abs 0, decl := .other }
 
-/-- The kernel of the body's start state. -/
+/-- The kernel of the body's start state (since main's D147/D148: the slot `()`, `I` not in Σ). -/
 def stI : MState :=
-  { env := #[{}, { binds := #[selfB, nB] }], globals := [gI], nextAbs := 1, absTy := #[.tNat], absDecl := #[.other],
+  { env := #[{}, { binds := #[unitB, nB] }], nextAbs := 1, absTy := #[.tNat], absDecl := #[.other],
     goal := some .tNat }
 
 /-- The parameter's domain and the codomain, as the reference reads `Π(n : Nat). Nat`. -/
@@ -67,9 +70,9 @@ noncomputable def CI (R : DataRead) (φ : Future) : CodeMeaning :=
 /-- Δ: `σ0` is a number. -/
 def ΔI : Nat → TyS := fun σ => if σ = 0 then .plain TyM.nat else .plain TyM.err
 
-/-- The run's context while `I`'s body is checked. -/
+/-- The run's context while `I`'s body is checked: no function under check (no `by`, D147). -/
 noncomputable def KI (dm : DataModel) (D : Decisions) (φ : Future) : RunCtx :=
-  { dm := dm, Γ := [], C := CI dm.read φ, D := D, Δ := ΔI, cur := some ("I", 0) }
+  { dm := dm, Γ := [], C := CI dm.read φ, D := D, Δ := ΔI, cur := none }
 
 variable (dm : DataModel) (D : Decisions) (ρ : Assignment) (φ φ' : Future)
 
@@ -81,14 +84,14 @@ theorem norm_stI : stI.norm = stI := by
 theorem allPos_stI : allPos stI.env = [.bind 1 0, .bind 1 1] := by
   rw [allPos_eq]; simp [stI, frameAllPos, List.range_succ]
 
-theorem values_stI : Env.values stI.env = [.gfn "I", .abs 0] := by
+theorem values_stI : Env.values stI.env = [.unit, .abs 0] := by
   rw [Env.values, allPos_stI]; rfl
 
 theorem liveLoan_stI (l : Nat) : liveLoan stI.env l = false := by
   rw [liveLoan, findBorrow, allPos_stI]; rfl
 
 theorem bind_stI {f i : Nat} {b : Binding} (h : stI.env[f]?.bind (fun fr => fr.binds[i]?) = some b) :
-    (f = 1 ∧ i = 0 ∧ b = selfB) ∨ (f = 1 ∧ i = 1 ∧ b = nB) := by
+    (f = 1 ∧ i = 0 ∧ b = unitB) ∨ (f = 1 ∧ i = 1 ∧ b = nB) := by
   rcases f with _ | _ | f
   · simp [stI] at h
   · rcases i with _ | _ | i
@@ -97,7 +100,7 @@ theorem bind_stI {f i : Nat} {b : Binding} (h : stI.env[f]?.bind (fun fr => fr.b
     · simp [stI] at h
   · simp [stI] at h
 
-theorem ckContent_stI {p : Place} {v : Value} (h : ckContent stI.env p = some v) : v = .gfn "I" ∨ v = .abs 0 := by
+theorem ckContent_stI {p : Place} {v : Value} (h : ckContent stI.env p = some v) : v = .unit ∨ v = .abs 0 := by
   rcases hp : p.steps with ⟨i, path⟩
   simp only [ckContent, hp] at h
   unfold ckVarPos at h
@@ -105,7 +108,7 @@ theorem ckContent_stI {p : Place} {v : Value} (h : ckContent stI.env p = some v)
   · have hi' : i < stI.env[stI.env.size - 1]!.binds.size := hi
     rw [if_pos hi'] at h
     simp only [Option.bind_some] at h
-    have hv : ∀ w : Value, (w = .gfn "I" ∨ w = .abs 0) → w.follow path = some v → v = .gfn "I" ∨ v = .abs 0 := by
+    have hv : ∀ w : Value, (w = .unit ∨ w = .abs 0) → w.follow path = some v → v = .unit ∨ v = .abs 0 := by
       rintro w hw hf
       cases path with
       | nil => simp [Value.follow] at hf; exact hf ▸ hw
@@ -125,10 +128,10 @@ theorem not_refd_ge {σ : Nat} (h : stI.Refd σ) : σ < 1 := by
     · exact (Bool.false_ne_true hσ).elim
     · have := abs_hasAbs_eq hσ; omega
   · intro f i b T hb hT σ hσ
-    rcases bind_stI hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [selfB, nB] at hT <;> subst hT <;>
+    rcases bind_stI hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [unitB, nB] at hT <;> subst hT <;>
       exact (Bool.false_ne_true hσ).elim
   · intro f i b P ws j hb hT
-    rcases bind_stI hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [selfB, nB] at hT
+    rcases bind_stI hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [unitB, nB] at hT
   · intro G hG σ hσ; simp [stI] at hG; subst hG; exact (Bool.false_ne_true hσ).elim
   · intro m σ' h; simp [stI] at h
   · intro σ' v h; simp [stI] at h
@@ -142,7 +145,7 @@ theorem occurs_stI (l : Nat) : ¬ stI.Occurs l := by
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hv
   rcases hv with rfl | rfl <;> exact Bool.false_ne_true h
 
-theorem mem_values {v : Value} (hv : v ∈ Env.values stI.env) : v = .gfn "I" ∨ v = .abs 0 := by
+theorem mem_values {v : Value} (hv : v ∈ Env.values stI.env) : v = .unit ∨ v = .abs 0 := by
   rw [values_stI] at hv; simpa using hv
 
 theorem mem_allPos {p : Pos} (hp : p ∈ allPos stI.env) : p = .bind 1 0 ∨ p = .bind 1 1 := by
@@ -181,14 +184,14 @@ theorem inv_stI : Inv D [] stI := by
   · intro v hv l hl; rcases mem_values hv with rfl | rfl <;> cases hl
   -- (WF8)
   · intro v hv; rcases mem_values hv with rfl | rfl <;> rfl
-  · intro f i b hb T hT; rcases bind_stI hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [selfB, nB] at hT <;> subst hT <;> rfl
+  · intro f i b hb T hT; rcases bind_stI hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [unitB, nB] at hT <;> subst hT <;> rfl
   · intro T hT; simp [stI] at hT; subst hT; rfl
   · intro G hG; simp [stI] at hG; subst hG; rfl
   -- (WF10)
   · intro v hv; rcases mem_values hv with rfl | rfl <;> rfl
   -- (WF11)
   · intro f i b hb; rcases bind_stI hb with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
-    · exact ⟨fun T hT l => by simp [selfB] at hT; subst hT; rfl, fun P ws j h => by simp [selfB] at h⟩
+    · exact ⟨fun T hT l => by simp [unitB] at hT; subst hT; rfl, fun P ws j h => by simp [unitB] at h⟩
     · exact ⟨fun T hT l => by simp [nB] at hT; subst hT; rfl, fun P ws j h => by simp [nB] at h⟩
   · intro T hT l; simp [stI] at hT; subst hT; rfl
   · intro G hG l; simp [stI] at hG; subst hG; rfl
@@ -222,13 +225,8 @@ theorem inv_stI : Inv D [] stI := by
         · simp [stI] at hb
       · simp [stI] at hb
 
-theorem find_gI {n : String} {g : GDef} (h : stI.globals.find? (·.name == n) = some g) : n = "I" ∧ g = gI := by
-  simp only [stI, List.find?_cons, List.find?_nil] at h
-  split at h
-  · rename_i hn; cases h; exact ⟨(beq_iff_eq.mp hn).symm, rfl⟩
-  · cases h
-
-theorem decRank_gI (K : RunCtx) : decRank K gI = fixRank none := rfl
+theorem find_none {n : String} {g : GDef} (h : stI.globals.find? (·.name == n) = some g) : False := by
+  simp [stI] at h
 
 theorem ctxS_stI : CtxS (KI dm D φ) stI where
   inds := List.prefix_refl _
@@ -236,24 +234,15 @@ theorem ctxS_stI : CtxS (KI dm D φ) stI where
   faithful := fun _ h => absurd h List.not_mem_nil
   noLabel := fun n => by simp only [KI, CI]; split <;> rfl
   globals := {
-    ty := fun n g hf hc => absurd (by rw [(find_gI hf).1]; rfl) hc
-    const := fun n g hf hn => by rw [(find_gI hf).2] at hn; cases hn
-    fn := fun n g t hf _ hc => absurd (by rw [(find_gI hf).1]; rfl) hc
-    mem := fun n g hf hc => absurd (by rw [(find_gI hf).1]; rfl) hc
-    fixEq := fun n _ _ _ _ _ _ _ hf hc _ => by exact absurd (by rw [(find_gI hf).1]; rfl) hc
-    accepted := fun n _ _ _ _ _ _ _ hf hc _ => by exact absurd (by rw [(find_gI hf).1]; rfl) hc
-    retKind := fun n _ _ _ _ _ _ _ hf hc _ => by exact absurd (by rw [(find_gI hf).1]; rfl) hc
-    codeValFree := fun n g t hf ht => by
-      obtain ⟨-, rfl⟩ := find_gI hf
-      simp only [gI, Option.some.injEq] at ht; subst ht; rfl
-    memBelow := fun n g b hf hcur => by
-      obtain ⟨rfl, rfl⟩ := find_gI hf
-      simp only [KI, Option.some.injEq, Prod.mk.injEq, true_and] at hcur
-      subst hcur
-      refine ⟨1, φ, psI, outI, fun _ => none, ⟨Nat.le_succ_of_le (Nat.le_succ 1), fun _ _ h => absurd h (Nat.not_lt_zero _)⟩,
-        fun _ _ _ h => absurd h (Nat.not_lt_zero _), ?_, ?_, fun _ _ h => absurd h (Nat.not_lt_zero _)⟩
-      · simp only [KI, CI, decRank_gI]; rfl
-      · simp only [KI, CI, decRank_gI]; rfl }
+    ty := fun n g hf _ => (find_none hf).elim
+    const := fun n g hf _ => (find_none hf).elim
+    fn := fun n g t hf _ _ => (find_none hf).elim
+    mem := fun n g hf _ => (find_none hf).elim
+    fixEq := fun n _ _ _ _ _ _ _ hf _ _ => (find_none hf).elim
+    accepted := fun n _ _ _ _ _ _ _ hf _ _ => (find_none hf).elim
+    retKind := fun n _ _ _ _ _ _ _ hf _ _ => (find_none hf).elim
+    codeValFree := fun n g t hf _ => (find_none hf).elim
+    memBelow := fun n g b hf _ => (find_none hf).elim }
 
 theorem absTyM_stI (K : RunCtx) : MState.absTyM K.dm K.M K.Γ ρ stI 0 = TyM.nat := by
   unfold MState.absTyM; rfl
@@ -295,7 +284,7 @@ binding its global's meaning, the parameter's `ρ 0`. -/
 theorem valAt_SM_eq (p : Pos) (ψ : Future) :
     (SM' (KI dm D φ) ρ stI).valAt p ψ =
       match p with
-      | .bind 1 0 => selfSem dm.read φ
+      | .bind 1 0 => .el0 Unit ()
       | .bind 1 1 => ρ 0
       | _ => .err := by
   unfold SM'; rw [sstate_valAt]
@@ -303,8 +292,7 @@ theorem valAt_SM_eq (p : Pos) (ψ : Future) :
   · rcases f with _ | _ | f
     · rfl
     · rcases i with _ | _ | i
-      · show ((KI dm D φ).C.global "I").1 = _
-        simp [KI, CI]
+      · rfl
       · rfl
       · rfl
     · rfl
@@ -323,16 +311,15 @@ theorem shape_SM (p : Pos) : (SM' (KI dm D φ) ρ stI).shape p = none := by
 theorem liveLabels_SM : (SM' (KI dm D φ) ρ stI).liveLabels = [] := by
   simp [SState.liveLabels, positions_SM, shape_SM]
 
-theorem tyAt_SM_self : ((SM' (KI dm D φ) ρ stI).tyAt (.bind 1 0)).m = selfTy dm.read := by
+theorem tyAt_SM_self : ((SM' (KI dm D φ) ρ stI).tyAt (.bind 1 0)).m = TyM.unit := by
   unfold SM'
-  rw [sstate_tyAt_bind _ _ _ _ _ 1 0 { binds := #[selfB, nB] } selfB rfl rfl,
-    Binding.refTy_marked _ _ _ _ _ _ _ _ 0 rfl rfl]
-  simp [KI, CI, selfB, RunCtx.M, codeMeaning]
+  rw [sstate_tyAt_bind _ _ _ _ _ 1 0 { binds := #[unitB, nB] } unitB rfl rfl,
+    Binding.refTy_unmarked _ _ _ _ _ _ _ _ rfl]
   rfl
 
 theorem tyAt_SM_n : ((SM' (KI dm D φ) ρ stI).tyAt (.bind 1 1)).m = TyM.nat := by
   unfold SM'
-  rw [sstate_tyAt_bind _ _ _ _ _ 1 1 { binds := #[selfB, nB] } nB rfl rfl,
+  rw [sstate_tyAt_bind _ _ _ _ _ 1 1 { binds := #[unitB, nB] } nB rfl rfl,
     Binding.refTy_unmarked _ _ _ _ _ _ _ _ rfl]
   rfl
 
@@ -356,7 +343,7 @@ theorem sgood_stI (hρ : ∃ m, ρ 0 = .el0 Nat m) : Strict.SGood dm [] φ' (SM'
     simp only [List.mem_cons, List.not_mem_nil, or_false, Pos.bind.injEq] at hp
     rcases hp with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
     · rw [valAt_SM_eq, tyAt_SM_self]
-      exact Strict.goodVal_of_mem dm.read_wholeFields [] (selfSem_mem dm.read φ)
+      exact Strict.goodVal_of_mem dm.read_wholeFields [] (unit_mem dm.read)
     · rw [valAt_SM_eq, tyAt_SM_n]
       obtain ⟨m, hm⟩ := hρ
       exact Strict.goodVal_of_mem dm.read_wholeFields [] (show ρ 0 ∈ₛ[dm.read] TyM.nat from ⟨m, hm.symm⟩)
@@ -373,9 +360,9 @@ theorem sgood_stI (hρ : ∃ m, ρ 0 = .el0 Nat m) : Strict.SGood dm [] φ' (SM'
 /-! ## The decisions `I`'s body reads, at a table aligned with the checker at `stI`
 
 The checker's decision procedures, run as `DecTab` runs them at the scope states of `stI` (kernel
-evaluation), answer `ParBody.ParDecI` at the top frame's readings `[.other, .pi .other]`. -/
+evaluation), answer `ParBody.ParDecI` at the top frame's readings `[.other, .unit]`. -/
 
-theorem topReadings_stI : DecideScope.topReadings stI = [.other, .pi .other] := rfl
+theorem topReadings_stI : DecideScope.topReadings stI = [.other, .unit] := rfl
 
 namespace Aux
 
@@ -385,7 +372,7 @@ abbrev flagsRun (t : Term) : M (Bool × Bool) := Ochr.Meaning.Steps.Form.ColumnC
 abbrev declRun (t : Term) : M DeclInfo := Ochr.Meaning.Steps.Form.ColumnC.Aux.declRun t
 abbrev isOther (d : DeclInfo) : Bool := Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther d
 
-def RI : List DeclInfo := [.other, .pi .other]
+def RI : List DeclInfo := [.other, .unit]
 
 theorem ok_flags_x : isOk (flagsRun (.place (.var 0))) (scopeState stI RI) 1000 = true := by decide +kernel
 theorem val_flags_x : outVal (flagsRun (.place (.var 0))) (scopeState stI RI) 1000 = (false, false) := by
@@ -401,7 +388,7 @@ theorem val_declOf_body : isOther (outVal (declRun bodyI) (scopeState stI RI) 10
 end Aux
 
 /-- **`ParDecI` at `I`'s body**, at every table aligned with the checker at `stI`. -/
-theorem parDecI {D : Decisions} (hd : DecTab D stI) : ParDecI D [.other, .pi .other] := by
+theorem parDecI {D : Decisions} (hd : DecTab D stI) : ParDecI D [.other, .unit] := by
   refine ⟨?_, ?_, ?_⟩
   · show D.flags Aux.RI _ = _
     rw [hd.flags 100 Aux.RI (.place (.var 0)) _ 1000 _
@@ -416,7 +403,7 @@ theorem parDecI {D : Decisions} (hd : DecTab D stI) : ParDecI D [.other, .pi .ot
     exact Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther_eq Aux.val_declOf_body
 
 /-- The body is neither a statement nor a proof, at every table aligned with the checker at `stI`. -/
-theorem flags_bodyI {D : Decisions} (hd : DecTab D stI) : D.flags [.other, .pi .other] bodyI = (false, false) := by
+theorem flags_bodyI {D : Decisions} (hd : DecTab D stI) : D.flags [.other, .unit] bodyI = (false, false) := by
   show D.flags Aux.RI _ = _
   rw [hd.flags 100 Aux.RI bodyI _ 1000 _
     (Regress.GenNeutralContent.runs_out (Aux.flagsRun bodyI) _ 1000 Aux.ok_flags_body), Aux.val_flags_body]

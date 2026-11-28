@@ -961,6 +961,19 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
           (codOf K ρ φ (qset Q β' s) (runBinds K ρ φ (qset Q β' s) (K.D.paramDecls (scopeOf s) ds) [] [] ds) (ds.map Term.isRefTy) c)
           piT (qset Q β' s).nextLoan dec body args := by
       intro piT args ha
+      cases dec with
+      | none =>
+        -- R-dec (docs/31 D296): no stage, one run of the body with `()` in the slot
+        exact (fixBodyWith_qset K ρ φ hK hA hR hV ds.length hsubB hbIH
+        (fb := (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] [] ds,
+            fixCod K ρ φ s (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] [] ds) (ds.map Term.isRefTy) c,
+            K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c))
+        (fb' := (runBinds K ρ φ (qset Q β' s) (K.D.paramDecls (scopeOf s) ds) [] [] ds,
+            fixCod K ρ φ (qset Q β' s) (runBinds K ρ φ (qset Q β' s) (K.D.paramDecls (scopeOf s) ds) [] [] ds) (ds.map Term.isRefTy) c,
+            K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c))
+        hB rfl hps hpl' hco.1 unitSlot _ rfl args (by rw [ha, hpl'])
+          (fixCod_agree K ρ φ hco args (by rw [ha, hpl']))).symm
+      | some j =>
       unfold fixG
       exact (fixStage_qset K ρ φ hK hA hR hV ds.length hsubB hbIH
         (fb := (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] [] ds,
@@ -969,7 +982,7 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
         (fb' := (runBinds K ρ φ (qset Q β' s) (K.D.paramDecls (scopeOf s) ds) [] [] ds,
             fixCod K ρ φ (qset Q β' s) (runBinds K ρ φ (qset Q β' s) (K.D.paramDecls (scopeOf s) ds) [] [] ds) (ds.map Term.isRefTy) c,
             K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c))
-        hB rfl hps hpl' hco (fixCod_agree K ρ φ hco) _ dec _ args (by rw [ha, hpl'])).symm
+        hB rfl hps hpl' hco (fixCod_agree K ρ φ hco) _ (some j) _ args (by rw [ha, hpl'])).symm
     rw [← closureAt_congr' K.dm.read _ φ _ _ _ _ _ _ hps hco' (hg _)]
     refine erasedIf_qset₂ ?_
     obtain ⟨hok, hmv⟩ := caps_qset K φ hA hV (T := Term.fix self hs ds c dec body)
