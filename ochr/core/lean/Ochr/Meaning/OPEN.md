@@ -20,6 +20,7 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - `callInPlace_of` (C1, frame-free global body): assumes `CallPopG` (OPEN, read true) and `FixEqG` (from `RecDescG`, `FnGoodG`, OPEN). `InPlaceAgree` now transfers at every context.
 - `Steps/CallStep`: `callAcceptedFF_of` PROVED from `CallRanSimG` (OPEN, mixed: the checker's in-place run simulated by `runCallRef`, or by `callOf` closed off; front and tail guarded), `CallPtLocalG` (OPEN, mixed, read true), `OccursLiveG` (OPEN, checker (WF2), read true, guarded), `AcceptedGlobalG` (OPEN, model, read true), `CallPopG`, `FundCtx`, `FixEqG`, `GlobalsOk` across `Δ` (read true). `callFnGW_of` PROVED from `CallUnderCheckG` (OPEN, gained two `OutL` clauses), `CallAcceptedFF`, `CurOnStackG` (OPEN, checker, read true), `GlobalFixG` (OPEN, read true).
 - `CallFnG` as stated: NOT derivable (lacks `RecCurG`, `RecRankG`, `GlobalsOk`, frame-free callee bodies); `CallFnGW` is the derivable form; `EvalAt` must carry `RecCurG` and `RecRankG`. At a `Prop`-sorted callee `CallFnG` would be FALSE (never used: such calls are erased).
+- The knot at `R` (D242, `Steps/RecDescR`): `recDesc_R`, `fnGood_R` PROVED (column vocabulary; assume only `DecTab D stR`). `RecDescG`/`FnGoodG` at `R` in the general vocabulary: OPEN (gaps (i), (ii) of handoff 38; (iii) dissolved).
 
 ## THE FIXPOINT EQUATION; A STUCK BLOCK IS NOT A FUNCTION (lead37, 2026-11-27, `spine-lead37`; docs/31 D232 to D234)
 
