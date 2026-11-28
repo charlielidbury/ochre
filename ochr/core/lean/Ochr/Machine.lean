@@ -1590,8 +1590,8 @@ pattern variable `yᵢ` of `match q { C(y₀, …, yₙ) => … }`. A term `k(q.
 one arm `k(q.g)` with `g` the constructor's field `i`: what the destructuring `let C(y₀, …, yₙ) = q`
 does, a match by type on a proof (D45), [Split] on an unknown, the constructor of a value. `q.i`
 has `q`'s class, a field of a proof being a proof and a field of data data, as the erasure pre-pass
-reads it (`placeDecl`). -/
-def projMatch (fuel : Nat) (q : Place) (i : Nat) (k : Place → Term) : M (Place × String × List (Hint × Term)) := do
+reads it (`placeDecl`). This gives the match's inductive, its one arm's hint and the place `q.g`. -/
+def projMatch (fuel : Nat) (q : Place) (i : Nat) : M (String × Hint × Place) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let pq ← ppPlace q
   -- the inductive: the head of `q`'s type (D82: every binding has its declared type)
@@ -1611,7 +1611,24 @@ def projMatch (fuel : Nat) (q : Place) (i : Nat) (k : Place → Term) : M (Place
   if d.sort != 0 && fieldProof then
     err s!"[D81] {pq}.{i}: field {fname} of {n} is a proof and {pq} is data, and `.{i}` takes a field of its parent's class: name it with a match, `let {cn}(…) = {pq}`"
   fire .Proj fun _ => s!"{pq}.{i} is the field {fname} of {cn}"
-  pure (q, n, [(⟨cn⟩, k (.field ⟨n, 0, i, fname⟩ q))])
+  pure (n, ⟨cn⟩, .field ⟨n, 0, i, fname⟩ q)
+termination_by structural fuel
+
+/-- D81 [Proj], D145: a term `k(p)` reading the place `p` through a field step `q.i` runs as the
+match on `q` that names the field: `match q { C(…) => k(p') }`, with `p'` the place `p` with that
+step named through the constructor (`projMatch`). Given the step `projIn` found in `p`, this gives
+`q`, the match's inductive, its arm's hint and `p'`. The one step every reader of such a place
+takes before it reads, `if let some s ← projIn fuel p then … ← projStep fuel s`: a run's place
+operand (`evalCore`), a run's match (`evalMatch`, `evalMatchInd`), and, since D145, the end of a
+body's match (`checkTailAt`), which read the scrutinee as it stood, so that `match b.0 { … }` at
+the end of a body was "no such place b.0" while `let r = match b.0 { … }; r` ran. (`projIn` is
+tested at the caller, and the arm `k(p')` built there: wrapping the test, or taking `k`, cost 0.2%
+of the checking time, since every place a run reads passes it.) -/
+def projStep (fuel : Nat) (s : Place × Nat × (Place → Place)) : M (Place × String × Hint × Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let (q, i, rebuild) := s
+  let (n, h, f) ← projMatch fuel' q i
+  pure (q, n, h, rebuild f)
 termination_by structural fuel
 
 /-- D64, rule 2 and [Open]: the type of field `g` of the value at `q`, of the dependent
@@ -2507,9 +2524,9 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   let ty (T : Value) : Option Value := some T
   -- D81 [Proj]: a place operand with a field step `q.i` runs as the match on `q` that names it
   if let some (p, k) := t.placeOperand? then
-    if let some (q, i, rebuild) ← projIn fuel' p then
-      let (q, n, arms) ← projMatch fuel' q i (fun f => k (rebuild f))
-      return ← evalMatchInd fuel' typed q n arms (tail := tail)
+    if let some st ← projIn fuel' p then
+      let (q, n, h, p') ← projStep fuel' st
+      return ← evalMatchInd fuel' typed q n [(h, k p')] (tail := tail)
   match t with
   | .place p =>
     let T ← if typed then some <$> placeType fuel' p else if want then placeType? fuel' p else pure none
@@ -3595,9 +3612,9 @@ def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : O
     (tail : Bool := false) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D81 [Proj]: a scrutinee with a field step `q.i` is named by a match on `q` first
-  if let some (q, i, rebuild) ← projIn fuel' p then
-    let (q, n, arms) ← projMatch fuel' q i (fun f => .matchNat (rebuild f) z s)
-    return ← evalMatchInd fuel' typed q n arms expected tail
+  if let some st ← projIn fuel' p then
+    let (q, n, h, p') ← projStep fuel' st
+    return ← evalMatchInd fuel' typed q n [(h, .matchNat p' z s)] expected tail
   if typed then natScrutinee fuel' p
   accessPath fuel' p
   accessNeutralHead fuel' p
@@ -3921,9 +3938,9 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
     (expected : Option Value := none) (tail : Bool := false) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D81 [Proj]: a scrutinee with a field step `q.i` is named by a match on `q` first
-  if let some (q, i, rebuild) ← projIn fuel' p then
-    let (q, n, arms') ← projMatch fuel' q i (fun f => .matchInd (rebuild f) ty arms)
-    return ← evalMatchInd fuel' typed q n arms' expected tail
+  if let some st ← projIn fuel' p then
+    let (q, n, h, p') ← projStep fuel' st
+    return ← evalMatchInd fuel' typed q n [(h, .matchInd p' ty arms)] expected tail
   abstractMatchCheck p ty
   if ← byTypeMatch ty arms then return ← evalMatchByType fuel' typed p ty arms expected tail
   accessPath fuel' p
@@ -4820,6 +4837,10 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
     dropValue fuel' v Tv
     checkTail fuel' w k
   | .matchNat p z s =>
+    -- D145: a scrutinee with a field step `q.i` is named by a match on `q` first, the run's step
+    if let some st ← projIn fuel' p then
+      let (q, n, h, p') ← projStep fuel' st
+      return ← checkTail fuel' (.matchInd q n [(h, .matchNat p' z s)]) k
     natScrutinee fuel' p
     accessPath fuel' p
     accessNeutralHead fuel' p
@@ -4847,6 +4868,10 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
       let (v, T) ← eval fuel' true t
       k v T.get!
   | .matchInd p ty arms =>
+    -- D145: a scrutinee with a field step `q.i` is named by a match on `q` first, the run's step
+    if let some st ← projIn fuel' p then
+      let (q, n, h, p') ← projStep fuel' st
+      return ← checkTail fuel' (.matchInd q n [(h, .matchInd p' ty arms)]) k
     abstractMatchCheck p ty
     if ← byTypeMatch ty arms then
       -- D45 (v2.0): [Split] on a proof is by its type: each arm is checked, with the fields
