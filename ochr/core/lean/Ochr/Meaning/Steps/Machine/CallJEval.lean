@@ -236,12 +236,11 @@ theorem keep_enderLoc (e : Array (Option Nat)) (ws : Array Value) : Keep (enderL
   unfold enderLoc; keep_go
 
 theorem runs_stmtCallee_I {k : Nat} {st st' : MState} {b : Nat} {c : Bool}
-    (h : Runs (Ochr.stmtCallee k (.gfn "I") (some ColumnI.piNat) none) st b c st') : c = false ∧ st' = st := by
+    (h : Runs (Ochr.stmtCallee k (.gfn "I") (some ColumnI.piNat)) st b c st') : c = false ∧ st' = st := by
   cases k with
   | zero => unfold Ochr.stmtCallee at h; simp only [runs_exhausted_iff] at h
   | succ k =>
     unfold Ochr.stmtCallee at h
-    simp only at h
     obtain ⟨T, s₁, b₁, hT, h₁⟩ := Runs.bind_inv h
     have hT' : T = some ColumnI.piNat ∧ s₁ = st := by
       cases k with
@@ -301,8 +300,8 @@ theorem evalCall_J_inv {k : Nat} {s s' : MState} {bh : Nat} {r : Value × Option
     (h : Runs (Ochr.evalCall (k + 1) true (.const "I") [.zero] false) s bh r s') :
     ∃ res sF bF, Kern stJ2 sF ∧ Mode sF ∧ sF.tailDecl = none ∧
       Runs (withLive true (Ochr.declOf k false [] [] CallGuards.bodyJ)) s bh res s ∧
-      Runs (Ochr.callFn k true (some ColumnI.piNat) 1 #[some .tNat] false none none res #[false] s.wantHere
-        s.deferHere none) sF bF r s' := by
+      Runs (Ochr.callFn k true (some ColumnI.piNat) 1 #[some .tNat] false none res #[false] s.wantHere
+        s.deferHere) sF bF r s' := by
   unfold Ochr.evalCall at h
   peel h
   simp only [Bool.false_eq_true, if_false] at h
@@ -370,7 +369,7 @@ theorem evalCall_J_inv {k : Nat} {s s' : MState} {bh : Nat} {r : Value × Option
   replace h15 := Runs.atLoc_inv h15
   have hfills : Array.map (fun x => x == DeclInfo.unit.ref) #[DeclInfo.other] = #[false] := by simp; rfl
   rw [hfills] at h15
-  change Runs (Ochr.callFn k true (some ColumnI.piNat) 1 #[some .tNat] false none none res #[false] _ _ none) _ _ _ _ at h15
+  change Runs (Ochr.callFn k true (some ColumnI.piNat) 1 #[some .tNat] false none res #[false] _ _) _ _ _ _ at h15
   refine ⟨res, _, _, Kern.withTempT' (Kern.trans (Kern.trans (Kern.withTempT' hk3') (by
     exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩)) hk10), ⟨hm10.headEval, hm10.copying,
     hm10.inPlace, hm10.erased⟩, htd10, hres, h15⟩

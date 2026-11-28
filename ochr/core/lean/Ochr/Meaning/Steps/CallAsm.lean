@@ -321,7 +321,7 @@ theorem callFn_front (fuel : Nat) (st st' : MState) (typed : Bool) (f : Term) (a
     (hns : K.D.flags (scopeOf s) (.call f args hd) = (false, false))
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
-    (bh : Nat) (h : Runs (Ochr.callFn (fuel + 1) typed fT ws.size tys hd none recUid? res fills want defer)
+    (bh : Nat) (h : Runs (Ochr.callFn (fuel + 1) typed fT ws.size tys hd recUid? res fills want defer)
       (st.withTemps (fv :: ws.toList)) bh (v, T?) st') :
     ∃ (isRef : Bool) (st₁ st₂ : MState) (π₁ : Nat → Nat) (w : Value) (b₁ : Nat) (B : Option Value),
       Good K.dm K.M K.Γ ρ (st₁.withTemps (fv :: ws.toList)) ∧ CtxOk K ρ st₁ ∧

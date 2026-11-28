@@ -25,6 +25,10 @@ Whether the difference changes any run's outcome is not established: the block's
 `f` inside the block is rejected by the checker (`A2`: "not a function type").
 
 Every `#guard` runs the checker (compiled, not kernel-checked).
+
+**On `spine-exp-block` (exp-block-text):** a block is a sealed text (`Term.block`), not a closure: its cells are bound
+at their recorded readings by the model's `.block` clause, so (B) holds by construction; the guards below pin the
+recorded readings on the new text.
 -/
 
 open Ochr.Test
@@ -65,23 +69,10 @@ def blockOf (name : String) : Term :=
 /-- The block's value, run as the checker runs it from the body's start state. -/
 def blockVal (name : String) : Value := (outVal (Ochr.eval 1000 true (blockOf name) none) (startOf name) 100000).1
 
-/-- The block's stored readings (`rd`) and its code's domains, read off its value. -/
+/-- The block's stored readings (`rd`), read off its sealed text (exp-block-text: `Term.block`). -/
 def rdOf : Value → List DeclInfo
-  | .sealed (.call (.val (.clo _ _ rd)) _ _) => rd.map (·.1)
+  | .sealed (.block _ rd _ _ _) => rd.map (·.1)
   | _ => []
-def domsOf : Value → List Term
-  | .sealed (.call (.val (.clo _ (.fix _ _ ds _ _ _) _)) _ _) => ds
-  | _ => []
-
-/-- The readings the model's `.fix` run gives the block's parameters: `paramDecls [] doms`, each domain's reading
-decided by the checker's `typeDecl` at the scope of the earlier ones (what `DecTab.typeDecl` aligns the table with), at
-the state after the block. -/
-def modelReadings (name : String) : List DeclInfo := Id.run do
-  let st := outSt (Ochr.eval 1000 true (blockOf name) none) (startOf name) 100000
-  let mut sc : List DeclInfo := []
-  for d in domsOf (blockVal name) do
-    sc := outVal (withLive true (Ochr.typeDecl 100 false [] [] d)) (scopeState st sc) 1000 :: sc
-  pure sc.reverse
 
 def isPiOther : DeclInfo → Bool
   | .pi .other => true
@@ -93,17 +84,16 @@ def isProp : DeclInfo → Bool
   | .prop => true
   | _ => false
 
--- `A3`: the block is closed off, called on `f`'s and `k`'s unknowns
+-- `A3` (exp-block-text, spine-exp-block): the block is closed off as a sealed TEXT whose cells hold `f`'s and `k`'s
+-- unknowns, then the match over them
 #guard isOk (Ochr.eval 1000 true (blockOf "A3") none) (startOf "A3") 100000
 #guard match blockVal "A3" with
-  | .sealed (.call (.val (.clo [] (.fix _ [f, k] [_, _] _ none _) [_, _])) [.val (.abs 1), .val (.abs 2)] true) =>
-    f.name == "f" && k.name == "k"
+  | .sealed (.block [(f, .val (.abs 1)), (k, .val (.abs 2))] _ _ _ _) => f.name == "f" && k.name == "k"
   | _ => false
--- **the checker stores `f` at `.pi .other`; the reading of its type's value is `.other`**
+-- **the checker records `f` at `.pi .other`**; the model's `.block` clause binds each cell at its recorded reading
+-- (`capsTys rd`), not at a reading of a domain term, so D137 (B)'s difference cannot arise on the experiment
 #guard match rdOf (blockVal "A3") with | [d₁, d₂] => isPiOther d₁ && isOther d₂ | _ => false
-#guard match modelReadings "A3" with | [d₁, d₂] => isOther d₁ && isOther d₂ | _ => false
--- `A1`: a block that takes a proof place; the domain is ascribed `(⌈TP(σ0)⌉ : Prop)`, both readings `.prop`
+-- `A1`: a block that takes a proof place, recorded `.prop`
 #guard match rdOf (blockVal "A1") with | [d₁, d₂] => isProp d₁ && isOther d₂ | _ => false
-#guard match modelReadings "A1" with | [d₁, d₂] => isProp d₁ && isOther d₂ | _ => false
 
 end Ochr.Meaning.Regress.BlockReadings

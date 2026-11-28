@@ -61,6 +61,17 @@ theorem fixG_congrA {body : Term} {fb : List PBind × PBind}
 
 end
 
+/-- A sealed block's cells' drops read the data model only, not Δ (exp-block-text). -/
+theorem bindCells_KA (K : RunCtx) (Δ' : Nat → TyS) (φ : Future) (k : SM Res) :
+    ∀ (rs : List Res) (ts : List (DeclInfo × TyS)), bindCells (KA K Δ') φ k rs ts = bindCells K φ k rs ts
+  | [], [] => rfl
+  | [], _ :: _ => rfl
+  | _ :: _, [] => rfl
+  | c :: rs, dT :: ts => by
+    funext s
+    simp only [bindCells, bindCells_KA K Δ' φ k rs ts]
+    rfl
+
 section
 variable (K : RunCtx) (Δ' : Nat → TyS) (ρ ρ' : Assignment) (φ : Future)
 
@@ -122,6 +133,15 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
         meanParams_congrA d ps 0 [] (fun σ h => hv σ (by simp [Value.anyAtom, h]))
       simp only [valT, hP]
     | _ => rfl
+  | tl, .block cs rd pf B m, hint, s, ha => by
+    rw [runT, runT]
+    refine SM.erasedIf_congr ?_
+    refine SM.strictS_congr ?_
+    have hB := meanV_congrA B (.plain .err) (fun σ h => ha σ (by simp [Term.anyAtom, h]))
+    have hrd := capsTys_congrA rd (fun σ h => ha σ (by simp [Term.anyAtom, h]))
+    have hm : ∀ hint, runT K ρ φ true hint m = runT (KA K Δ') ρ' φ true hint m := fun hint =>
+      funext fun s => runT_congrA true m hint s (fun σ h => ha σ (by simp [Term.anyAtom, h]))
+    simp only [hB, hrd, runCells_congrA cs s (fun σ h => ha σ (by simp [Term.anyAtom, h])), hm, bindCells_KA]
   | tl, .ascribe u A, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
@@ -466,6 +486,17 @@ theorem runParams_congrA (d : IndDecl) :
     have e := SM.onCopy_state h1
     subst e
     apply SM.bind_congr (runParams_congrA d as _ _ _ (fun σ h => ha σ (by simp [Term.anyAtomList, h])))
+    intro _ _ _; rfl
+
+theorem runCells_congrA : ∀ (cs : List (Hint × Term)) (s : SState),
+    (∀ σ, Term.anyAtomArms (· == .abs σ) cs = true → AgreeA K Δ' ρ ρ' σ) →
+    runCells K ρ φ cs s = runCells (KA K Δ') ρ' φ cs s
+  | [], _, _ => rfl
+  | (_, a) :: cs, s, ha => by
+    simp only [runCells]
+    apply SM.bind_congr (runT_congrA false a _ s (fun σ h => ha σ (by simp [Term.anyAtomArms, h])))
+    intro r s₁ _
+    apply SM.bind_congr (runCells_congrA cs s₁ (fun σ h => ha σ (by simp [Term.anyAtomArms, h])))
     intro _ _ _; rfl
 
 theorem runArm_congrA : ∀ (tl : Bool) (arms : List (Hint × Term)) (hint : TyS) (c : Nat) (s : SState),

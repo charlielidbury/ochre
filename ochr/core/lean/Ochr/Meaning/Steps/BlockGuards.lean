@@ -8,7 +8,7 @@ Every `#guard` runs the checker. What is pinned: the program (the surface's `S(m
 `Q` is accepted); the body's start state (`stQ`'s kernel, the mode); the block's captures (`ckBlockCaps`: `n` by move,
 the static join's `[n]` re-rooted); the order of events (the [Entry] access, the read of `n.0` in world `S`, each arm's
 return check, the block's call, the read of `n` that the call moves, the close); the block's value `⌈anonQ(σ0)⌉` exactly,
-its type `Nat`, and the state after (`endQ`); the body's value `S(⌈anonQ(σ0)⌉) : Nat` and its end state (`endQ`); the
+its type `Nat`, and the state after (`endQ`; on `spine-exp-block` the value is the block's TEXT, `⌈let n = σ0; match n {…}⌉`); the body's value `S(⌈anonQ(σ0)⌉) : Nat` and its end state (`endQ`); the
 entry conditions (the tail flags, a handed-down reading, `clone`'s mode, an untyped run, a private copy); and, for a
 variant with a borrow live across the block and an arm writing through it, what the block captures and leaves.
 -/
@@ -43,17 +43,16 @@ def linesOfQ (cfg : Config) : List String :=
 
 -- one check of the body: no split at the body's level (no `[Split]` line); the block, then one path end
 #guard linesOfQ { trace := true } == ["[Def] Q: goal Nat",
-  "[Stuck block] fix _ (n : Nat) : Nat := match n { Z => 0, S _ => n.0 }(#0)", "[Def] Q: path ends with type Nat against goal Nat"]
+  "[Stuck block] ⌈let n = #0; match n { Z => 0, S _ => n.0 }⌉", "[Def] Q: path ends with type Nat against goal Nat"]
 -- the rules applied, in order: the [Entry] access of the capture; world `Z`'s arm returns `Z`; world `S`'s arm reads
 -- (moves) `n.0` and returns `σ1`; the block's call reads (moves) `n` and closes off; the body returns `S(⌈…(σ0)⌉)`
 #guard linesOfQ { derivation := true, trace := true } == ["[Def] Q: goal Nat", "[Entry] a place a stuck block would capture",
   "[Read] its declared type is not a copy type: moved out",
   "[Return] a stuck match's arm returns it: 0 : Nat, with 0 place(s) held by borrow",
   "[Return] a stuck match's arm returns it: σ1 : Nat, with 0 place(s) held by borrow",
-  "[Stuck block] fix _ (n : Nat) : Nat := match n { Z => 0, S _ => n.0 }(#0)",
-  "[Read] its declared type is not a copy type: moved out",
-  "[Close] fix _ (n : Nat) : Nat := match n { Z => 0, S _ => n.0 }: a sealed result",
-  "[Return] Q returns it: S(⌈(fix _ (n : Nat) : Nat := match n { Z => 0, S _ => n.0 })(σ0)⌉) : Nat, with 0 place(s) held by borrow",
+  "[Stuck block] ⌈let n = #0; match n { Z => 0, S _ => n.0 }⌉",
+  "[Read] its declared type is not a copy type: moved out", "[Close] a stuck block: a sealed result",
+  "[Return] Q returns it: S(⌈let n = σ0; match n { Z => 0, S _ => n.0 }⌉) : Nat, with 0 place(s) held by borrow",
   "[Def] Q: path ends with type Nat against goal Nat"]
 
 /-! ## The body's start state -/
@@ -78,12 +77,12 @@ def capsOk (bc : List Place × List (Place × Nat)) : Bool :=
 #guard isOk (Ochr.Meaning.Steps.ckBlockCaps 1000 matchQ) stQ 100000
 #guard capsOk (outVal (Ochr.Meaning.Steps.ckBlockCaps 1000 matchQ) stQ 100000)
 
-/-- The block's code, read off the value the checker returns: no capture of its own, `fix _ (n : Nat) : Nat := matchQ`,
-the parameter read `.other` at `Nat`. -/
+/-- The block's text, read off the value the checker returns (exp-block-text): one cell `n` holding `σ0` at `Nat`,
+read `.other`, then `matchQ` over it, of type `Nat`. -/
 def anonOk (v : Value) : Bool :=
   match v with
-  | .sealed (.call (.val (.clo [] (.fix h [x] [.val .tNat] (.val .tNat) none b) [(d, .tNat)])) [.val (.abs 0)] true) =>
-    h.name == "_" && x.name == "n" && b == matchQ && declIs d .other
+  | .sealed (.block [(x, .val (.abs 0))] [(d, .tNat)] [false] .tNat b) =>
+    x.name == "n" && b == matchQ && declIs d .other
   | _ => false
 
 /-- The match's run: the value `⌈anonQ(σ0)⌉` (`vQ`, every part checked by `anonOk`), at `Nat`, ending with `endQ`'s kernel. -/
@@ -157,17 +156,17 @@ def bodyWy : Term :=
 
 #guard isOk (checkDef { defQ with name := "W", body := bodyWx }) {} 100000
 #guard linesOfDef bodyWx == ["[Def] W: goal Nat",
-  "[Stuck block] fix _ (n : Nat) (x : &Nat) : Nat := match n { Z => *x := 0; 0, S _ => n.0 }(#1, &#0)",
+  "[Stuck block] ⌈let n = #1; let x = &#0; match n { Z => *x := 0; 0, S _ => n.0 }⌉",
   "[Def] W: path ends with type Nat against goal Nat"]
 #guard isOk (checkDef { defQ with name := "W", body := bodyWy }) {} 100000
 #guard linesOfDef bodyWy == ["[Def] W: goal Nat",
-  "[Stuck block] fix _ (n : Nat) (y : &Nat) : Nat := match n { Z => *y := 0; 0, S _ => n.0 }(#2, &*#0)",
+  "[Stuck block] ⌈let n = #2; let y = &*#0; match n { Z => *y := 0; 0, S _ => n.0 }⌉",
   "[Def] W: path ends with type Nat against goal Nat"]
 -- the written place's content after the block, as the body returns it: the fill
 def derivOfDef (b : Term) : List String :=
   match runMachine (checkDef { defQ with name := "W", body := b }) { cfg := { derivation := true } } 100000 with
   | (_, _, log) => log.toList.filterMap fun | .line s => some s | _ => none
 #guard (derivOfDef bodyWx).contains
-    "[Return] W returns it: ⌈let c1 = 0; (fix _ (n : Nat) (x : &Nat) : Nat := match n { Z => *x := 0; 0, S _ => n.0 })(σ0, &c1); c1⌉ : Nat, with 0 place(s) held by borrow"
+    "[Return] W returns it: ⌈let c1 = 0; (let n = σ0; let x = &c1; match n { Z => *x := 0; 0, S _ => n.0 }); c1⌉ : Nat, with 0 place(s) held by borrow"
 
 end Ochr.Meaning.Steps.Form.ColumnQ.Guards

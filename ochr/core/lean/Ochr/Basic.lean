@@ -334,6 +334,10 @@ def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
   | .ctor _ _ _ ps as => Term.placeOccsList c ps ++ Term.placeOccsList c as
   | .prim _ as | .tind _ as => Term.placeOccsList c as
   | .matchInd p _ as => (c, p, .scrut) :: Term.placeOccsArms c as
+  -- exp-block-text (spine-exp-block, lead38): a sealed block's text reads its cells' terms in the enclosing scope and
+  -- runs its match under its cells (inert in the checker, which never asks this of a sealed text; the proof's frame
+  -- locality reads a term's free variables, and a block's cells may borrow its scope's places)
+  | .block cs _ _ _ m => Term.placeOccsArms c cs ++ m.placeOccs (c + cs.length)
   | _ => []
 termination_by structural t => t
 
@@ -378,6 +382,8 @@ def Term.blockOccs (inFn : Bool) (c : Nat) : Term → List (Nat × Place × PKin
   | .ctor _ _ _ ps as => Term.blockOccsList inFn c ps ++ Term.blockOccsList inFn c as
   | .prim _ as | .tind _ as => Term.blockOccsList inFn c as
   | .matchInd p _ as => (c, p, .scrut) :: Term.blockOccsArms inFn c as
+  -- exp-block-text (spine-exp-block): as `placeOccs`
+  | .block cs _ _ _ m => Term.blockOccsArms inFn c cs ++ m.blockOccs inFn (c + cs.length)
   | _ => []
 termination_by structural t => t
 
@@ -561,6 +567,12 @@ def Value.loansList : List Value → List Nat
   | v :: vs => v.loans ++ Value.loansList vs
 termination_by structural vs => vs
 
+/-- The loans of recorded readings (a sealed block's cells', exp-block-text). -/
+def Value.loansRd : List (DeclInfo × Value) → List Nat
+  | [] => []
+  | (_, v) :: vs => v.loans ++ Value.loansRd vs
+termination_by structural vs => vs
+
 def Term.loans : Term → List Nat
   | .val v => v.loans
   | .assign _ t | .succ t | .ref t => t.loans
@@ -574,7 +586,10 @@ def Term.loans : Term → List Nat
   | .ctor _ _ _ ps as => Term.loansList ps ++ Term.loansList as
   | .prim _ as | .tind _ as => Term.loansList as
   | .matchInd _ _ as => Term.loansArms as
-  | .block cs _ _ B m => Term.loansArms cs ++ B.loans ++ m.loans
+  -- exp-block-text: a sealed block's cells, its cells' recorded readings (spine-exp-block, lead38: as `anyAtom` walks
+  -- them, so that `hasLoan` and `loans` agree on a block's text, which they do not on a closure's readings, WF15), its
+  -- type and its match
+  | .block cs rd _ B m => Term.loansArms cs ++ Value.loansRd rd ++ B.loans ++ m.loans
   | _ => []
 termination_by structural t => t
 

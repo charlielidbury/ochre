@@ -1,4 +1,4 @@
-import Ochr.Meaning.Strict.Clauses2
+import Ochr.Meaning.Strict.Block
 
 /-!
 # THE FUNDAMENTAL LEMMA (on the strict run `runT`)
@@ -104,6 +104,7 @@ theorem fund_all (hc : FundCtx K) : ∀ (t : Term), t.valsOk (ValsP K ρ φ) →
   | .tind n args, _ => fund_tind hc n args
   | .ctor _ _ _ _ args, h => fund_ctor (fund_list hc args h.2)
   | .matchInd _ _ arms, h => fund_matchInd hc (fund_arms hc arms h)
+  | .block cs _ _ _ m, h => fund_block (fund_arms hc cs h.1) (fund_all hc m h.2)
 termination_by structural t => t
 
 theorem fund_list (hc : FundCtx K) : ∀ (ts : List Term), Term.valsOkList (ValsP K ρ φ) ts → ∀ t ∈ ts, Fund K ρ φ t

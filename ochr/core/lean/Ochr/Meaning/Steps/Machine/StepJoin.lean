@@ -57,4 +57,9 @@ theorem step_closeBlock (ih : MachineGrows tb nf) :
   intro mt arms harms B?
   unfold Ochr.closeBlock; grows_go ih
 
+theorem step_runBlock (ih : MachineGrows tb nf) :
+    ∀ (typed : Bool) (cs : List (Hint × Term)) (rd : List (DeclInfo × Value)) (pf : List Bool) (B : Value) (m : Term), GrowsIn tb (Ochr.runBlock ((nf + 1)) typed cs rd pf B m) := by
+  intro typed cs rd pf B m
+  unfold Ochr.runBlock; grows_go ih
+
 end Ochr.Meaning.Steps.Machine

@@ -87,6 +87,8 @@ def Term.substAbs (σ : Nat) (r : Value) : Term → Term
   | .tind n as => .tind n (Term.substAbsList σ r as)
   | .ctor ty c h ps as => .ctor ty c h (Term.substAbsList σ r ps) (Term.substAbsList σ r as)
   | .matchInd p ty arms => .matchInd p ty (Term.substAbsArms σ r arms)
+  -- exp-block-text: a sealed block's cells, their declared types, its type and its match (`Machine.substT`'s `.block`)
+  | .block cs rd pf B m => .block (Term.substAbsArms σ r cs) (Value.substAbsRd σ r rd) pf (Value.substAbs σ r B) (Term.substAbs σ r m)
   | t => t
 termination_by structural t => t
 

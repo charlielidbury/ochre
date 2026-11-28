@@ -126,6 +126,7 @@ theorem blockOccs_pk : ∀ (t : Term) (inFn : Bool) (c : Nat), (t.blockOccs inFn
     | prim nm as => simp only [Term.blockOccs, Term.placeOccs, blockOccsList_pk as inFn c]
     | tind nm as => simp only [Term.blockOccs, Term.placeOccs, blockOccsList_pk as inFn c]
     | matchInd p ty as => simp only [Term.blockOccs, Term.placeOccs, List.map_cons, blockOccsArms_pk as inFn c]
+    | block cs rd pf B m => simp only [Term.blockOccs, Term.placeOccs, List.map_append, blockOccsArms_pk cs inFn c, blockOccs_pk m inFn (c + cs.length)]
     | _ => simp [Term.blockOccs, Term.placeOccs]
 
 theorem blockOccsList_pk : ∀ (ts : List Term) (inFn : Bool) (c : Nat),

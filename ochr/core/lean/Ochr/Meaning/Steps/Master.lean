@@ -10,7 +10,7 @@ every term is one strong induction on fuel. This file fixes the statement that i
 induction hypothesis, and the list of what remains: one named step per term former of `eval` (the 26
 constructors of `Term`) and one per shape `checkTail` matches (six), each "from the induction
 hypothesis at every smaller fuel, the statement at this fuel for terms of this former". The induction
-itself (`master`) is proved with no `sorry`; it ASSUMES the 32 step statements, bundled as `AllSteps`.
+itself (`master`) is proved with no `sorry`; it ASSUMES the 33 step statements (32 and, on the experimental `spine-exp-block`, `StepBlock` for a sealed block's text), bundled as `AllSteps`.
 
 ## The statement: `EvalAt`
 
@@ -414,6 +414,9 @@ def StepCtor : Prop :=
   ∀ n, IH K φ n → ∀ Δ ρ ty c h ps as, EvalAt { K with Δ := Δ } ρ φ n (.ctor ty c h ps as)
 /-- The step for a match on a declared inductive (`evalMatchInd`, `evalMatchByType`). -/
 def StepMatchInd : Prop := ∀ n, IH K φ n → ∀ Δ ρ p ty arms, EvalAt { K with Δ := Δ } ρ φ n (.matchInd p ty arms)
+/-- **The step for a sealed block's text** (exp-block-text, `runBlock`: its re-run; spine-exp-block, lead38). Only an
+untyped run meets it (`runBlock` rejects a typed one), inside a sealed program's re-run (`SealRerunG`). -/
+def StepBlock : Prop := ∀ n, IH K φ n → ∀ Δ ρ cs rd pf B m, EvalAt { K with Δ := Δ } ρ φ n (.block cs rd pf B m)
 
 /-! ## The steps in tail position, one per shape `checkTail` matches -/
 
@@ -435,7 +438,7 @@ continuation. -/
 def TStepOther : Prop :=
   ∀ n, IH K φ n → ∀ Δ ρ t, tailShaped t = false → TailAt { K with Δ := Δ } ρ φ n t
 
-/-- **The 32 step statements**: what remains of (II) for `eval` and `checkTail`, as a list one can count. -/
+/-- **The 33 step statements (`StepBlock`: exp-block-text)**: what remains of (II) for `eval` and `checkTail`, as a list one can count. -/
 structure AllSteps : Prop where
   place : StepPlace K φ
   borrow : StepBorrow K φ
@@ -463,6 +466,7 @@ structure AllSteps : Prop where
   tind : StepTInd K φ
   ctor : StepCtor K φ
   matchInd : StepMatchInd K φ
+  block : StepBlock K φ
   tLetIn : TStepLetIn K φ
   tSeq : TStepSeq K φ
   tMatchNat : TStepMatchNat K φ
@@ -510,6 +514,7 @@ theorem master_step {K : RunCtx} {φ : Future} (hs : AllSteps K φ) {n : Nat} (i
     | tind nm as => exact hs.tind n ih Δ ρ nm as
     | ctor ty c h ps as => exact hs.ctor n ih Δ ρ ty c h ps as
     | matchInd p ty arms => exact hs.matchInd n ih Δ ρ p ty arms
+    | block cs rd pf B m => exact hs.block n ih Δ ρ cs rd pf B m
   · cases t with
     | letIn x u w => exact hs.tLetIn n ih Δ ρ x u w
     | seq u w => exact hs.tSeq n ih Δ ρ u w
@@ -521,8 +526,8 @@ theorem master_step {K : RunCtx} {φ : Future} (hs : AllSteps K φ) {n : Nat} (i
       · exact hs.tOther n ih Δ ρ _ (by simpa using hsh)
     | _ => exact hs.tOther n ih Δ ρ _ rfl
 
-/-- **The master induction**: from the 32 step statements, the evaluation step and the tail step at
-every fuel, `Δ` and assignment, for every term. ASSUMES the 32 step statements (`AllSteps`) and nothing
+/-- **The master induction**: from the 33 step statements, the evaluation step and the tail step at
+every fuel, `Δ` and assignment, for every term. ASSUMES the 33 step statements (`AllSteps`) and nothing
 else; what each step assumes in turn is its own (docs/31 D152's table). -/
 theorem master {K : RunCtx} {φ : Future} (hs : AllSteps K φ) :
     ∀ n (Δ : Nat → TyS) (ρ : Assignment),

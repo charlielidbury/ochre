@@ -322,6 +322,73 @@ theorem root_mem_matchInd (p : Place) (n : String) (arms : List (Hint × Term)) 
     p.root ∈ (Term.matchInd p n arms).freeVars :=
   (mem_freeVars _ _).mpr ⟨0, p, .scrut, by simp [Term.placeOccs], Nat.zero_le _, rfl⟩
 
+/-! ## A sealed block's cells (exp-block-text; spine-exp-block, lead38) -/
+
+theorem heldTop_qset {Q : Pos → Prop} {β : Pos → SBinding} {S : SState} (hP : Pre Q β S) :
+    heldTop (qset Q β S) = heldTop S := by
+  unfold heldTop
+  rw [qset_getLast, qset_topIdx, qset_shape_eq hP.shape]
+  cases S.env.getLast? <;> simp [qframe_binds_length]
+
+theorem dropTopOk_qset {Q : Pos → Prop} {β : Pos → SBinding} {S : SState} (hP : Pre Q β S) :
+    DropTopOk K φ (qset Q β S) ↔ DropTopOk K φ S := by
+  unfold DropTopOk
+  rw [heldTop_qset hP]
+  split
+  · exact endOk_qset K φ hP _
+  · exact letLendersOk_qset K φ hP
+
+theorem dropTop_qset {Q : Pos → Prop} {β : Pos → SBinding} {S : SState} (hP : Pre Q β S) :
+    dropTop (qset Q β S) = qset Q β (dropTop S) := by
+  unfold dropTop
+  rw [heldTop_qset hP]
+  split
+  · rw [qset_endLabel' hP, qset_dropLast]
+  · rw [letLenders_qset hP, qset_dropLast]
+
+theorem cellsOk_qset {Q : Pos → Prop} {β : Pos → SBinding} {R : DataRead} {S : SState}
+    (hsh : ∀ p, Q p → S.shape p = none) :
+    ∀ (rs : List Res) (ts : List (DeclInfo × TyS)), CellsOk R (qset Q β S) rs ts ↔ CellsOk R S rs ts
+  | [], [] => Iff.rfl
+  | [], _ :: _ => Iff.rfl
+  | _ :: _, [] => Iff.rfl
+  | r :: rs, dT :: ts => by
+    simp only [CellsOk, labTyOk, qset_heldTy, qset_liveLabels hsh, cellsOk_qset hsh rs ts]
+
+/-- **The cells bound around the match commute with the transform**, given the match does at every admissible state
+where its own variables avoid `Q` (`P 0`), and the cells' variable-avoidance passes one binder in at a time (`hP`). -/
+theorem bindCells_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop} {β : Pos → SBinding} {k : SM Res}
+    {P : Nat → SState → Prop}
+    (hk : ∀ (β' : Pos → SBinding) S, Adm K Q β β' S → RInv (fun _ => True) S → P 0 S → Comm Q β' k S)
+    (hkr : ∀ S S' r, RInv (fun _ => True) S → k S = some (r, S') →
+      RInv (fun _ => True) S' ∧ LoU S' r.2.label ∧ EnvLe S S' ∧ OrdKeep (fun _ => True) S S')
+    (hP : ∀ n S b, Adm K Q β β S → P (n + 1) S → P n (pushBindShaped S b)) :
+    ∀ (rs : List Res) (ts : List (DeclInfo × TyS)) (β' : Pos → SBinding) (S : SState), Adm K Q β β' S →
+      RInv (fun _ => True) S → P rs.length S → (∀ l, l ∈ rs.filterMap (·.2.label) → S.Live l) →
+      Comm Q β' (bindCells K φ k rs ts) S
+  | [], [], β', S, hA, hR, hp, _ => by simp only [bindCells]; exact hk β' S hA hR hp
+  | [], _ :: _, _, _, _, _, _, _ => rfl
+  | _ :: _, [], _, _, _, _, _, _ => rfl
+  | c :: rs, dT :: ts, β', S, hA, hR, hp, hlv => by
+    obtain ⟨hc, hlv₁⟩ := pushCell_live (fun _ => True) hR c dT hlv
+    have hR₁ := pushCell_rinv (fun _ => True) hR c dT hc
+    have hA₁ := hA.push (cellBind c dT)
+    have hp₁ : P rs.length (pushBindShaped S (cellBind c dT)) := hP rs.length S _ hA.self hp
+    have ih := bindCells_qset hK hk hkr hP rs ts β' _ hA₁ hR₁ hp₁ hlv₁
+    have ih0 := bindCells_qset hK hk hkr hP rs ts β _ hA₁.self hR₁ hp₁ hlv₁
+    unfold Comm at ih ⊢
+    simp only [bindCells]
+    rw [qset_pushBindShaped S hA.twin.pre'.pos hA.twin.pre'.shape (cellBind c dT), ih]
+    cases h2 : bindCells K φ k rs ts (pushBindShaped S (cellBind c dT)) with
+    | none => rfl
+    | some z =>
+      obtain ⟨x, S₂⟩ := z
+      have e₂ := (bindCells_rinv K φ (fun _ => True) hkr rs ts _ S₂ x hR₁ hlv₁ h2).2.2.1
+      have hA₂ := hA₁.next e₂ (fix_of_comm ih0 hA₁.twin.fix h2)
+      simp only [qmap, Option.map_some]
+      rw [propext (dropTopOk_qset K φ hA₂.twin.pre'), dropTop_qset hA₂.twin.pre']
+      split <;> rfl
+
 mutual
 theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D)
  :
@@ -710,6 +777,88 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
           | some r => exact comm_pure _ _
         exact comm_strictS (co _)
       · rw [if_neg hP, if_neg hP]; rfl
+  | tl, .block cs rd pf B m, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
+    refine comm_erasedIf (comm_strictS ?_)
+    have hVc : ∀ a ∈ cs, VarsAvoid Q s a.2 := fun a ha => hV.sub fun x hx => by
+      simp only [Term.placeOccs, List.mem_append]; exact .inl (mem_placeOccsArms ha hx)
+    have hVm : ∀ v ∈ m.freeVars, v < cs.length ∨ v - cs.length ∈ (Term.block cs rd pf B m).freeVars :=
+      freeVars_sub (fun x hx => by simp only [Term.placeOccs, List.mem_append, Nat.zero_add]; exact .inr hx)
+    have cc := runCells_qset hK hD cs s Q β β' hA hVc hR
+    have cc0 := runCells_qset hK hD cs s Q β β hA.self hVc hR
+    unfold Comm at cc cc0 ⊢
+    dsimp only
+    rw [cc, hA.scope]
+    cases h1 : runCells K ρ φ cs s with
+    | none => rfl
+    | some y =>
+      obtain ⟨rs, X⟩ := y
+      obtain ⟨hR₁, e₁, -⟩ := runCells_rinv K ρ φ _ hK cs s X rs hR h1
+      have hA₁ : Adm K Q β β' X := hA.next e₁ (fix_of_comm cc0 hA.twin.fix h1)
+      simp only [qmap, Option.map_some]
+      rw [propext (cellsOk_qset hA₁.twin.pre'.shape rs _)]
+      by_cases hok : CellsOk K.dm.read X rs (capsTys K ρ φ rd)
+      · rw [if_pos hok, if_pos hok]
+        have hlen : rs.length = cs.length := runCells_length K ρ φ cs s X rs h1
+        have hP : ∀ n (S : SState) (b : SBinding), Adm K Q β β S →
+            (∀ v ∈ m.freeVars, n + 1 ≤ v → ∀ pos, S.varPos (v - (n + 1)) = some pos → ¬ Q pos) →
+            ∀ v ∈ m.freeVars, n ≤ v → ∀ pos, (pushBindShaped S b).varPos (v - n) = some pos → ¬ Q pos := by
+          intro n S b hS hp v hv hnv pos hpos
+          by_cases e : v = n
+          · subst e
+            rw [Nat.sub_self] at hpos
+            exact varPos_zero_push (envPush_pushBindShaped S b) hS.twin.pre.pos pos hpos
+          · have e' : v - n = (v - (n + 1)) + 1 := by omega
+            rw [e', varPos_push (envPush_pushBindShaped S b)] at hpos
+            exact hp v hv (by omega) pos hpos
+        have hstart : ∀ v ∈ m.freeVars, rs.length ≤ v → ∀ pos, X.varPos (v - rs.length) = some pos → ¬ Q pos := by
+          intro v hv hle pos hpos
+          rw [hlen] at hle hpos
+          rw [varPos_of_envLe e₁] at hpos
+          rcases hVm v hv with h | h
+          · omega
+          · exact hV _ h pos hpos
+        have hkc : ∀ (β'' : Pos → SBinding) (S : SState), Adm K Q β β'' S → RInv (fun _ => True) S →
+            (∀ v ∈ m.freeVars, 0 ≤ v → ∀ pos, S.varPos (v - 0) = some pos → ¬ Q pos) →
+            Comm Q β'' (runT K ρ φ true (.plain (meanV K ρ φ (.plain TyM.err) B).asTy) m) S :=
+          fun β'' S hS hRS hp => runT_qset hK hD true m _ S Q β β'' hS
+            (fun v hv pos hpos => hp v hv (Nat.zero_le _) pos (by simpa using hpos)) hRS
+        have hkr := fun S S' r (hRS : RInv (fun _ => True) S) h =>
+          runT_rinv K ρ φ (fun _ => True) hK true m (.plain (meanV K ρ φ (.plain TyM.err) B).asTy) S S' r hRS h
+        have cb := bindCells_qset K φ hK
+          (P := fun n S => ∀ v ∈ m.freeVars, n ≤ v → ∀ pos, S.varPos (v - n) = some pos → ¬ Q pos)
+          hkc hkr hP rs (capsTys K ρ φ rd) β' X hA₁ hR₁ hstart hok.live
+        have cb0 := bindCells_qset K φ hK
+          (P := fun n S => ∀ v ∈ m.freeVars, n ≤ v → ∀ pos, S.varPos (v - n) = some pos → ¬ Q pos)
+          hkc hkr hP rs (capsTys K ρ φ rd) β X hA₁.self hR₁ hstart hok.live
+        unfold Comm at cb cb0
+        rw [cb]
+        cases h2 : bindCells K φ (runT K ρ φ true (.plain (meanV K ρ φ (.plain TyM.err) B).asTy) m) rs
+            (capsTys K ρ φ rd) X with
+        | none => rfl
+        | some z =>
+          obtain ⟨⟨r, R⟩, X₃⟩ := z
+          have e₃ := (bindCells_rinv K φ (fun _ => True) hkr rs _ X X₃ (r, R) hR₁ hok.live h2).2.2.1
+          have hA₃ : Adm K Q β β' X₃ := hA₁.next e₃ (fix_of_comm cb0 hA₁.twin.fix h2)
+          simp only [qmap, Option.map_some]
+          have hsnap : cellSnapshot rs (qset Q β' X) = cellSnapshot rs X := rfl
+          rw [hsnap]
+          have fin : ∀ S : SState,
+              (if labTyOk (qset Q β' S) R.label (TyS.plain (meanV K ρ φ (TyS.plain TyM.err) B).asTy).m then
+                some ((r, { (TyS.plain (meanV K ρ φ (TyS.plain TyM.err) B).asTy) with label := R.label }), qset Q β' S)
+                else none) =
+              qmap Q β' (if labTyOk S R.label (TyS.plain (meanV K ρ φ (TyS.plain TyM.err) B).asTy).m then
+                some ((r, { (TyS.plain (meanV K ρ φ (TyS.plain TyM.err) B).asTy) with label := R.label }), S)
+                else none) := by
+            intro S
+            by_cases hc : labTyOk S R.label (TyS.plain (meanV K ρ φ (TyS.plain TyM.err) B).asTy).m
+            · rw [if_pos (show labTyOk (qset Q β' S) R.label _ from hc), if_pos hc]; rfl
+            · rw [if_neg (show ¬ labTyOk (qset Q β' S) R.label _ from hc), if_neg hc]; rfl
+          split
+          · rw [entryLend_qset _ _ _ _ hA₃.twin.pre'.shape]
+            exact fin _
+          · exact fin _
+      · rw [if_neg hok, if_neg hok]; rfl
   | tl, .call f args hd, hint, s, Q, β, β', hA, hV, hR => by
     unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
     refine comm_erasedIf ?_
@@ -1005,6 +1154,19 @@ theorem runFields_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLoca
     obtain ⟨v, R⟩ := x
     dsimp only
     exact comm_bind (runFields_qset hK hD stmt d c as (i + 1) rh _ (earlier ++ [v]) s₁ Q β β' hA₁
+      (fun b hb => (hV b (by simp [hb])).of_envLe e₁) hR₁) fun _ _ _ => comm_pure _ _
+
+theorem runCells_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D) :
+    ∀ (cs : List (Hint × Term)) (s : SState) (Q : Pos → Prop) (β β' : Pos → SBinding),
+      Adm K Q β β' s → (∀ a ∈ cs, VarsAvoid Q s a.2) → RInv (fun _ => True) s →
+      Comm Q β' (runCells K ρ φ cs) s
+  | [], _, _, _, _, _, _, _ => rfl
+  | (h, a) :: cs, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runCells.eq_def]; dsimp only
+    have ha := hV (h, a) (by simp)
+    refine comm_bind (runT_qset hK hD false a _ s Q β β' hA ha hR) fun x s₁ h1 => ?_
+    obtain ⟨hA₁, hR₁, e₁⟩ := Adm.after K ρ φ hK hA hR h1 (runT_qset hK hD false a _ s Q β β hA.self ha hR)
+    exact comm_bind (runCells_qset hK hD cs s₁ Q β β' hA₁
       (fun b hb => (hV b (by simp [hb])).of_envLe e₁) hR₁) fun _ _ _ => comm_pure _ _
 
 theorem runArgs_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D) (stmt : Bool) (fT : TyM) :

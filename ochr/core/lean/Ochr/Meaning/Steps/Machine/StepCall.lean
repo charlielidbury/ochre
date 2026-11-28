@@ -23,13 +23,13 @@ theorem step_lentLeafCheck (ih : MachineGrows tb nf) :
   unfold Ochr.lentLeafCheck; grows_go ih
 
 theorem step_stmtCallee (ih : MachineGrows tb nf) :
-    ∀ (fv : Value) (fT : Option Value) (cls? : Option Nat), GrowsIn tb (Ochr.stmtCallee ((nf + 1)) fv fT cls?) := by
-  intro fv fT cls?
+    ∀ (fv : Value) (fT : Option Value), GrowsIn tb (Ochr.stmtCallee ((nf + 1)) fv fT) := by
+  intro fv fT
   unfold Ochr.stmtCallee; grows_go ih
 
 theorem step_evalCall (ih : MachineGrows tb nf) :
-    ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool) (cls? : Option Nat) (res? : Option DeclInfo) (given : Option (Value × List Value)), GrowsIn tb (Ochr.evalCall ((nf + 1)) typed f as head cls? res? given) := by
-  intro typed f as head cls? res? given
+    ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool), GrowsIn tb (Ochr.evalCall ((nf + 1)) typed f as head) := by
+  intro typed f as head
   unfold Ochr.evalCall; grows_go ih
 
 theorem step_argHint (ih : MachineGrows tb nf) :
@@ -73,8 +73,8 @@ theorem step_bindTyQ (ih : MachineGrows tb nf) :
   unfold Ochr.bindTy?; grows_go ih
 
 theorem step_endBorrowArgs (ih : MachineGrows tb nf) :
-    ∀ (n : Nat), GrowsIn tb (Ochr.endBorrowArgs ((nf + 1)) n) := by
-  intro n
+    ∀ (n : Nat) (hd : Nat), GrowsIn tb (Ochr.endBorrowArgs ((nf + 1)) n hd) := by
+  intro n hd
   unfold Ochr.endBorrowArgs; grows_go ih
 
 theorem step_runBody (ih : MachineGrows tb nf) :
@@ -87,15 +87,30 @@ theorem step_runBodyCore (ih : MachineGrows tb nf) :
   intro fv cs t rd ws B self hs ds c body
   unfold Ochr.runBodyCore; grows_go ih
 
+theorem step_lendArgs (ih : MachineGrows tb nf) :
+    ∀ (kind : Kind) (ws : Array Value), GrowsIn tb (Ochr.lendArgs ((nf + 1)) kind ws) := by
+  intro kind ws
+  unfold Ochr.lendArgs; grows_go ih
+
+theorem step_lendResult (ih : MachineGrows tb nf) :
+    ∀ (g? : Option Nat) (r : Value) (T : Option Value) (site : String), GrowsIn tb (Ochr.lendResult ((nf + 1)) g? r T site) := by
+  intro g? r T site
+  unfold Ochr.lendResult; grows_go ih
+
 set_option maxHeartbeats 16000000 in
 theorem step_callFn (ih : MachineGrows tb nf) :
-    ∀ (typed : Bool) (fT : Option Value) (n : Nat) (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool) (resTy : Option Value), GrowsIn tb (Ochr.callFn ((nf + 1)) typed fT n tys head cls? recUid? res fills want defer resTy) := by
-  intro typed fT n tys head cls? recUid? res fills want defer resTy
+    ∀ (typed : Bool) (fT : Option Value) (n : Nat) (tys : Array (Option Value)) (head : Bool) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool), GrowsIn tb (Ochr.callFn ((nf + 1)) typed fT n tys head recUid? res fills want defer) := by
+  intro typed fT n tys head recUid? res fills want defer
   unfold Ochr.callFn; grows_go ih
 
 theorem step_closeCall (ih : MachineGrows tb nf) :
     ∀ (n : Nat) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeCall ((nf + 1)) n kind res fills tys) := by
   intro n kind res fills tys
   unfold Ochr.closeCall; grows_go ih
+
+theorem step_closeWith (ih : MachineGrows tb nf) :
+    ∀ (n : Nat) (hd : Nat) (what : String) (mkC : List Term → Term) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeWith ((nf + 1)) n hd what mkC kind res fills tys) := by
+  intro n hd what mkC kind res fills tys
+  unfold Ochr.closeWith; grows_go ih
 
 end Ochr.Meaning.Steps.Machine

@@ -59,6 +59,8 @@ def Term.substLoan (l : Nat) (w : Value) : Term → Term
   | .tind n as => .tind n (Term.substLoanList l w as)
   | .ctor ty c h ps as => .ctor ty c h (Term.substLoanList l w ps) (Term.substLoanList l w as)
   | .matchInd p ty arms => .matchInd p ty (Term.substLoanArms l w arms)
+  -- exp-block-text: a sealed block's cells, their declared types, its type and its match (`Machine.substT`'s `.block`)
+  | .block cs rd pf B m => .block (Term.substLoanArms l w cs) (Value.substLoanRd l w rd) pf (Value.substLoan l w B) (Term.substLoan l w m)
   | t => t
 termination_by structural t => t
 

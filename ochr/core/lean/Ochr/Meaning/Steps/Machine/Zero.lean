@@ -350,13 +350,13 @@ theorem zero_evalCtor :
   unfold Ochr.evalCtor; grows_go
 
 theorem zero_stmtCallee :
-    ∀ (fv : Value) (fT : Option Value) (cls? : Option Nat), GrowsIn tb (Ochr.stmtCallee 0 fv fT cls?) := by
-  intro fv fT cls?
+    ∀ (fv : Value) (fT : Option Value), GrowsIn tb (Ochr.stmtCallee 0 fv fT) := by
+  intro fv fT
   unfold Ochr.stmtCallee; grows_go
 
 theorem zero_evalCall :
-    ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool) (cls? : Option Nat) (res? : Option DeclInfo) (given : Option (Value × List Value)), GrowsIn tb (Ochr.evalCall 0 typed f as head cls? res? given) := by
-  intro typed f as head cls? res? given
+    ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool), GrowsIn tb (Ochr.evalCall 0 typed f as head) := by
+  intro typed f as head
   unfold Ochr.evalCall; grows_go
 
 theorem zero_argHint :
@@ -400,8 +400,8 @@ theorem zero_bindTyQ :
   unfold Ochr.bindTy?; grows_go
 
 theorem zero_endBorrowArgs :
-    ∀ (n : Nat), GrowsIn tb (Ochr.endBorrowArgs 0 n) := by
-  intro n
+    ∀ (n : Nat) (hd : Nat), GrowsIn tb (Ochr.endBorrowArgs 0 n hd) := by
+  intro n hd
   unfold Ochr.endBorrowArgs; grows_go
 
 theorem zero_runBody :
@@ -414,15 +414,30 @@ theorem zero_runBodyCore :
   intro fv cs t rd ws B self hs ds c body
   unfold Ochr.runBodyCore; grows_go
 
+theorem zero_lendArgs :
+    ∀ (kind : Kind) (ws : Array Value), GrowsIn tb (Ochr.lendArgs 0 kind ws) := by
+  intro kind ws
+  unfold Ochr.lendArgs; grows_go
+
+theorem zero_lendResult :
+    ∀ (g? : Option Nat) (r : Value) (T : Option Value) (site : String), GrowsIn tb (Ochr.lendResult 0 g? r T site) := by
+  intro g? r T site
+  unfold Ochr.lendResult; grows_go
+
 theorem zero_callFn :
-    ∀ (typed : Bool) (fT : Option Value) (n : Nat) (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool) (resTy : Option Value), GrowsIn tb (Ochr.callFn 0 typed fT n tys head cls? recUid? res fills want defer resTy) := by
-  intro typed fT n tys head cls? recUid? res fills want defer resTy
+    ∀ (typed : Bool) (fT : Option Value) (n : Nat) (tys : Array (Option Value)) (head : Bool) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool), GrowsIn tb (Ochr.callFn 0 typed fT n tys head recUid? res fills want defer) := by
+  intro typed fT n tys head recUid? res fills want defer
   unfold Ochr.callFn; grows_go
 
 theorem zero_closeCall :
     ∀ (n : Nat) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeCall 0 n kind res fills tys) := by
   intro n kind res fills tys
   unfold Ochr.closeCall; grows_go
+
+theorem zero_closeWith :
+    ∀ (n : Nat) (hd : Nat) (what : String) (mkC : List Term → Term) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeWith 0 n hd what mkC kind res fills tys) := by
+  intro n hd what mkC kind res fills tys
+  unfold Ochr.closeWith; grows_go
 
 theorem zero_refine :
     ∀ (σ : Nat) (r : Value), GrowsIn tb (Ochr.refine 0 σ r) := by
@@ -552,6 +567,11 @@ theorem zero_closeBlock :
     ∀ (mt : Term) (arms : List BlockArm) (harms : ∀ a ∈ arms, GrowsIn tb a.setup ∧ ∀ r, GrowsIn tb (a.body r)) (B? : Option Value), GrowsIn tb (Ochr.closeBlock 0 mt arms B?) := by
   intro mt arms harms B?
   unfold Ochr.closeBlock; grows_go
+
+theorem zero_runBlock :
+    ∀ (typed : Bool) (cs : List (Hint × Term)) (rd : List (DeclInfo × Value)) (pf : List Bool) (B : Value) (m : Term), GrowsIn tb (Ochr.runBlock 0 typed cs rd pf B m) := by
+  intro typed cs rd pf B m
+  unfold Ochr.runBlock; grows_go
 
 theorem zero_observe :
     ∀ (typed : Bool) (t : Term) (A : Value) (W : List Pos) (refs : List (Place × Value × Value)) (consumed : List Place), GrowsIn tb (Ochr.observe 0 typed t A W refs consumed) := by

@@ -49,6 +49,9 @@ theorem placeOccs_add : ∀ (t : Term) (c n : Nat), t.placeOccs (c + n) = (t.pla
     | tind nm as => simp only [Term.placeOccs, placeOccsList_add as c n]
     | matchInd p ty as =>
       simp only [Term.placeOccs, placeOccsArms_add as c n, List.map_cons]; rfl
+    | block cs rd pf B m =>
+      simp only [Term.placeOccs, placeOccsArms_add cs c n, List.map_append]
+      rw [Nat.add_right_comm, placeOccs_add m (c + cs.length) n]
     | _ => simp [Term.placeOccs]
 
 theorem placeOccsList_add : ∀ (ts : List Term) (c n : Nat),

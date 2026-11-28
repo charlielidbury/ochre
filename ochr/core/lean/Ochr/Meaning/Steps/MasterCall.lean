@@ -98,7 +98,7 @@ def CallHeadArgsG (K : RunCtx) (φ : Future) : Prop :=
       (bh' : Nat),
       m + 1 < n ∧ cf.defer = st.deferHere ∧ cf.want = st.wantHere ∧ Kept st stc ∧ stc.tailNext = false ∧
       fT = (stc.globals.find? (·.name == g)).map (·.ty) ∧ as.length = ws.size ∧
-      Runs (Ochr.callFn m typed fT as.length tys hd none none cf.res cf.fills cf.want cf.defer none) stc bh' (v, T?) st₁ ∧
+      Runs (Ochr.callFn m typed fT as.length tys hd none cf.res cf.fills cf.want cf.defer) stc bh' (v, T?) st₁ ∧
       Kern st₁ st' ∧ ModeEq st₁ st' ∧
       ∃ (ρc : Assignment) (Δc : Nat → TyS) (πc : Nat → Nat) (asR : List Res) (sc : SState),
         Ext { K with Δ := Δ } ρ π st stc ρc Δc πc ∧
@@ -120,7 +120,7 @@ def CallFnG (K : RunCtx) (φ : Future) : Prop :=
     fT = (stc.globals.find? (·.name == g)).map (·.ty) →
     (typed = false → (refCall { K with Δ := Δ } (K.C.global g) asR sc).isSome) →
     DecTab K.D st₁ →
-    Runs (Ochr.callFn n typed fT ws.size tys hd none none cf.res cf.fills cf.want cf.defer none) stc bh (v, T?) st₁ →
+    Runs (Ochr.callFn n typed fT ws.size tys hd none cf.res cf.fills cf.want cf.defer) stc bh (v, T?) st₁ →
     (∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       Ext { K with Δ := Δ } ρ π stc st₁ ρ' Δ' π' ∧ refCall { K with Δ := Δ } (K.C.global g) asR sc = some (r, s') ∧
       meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧

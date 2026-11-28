@@ -72,8 +72,15 @@ def anonQ : Value := .clo [] anonFix [(.other, .tNat)]
 /-- The sealed program the block closes off to: the block called on `σ0`. -/
 def sealQ : Term := .call (.val anonQ) [.val (.abs 0)] true
 
-/-- The block's value, `⌈anonQ(σ0)⌉`. -/
-def vQ : Value := .sealed sealQ
+/-- The block's value on main's checker, `⌈anonQ(σ0)⌉` (a closure applied; not what the experimental checker makes). -/
+def vQClo : Value := .sealed sealQ
+
+/-- **The block's text** (exp-block-text, `spine-exp-block`): its one cell `n` holding `σ0` at `Nat` (read `.other`, not a
+proof), then the match over it, of type `Nat`: `⌈let n = σ0; match n { Z => 0, S _ => n.0 }⌉`. -/
+def textQ : Term := .block [(⟨"n"⟩, .val (.abs 0))] [(.other, .tNat)] [false] .tNat matchQ
+
+/-- The block's value on the experimental checker: its sealed text. -/
+def vQ : Value := .sealed textQ
 
 /-! ## The context -/
 
@@ -91,7 +98,7 @@ noncomputable def KQ (dm : DataModel) (D : Decisions) (φ : Future) (Δ : Nat �
 
 /-- **The checker closes `Q`'s match off** (a fact about the checker alone; the machine lane's to prove): every
 successful TYPED `eval` of the match from a state with `stQ`'s kernel, in the plain mode, not in tail position, with no
-handed-down reading, returns the sealed block `⌈anonQ(σ0)⌉` at `Nat` and ends with `endQ`'s kernel (`n` moved, world
+handed-down reading, returns the sealed block's text `⌈let n = σ0; match n {…}⌉` (`vQ`; on main `⌈anonQ(σ0)⌉`) at `Nat` and ends with `endQ`'s kernel (`n` moved, world
 `S`'s `σ1 : Nat` kept in the table). Guarded in `Steps/BlockGuards.lean` (the value, the type, the end kernel at
 every hint and tail flag; the captures; the worlds; the entry conditions). -/
 def BlockQInv : Prop :=

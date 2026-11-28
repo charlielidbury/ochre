@@ -281,6 +281,7 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
   | tl, .id A t u, _, h, h', s => rfl
   | tl, .ascribe t A, _, h, h', s => rfl
   | tl, .tind n args, _, h, h', s => rfl
+  | tl, .block cs rd pf B m, _, h, h', s => rfl
 
 theorem runArm_hintIndep : ∀ (tl : Bool) (arms : List (Hint × Term)), Term.armsHintFree K.Γ arms = true →
     ∀ (c : Nat) (h h' : TyS) (s : SState),

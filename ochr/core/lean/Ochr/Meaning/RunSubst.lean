@@ -22,6 +22,10 @@ open SState
 section Syntax
 variable (l : Nat) (w : Value)
 
+theorem lenArms_substLoan : ∀ ts : List (Hint × Term), (Term.substLoanArms l w ts).length = ts.length
+  | [] => rfl
+  | (h, t) :: ts => by simp [Term.substLoanArms, lenArms_substLoan ts]
+
 mutual
 theorem placeOccs_substLoan : ∀ (t : Term) (c : Nat), (Term.substLoan l w t).placeOccs c = t.placeOccs c
   | t, c => by
@@ -50,6 +54,8 @@ theorem placeOccs_substLoan : ∀ (t : Term) (c : Nat), (Term.substLoan l w t).p
     | prim n as => simp only [Term.substLoan, Term.placeOccs, placeOccsList_substLoan as]
     | tind n as => simp only [Term.substLoan, Term.placeOccs, placeOccsList_substLoan as]
     | matchInd p ty as => simp only [Term.substLoan, Term.placeOccs, placeOccsArms_substLoan as]
+    | block cs rd pf B m =>
+      simp only [Term.substLoan, Term.placeOccs, placeOccsArms_substLoan cs, placeOccs_substLoan m, lenArms_substLoan l w cs]
     | _ => simp [Term.substLoan, Term.placeOccs]
 
 theorem placeOccsList_substLoan : ∀ (ts : List Term) (c : Nat),
@@ -498,6 +504,17 @@ theorem runT_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (t : Term) (h
       have hfl : ∀ sc, K.D.flags sc (.ctor ty c h (Term.substLoanList l w ps) (Term.substLoanList l w args))
           = K.D.flags sc (.ctor ty c h ps args) := fun sc => hF.dec.1 sc (.ctor ty c h ps args)
       rw [runT, runT]; rw [Term.substLoanList_isEmpty]; simp only [hp, hf, hfl]
+    | block cs rd pf B m =>
+      have hm := fun tl' => runT_substSame hF tl' m
+      have hfl : ∀ sc, K.D.flags sc (.block (Term.substLoanArms l w cs) (Value.substLoanRd l w rd) pf (Value.substLoan l w B)
+          (Term.substLoan l w m)) = K.D.flags sc (.block cs rd pf B m) := fun sc => hF.dec.1 sc (.block cs rd pf B m)
+      have hdo : ∀ sc, K.D.declOf sc (.block (Term.substLoanArms l w cs) (Value.substLoanRd l w rd) pf (Value.substLoan l w B)
+          (Term.substLoan l w m)) = K.D.declOf sc (.block cs rd pf B m) := fun sc => hF.dec.2.1 sc (.block cs rd pf B m)
+      funext s
+      show runT K ρ ψ tl hint (.block (Term.substLoanArms l w cs) (Value.substLoanRd l w rd) pf (Value.substLoan l w B)
+        (Term.substLoan l w m)) s = _
+      rw [runT, runT]
+      simp only [hm, hfl, hdo, meanV_substSame hF B, capsTys_substSame hF rd, runCells_substSame hF cs]
     | call f args hd =>
       have hf := fun tl' => runT_substSame hF tl' f
       have ha := fun st sh => runArgs_substSame hF st sh args
@@ -609,6 +626,12 @@ theorem runArm_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (arms : Lis
   | _, [], _, _ => rfl
   | tl, (h, t) :: rest, hint, c => by
     simp only [Term.substLoanArms, runArm, runT_substSame hF tl t, runArm_substSame hF tl rest]
+
+theorem runCells_substSame (hF : FillOK K ρ ψ l w) : ∀ (cs : List (Hint × Term)),
+    runCells K ρ ψ (Term.substLoanArms l w cs) = runCells K ρ ψ cs
+  | [] => rfl
+  | (h, t) :: rest => by
+    simp only [Term.substLoanArms, runCells, runT_substSame hF false t, runCells_substSame hF rest]
 
 theorem runArgs_substSame (hF : FillOK K ρ ψ l w) (stmt : Bool) (fT : TyM) :
     ∀ (args : List Term) (earlier : List Sem),
@@ -796,6 +819,10 @@ theorem noLoan_substLoanT (hw : w.anyAtom (· == .loan l) = false) : ∀ t : Ter
   | .prim n as => noLoan_substLoanTL hw as
   | .tind n as => noLoan_substLoanTL hw as
   | .matchInd p ty as => noLoan_substLoanArms hw as
+  | .block cs rd pf B m => by
+    show (Term.anyAtomArms _ (Term.substLoanArms l w cs) || Value.anyAtomRd _ (Value.substLoanRd l w rd)
+      || (Value.substLoan l w B).anyAtom _ || (Term.substLoan l w m).anyAtom _) = false
+    rw [noLoan_substLoanArms hw cs, noLoan_substLoanRd hw rd, noLoan_substLoanV hw B, noLoan_substLoanT hw m]; rfl
   | .place _ => rfl
   | .borrow _ => rfl
   | .const _ => rfl

@@ -37,12 +37,13 @@ theorem occsList_mapM (f : Term → M Term) (hf : ∀ t, Post (f t) (fun t' => �
 
 theorem occsArms_mapM (f : Term → M Term) (hf : ∀ t, Post (f t) (fun t' => ∀ c, t'.placeOccs c = t.placeOccs c)) :
     ∀ as : List (Hint × Term), Post (as.mapM fun (h, a) => do pure (h, ← f a))
-      (fun as' => ∀ c, Term.placeOccsArms c as' = Term.placeOccsArms c as)
-  | [] => by simpa using Post.pure (P := fun as' => ∀ c, Term.placeOccsArms c as' = Term.placeOccsArms c []) fun _ => rfl
+      (fun as' => (∀ c, Term.placeOccsArms c as' = Term.placeOccsArms c as) ∧ as'.length = as.length)
+  | [] => by simpa using Post.pure (P := fun as' => (∀ c, Term.placeOccsArms c as' = Term.placeOccsArms c []) ∧
+      as'.length = ([] : List (Hint × Term)).length) ⟨fun _ => rfl, rfl⟩
   | (h, a) :: as => by
     rw [List.mapM_cons]
     refine Post.bind (Post.bind (hf a) fun a' ha => Post.pure (P := fun (p : Hint × Term) => p.1 = h ∧ ∀ c, p.2.placeOccs c = a.placeOccs c) ⟨rfl, ha⟩)
-      fun p ⟨hp1, hp2⟩ => Post.bind (occsArms_mapM f hf as) fun as' has => Post.pure fun c => ?_
+      fun p ⟨hp1, hp2⟩ => Post.bind (occsArms_mapM f hf as) fun as' ⟨has, hl⟩ => Post.pure ⟨fun c => ?_, by simp [hl]⟩
     obtain ⟨h', a'⟩ := p
     simp only [Term.placeOccsArms, hp2, has]
 

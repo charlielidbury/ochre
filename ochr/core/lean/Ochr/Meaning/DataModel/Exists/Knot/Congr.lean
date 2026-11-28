@@ -332,6 +332,8 @@ theorem runT_congrR : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Avoi
       fun s => runT_congrR false g _ s (by avd)
     exact SM.onCopy_congr (premises_congr_all [g] (fun y hy => by rw [List.mem_singleton.mp hy]; exact hg) s)
   | tl, .val v, hint, s, ha => absurd ha.2 (by cases v <;> simp [Term.anyAtom, Value.anyAtom])
+  -- a sealed block's text holds embedded values (its type), which a declared field type never does
+  | tl, .block cs rd pf B m, hint, s, ha => absurd ha.2 (by cases B <;> simp [Term.anyAtom, Value.anyAtom])
   | tl, .ascribe u A, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_

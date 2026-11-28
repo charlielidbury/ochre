@@ -297,10 +297,11 @@ theorem runT_sealQ (hd : ParDecQ K.D) (h : TyS) {m : Nat} (h0 : ρ 0 = .el0 Nat 
   rw [if_pos (ColumnJ.borrowArgsTyped_unlabelled _ _ _ _ (fun a ha => by simp at ha; subst ha; rfl)), h0]
   exact callOf_A hd m _ rfl _
 
-/-- **What the checker's closed-off block means**: `⌈anonQ(σ0)⌉` means `ρ σ0 - 1` wherever `ρ σ0` is a number, at every
+/-- **What main's closed-off block means** (main's representation, a closure applied; `spine-exp-block`'s is `mean_vQ`,
+`Steps/BlockTextQ.lean`): `⌈anonQ(σ0)⌉` means `ρ σ0 - 1` wherever `ρ σ0` is a number, at every
 hint: the reference's direct run of the match (`runMatchQ`) gives the same, at every assignment. -/
-theorem mean_vQ (hd : ParDecQ K.D) (hint : TyS) {m : Nat} (h0 : ρ 0 = .el0 Nat m) :
-    meanV K ρ φ hint vQ = .el0 Nat (m - 1) := by
+theorem mean_vQClo (hd : ParDecQ K.D) (hint : TyS) {m : Nat} (h0 : ρ 0 = .el0 Nat m) :
+    meanV K ρ φ hint vQClo = .el0 Nat (m - 1) := by
   show (match runT K ρ φ false hint sealQ (emptyState 0) with
     | some ((v, _), _) => v
     | none => .err) = _

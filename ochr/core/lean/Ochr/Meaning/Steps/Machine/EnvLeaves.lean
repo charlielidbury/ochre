@@ -48,7 +48,10 @@ variable {G : Tab}
 -- D115 (main 226dcdd6): a call's temporaries read in place, and taken off
 @[grows] theorem growsIn_topTemps (n : Nat) : GrowsIn G (topTemps n) := by unfold topTemps; grows_go
 @[grows] theorem growsIn_callTemps (f n : Nat) : GrowsIn G (callTemps f n) := by unfold callTemps; grows_go
-@[grows] theorem growsIn_callArgPos (f n i : Nat) : GrowsIn G (callArgPos f n i) := by unfold callArgPos; grows_go
+@[grows] theorem growsIn_callArgPos (f n i hd : Nat) : GrowsIn G (callArgPos f n i hd) := by unfold callArgPos; grows_go
+-- exp-block-text: a block's arguments (no head) read in place, and taken off
+@[grows] theorem growsIn_argTemps (f n : Nat) : GrowsIn G (argTemps f n) := by unfold argTemps; grows_go
+@[grows] theorem growsIn_dropTemps (f k : Nat) : GrowsIn G (dropTemps f k) := by unfold dropTemps; grows_go
 @[grows] theorem growsIn_takeCallTemps (f n : Nat) : GrowsIn G (takeCallTemps f n) := by
   unfold takeCallTemps; grows_go
 @[grows] theorem growsIn_mapState (f : Value → M Value) (types : Bool) (hf : ∀ v, GrowsIn G (f v)) :

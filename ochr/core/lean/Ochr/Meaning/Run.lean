@@ -1212,6 +1212,94 @@ def tailHint (tl : Bool) (hint : TyS) : TyS := if tl then hint else .plain TyM.e
 @[simp] theorem tailHint_true (hint : TyS) : tailHint true hint = hint := rfl
 @[simp] theorem tailHint_false (hint : TyS) : tailHint false hint = .plain TyM.err := rfl
 
+/-! ## A sealed block's text (exp-block-text: `Machine.runBlock`)
+
+On the experimental checker (`exp-block-text`, the checker lane's checker14) a stuck match is closed off as a sealed
+TEXT, `Term.block cs rd pf B m`: it binds each value the block captured in a cell (cell `i` holds the value of the term
+`cs[i]`, at the declared type and reading `rd[i]` of the place it took) and is then the match `m` over those cells, of
+type `B`. It is not a function: nothing calls it, it has no own binding, and only an untyped re-run runs it
+(`Machine.runBlock`). The model follows the checker: the cells' terms run in order, each with no hint, in the enclosing
+scope (as a call's arguments, D115); each cell's value must be a member of its recorded type, a borrow cell's label held
+at it and still live (`CellsOk`, as an annotated `let`'s ascription; the checker's "[Call] argument i is ⊥"); each cell is then bound in the current frame at its recorded type and reading (`capsTys rd`, as a
+closure's captures are read, D82); the match runs in tail position at `B` (no [Entry]; its join, D119); the cells are
+dropped, most recent first, each as the `let` clause drops its binding (so the cells are nested `let`s around the match,
+`bindCells`); and a block whose type is a borrow lends its result, as fills, the places its borrow cells lent (static
+ends' rule 1, `lendArgs`/`lendResult`, the same shape as a direct borrow-typed match's `entryLend`). Its result is at
+`B`, strictly, as an ascription's is. Whether `B` is a borrow is the aligned decision `declOf` of the block (the checker's
+`Decide.declOf`'s `.block` row, `valTypeDecl B`), as a direct match's `matchEntry` reads it. -/
+
+/-- STRICT, as an annotated `let`'s ascription (and as the checker's `runBlock`, which binds each cell at its recorded
+type): each cell's value is a member of its recorded type, a borrow cell's label is held at that type and is still live
+(no later cell's run ended it: the checker's "[Call] argument i is ⊥ at the call point"); there are as many cells as
+recorded readings (`closeBlock` makes them so). -/
+def CellsOk (R : DataRead) (s : SState) : List Res → List (DeclInfo × TyS) → Prop
+  | [], [] => True
+  | r :: rs, dT :: ts =>
+    (r.1 ∈ₛ[R] dT.2.m ∧ labTyOk s r.2.label dT.2.m ∧ ∀ l, r.2.label = some l → l ∈ s.liveLabels) ∧ CellsOk R s rs ts
+  | _, _ => False
+
+/-- The cells' borrows are live where `CellsOk` holds. -/
+theorem CellsOk.live {R : DataRead} {s : SState} :
+    ∀ {rs : List Res} {ts : List (DeclInfo × TyS)}, CellsOk R s rs ts → ∀ l, l ∈ rs.filterMap (·.2.label) → l ∈ s.liveLabels
+  | [], [], _, l, hl => by simp at hl
+  | r :: rs, dT :: ts, h, l, hl => by
+    cases hr : r.2.label with
+    | none =>
+      simp only [List.filterMap_cons, hr] at hl
+      exact CellsOk.live h.2 l hl
+    | some k =>
+      simp only [List.filterMap_cons, hr, List.mem_cons] at hl
+      rcases hl with rfl | hl
+      · exact h.1.2.2 _ hr
+      · exact CellsOk.live h.2 l hl
+  | [], _ :: _, h, _, _ => h.elim
+  | _ :: _, [], h, _, _ => h.elim
+
+/-- The sites, as fills, of the borrows the cells hold (`lendArgs`' marks of every borrow argument's loans). -/
+noncomputable def cellSnapshot (rs : List Res) (s : SState) : List Site :=
+  ((rs.filterMap (·.2.label)).flatMap s.lent).map fun x => { x with fill := true }
+
+/-- A cell as its binding: its recorded type and reading, holding its value with the label its run returned (as a
+`let` binds its right-hand side). -/
+noncomputable def cellBind (r : Res) (dT : DeclInfo × TyS) : SBinding :=
+  { ty := { dT.2 with label := r.2.label }, val := fun _ => r.1, decl := dT.1 }
+
+section
+variable (K : RunCtx) (φ : Future)
+
+/-- The label the top frame's last binding holds, if any (the `let` clause's `held`). -/
+noncomputable def heldTop (s : SState) : Option Nat :=
+  match s.env.getLast? with
+  | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+  | none => none
+
+/-- STRICT END: the [Drop] of the top frame's last binding, as the `let` clause's. -/
+def DropTopOk (s : SState) : Prop :=
+  match heldTop s with
+  | some l => EndOk K φ s l
+  | none => LetLendersOk K φ s
+
+/-- The [Drop] of the top frame's last binding, as the `let` clause drops its binding: the borrow it holds now ends,
+or, holding none, the borrows lent at it end (D65); then it is forgotten. -/
+noncomputable def dropTop (s : SState) : SState :=
+  (match heldTop s with
+    | some l => s.endLabel l
+    | none => letLenders s).dropLast
+
+/-- **A sealed block's cells as nested `let`s around its match** (`Machine.runBlock`: the cells bound in order, the match
+run, the cells dropped most recent first): the first cell bound (`pushBindShaped`, as a `let` binds), the rest and the
+match `k` run inside, then the first cell dropped as a `let` drops its binding. -/
+noncomputable def bindCells (k : SM Res) : List Res → List (DeclInfo × TyS) → SM Res
+  | r :: rs, dT :: ts => fun s =>
+    match bindCells k rs ts (pushBindShaped s (cellBind r dT)) with
+    | some (x, s') => if DropTopOk K φ s' then some (x, dropTop s') else none
+    | none => none
+  | [], [] => k
+  -- a text whose cells and readings differ in number is never made (`closeBlock`): it fails
+  | _, _ => SM.fail
+
+end
+
 mutual
 
 
@@ -1522,6 +1610,23 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- STRICT: the closure is a member of its function type (else it is `err`, `closureL_mem`)
     SM.strictS K.dm.read (fun s' => some ((closureOf g, .plain piT), s')) s'
     else none) s
+  -- exp-block-text: a sealed block's text (`Machine.runBlock`; see `bindCells`): the cells' terms in order, each bound at
+  -- its recorded type and reading, the match in tail position at `B`, the cells dropped, the borrow result lent; the
+  -- result at `B`, strictly, as an ascription's (`labTyOk`: its label at `B`)
+  | .block cs rd pf B m => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.block cs rd pf B m)) (SM.strictS K.dm.read (fun s =>
+    let TB : TyS := .plain (meanV (.plain TyM.err) B).asTy
+    match runCells cs s with
+    | some (rs, s₁) =>
+      -- STRICT (`CellsOk`): each cell a member of its recorded type, its borrow held there and live
+      if CellsOk K.dm.read s₁ rs (capsTys rd) then
+      match bindCells K φ (runT true TB m) rs (capsTys rd) s₁ with
+      | some ((r, R), s₃) =>
+        let s₄ := if isRefDecl (K.D.declOf (scopeOf s) (.block cs rd pf B m)) then
+          entryLend ([], []) (cellSnapshot rs s₁) R.label s₃ else s₃
+        if labTyOk s₄ R.label TB.m then some ((r, { TB with label := R.label }), s₄) else none
+      | none => none
+      else none
+    | none => none)) s
   | .call f args hd => fun s =>
     let fl := K.D.flags (scopeOf s) (.call f args hd)
     -- a statement call runs on a copy that is thrown away (E1; `Decisions.flags`, aligned), and
@@ -1650,6 +1755,16 @@ noncomputable def runArm (tl : Bool) (hint : TyS) (c : Nat) : List (Hint × Term
   | [] => SM.fail
   | (_, t) :: rest => if c = 0 then runT tl hint t else runArm tl hint (c - 1) rest
 termination_by structural arms => arms
+
+/-- A sealed block's cells' terms, run in order with no hint, in the enclosing scope (`Machine.runBlock`: each `eval`
+untyped into a temporary, as a call's arguments; exp-block-text). -/
+noncomputable def runCells : List (Hint × Term) → SM (List Res)
+  | [] => pure []
+  | (_, a) :: cs => do
+    let r ← runT false (.plain TyM.err) a
+    let rest ← runCells cs
+    pure (r :: rest)
+termination_by structural cs => cs
 
 /-- The parameters of a Π-term as a frame binds them (`PBind`): each domain term run in the
 forming state extended by the earlier parameters at THEIR types and readings (`pre`), giving the

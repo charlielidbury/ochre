@@ -356,8 +356,26 @@ theorem Term_anyAtom_of_mem_loans (l : Nat) : ∀ (t : Term), l ∈ t.loans → 
     simp only [Term.loans] at h; rw [Term.anyAtom]; exact Term_anyAtomList_of_mem_loans l as h
   | .matchInd _ _ as, h => by
     simp only [Term.loans] at h; rw [Term.anyAtom]; exact Term_anyAtomArms_of_mem_loans l as h
+  | .block cs rd _ B m, h => by
+    simp only [Term.loans, List.mem_append] at h
+    rw [Term.anyAtom]
+    rcases h with ((h | h) | h) | h
+    · simp [Term_anyAtomArms_of_mem_loans l cs h]
+    · simp [anyAtomRd_of_mem_loans l rd h]
+    · simp [anyAtom_of_mem_loans l B h]
+    · simp [Term_anyAtom_of_mem_loans l m h]
   | .place _, h | .borrow _, h | .const _, h | .sort _, h | .nat, h | .zero, h | .unit, h | .tt, h => by
     simp [Term.loans] at h
+
+theorem anyAtomRd_of_mem_loans (l : Nat) : ∀ (rd : List (DeclInfo × Value)), l ∈ Value.loansRd rd →
+    Value.anyAtomRd (loanAt l) rd = true
+  | [], h => by simp [Value.loansRd] at h
+  | (_, v) :: rd, h => by
+    simp only [Value.loansRd, List.mem_append] at h
+    rw [Value.anyAtomRd]
+    rcases h with h | h
+    · simp [anyAtom_of_mem_loans l v h]
+    · simp [anyAtomRd_of_mem_loans l rd h]
 
 theorem Term_anyAtomList_of_mem_loans (l : Nat) : ∀ (ts : List Term), l ∈ Term.loansList ts →
     Term.anyAtomList (loanAt l) ts = true
@@ -516,8 +534,28 @@ theorem Term_mem_loans_of_anyAtom (l : Nat) : ∀ (t : Term), t.anyAtom (rdHasLo
     rw [Term.anyAtom] at h hr; simp only [Term.loans]; exact Term_mem_loansList_of_anyAtom l as hr h
   | .matchInd _ _ as, hr, h => by
     rw [Term.anyAtom] at h hr; simp only [Term.loans]; exact Term_mem_loansArms_of_anyAtom l as hr h
+  | .block cs rd _ B m, hr, h => by
+    rw [Term.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loans, List.mem_append]
+    rcases h with ((h | h) | h) | h
+    · exact .inl (.inl (.inl (Term_mem_loansArms_of_anyAtom l cs hr.1.1.1 h)))
+    · exact .inl (.inl (.inr (mem_loansRd_of_anyAtom l rd hr.1.1.2 h)))
+    · exact .inl (.inr (mem_loans_of_anyAtom l B hr.1.2 h))
+    · exact .inr (Term_mem_loans_of_anyAtom l m hr.2 h)
   | .place _, _, h | .borrow _, _, h | .const _, _, h | .sort _, _, h | .nat, _, h | .zero, _, h | .unit, _, h
   | .tt, _, h => by simp [Term.anyAtom] at h
+
+theorem mem_loansRd_of_anyAtom (l : Nat) : ∀ (rd : List (DeclInfo × Value)), Value.anyAtomRd (rdHasLoan l) rd = false →
+    Value.anyAtomRd (loanAt l) rd = true → l ∈ Value.loansRd rd
+  | [], _, h => by simp [Value.anyAtomRd] at h
+  | (_, v) :: rd, hr, h => by
+    rw [Value.anyAtomRd] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Value.loansRd, List.mem_append]
+    rcases h with h | h
+    · exact .inl (mem_loans_of_anyAtom l v hr.1 h)
+    · exact .inr (mem_loansRd_of_anyAtom l rd hr.2 h)
 
 theorem Term_mem_loansList_of_anyAtom (l : Nat) : ∀ (ts : List Term), Term.anyAtomList (rdHasLoan l) ts = false →
     Term.anyAtomList (loanAt l) ts = true → l ∈ Term.loansList ts

@@ -1097,6 +1097,31 @@ theorem premises_congr (hK : ∀ n, (K.C.global n).2.label = none) {L : Nat → 
     intro a s₁ h1
     exact premises_congr hK xs s₁ (runT_rinv K ρ φ L hK false x _ s s₁ a hi h1).1 (fun y hy => hx y (by simp [hy]))
 
+/-- A sealed block's cells bound around its match (exp-block-text): the same at both futures, given it of the match. -/
+theorem bindCells_congrE (hK : ∀ n, (K.C.global n).2.label = none) {L : Nat → Prop} (hφ : ∀ l, L l → φ l = φ' l)
+    {k k' : SM Res} (hk : ∀ s, RInv L s → k s = k' s)
+    (hkr : ∀ (s s' : SState) (r : Res), RInv L s → k' s = some (r, s') →
+      RInv L s' ∧ LoU s' r.2.label ∧ EnvLe s s' ∧ OrdKeep L s s') :
+    ∀ (rs : List Res) (ts : List (DeclInfo × TyS)) (s : SState), RInv L s →
+      (∀ l, l ∈ rs.filterMap (·.2.label) → s.Live l) →
+      bindCells K φ k rs ts s = bindCells K φ' k' rs ts s
+  | [], [], s, hi, _ => hk s hi
+  | [], _ :: _, _, _, _ => rfl
+  | _ :: _, [], _, _, _ => rfl
+  | c :: rs, dT :: ts, s, hi, hlv => by
+    simp only [bindCells]
+    obtain ⟨hc, hlv₁⟩ := pushCell_live L hi c dT hlv
+    have hi₁ := pushCell_rinv L hi c dT hc
+    rw [bindCells_congrE hK hφ hk hkr rs ts _ hi₁ hlv₁]
+    split
+    · rename_i x s₂ hb
+      have hi₂ := (bindCells_rinv K φ' L hkr rs ts _ s₂ x hi₁ hlv₁ hb).1
+      refine ite_congr (propext ?_) (fun _ => rfl) (fun _ => rfl)
+      unfold DropTopOk; split
+      · exact endOk_congr K hφ hi₂ _
+      · exact letLendersOk_congr K hφ hi₂
+    · rfl
+
 mutual
 /-- **Part (E)**: the run at two futures that agree on `L`, from a state with `RInv L`, of a term
 whose loans are in `L`, is the same. -/
@@ -1218,6 +1243,26 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     | some d =>
       apply SM.bind_congr (runParams_congrE hK d args 0 [] s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
       intro _ _ _; rfl
+  | tl, .block cs rd pf B m, hint, s, L, hφ, ht, hi => by
+    rw [runT, runT]
+    refine SM.erasedIf_congr ?_
+    refine SM.strictS_congr ?_
+    have hB : meanV K ρ φ (.plain .err) B = meanV K ρ φ' (.plain .err) B :=
+      meanV_congrE hK B _ (fun l h => hφ l (ht l (by simp only [Value.hasLoanM] at h; simp [Term.anyAtom, h])))
+    have hrd : capsTys K ρ φ rd = capsTys K ρ φ' rd :=
+      capsTys_congrE hK rd (fun l h => hφ l (ht l (by simp [Term.anyAtom, h])))
+    dsimp only
+    rw [hB, hrd, runCells_congrE hK cs s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi]
+    split
+    · rename_i rs s₁ hc
+      have hi₁ := (runCells_rinv K ρ φ' L hK cs s s₁ rs hi hc).1
+      split
+      · rename_i hlive
+        rw [bindCells_congrE K φ φ' hK hφ
+          (fun s hs => runT_congrE hK true m _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hs)
+          (fun s s' r hs h => runT_rinv K ρ φ' L hK true m _ s s' r hs h) rs _ s₁ hi₁ hlive.live]
+      · rfl
+    · rfl
   | tl, .call f args hd, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
     dsimp only
@@ -1615,6 +1660,19 @@ theorem runParams_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDec
     have e := SM.onCopy_state h1
     subst e
     apply SM.bind_congr (runParams_congrE hK d as _ _ _ L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi)
+    intro _ _ _; rfl
+
+theorem runCells_congrE (hK : ∀ n, (K.C.global n).2.label = none) :
+    ∀ (cs : List (Hint × Term)) (s : SState) (L : Nat → Prop), (∀ l, L l → φ l = φ' l) →
+    (∀ l, Term.anyAtomArms (· == .loan l) cs = true → L l) → RInv L s →
+    runCells K ρ φ cs s = runCells K ρ φ' cs s
+  | [], _, _, _, _, _ => rfl
+  | (_, a) :: cs, s, L, hφ, ht, hi => by
+    simp only [runCells]
+    apply SM.bind_congr (runT_congrE hK false a _ s L hφ (fun l h => ht l (by simp [Term.anyAtomArms, h])) hi)
+    intro r s₁ h1
+    have hi₁ : RInv L s₁ := (runT_rinv K ρ φ L hK false a _ s s₁ r hi h1).1
+    apply SM.bind_congr (runCells_congrE hK cs s₁ L hφ (fun l h => ht l (by simp [Term.anyAtomArms, h])) hi₁)
     intro _ _ _; rfl
 
 theorem runArm_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) (arms : List (Hint × Term)) (hint : TyS)

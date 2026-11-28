@@ -281,6 +281,11 @@ theorem _root_.Ochr.Term.anyAtom_mono {P Q : Value → Bool} (h : ∀ a, P a = t
          · exact .inl (.inl (Term.anyAtomList_mono h _ ht))
          · exact .inl (.inr (Term.anyAtom_mono h _ ht))
          · exact .inr (Term.anyAtom_mono h _ ht))
+      | (rcases ht with ((ht | ht) | ht) | ht
+         · exact .inl (.inl (.inl (Term.anyAtomArms_mono h _ ht)))
+         · exact .inl (.inl (.inr (Value.anyAtomRd_mono h _ ht)))
+         · exact .inl (.inr (Value.anyAtom_mono h _ ht))
+         · exact .inr (Term.anyAtom_mono h _ ht))
 
 theorem _root_.Ochr.Term.anyAtomList_mono {P Q : Value → Bool} (h : ∀ a, P a = true → Q a = true) :
     ∀ (ts : List Term), Term.anyAtomList P ts = true → Term.anyAtomList Q ts = true

@@ -55,6 +55,8 @@ def Term.nok (N : NameOk) : Term → Bool
   | .eq a b c | .id a b c => Term.nok N a && Term.nok N b && Term.nok N c
   | .prim _ as => Term.nokList N as
   | .matchInd _ _ as => Term.nokArms N as
+  -- exp-block-text: a sealed block's cells, their readings, its type and its match
+  | .block cs rd _ B m => Term.nokArms N cs && Value.nokRd N rd && Value.nok N B && Term.nok N m
   | _ => true
 termination_by structural t => t
 
@@ -251,6 +253,17 @@ macro "nkv" : tactic => `(tactic| (simp only [Term.nok, Term.nokList, Term.nokAr
 
 /-! ## The congruence -/
 
+/-- A sealed block's cells' drops read no model and no globals (exp-block-text). -/
+theorem bindCells_KN (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) (φ : Future) (k : SM Res) :
+    ∀ (rs : List Res) (ts : List (DeclInfo × TyS)), bindCells (KN K dm' C') φ k rs ts = bindCells K φ k rs ts
+  | [], [] => rfl
+  | [], _ :: _ => rfl
+  | _ :: _, [] => rfl
+  | c :: rs, dT :: ts => by
+    funext s
+    simp only [bindCells, bindCells_KN K dm' C' φ k rs ts]
+    rfl
+
 section
 variable (K : RunCtx) (dm' : DataModel) (C' : CodeMeaning) (N : NameOk) (ρ : Assignment) (φ : Future)
 set_option linter.unusedSectionVars false
@@ -327,6 +340,18 @@ theorem runT_congrN : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState), Term
         simp only [hP, hr]
         rfl
     | _ => rfl
+  | tl, .block cs rd pf B m, hint, s, ha => by
+    simp only [Term.nok, Bool.and_eq_true] at ha
+    obtain ⟨⟨⟨hcs, hrd⟩, hB⟩, hm⟩ := ha
+    rw [runT, runT]
+    refine SM.erasedIf_congr ?_
+    refine SM.strictS_congr ?_
+    have hB' := meanV_congrN B (.plain .err) hB
+    have hrd' := capsTys_congrN rd hrd
+    have hm' : ∀ hint, runT K ρ φ true hint m = runT (KN K dm' C') ρ φ true hint m := fun hint =>
+      funext fun s => runT_congrN true m hint s hm
+    simp only [hB', hrd', runCells_congrN cs s hcs, hm', bindCells_KN]
+    rfl
   | tl, .ascribe u A, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
@@ -587,6 +612,17 @@ theorem runBinds_congrN (s : SState) (dcs : List DeclInfo) : ∀ (ds : List Term
         funext fun acc => runT_congrN false A _ _ (by nk)
       simp only [runBinds, hA', hds']
     | _ => simp only [runBinds, hd, hds']
+
+theorem runCells_congrN : ∀ (cs : List (Hint × Term)) (s : SState), Term.nokArms N cs = true →
+    runCells K ρ φ cs s = runCells (KN K dm' C') ρ φ cs s
+  | [], _, _ => rfl
+  | (_, a) :: cs, s, ha => by
+    simp only [Term.nokArms, Bool.and_eq_true] at ha
+    simp only [runCells]
+    apply SM.bind_congr (runT_congrN false a _ s ha.1)
+    intro r s₁ _
+    apply SM.bind_congr (runCells_congrN cs s₁ ha.2)
+    intro _ _ _; rfl
 
 theorem runArgs_congrN (stmt : Bool) (fT : TyM) :
     ∀ (args : List Term) (earlier : List Sem) (s : SState), (∀ a ∈ args, Term.nok N a = true) →

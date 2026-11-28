@@ -67,7 +67,7 @@ theorem runT_hintFree (K : RunCtx) (ρ : Assignment) (φ : Future) (H H' : TyS) 
   | .place _, _ | .borrow _, _ | .assign _ _, _ | .letIn _ _ _, _ | .seq _ _, _ | .matchNat _ _ _, _
   | .matchInd _ _ _, _ | .tind _ _, _ | .const _, _ | .sort _, _ | .pi _ _ _, _ | .fix _ _ _ _ _ _, _
   | .call _ _ _, _ | .nat, _ | .unit, _ | .zero, _ | .tt, _ | .succ _, _ | .eq _ _ _, _ | .cong _ _, _
-  | .ref _, _ | .id _ _ _, _ | .ascribe _ _, _ => by
+  | .ref _, _ | .id _ _ _, _ | .ascribe _ _, _ | .block _ _ _ _ _, _ => by
     rw [runT, runT] <;> simp only [tailHint_false]
 
 end Ochr.Meaning.DataModel.Exists.Knot

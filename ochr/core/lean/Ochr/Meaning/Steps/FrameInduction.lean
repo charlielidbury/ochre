@@ -16,6 +16,8 @@ mutual
 whose meanings are their own runs). -/
 def Term.frameFree : Term → Bool
   | .id .. | .fix .. | .pi .. => false
+  -- exp-block-text: a sealed block's text (inside a sealed value only, never a body's term) is outside the fragment
+  | .block .. => false
   | .assign _ t | .succ t | .ref t => t.frameFree
   | .letIn _ t u | .seq t u | .cong t u | .ascribe t u => t.frameFree && u.frameFree
   | .matchNat _ z s => z.frameFree && s.frameFree
@@ -76,6 +78,7 @@ theorem termFrame_all (hc : FundCtx K) (hs₀ : FrameStart s₀ ks) :
   | .pi .., hf, _ => by simp [Term.frameFree] at hf
   | .fix .., hf, _ => by simp [Term.frameFree] at hf
   | .id .., hf, _ => by simp [Term.frameFree] at hf
+  | .block .., hf, _ => by simp [Term.frameFree] at hf
   | .call f args _, hf, hv => by
     simp only [Term.frameFree, Bool.and_eq_true] at hf
     exact runFrameI_call hs₀ (termFrame_all hc hs₀ f hf.1 hv.1) (termFrame_list hc hs₀ args hf.2 hv.2)

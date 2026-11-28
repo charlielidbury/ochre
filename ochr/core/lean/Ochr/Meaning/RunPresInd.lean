@@ -713,6 +713,87 @@ theorem lend_post {s₀ s₂ : SState} {lab : Option Nat} (x : SState)
   · exact h
   · exact h
 
+/-! ## A sealed block's cells (exp-block-text): nested `let`s around the match -/
+
+theorem heldTop_eq (s : SState) : heldTop s = match s.dropped with | some r => s.shape r | none => none := by
+  unfold heldTop dropped; cases s.env.getLast? <;> rfl
+
+theorem dropTop_eq (s : SState) :
+    dropTop s = (match heldTop s with | some l => s.endLabel l | none => letLenders s).dropLast := rfl
+
+/-- A cell's binding pushed: its label (live where it is bound) is taken over by the binding. -/
+theorem pushCell_lab {s : SState} (hi : RInv L s) (c : Res) (dT : DeclInfo × TyS)
+    (hlv : ∀ l, c.2.label = some l → s.Live l) :
+    ∀ l, (cellBind c dT).ty.label = some l → (s.Live l ∨ ∀ q, Indep l (s.valAt q)) ∧ l < s.nextLoan :=
+  fun l hl => lou_live hi.2.2 (hlv l hl)
+
+theorem pushCell_rinv {s : SState} (hi : RInv L s) (c : Res) (dT : DeclInfo × TyS)
+    (hlv : ∀ l, c.2.label = some l → s.Live l) : RInv L (pushBindShaped s (cellBind c dT)) :=
+  pushBindShaped_rinv hi (cellBind c dT) c.1 rfl fun l hl => by
+    rcases pushCell_lab L hi c dT hlv l hl with ⟨h' | h', hn⟩
+    · exact ⟨.inl h', hn⟩
+    · exact ⟨.inr (.inr h'), hn⟩
+
+/-- The later cells' borrows stay live when a cell is bound. -/
+theorem pushCell_live {s : SState} (hi : RInv L s) (c : Res) (dT : DeclInfo × TyS) {rs : List Res}
+    (hlv : ∀ l, l ∈ (c :: rs).filterMap (·.2.label) → s.Live l) :
+    (∀ l, c.2.label = some l → s.Live l) ∧
+      ∀ l, l ∈ rs.filterMap (·.2.label) → (pushBindShaped s (cellBind c dT)).Live l := by
+  refine ⟨fun l hl => hlv l (by simp [List.filterMap_cons, hl]), fun l hl => ?_⟩
+  have hl0 : s.Live l := hlv l (by
+    simp only [List.filterMap_cons]; split
+    · exact hl
+    · exact List.mem_cons_of_mem _ hl)
+  by_cases hne : s.env = []
+  · exfalso
+    obtain ⟨q, hq, _⟩ := (live_iff s l).mp hl0
+    rw [positions_eq, hne] at hq; simp at hq
+  · exact (live_pushBindShaped hi.2.2 (cellBind c dT) hne l).mpr (.inl hl0)
+
+/-- The cells bound around the match keep the run's invariant, given it of the match (`k`) and the cells' borrows
+live where they are bound. -/
+theorem bindCells_rinv {k : SM Res}
+    (hk : ∀ (s s' : SState) (r : Res), RInv L s → k s = some (r, s') →
+      RInv L s' ∧ LoU s' r.2.label ∧ EnvLe s s' ∧ OrdKeep L s s') :
+    ∀ (rs : List Res) (ts : List (DeclInfo × TyS)) (s s' : SState) (r : Res), RInv L s →
+      (∀ l, l ∈ rs.filterMap (·.2.label) → s.Live l) →
+      bindCells K φ k rs ts s = some (r, s') → RInv L s' ∧ LoU s' r.2.label ∧ EnvLe s s' ∧ OrdKeep L s s'
+  | [], [], s, s', r, hi, _, h => hk s s' r hi h
+  | [], _ :: _, _, _, _, _, _, h => by cases h
+  | _ :: _, [], _, _, _, _, _, h => by cases h
+  | c :: rs, dT :: ts, s, s', r, hi, hlv, h => by
+    simp only [bindCells] at h
+    split at h
+    · rename_i x s₂ hb
+      obtain ⟨-, h⟩ := open Classical in ite_none_some h
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+      obtain ⟨hc, hlv₁⟩ := pushCell_live L hi c dT hlv
+      have hi₁ := pushCell_rinv L hi c dT hc
+      have o₁ := ordKeep_pushBindShaped hi (cellBind c dT) (pushCell_lab L hi c dT hc)
+      obtain ⟨hi₂, hy₂, e₂, o₂⟩ := bindCells_rinv hk rs ts _ s₂ x hi₁ hlv₁ hb
+      rw [dropTop_eq]
+      refine ⟨(letDrop_rinv L hi₂ hy₂ _ (heldTop_eq s₂)).1, (letDrop_rinv L hi₂ hy₂ _ (heldTop_eq s₂)).2.1,
+        envLe_letDrop ((envPush_pushBindShaped _ _).trans_le e₂) _,
+        o₁.trans' (fun _ hq => mem_positions_pushBindShaped _ hq)
+          (Nat.le_of_eq (by unfold SState.topIdx; rw [(envPush_pushBindShaped _ _).1]))
+          (o₂.trans' (fun _ hq => e₂.mem hq) (Nat.le_of_eq (topIdx_envLe e₂).symm)
+            (letDrop_rinv L hi₂ hy₂ _ (heldTop_eq s₂)).2.2)⟩
+    · cases h
+
+/-- A sealed block's cells' runs give one result per cell. -/
+theorem runCells_length : ∀ (cs : List (Hint × Term)) (s s' : SState) (rs : List Res),
+    runCells K ρ φ cs s = some (rs, s') → rs.length = cs.length
+  | [], s, s', rs, h => by
+    simp only [runCells] at h
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h)
+    rfl
+  | (_, a) :: cs, s, s', rs, h => by
+    simp only [runCells] at h
+    obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
+    obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
+    simp only [List.length_cons, runCells_length cs s₁ s' y h3]
+
 mutual
 /-- **Part (P)**: the run keeps `RInv L`, its result's label is live or unread, and it keeps the
 frames' bindings, only adding temporaries (`EnvLe`). -/
@@ -969,6 +1050,33 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
           intro y hl
           cases hl
       · cases h
+  | tl, .block cs rd pf B m, hint, s, s', r, hi, h => by
+    rw [runT] at h
+    rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
+    rotate_left
+    · exact rinv_pure L hi hl
+    have h := (SM.strictS_some h).1
+    dsimp only at h
+    split at h
+    · rename_i rs s₁ hc
+      obtain ⟨hi₁, e₁, o₁⟩ := runCells_rinv hK cs s s₁ rs hi hc
+      obtain ⟨hlive, h⟩ := open Classical in ite_none_some h
+      split at h
+      · rename_i r' R s₃ hb
+        obtain ⟨-, h⟩ := open Classical in ite_none_some h
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+        obtain ⟨hi₃, hy₃, e₃, o₃⟩ := bindCells_rinv K φ L (fun s s' r hi h => runT_rinv hK true m _ s s' r hi h)
+          rs (capsTys K ρ φ rd) s₁ s₃ (r', R) hi₁ hlive.live hb
+        refine lend_post L _ ?_ ⟨hi₃, hy₃, e₁.trans e₃, o₁.trans e₁ o₃⟩
+        split
+        · unfold entryLend; split
+          · split
+            · exact .inr ⟨_, _, rfl⟩
+            · exact .inl rfl
+          · exact .inl rfl
+        · exact .inl rfl
+      · cases h
+    · cases h
   | tl, .call f args hd, hint, s, s', r, hi, h => by
     rw [runT] at h
     dsimp only at h
@@ -1142,6 +1250,22 @@ theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool)
       · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
     obtain ⟨hi₁, e₁, o₁⟩ := hx
     obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK stmt d c as _ _ _ _ s₁ _ y hi₁ h3
+    exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
+
+theorem runCells_rinv (hK : ∀ n, (K.C.global n).2.label = none) :
+    ∀ (cs : List (Hint × Term)) (s s' : SState) (rs : List Res), RInv L s →
+      runCells K ρ φ cs s = some (rs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
+  | [], s, s', rs, hi, h => by
+    simp only [runCells] at h
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h)
+    exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+  | (_, a) :: cs, s, s', rs, hi, h => by
+    simp only [runCells] at h
+    obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
+    obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
+    obtain ⟨hi₁, _, e₁, o₁⟩ := runT_rinv hK false a _ s s₁ x hi h1
+    obtain ⟨hi₂, e₂, o₂⟩ := runCells_rinv hK cs s₁ _ y hi₁ h3
     exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
 theorem runArm_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) (arms : List (Hint × Term)) (hint : TyS) (c : Nat)

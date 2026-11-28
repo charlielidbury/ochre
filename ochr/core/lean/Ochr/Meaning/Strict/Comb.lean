@@ -38,6 +38,8 @@ def _root_.Ochr.Term.valsOk (P : Value → Prop) : Term → Prop
   | .prim _ as | .tind _ as => Term.valsOkList P as
   | .ctor _ _ _ ps as => Term.valsOkList P ps ∧ Term.valsOkList P as
   | .matchInd _ _ arms => Term.valsOkArms P arms
+  -- exp-block-text: a sealed block's cells' terms and its match
+  | .block cs _ _ _ m => Term.valsOkArms P cs ∧ m.valsOk P
   | _ => True
 termination_by structural t => t
 

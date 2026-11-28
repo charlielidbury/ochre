@@ -16,9 +16,9 @@ groups=[
  ('StepTypes',"values' types, fields, captures",'packedErr,convVal,valType?,valType,sealedType?,fieldDeclType,fieldTele,fieldTypes,fieldTypesOf,fieldsGeneric,fieldTypeAt,indValType?,bindDataFields,piSort,evalType,capture'),
  ('StepConv','the comparison','conv,convList,convTList,convPi,convT,convFn,convFnRun'),
  ('StepEval','evaluation','mkEqM,rewriteGoal,expectTy,eval,evalAt,jMotiveAt,evalCore,lentProofAssign,evalTInd,evalParams,checkParams,evalCtor'),
- ('StepCall','calls','unknownLent,lentLeafCheck,stmtCallee,evalCall,argHint,funType?,funType,callType,declCallType,forceHint,paramTypes,bindTy?,endBorrowArgs,runBody,runBodyCore,callFn,closeCall'),
+ ('StepCall','calls','unknownLent,lentLeafCheck,stmtCallee,evalCall,argHint,funType?,funType,callType,declCallType,forceHint,paramTypes,bindTy?,endBorrowArgs,runBody,runBodyCore,lendArgs,lendResult,callFn,closeCall,closeWith'),
  ('StepMatch','matches, refinement, generalisation','refine,evalMatch,natScrutinee,generalizeNeutral,sealedResultType?,renormAll,renormV,renormT,splitThenClose,splitArmsThenClose,ctorRefinement,scrutType,evalMatchByType,evalMatchInd,etaInPlace,etaPlace,movedPlace'),
- ('StepJoin','the join and stuck blocks','staticJoin,joinDrop,joinCont,joinEnds,blockEntry,entryAccess,dropAtJoin,blockCaptures,closeBlock'),
+ ('StepJoin','the join and stuck blocks','staticJoin,joinDrop,joinCont,joinEnds,blockEntry,entryAccess,dropAtJoin,blockCaptures,closeBlock,runBlock'),
  ('StepTail','observations, Id, tail position, [Fix]','observe,idType,stuckScrutinee,findSplit,generalizeFound,splitTarget,checkTail,checkTailAt,checkFix'),
 ]
 res=json.load(open('sigs.json'))

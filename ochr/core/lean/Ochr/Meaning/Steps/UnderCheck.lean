@@ -73,7 +73,7 @@ def CallUnderCheckG (K : RunCtx) (φ : Future) : Prop :=
     fT = (stc.globals.find? (·.name == g)).map (·.ty) →
     (typed = false → (refCall { K with Δ := Δ } (K.C.global g) asR sc).isSome) →
     DecTab K.D st₁ →
-    Runs (Ochr.callFn n typed fT ws.size tys hd none none cf.res cf.fills cf.want cf.defer none) stc bh (v, T?) st₁ →
+    Runs (Ochr.callFn n typed fT ws.size tys hd none cf.res cf.fills cf.want cf.defer) stc bh (v, T?) st₁ →
     (∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       Ext { K with Δ := Δ } ρ π stc st₁ ρ' Δ' π' ∧ refCall { K with Δ := Δ } (K.C.global g) asR sc = some (r, s') ∧
       meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
@@ -125,7 +125,7 @@ def CallAcceptedG (K : RunCtx) (φ : Future) : Prop :=
     fT = (stc.globals.find? (·.name == g)).map (·.ty) →
     (typed = false → (refCall { K with Δ := Δ } (K.C.global g) asR sc).isSome) →
     DecTab K.D st₁ →
-    Runs (Ochr.callFn n typed fT ws.size tys hd none none cf.res cf.fills cf.want cf.defer none) stc bh (v, T?) st₁ →
+    Runs (Ochr.callFn n typed fT ws.size tys hd none cf.res cf.fills cf.want cf.defer) stc bh (v, T?) st₁ →
     (∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       Ext { K with Δ := Δ } ρ π stc st₁ ρ' Δ' π' ∧ refCall { K with Δ := Δ } (K.C.global g) asR sc = some (r, s') ∧
       meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧

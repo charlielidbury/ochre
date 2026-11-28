@@ -128,6 +128,7 @@ theorem runT_hintM : ∀ (tl : Bool) (t : Term) (h h' : TyS), h.m = h'.m → run
   | tl, .id A t u, h, h', _ => rfl
   | tl, .ascribe t A, h, h', _ => rfl
   | tl, .tind n args, h, h', _ => rfl
+  | tl, .block cs rd pf B m, h, h', _ => rfl
 
 theorem runArm_hintM : ∀ (tl : Bool) (arms : List (Hint × Term)) (c : Nat) (h h' : TyS), h.m = h'.m →
     runArm K ρ φ tl h c arms = runArm K ρ φ tl h' c arms

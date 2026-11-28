@@ -1899,7 +1899,7 @@ def callFn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.callFn fuel typed fT ws.size tys hd none recUid? res fills want defer) (st.withTemps (fv :: ws.toList)) bh
+    (bh : Nat) (h : Runs (Ochr.callFn fuel typed fT ws.size tys hd recUid? res fills want defer) (st.withTemps (fv :: ws.toList)) bh
       (v, T?) st'),
     SimConclT K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => callOf K.dm.read fres as) v T?
 

@@ -137,8 +137,11 @@ theorem machineGrows_zero : MachineGrows tb 0 where
   endBorrowArgs := zero_endBorrowArgs
   runBody := zero_runBody
   runBodyCore := zero_runBodyCore
+  lendArgs := zero_lendArgs
+  lendResult := zero_lendResult
   callFn := zero_callFn
   closeCall := zero_closeCall
+  closeWith := zero_closeWith
   refine := zero_refine
   evalMatch := zero_evalMatch
   natScrutinee := zero_natScrutinee
@@ -165,6 +168,7 @@ theorem machineGrows_zero : MachineGrows tb 0 where
   dropAtJoin := zero_dropAtJoin
   blockCaptures := zero_blockCaptures
   closeBlock := zero_closeBlock
+  runBlock := zero_runBlock
   observe := zero_observe
   idType := zero_idType
   stuckScrutinee := zero_stuckScrutinee
@@ -258,8 +262,11 @@ theorem machineGrows_succ (nf : Nat) (ih : MachineGrows tb nf) : MachineGrows tb
   endBorrowArgs := step_endBorrowArgs ih
   runBody := step_runBody ih
   runBodyCore := step_runBodyCore ih
+  lendArgs := step_lendArgs ih
+  lendResult := step_lendResult ih
   callFn := step_callFn ih
   closeCall := step_closeCall ih
+  closeWith := step_closeWith ih
   refine := step_refine ih
   evalMatch := step_evalMatch ih
   natScrutinee := step_natScrutinee ih
@@ -286,6 +293,7 @@ theorem machineGrows_succ (nf : Nat) (ih : MachineGrows tb nf) : MachineGrows tb
   dropAtJoin := step_dropAtJoin ih
   blockCaptures := step_blockCaptures ih
   closeBlock := step_closeBlock ih
+  runBlock := step_runBlock ih
   observe := step_observe ih
   idType := step_idType ih
   stuckScrutinee := step_stuckScrutinee ih

@@ -22,6 +22,10 @@ open SState
 section SyntaxAbs
 variable (σ : Nat) (w : Value)
 
+theorem lenArms_substAbs : ∀ ts : List (Hint × Term), (Term.substAbsArms σ w ts).length = ts.length
+  | [] => rfl
+  | (h, t) :: ts => by simp [Term.substAbsArms, lenArms_substAbs ts]
+
 mutual
 theorem placeOccs_substAbs : ∀ (t : Term) (c : Nat), (Term.substAbs σ w t).placeOccs c = t.placeOccs c
   | t, c => by
@@ -50,6 +54,8 @@ theorem placeOccs_substAbs : ∀ (t : Term) (c : Nat), (Term.substAbs σ w t).pl
     | prim n as => simp only [Term.substAbs, Term.placeOccs, placeOccsList_substAbs as]
     | tind n as => simp only [Term.substAbs, Term.placeOccs, placeOccsList_substAbs as]
     | matchInd p ty as => simp only [Term.substAbs, Term.placeOccs, placeOccsArms_substAbs as]
+    | block cs rd pf B m =>
+      simp only [Term.substAbs, Term.placeOccs, placeOccsArms_substAbs cs, placeOccs_substAbs m, lenArms_substAbs σ w cs]
     | _ => simp [Term.substAbs, Term.placeOccs]
 
 theorem placeOccsList_substAbs : ∀ (ts : List Term) (c : Nat),
@@ -437,6 +443,17 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
       have hfl : ∀ sc, K.D.flags sc (.ctor ty c h (Term.substAbsList σ w ps) (Term.substAbsList σ w args))
           = K.D.flags sc (.ctor ty c h ps args) := fun sc => hF.dec.1 sc (.ctor ty c h ps args)
       rw [runT, runT]; rw [Term.substAbsList_isEmpty]; simp only [hp, hf, hfl]
+    | block cs rd pf B m =>
+      have hm := fun tl' => runT_substAbsSame hF tl' m
+      have hfl : ∀ sc, K.D.flags sc (.block (Term.substAbsArms σ w cs) (Value.substAbsRd σ w rd) pf (Value.substAbs σ w B)
+          (Term.substAbs σ w m)) = K.D.flags sc (.block cs rd pf B m) := fun sc => hF.dec.1 sc (.block cs rd pf B m)
+      have hdo : ∀ sc, K.D.declOf sc (.block (Term.substAbsArms σ w cs) (Value.substAbsRd σ w rd) pf (Value.substAbs σ w B)
+          (Term.substAbs σ w m)) = K.D.declOf sc (.block cs rd pf B m) := fun sc => hF.dec.2.1 sc (.block cs rd pf B m)
+      funext s
+      show runT K ρ ψ tl hint (.block (Term.substAbsArms σ w cs) (Value.substAbsRd σ w rd) pf (Value.substAbs σ w B)
+        (Term.substAbs σ w m)) s = _
+      rw [runT, runT]
+      simp only [hm, hfl, hdo, meanV_substAbsSame hF B, capsTys_substAbsSame hF rd, runCells_substAbsSame hF cs]
     | call f args hd =>
       have hf := fun tl' => runT_substAbsSame hF tl' f
       have ha := fun st sh => runArgs_substAbsSame hF st sh args
@@ -548,6 +565,12 @@ theorem runArm_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (arm
   | _, [], _, _ => rfl
   | tl, (h, t) :: rest, hint, c => by
     simp only [Term.substAbsArms, runArm, runT_substAbsSame hF tl t, runArm_substAbsSame hF tl rest]
+
+theorem runCells_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (cs : List (Hint × Term)),
+    runCells K ρ ψ (Term.substAbsArms σ w cs) = runCells K ρ ψ cs
+  | [] => rfl
+  | (h, t) :: rest => by
+    simp only [Term.substAbsArms, runCells, runT_substAbsSame hF false t, runCells_substAbsSame hF rest]
 
 theorem runArgs_substAbsSame (hF : AbsFillOK K ρ ψ σ w) (stmt : Bool) (fT : TyM) :
     ∀ (args : List Term) (earlier : List Sem),
