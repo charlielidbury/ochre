@@ -645,7 +645,9 @@ private def notSort (B : String) : String :=
   ("PT1", paramHead "PT1" "x" "Type₁"), ("PT2", paramHead "PT2" "x" "Type₂"),
   ("PT1Prop", paramHead "PT1Prop" "x" "Type₁"), ("PT1Dep", paramHead "PT1Dep" "x" "Type₁"),
   ("PT1Two", paramHead "PT1Two2" "x" "Type₁"),
-  ("PMatch0", paramHead "PMatch0" "x" "match e {  }"), ("PHole", paramHead "PHole" "x" "hole"),
+  -- D141 fires first: a parameter whose type says nothing about its values
+  ("PMatch0", "[D141] the parameter B of PMatch0 is declared at match e {  }, which says nothing"),
+  ("PHole", "[D141] the parameter B of PHole is declared at hole, which says nothing"),
   ("PLet", "[D128] the parameter B of PLet is declared at let z = 0; Type"),
   ("PSeq", "[D128] the parameter B of PSeq is declared at (); Type"),
   ("PMatchEq", "[D128] the parameter B of PMatchEq is declared at match n { Z => Type, S _ => Type }"),
@@ -658,6 +660,88 @@ private def notSort (B : String) : String :=
   ("WGL", callHead "WGL" "x" "GL" "let z = 0; Type"), ("WGS", callHead "WGS" "x" "GS" "(); Type"),
   ("WGA", notSort "GA(0)"), ("WGF", notSort "GF(0)"),
   ("WG1Nest", "the parameter A of HBox has type Type₁, expected Type")]
+
+/-! ## A parameter's declared type can be read (D141)
+
+An inductive declaration's parameter whose declared type reads as "any" tells the readers nothing
+about its values: a hole, a match with no arms, a `;`, a `let` or an ascription ending in one, a
+call whose head's result type is one. D55 lets such a parameter stand wherever a type does
+(`Box(B)`), and D128 sees no sort, so before D141 only the evaluation of the parameter's type
+rejected it ("the type expected here is not known"), or D140 where it headed a field. The proof
+lane's instance is `VS`. Now each is rejected before anything runs. An unknown name reads as "any"
+too and keeps D118's message (`U0`); a match with a hole in one arm reads as its other arms (`MS`,
+D128); a parameter whose type is a function type into a hole reads as a function (`CP0`), not as
+"any", and is rejected by its evaluation, as before; a later parameter's type that calls it reads
+as "any" (`CP1`). -/
+
+ochr ReadableParams {
+  inductive Box (A : Type) := MkBox(x : A)
+  -- the proof lane's instance
+  reject inductive VS (A : Type) (B : (A; ?)) := MkVS(y : Box(B))
+  -- a hole: no field, heading a field, nested, a proposition, between two others
+  reject inductive H0 (B : ?) := MkH0
+  reject inductive H1 (B : ?) := MkH1(x : B)
+  reject inductive H2 (B : ?) := MkH2(y : Box(B))
+  reject inductive H3 (B : ?) : Prop := MkH3
+  reject inductive H4 (A : Type) (B : ?) (C : Type) := MkH4(c : C)
+  -- a `;` ending in a hole
+  reject inductive S0 (A : Type) (B : (A; ?)) := MkS0
+  reject inductive S1 (B : ((); ?)) := MkS1
+  reject inductive S2 (B : ((); ?)) := MkS2(y : Box(B))
+  reject inductive S3 (A : Type) (B : (A; ?)) := MkS3(x : B)
+  -- a `let` ending in a hole, or naming one
+  reject inductive L0 (B : (let z = 0; ?)) := MkL0
+  reject inductive L1 (A : Type) (B : (let z = A; ?)) := MkL1(y : Box(B))
+  reject inductive L2 (B : (let z = 0; let w = z; ?)) := MkL2(x : B)
+  reject inductive L3 (B : (let T = ?; T)) := MkL3(y : Box(B))
+  -- a match with no arms, or whose arms are all holes
+  reject inductive M0 (e : False) (B : match e {}) := MkM0
+  reject inductive M1 (e : False) (B : match e {}) := MkM1(y : Box(B))
+  reject inductive M2 (e : False) (B : (let z = 0; match e {})) := MkM2(y : Box(B))
+  reject inductive MH (n : Nat) (B : match n { Z => ?, S(m) => ? }) := MkMH(y : Box(B))
+  -- an ascription at a hole
+  reject inductive A0 (B : (Nat : ?)) := MkA0
+  reject inductive A1 (B : (Type : ?)) := MkA1(y : Box(B))
+  reject inductive A2 (A : Type) (B : (A : ?)) := MkA2(y : Box(B))
+  reject inductive A3 (B : (Type : (let z = 0; ?))) := MkA3(y : Box(B))
+  -- a call whose head's result type is a hole: a parameter's, a λ's
+  reject inductive CP1 (F : Π(n : Nat). ?) (B : F(Z)) := MkCP1
+  reject inductive CP2 (F : Π(n : Nat). ?) (B : F(Z)) := MkCP2(y : Box(B))
+  reject inductive CP3 (F : Π(n : Nat). ?) (B : F(Z)) := MkCP3(x : B)
+  reject inductive CP4 (F : Π(n : Nat). (Nat; ?)) (B : F(Z)) := MkCP4(y : Box(B))
+  reject inductive LC (B : (λ(x : Nat) : ? => Type)(Z)) := MkLC(y : Box(B))
+  -- the edges: an unknown name (D118), a hole in one arm only (D128), a function into a hole (its
+  -- evaluation)
+  reject inductive U0 (B : Foo) := MkU0(y : Box(B))
+  reject inductive MS (n : Nat) (B : match n { Z => ?, S(m) => Type }) := MkMS(y : Box(B))
+  reject inductive CP0 (F : Π(n : Nat). ?) := MkCP0
+  -- controls
+  inductive CT (B : Type) := MkCT(y : Box(B))
+  inductive CN (B : Nat) := MkCN
+}
+
+private def unread (n B T : String) : String :=
+  s!"[D141] the parameter {B} of {n} is declared at {T}, which says nothing about its values"
+
+#guard (run "ReadableParams" ReadableParams).rejectedWith [
+  ("VS", unread "VS" "B" "A; hole"),
+  ("H0", unread "H0" "B" "hole"), ("H1", unread "H1" "B" "hole"), ("H2", unread "H2" "B" "hole"),
+  ("H3", unread "H3" "B" "hole"), ("H4", unread "H4" "B" "hole"),
+  ("S0", unread "S0" "B" "A; hole"), ("S1", unread "S1" "B" "(); hole"),
+  ("S2", unread "S2" "B" "(); hole"), ("S3", unread "S3" "B" "A; hole"),
+  ("L0", unread "L0" "B" "let z = 0; hole"), ("L1", unread "L1" "B" "let z = A; hole"),
+  ("L2", unread "L2" "B" "let z = 0; let w = z; hole"), ("L3", unread "L3" "B" "let T = hole; T"),
+  ("M0", unread "M0" "B" "match e {  }"), ("M1", unread "M1" "B" "match e {  }"),
+  ("M2", unread "M2" "B" "let z = 0; match e {  }"),
+  ("MH", unread "MH" "B" "match n { Z => hole, S _ => hole }"),
+  ("A0", unread "A0" "B" "(Nat : hole)"), ("A1", unread "A1" "B" "(Type : hole)"),
+  ("A2", unread "A2" "B" "(A : hole)"), ("A3", unread "A3" "B" "(Type : let z = 0; hole)"),
+  ("CP1", unread "CP1" "B" "F(0)"), ("CP2", unread "CP2" "B" "F(0)"), ("CP3", unread "CP3" "B" "F(0)"),
+  ("CP4", unread "CP4" "B" "F(0)"),
+  ("LC", unread "LC" "B" "(fix _ (x : Nat) : hole := Type)(0)"),
+  ("U0", "unknown constant Foo"),
+  ("MS", "[D128] the parameter B of MS is declared at match n { Z => hole, S _ => Type }"),
+  ("CP0", "?: the type expected here is not known")]
 
 /-! ## The inductive model's probes (notes/inductive-model.md)
 

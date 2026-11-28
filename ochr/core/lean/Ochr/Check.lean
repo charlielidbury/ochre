@@ -581,6 +581,17 @@ def checkInd (d : IndDecl) : M Unit := do
   -- without end)
   undeclaredCheck none (d.params.map (·.2)) (own := some n)
   undeclaredCheck (some n) (d.ctors.flatMap (·.2.map (·.2)))
+  -- D141 [Ind-decl]: a parameter's declared type can be read. D128's readings (`telescope`, `sc`)
+  -- again: one that reads as "any" (a hole, a match with no arms, a `;`, a `let` or an ascription
+  -- ending in one, a call whose head's result type is one) tells the readers nothing about the
+  -- parameter's values, so D55 lets it stand wherever a type does (`Box(B)`) and D128 sees no sort.
+  -- Before D141 only the parameter's evaluation rejected it ("the type expected here is not known"),
+  -- or D140 where it headed a field; the consistency proof's data model rests on the fact
+  -- (`VaryValFact`). After D118, so that an unknown name, which reads as "any" too, keeps D118's
+  -- message. Decided from the written types and their readings, nothing run.
+  for (((h, PT), r), i) in (d.params.zip sc.reverse).zipIdx do
+    if r == .any then
+      err s!"[D141] the parameter {h.name} of {n} is declared at {PT.pp (pnames.drop (np - i))}, which says nothing about its values (a hole, a match with no arms, or a term ending in one): write the parameter's type so that it can be read"
   -- D140 [Ind-decl]: the head of a field's type has a small result, read from what is written. A
   -- parameter heading a field's type is written `Prop` or `Type`; a global heading one is declared
   -- with the codomain `Prop` or `Type` written. Decided from the written types, nothing run. Before
