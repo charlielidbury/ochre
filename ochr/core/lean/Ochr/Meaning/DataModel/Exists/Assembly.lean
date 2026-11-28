@@ -397,7 +397,14 @@ names (D118's `undeclaredCheck` at each item, and `NamesFact`), and `d'`'s own t
 stage's (`NamesFact`) and hold no embedded value (`NoValFact`). Every lookup by name then finds the
 same entry in `st'` and `st`. Not constrained, and read by no decision on these runs as far as
 machine10 read (`absDecl` only at an embedded abstract value; `env` replaced by `scopeState`;
-counters and `cfg` never): the other fields of `st`. -/
+counters and `cfg` never): the other fields of `st`.
+
+Read and attacked by exists13 (docs/34 §18.19, `DecStableCE.lean`): FALSE as stated for programs with
+holes. A stored global holds an abstract value only through a hole (`T : Type := ?`, `c : T := ?`), the
+decisions read its frozen reading (`absDecl`), which `st` leaves free, and with `σ0` read `Prop` the erasure
+decision at `c` in the accepted field type `Eq(Nat, F(c), Z)` flips from data to proof. For hole-free programs
+it needs the machine lane's two-way simulation of the decision procedures under an extension of the tables
+(equal `SucceedsAt` predicates, so `readDecisionFF` agrees without fuel agreement). -/
 def DecStable : Prop :=
   ∀ (k : Nat) (hk : k < items.length) (st' : MState) (d0 d' : IndDecl),
     verdict fuel items k hk = .ok () st' → items[k] = .ind d0 → st'.inds = indsOf {} fuel (items.take k) ++ [d'] →

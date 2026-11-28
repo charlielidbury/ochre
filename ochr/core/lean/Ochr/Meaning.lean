@@ -254,6 +254,7 @@ import Ochr.Meaning.DataModel.Exists.Step2
 import Ochr.Meaning.DataModel.Exists.Piece3
 import Ochr.Meaning.DataModel.Exists.FrameLocalCE
 import Ochr.Meaning.DataModel.Exists.FactsCE
+import Ochr.Meaning.DataModel.Exists.DecStableCE
 import Ochr.Meaning.DataModel.Exists.FieldLevel
 import Ochr.Meaning.DataModel.Exists.GlobalCalls
 import Ochr.Meaning.DataModel.Exists.GlobalCallsHard
