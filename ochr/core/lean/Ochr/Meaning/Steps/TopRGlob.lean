@@ -138,9 +138,10 @@ theorem meanV_tPi_R (K : RunCtx) (hd : DecR K.D) (ρ : Assignment) :
   show piTyAt K.dm.read (lG K [⟨"n"⟩] [.nat] .nat) (psG K ρ noFuture [.nat]) (outG K ρ noFuture [.nat] .nat) = _
   rw [psG_R K ρ hd, outG_R K ρ, lG_R K hd]
 
-/-- **`retKind` at `R`** (MODEL; read true, unproved: `R`'s function formed at ANY state returns an unlabelled result,
-its codomain being `Nat`; the column's run of the body, `ColumnRRun.runR`, is for the two-frame start state and must be
-generalised to the top frame of any state). `Master.RetKindG`'s clause at `R`'s code, at every context with `DecR`. -/
+/-- **`retKind` at `R`** (MODEL; PROVED by lead48, `Steps/TopRRet.retKindR`, docs/31 D292: `R`'s function formed at ANY
+state returns an unlabelled result, its codomain being `Nat`: the body's match returns its arm's label, the arm `Z` none,
+the self call the data row of `callOf` at the stage's Π-type). `Master.RetKindG`'s clause at `R`'s code, at every
+context with `DecR`. -/
 def RetKindR : Prop :=
   ∀ (K : RunCtx), DecR K.D → ∀ (ρ : Assignment) (φ : Future) (s : SState) (piT : TyM) (args : List Sem) (o : BodyOut),
     DomMembers K.dm.read (runDoms K ρ φ s [.nat]) args →
@@ -298,7 +299,8 @@ theorem constG_R (dm : DataModel) (hr : ResolvesTo pq F items) :
 
 /-- **The links of the top at `R`'s program** (`hlinks` exactly as `consistency_of_master` takes it, at `R`'s program):
 PROVED but for TWO facts, `KeepsTabFixR` (whole-machine, the machine lane's) and `RetKindR` (`R`'s function at an
-arbitrary forming state returns an unlabelled result; model, read true). -/
+arbitrary forming state returns an unlabelled result; PROVED since lead48, `Steps/TopRRet.retKindR`, so `hlinks_R1`
+assumes `KeepsTabFixR` alone). -/
 theorem hlinks_R (hkt : KeepsTabFixR) (hret : RetKindR) : ∀ items, ResolvesTo pq F items →
     ∀ dm, (∀ d' ∈ indsOf {} F items, dm.covers d') →
       (∀ k, k ≤ items.length → DataFaithful dm (chainDecisions F) (indsOf {} F items)
