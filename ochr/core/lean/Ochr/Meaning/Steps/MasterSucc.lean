@@ -234,9 +234,9 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hN
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ typed none v₀ T₀ s π (hm.of_modeEq hm₀) (fun _ => htn₀)
     (by omega) (.inl htd₀) (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS (by simpa [Term.valsOk] using hv) hab' (hintBelow_none _) hnh' hokU
     (hDb K.D hD) bh₁ hu₀
-  replace hOu := outK_of_outLK hOu
+  replace hOu := outGK_of_outLK hOu
   rw [htn₀] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx, hmean, hagr, hlab, hp₁, hr₁⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx, hmean, hagr, hlab, hp₁, hr₁, hglu⟩, hK₁⟩ := hOu
   have hx' : runT K ρ φ false (.plain TyM.err) u s = some (r, s₁) := hx
   obtain ⟨hgu, -, -, hS₁⟩ := Strict.fund_all hc u (by simpa [Term.valsOk] using hv) false (.plain TyM.err) s s₁ r hS hx'
   -- the argument carries no borrow: typed, by the checker's fact; untyped, by the reference's success (`hok`: since
@@ -286,7 +286,7 @@ theorem succ_coreG (hST : SuccStrictG) (hSM : SuccMeanG) (hSF : SuccFlightG) (hN
     · rw [← ColumnC.topReadings_of_erase hq.env, hK₁.top, ColumnC.topReadings_kern hk₀.symm]
     · rw [← hq.recStack, hK₁.stack, ← hk₀.recStack]
   refine ⟨⟨ρ₁, Δ₁, π₁, (r.1.succ, .plain TyM.nat), s₁, ⟨?_, ?_, ?_, ?_⟩, hrun, hmv, fun T hT => ?_,
-    by rw [heldLabel_succ]; rfl, hpF, hrF⟩, hkept⟩
+    by rw [heldLabel_succ]; rfl, hpF, hrF, by rw [← hq.goal, hglu, ← hk₀.goal]⟩, hkept⟩
   · rw [hk₀.absTy]; exact Nat.le_trans he₁.abs hq.absSize
   · rw [hk₀.nextLoan]; exact Nat.le_trans he₁.lab hq.nextLoan
   · intro σ hσ; rw [hk₀.absTy] at hσ; exact he₁.agree σ hσ

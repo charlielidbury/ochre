@@ -182,6 +182,9 @@ structure CallEntry (K : RunCtx) (φ : Future) (Δ : Nat → TyS) (ρ : Assignme
   /-- The [Rec] stack is the call point's (R1, lead47, docs/31 D284: the front's private copies restore it, and the push
   of the callee's frame does not touch it; read true). -/
   stack : stP.recStack = stc.recStack
+  /-- The goal is the call point's (the goal clause, lead48, docs/31 D290: the front's [Call-type] and [Rec] run on
+  private copies, which restore the goal, and the push does not touch it; read true). -/
+  goal : stP.goal = stc.goal
 
 /-- **The exit data fits the front** (what `CallEnterG` concludes of `exitM`'s data): a label is reserved exactly at a
 borrow codomain, and it is the reference's `callPre`'s fresh label under the renaming. -/
@@ -198,7 +201,9 @@ after `callFn`'s front: [Call-type] and [Rec] on private copies, [Lend]'s marks 
 condition of `EvalAt` there against the reference's push (`CallEntry`), the body ran from it, and the rest of the call is
 `exitM`, whose data fits the front (`ExitFits`). The checker's side guarded (`Steps/CallRanAttack`, `pushPhase`); the
 reference's: the push relates by statement transfer (C2) for a type evaluated at the push, by `paramTy` for a deferred
-one, the reservation's marks are `callPre`'s fills (pinned at `Kr`, `CallStepGuards`). -/
+one, the reservation's marks are `callPre`'s fills (pinned at `Kr`, `CallStepGuards`). The closed-off half concludes the
+goal's meaning kept (`CallConcl`'s clause, lead48, docs/31 D290: read true, [Close] substitutes the fills for the loans
+with `types := false` and writes no goal). -/
 def CallEnterG (K : RunCtx) (φ : Future) : Prop :=
   ∀ n, IH K φ (n + 1) → ∀ (Δ : Nat → TyS) (ρ : Assignment) (π : Nat → Nat) (g : String) (hd typed : Bool)
     (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (cf : CallFlags) (stc st₁ : MState)
@@ -227,7 +232,9 @@ there: the call is simulated by the reference's run in place (`runCallRef`: the 
 whole contents make the reference's strict ends pass (D98, N7); `popFrame`'s drops (newest binding first) against
 `popEnds` in label order (commutation of ends, `RelendComm`); the result moved from the callee's frame to the caller's
 (`pushTempAt`, `popTemp` against `popCallFrame`'s re-park); `renameInto` against `endInto` (D99; `ExitFits`); η at
-`Unit`; the deferred type (`callTyLater`) and the call's type `B` against the codomain at the arguments. -/
+`Unit`; the deferred type (`callTyLater`) and the call's type `B` against the codomain at the arguments. It takes the
+body's goal clause (the induction hypothesis concludes it) and concludes the call's (lead48, docs/31 D290: read true, the
+pop's drops end borrows with `types := false`, and the moves of the result write no goal). -/
 def CallExitG (K : RunCtx) (φ : Future) : Prop :=
   ∀ n (Δ : Nat → TyS) (ρ : Assignment) (π : Nat → Nat) (g : String) (hd typed : Bool)
     (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (cf : CallFlags) (stc st₁ : MState)
@@ -248,6 +255,7 @@ def CallExitG (K : RunCtx) (φ : Future) : Prop :=
       (refStart { K with Δ := Δ } ρ φ g ds c asR sc) = some (r, s₂) →
     meanV { K with Δ := Δ₂ } ρ₂ (fun l => φ (π₂ l)) r.2 v₀ = r.1 → r.2.label = (Value.heldLabel v₀).map π₂ →
     Pre { K with Δ := Δ₂ } ρ₂ (stE.withTempT v₀ T₀) → Rel { K with Δ := Δ₂ } ρ₂ φ π₂ (stE.withTempT v₀ T₀) s₂ →
+    hintM { K with Δ := Δ₂ } ρ₂ stE.goal = hintM { K with Δ := Δ₁ } ρ₁ stP.goal →
     Kept stP stE → Runs (exitM e v₀) stE b' (v, T?) st₁ →
     CallConcl K φ Δ ρ π stc st₁ (runCallRef { K with Δ := Δ } ρ φ (K.C.global g) [] (.fix self hs ds c dec body) [] asR)
       sc v T? cf typed ∧ Kept stc st₁
@@ -453,7 +461,7 @@ theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex :
   -- the induction hypothesis at the body, at the push's context, untyped, at the checker's hint
   have hH := hint_run hhn hhd hhc hcp hE (refStart { K with Δ := Δ } ρ φ g ds c asR sc)
   obtain ⟨hnv, -⟩ := noVal_parts hE.noVal
-  obtain ⟨⟨ρ₂, Δ₂, π₂, r, s₂, hext₂, hx, hmean, -, hlab₂, hpre₂, hrel₂, -, -⟩, hkept⟩ :=
+  obtain ⟨⟨ρ₂, Δ₂, π₂, r, s₂, hext₂, hx, hmean, -, hlab₂, hpre₂, hrel₂, -, -, hgl₂⟩, hkept⟩ :=
     (ih m hmn Δ₁ ρ₁).1 body stP stE false hint v₀ T₀ (refStart { K with Δ := Δ } ρ φ g ds c asR sc) π₁
       hE.mode (fun h => by cases h) hE.size (Or.inl hE.decl) hE.pre
       (hrt.move hE.stack hE.ext.abs fun σ hσ => (hE.ext.agree σ hσ).1) hE.rel hSG
@@ -466,7 +474,7 @@ theorem callRanSimG_of {K : RunCtx} {φ : Future} (hen : CallEnterG K φ) (hex :
   -- the pop and the tail
   obtain ⟨hcon, hkept'⟩ := hex n Δ ρ π g hd typed fT ws tys cf stc st₁ sc asR v T? bh gd self hs ds c dec body stP stE
     hint ρ₁ Δ₁ π₁ v₀ T₀ b' e ρ₂ Δ₂ π₂ r s₂ hcur hns hG hfind hfn hl0 hff hm htn hsz hcp hfT hD hrun hE hfits hext₂ hx
-    hmean hlab₂ hpre₂ hrel₂ hkept hexit
+    hmean hlab₂ hpre₂ hrel₂ hgl₂ hkept hexit
   exact ⟨Or.inl hcon, hkept'⟩
 
 /-! ## The step for a call of a global, as one list -/

@@ -71,7 +71,9 @@ def CallUnderCheckG (K : RunCtx) (φ : Future) : Prop :=
       -- lead39 (docs/31 D241): `CallFnG`'s two clauses of `OutL` (D183, ruling (ii)), which this branch must conclude too
       (cf.defer = true → ∀ caps hs ds cod rd ws', st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws') →
         ({ K with Δ := Δ' }).M.paramTy ρ' (.tPi caps (.pi hs ds cod) rd) ws' ds.length = r.2) ∧
-      ((typed = true ∨ (cf.want = true ∧ cf.defer = false)) → T? = none → r.2.m = TyM.err)) ∧
+      ((typed = true ∨ (cf.want = true ∧ cf.defer = false)) → T? = none → r.2.m = TyM.err) ∧
+      -- lead48 (docs/31 D290): the goal clause, as `CallFnG` concludes it (a call closed off at once writes no goal)
+      hintM { K with Δ := Δ' } ρ' st₁.goal = hintM { K with Δ := Δ } ρ stc.goal) ∧
     Kept stc st₁
 
 /-- **The re-run of a sealed program** (MIXED; Task 1 (b); principle 7: a sealed program means the run of its text, and

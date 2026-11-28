@@ -292,7 +292,7 @@ nothing the column did not already compute; its content (N3 at the leaf's type, 
 where a body's run is not computed directly. -/
 theorem fixLeaf_R (P : ProgState) (st : MState) {m : Bool} {rest : List GDef} (hg : st.globals = gE m :: rest)
     (w : FixWit) : FixLeafAt dm (chainDecisions F) Γ P defR st w := by
-  intro ρ ρa Δa φ π b a ha hlt _ _ _ _ _
+  intro ρ ρa Δa φ π b a ha hlt _ _ _ _ _ _
   exact stG_good_R P st hg ρ φ (b + 1) a ha hlt
 
 /-- The name test that admits every global but `R`. -/

@@ -165,12 +165,21 @@ lemma at the reference's run, and the run being the stage's: stage `b + 1`'s out
 Since docs/31 D259 it is stated at the check's context with the start's `Δa` (`ctxBΔ`). Since docs/31 D256 it also takes what the knot has at that point and lead43's form left out: `a`'s rank below `b + 1` (above
 it the stage-`b` self returns its weakened output, and nothing else in the hypotheses excludes that) and the start's `Pre`
 and relation at the assignment `ρa` (which ties `ρa`'s parameters to `a`, so that the goal under `ρa` is the codomain at
-`a`). Both only weaken the link. -/
+`a`). Both only weaken the link.
+
+RESTATED (lead48, docs/31 D290, D287's form): it also takes `FixStartAt`'s hint (the start's goal read under `ρa` is the
+codomain at `a`), which `knot_step` holds. With the goal clause in `TailAt`'s conclusion (`TailConcl`, the ruling on
+D286), the leaf's goal means the start's, so this hint is what ties the leaf's type to the codomain at `a`: the link is
+then DERIVED from `TailConcl` and named facts at every function with no borrow parameter, or with borrow parameters and
+the pop's finals, at a data codomain whose body the table reads as data (`Top.Leaf.fixLeafG_of`, `fixLeafG_ofRef`).
+Before, its hypotheses did not give the result's membership at the codomain (D286). The body's flag needs no hypothesis:
+`TailConcl` gives the full form under it and the erased form always. -/
 def FixLeafAt (P : ProgState) (d : Def) (st' : MState) (w : FixWit) : Prop :=
   ∀ (ρ ρa : Assignment) (Δa : Nat → TyS) (φ : Future) (π : Nat → Nat) (b : Nat) (a : List Sem),
     DomMembers dm.read (psG (P.ctx dm D Γ st') ρ φ d.doms) a → fixRank d.dec a < b + 1 →
     Pre (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀ →
     Rel (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ π w.st₀ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a) →
+    hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal = (fbG (P.ctx dm D Γ st') ρ φ d.doms d.cod).2.1 a →
     TailConcl (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ π w.st₀ (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)
       d.body (runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true (hintM (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa w.st₀.goal) d.body)
       (fixCont w.n d.name) →
@@ -363,7 +372,7 @@ theorem knot_step
   have heq := (congrArg (fun h => runT (ctxBΔ dm D Γ P d st' ρ φ b Δa) ρa φ true h d.body
       (startAt (P.ctx dm D Γ st') ρ φ d.hs d.doms d.cod d.dec d.body b a)) hhint).trans
     (hcongr ρ ρa Δa φ b _ _)
-  refine hleaf ρ ρa Δa φ π b a ha hlt hpre hrel hT heq (fun r s' hx => ?_)
+  refine hleaf ρ ρa Δa φ π b a ha hlt hpre hrel hhint hT heq (fun r s' hx => ?_)
   rw [← heq] at hx
   have hF := Strict.fund_all hfc d.body hvals true _ _ s' r hsg hx
   exact ⟨hF.1, hF.2.2.2⟩

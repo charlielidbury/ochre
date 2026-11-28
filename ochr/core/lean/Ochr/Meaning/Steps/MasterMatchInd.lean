@@ -379,18 +379,18 @@ theorem indArm_leafJ (hJI : JoinContInv) (hJ : JoinContG) (hVC : ValsCongrA) (hc
     (hrt.move (by rw [← hkJ.recStack]; exact hKW.stack) (by rw [← hkJ.absTy]; exact heW.abs)
       fun σ hσ => (heW.agree σ hσ).1) (hrW.of_kern hkJ) hSA (hVC K ΔW ρ ρW φ _ hagree hva)
     (absBelow_mono haba (by rw [← hkJ.absTy]; exact heW.abs)) hnha hD₁ harm
-  obtain ⟨stl, v, T, ⟨bk, stk, hkr⟩, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hK₁⟩ := hO.1 harmfl
+  obtain ⟨stl, v, T, ⟨bk, stk, hkr⟩, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁, hg₁⟩, hK₁⟩ := hO.1 harmfl
   have hgJ : hintM { K with Δ := ΔW } ρW stJ.goal = hintM K ρ st.goal := by rw [← hkJ.goal]; exact hgW
   rw [hgJ] at hx₁
   have hx₁' : runT K ρ φ true (hintM K ρ st.goal) a sA = some (r, s₁) := by
     rw [runT_congrA K ΔW ρ ρW φ true _ _ sA hagree]; exact hx₁
   obtain ⟨-, -, -, hS₁⟩ := Strict.fund_all hc _ hva true _ sA s₁ r hSA hx₁'
-  obtain ⟨hjok, stl₂, v₂, ρ₂, Δ₂, π₂, he₂, hK₂, hm₂, ha₂, hl₂, hp₂, hr₂, bk', stk', hk'⟩ :=
+  obtain ⟨hjok, stl₂, v₂, ρ₂, Δ₂, π₂, he₂, hK₂, hm₂, ha₂, hl₂, hp₂, hr₂, hg₂, bk', stk', hk'⟩ :=
     hJ { K with Δ := ΔW } ρW φ πW stW stJ sA _ k kc m bj (ih.lower (Nat.le_of_lt hmn) ΔW) hneW hpW hrW hjc ρ₁ Δ₁ π₁
       stl stk v T r s₁ bk he₁ hK₁ hm₁ (ha₁ T rfl) hl₁ hp₁ hr₁ hS₁ hkr
   refine ⟨stl₂, v₂, T, ⟨bk', stk', hk'⟩, ⟨ρ₂, Δ₂, π₂, r, joinDrop K φ (movedPlaces φ sA) (.matchInd p ty arms) s₁,
     (heW.trans ((he₁.congr hkJ.absTy hkJ.nextLoan rfl rfl))).trans he₂, ?_, hm₂, fun T' e => by cases e; exact ha₂,
-    hl₂, hp₂, hr₂⟩, ((hKW.trans (Kept.of_kern hkJ hmJ)).trans hK₁).trans hK₂⟩
+    hl₂, hp₂, hr₂, hg₂.trans (hg₁.trans hgJ)⟩, ((hKW.trans (Kept.of_kern hkJ hmJ)).trans hK₁).trans hK₂⟩
   have := runT_matchInd_tailData (K := K) (ρ := ρ) (φ := φ) (hintM K ρ st.goal) p ty arms hfl hTok htag hcn hnp
     (by rw [runArm_get arms c x a hget]; exact hx₁') (.inr hjok)
   rw [hone] at this
@@ -422,11 +422,11 @@ theorem indArm_leaf1 (hVC : ValsCongrA)
     (hm.of_modeEq hKW.mode) htnW hneW htdW hk hkt hpW (hrt.move hKW.stack heW.abs fun σ hσ => (heW.agree σ hσ).1)
     hrW hSA (hVC K ΔW ρ ρW φ _ hagree hva)
     (absBelow_mono haba heW.abs) hnha hD₁ harm
-  obtain ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hK₁⟩ := hO.1 harmfl
+  obtain ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁, hg₁⟩, hK₁⟩ := hO.1 harmfl
   rw [hgW] at hx₁
   have hx₁' : runT K ρ φ true (hintM K ρ st.goal) a sA = some (r, s₁) := by
     rw [runT_congrA K ΔW ρ ρW φ true _ _ sA hagree]; exact hx₁
-  refine ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, heW.trans he₁, ?_, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hKW.trans hK₁⟩
+  refine ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, heW.trans he₁, ?_, hm₁, ha₁, hl₁, hp₁, hr₁, hg₁.trans hgW⟩, hKW.trans hK₁⟩
   have := runT_matchInd_tailData (K := K) (ρ := ρ) (φ := φ) (hintM K ρ st.goal) p ty arms hfl hTok htag hcn hnp
     (by rw [runArm_get arms c x a hget]; exact hx₁') (.inl hone)
   rw [hone] at this
@@ -520,10 +520,11 @@ theorem tStepMatchInd_data (hInv : TailMatchIndInv) (hJI : JoinContInv) (hMF : M
         (((htdE.trans htdS).trans htdA).trans htd) hk hkt hpE (hrt.move hK'.stack he.abs fun σ hσ => (he.agree σ hσ).1)
         hrE hSA (hVC K ΔE ρ ρE φ _ hagree hv)
         (absBelow_mono hab he.abs) hnh hD₁ hre
-      obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hK₁⟩ :=
+      obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁, hg₁⟩, hK₁⟩ :=
         hO.1 (by rw [hsc]; exact hfl2)
       rw [(hgE.trans hgS).trans hgA] at hx₁
-      refine ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s₁, he.trans he₁, ?_, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hK'.trans hK₁⟩
+      refine ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s₁, he.trans he₁, ?_, hm₁, ha₁, hl₁, hp₁, hr₁,
+        hg₁.trans ((hgE.trans hgS).trans hgA)⟩, hK'.trans hK₁⟩
       rw [← matchIndReaccessM hfl hTok htag, runT_congrA K ΔE ρ ρE φ true _ _ sA hagree]
       exact hx₁
     · -- several constructors: the world of the assignment's constructor
@@ -550,10 +551,11 @@ theorem tStepMatchInd_data (hInv : TailMatchIndInv) (hJI : JoinContInv) (hMF : M
       (hm.of_modeEq (hKA.trans hKG).mode) ((htnG.trans htnA).trans htn) (by rw [(hKA.trans hKG).size]; exact hne)
       ((htdG.trans htdA).trans htd) hk hkt hpG (hrt.move (hKA.trans hKG).stack he.abs fun σ hσ => (he.agree σ hσ).1)
       hrG hSA (hVC K ΔG ρ ρG φ _ hagree hv) (absBelow_mono hab he.abs) hnh hD₁ hre
-    obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hK₁⟩ :=
+    obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁, hg₁⟩, hK₁⟩ :=
       hO.1 (by rw [hsc]; exact hfl2)
     rw [hgG.trans hgA] at hx₁
-    refine ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he.trans he₁, ?_, hm₁, ha₁, hl₁, hp₁, hr₁⟩, (hKA.trans hKG).trans hK₁⟩
+    refine ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he.trans he₁, ?_, hm₁, ha₁, hl₁, hp₁, hr₁, hg₁.trans (hgG.trans hgA)⟩,
+      (hKA.trans hKG).trans hK₁⟩
     rw [← matchIndReaccessM hfl hTok htag, runT_congrA K ΔG ρ ρG φ true _ _ sA hagree]
     exact hx₁
 
@@ -598,15 +600,15 @@ theorem indArm_leafE (hPJ : ProofJoinIndG K.D) (hPA : ProofArmIndM K) (hVC : Val
     (hm.of_modeEq hKW.mode) htnW hneW htdW hk hkt hpW (hrt.move hKW.stack heW.abs fun σ hσ => (heW.agree σ hσ).1)
     hrW hSA (hVC K ΔW ρ ρW φ _ hagree hva)
     (absBelow_mono haba heW.abs) hnha hD₁ harm
-  obtain ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁⟩, hK₁⟩ := hO.2
+  obtain ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁, hg₁⟩, hK₁⟩ := hO.2
   rw [hgW] at hx₁
   have hx₁' : runT K ρ φ true (hintM K ρ st.goal) a sA = some (r, s₁) := by
     rw [runT_congrA K ΔW ρ ρW φ true _ _ sA hagree]; exact hx₁
   have hxa : runArm K ρ φ true (hintM K ρ st.goal) c arms sA = some (r, s₁) := by
     rw [runArm_get arms c x a hget]; exact hx₁'
   obtain ⟨hr1, hr2, hs₁⟩ := hPA K.Δ ρ φ _ p ty arms sA s₁ c r (by rw [hsc]; exact hfl2) hxa
-  refine ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, (.proof, .plain (TyM.prop True)), s, heW.trans he₁, ?_, ?_, ?_, hp₁⟩,
-    hKW.trans hK₁⟩
+  refine ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, (.proof, .plain (TyM.prop True)), s, heW.trans he₁, ?_, ?_, ?_, hp₁,
+    hg₁.trans hgW⟩, hKW.trans hK₁⟩
   · exact runT_matchInd_tailProof _ p ty arms hfl2 hTok htag hcn hnp hxa hr1
       (hPJ.1 _ _ p ty arms (by rw [hs₁, hsc]; exact hfl2))
   · show meanV _ _ _ (.plain (TyM.prop True)) v = .proof
@@ -693,7 +695,7 @@ theorem tStepMatchInd_proofRead (hInv : TailMatchIndInv) (hJI : JoinContInv) (hP
         (((htdE.trans htdS).trans htdA).trans htd) hk hkt hpE (hrt.move hK'.stack he.abs fun σ hσ => (he.agree σ hσ).1)
         hrE hSA (hVC K ΔE ρ ρE φ _ hagree hv)
         (absBelow_mono hab he.abs) hnh hD₁ hre
-      obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s₁, he₁, hx₁, hm₁, ha₁, hp₁⟩, hK₁⟩ := hO.2
+      obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s₁, he₁, hx₁, hm₁, ha₁, hp₁, hg₁⟩, hK₁⟩ := hO.2
       rw [(hgE.trans hgS).trans hgA, ← runT_congrA K ΔE ρ ρE φ true _ _ sA hagree] at hx₁
       have hmap := matchIndReaccessE (K := K) (ρ := ρ) (φ := φ) (tl := true) (hint := hintM K ρ st.goal) (ty := ty)
         (arms := arms) hTok htag
@@ -701,7 +703,8 @@ theorem tStepMatchInd_proofRead (hInv : TailMatchIndInv) (hJI : JoinContInv) (hP
       obtain ⟨⟨r'', s''⟩, hx', hr'⟩ := Option.map_eq_some_iff.mp hmap.symm
       simp only at hr'
       subst hr'
-      exact ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r'', s'', he.trans he₁, hx', hm₁, ha₁, hp₁⟩, hK'.trans hK₁⟩
+      exact ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r'', s'', he.trans he₁, hx', hm₁, ha₁, hp₁,
+        hg₁.trans ((hgE.trans hgS).trans hgA)⟩, hK'.trans hK₁⟩
     · have hlenA : arms.length = d.ctors.length := hcov d hΓ
       have hcA : cT < arms.length := by rw [hlenA]; exact hcTlt
       have hget : arms[cT]? = some (arms[cT].1, arms[cT].2) := by rw [List.getElem?_eq_getElem hcA]
@@ -726,7 +729,7 @@ theorem tStepMatchInd_proofRead (hInv : TailMatchIndInv) (hJI : JoinContInv) (hP
       (hm.of_modeEq (hKA.trans hKG).mode) ((htnG.trans htnA).trans htn) (by rw [(hKA.trans hKG).size]; exact hne)
       ((htdG.trans htdA).trans htd) hk hkt hpG (hrt.move (hKA.trans hKG).stack he.abs fun σ hσ => (he.agree σ hσ).1)
       hrG hSA (hVC K ΔG ρ ρG φ _ hagree hv) (absBelow_mono hab he.abs) hnh hD₁ hre
-    obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁⟩, hK₁⟩ := hO.2
+    obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁, hg₁⟩, hK₁⟩ := hO.2
     rw [hgG.trans hgA, ← runT_congrA K ΔG ρ ρG φ true _ _ sA hagree] at hx₁
     have hmap := matchIndReaccessE (K := K) (ρ := ρ) (φ := φ) (tl := true) (hint := hintM K ρ st.goal) (ty := ty)
       (arms := arms) hTok htag
@@ -734,7 +737,8 @@ theorem tStepMatchInd_proofRead (hInv : TailMatchIndInv) (hJI : JoinContInv) (hP
     obtain ⟨⟨r', s'⟩, hx', hr'⟩ := Option.map_eq_some_iff.mp hmap.symm
     simp only at hr'
     subst hr'
-    exact ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s', he.trans he₁, hx', hm₁, ha₁, hp₁⟩, (hKA.trans hKG).trans hK₁⟩
+    exact ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s', he.trans he₁, hx', hm₁, ha₁, hp₁, hg₁.trans (hgG.trans hgA)⟩,
+      (hKA.trans hKG).trans hK₁⟩
 end
 
 /-! ## The step, assembled -/

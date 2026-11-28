@@ -105,14 +105,14 @@ theorem tt_coreSimK {n : Nat} {P : MState → Prop} {TY : Bool → Prop} : CoreS
     invSteps.pushInert K.D K.Γ st .unit _ (.inr rfl) hp.inv
   refine ⟨⟨ρ, K.Δ, π, (.el0 Unit (), .plain TyM.unit), s, ⟨Nat.le_refl _, Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩,
     fun _ _ => rfl⟩, runT_tt _ _ _, rfl, fun T hT => ?_, rfl, ⟨hp.ctx.of_eq rfl rfl, hinv,
-    asg_withTempT_inert hp.asg Value.inert_unit _⟩, rel_withTempT_inert hr Value.inert_unit _⟩, Kept.rfl' _⟩
+    asg_withTempT_inert hp.asg Value.inert_unit _⟩, rel_withTempT_inert hr Value.inert_unit _, rfl⟩, Kept.rfl' _⟩
   cases hT; rfl
 
 /-- **`Z`, at `evalCore`, at any erased depth.** -/
 theorem zero_coreSimK {n : Nat} {P : MState → Prop} {TY : Bool → Prop} : CoreSimK K ρ φ (n + 1) .zero P TY := by
   intro st st' typed hint v T? s π _ _ _ _ _ _ _ hp _ hr _ _ _ _ _ _ _ hD bh h
-  refine ⟨zero_core zeroInv invSteps s π hp hr hD h, ?_⟩
   obtain ⟨-, -, hst⟩ := zeroInvE n typed hint st st' bh v T? h
+  refine ⟨OutG.of_out hp (by rw [hst]) (zero_core zeroInv invSteps s π hp hr hD h), ?_⟩
   subst st'
   exact Kept.rfl' _
 

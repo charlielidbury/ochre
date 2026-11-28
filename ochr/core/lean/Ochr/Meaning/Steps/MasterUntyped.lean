@@ -520,41 +520,7 @@ theorem hintBelow_ite {hint : Option Value} {n : Nat} (c : Bool) (h : HintBelow 
   · exact hintBelow_none n
   · exact h
 
-/-- `hintM` at a hint that is not D124's deferred form: its meaning as a type value. -/
-theorem hintM_of_none {K : RunCtx} {ρ : Assignment} {T : Value} (h : deferredHint? T = none) :
-    hintM K ρ (some T) = Value.tyS K.dm K.M K.Γ ρ T := by
-  simp only [hintM, h]
-
-/-- `hintM` at D124's deferred hint: the codomain of the function type at the arguments (docs/31 D243). -/
-theorem hintM_of_some {K : RunCtx} {ρ : Assignment} {T P : Value} {ws : List Value} (h : deferredHint? T = some (P, ws)) :
-    hintM K ρ (some T) = K.M.paramTy ρ P ws (piArity P) := by
-  simp only [hintM, h]
-
-/-- **The hint means the same across an extension** (docs/31 D180): a hint naming only unknowns below `n`
-(`HintBelow`, D179) has the same meaning at an assignment and `Δ` that agree with the old ones below `n`, as
-every extension a step hands on does (`Ext.agree`). The reason `EvalAt` assumes `HintBelow`: an untyped `let`/`;`
-in tail position hands its tail the hint after its first sub-run extended the assignment. -/
-theorem hintM_congrA {K : RunCtx} {ρ ρ₁ : Assignment} {Δ₁ : Nat → TyS} {hint : Option Value} {n : Nat}
-    (hb : HintBelow hint n) (hag : ∀ σ, σ < n → ρ₁ σ = ρ σ ∧ Δ₁ σ = K.Δ σ) :
-    hintM { K with Δ := Δ₁ } ρ₁ hint = hintM K ρ hint := by
-  cases hint with
-  | none => rfl
-  | some T =>
-    have hT : ∀ σ, T.anyAtom (· == .abs σ) = true → AgreeA K Δ₁ ρ ρ₁ σ := fun σ hσ => by
-      obtain ⟨a, d⟩ := hag σ (hb T rfl σ hσ)
-      exact ⟨a.symm, d.symm⟩
-    cases hd : deferredHint? T with
-    | none =>
-      rw [hintM_of_none hd, hintM_of_none hd]
-      show TyS.plain (Value.mean K.dm (codeMeaning { K with Δ := Δ₁ }) K.Γ ρ₁ (fun _ => .err) (.plain TyM.err) T).asTy =
-        TyS.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ (fun _ => .err) (.plain TyM.err) T).asTy
-      rw [meanV_eq_mean { K with Δ := Δ₁ } ρ₁, meanV_eq_mean K ρ, meanV_congrA K Δ₁ ρ ρ₁ _ T _ hT]
-    | some Pw =>
-      obtain ⟨P, ws⟩ := Pw
-      -- the deferred hint (docs/31 D243): its function type and arguments are atoms of the hint
-      rw [hintM_of_some hd, hintM_of_some hd]
-      exact (paramTy_congrA K Δ₁ ρ ρ₁ P ws (piArity P)
-        (fun σ h => hT σ ((deferredHint?_atoms hd _).1 h)) (fun σ h => hT σ ((deferredHint?_atoms hd _).2 h))).symm
+-- `hintM_of_none`, `hintM_of_some`, `hintM_congrA`: moved to `Master.lean` (lead48: the goal clause rests on them).
 
 /-- **The push of a binding whose type is deferred** (mixed; STATED, not proved; with `LetCallInvU`, what the
 untyped `let` of a call needs beyond `LetPushG`): as `LetPushG`, the value's type unknown (`T₀ = none`) and the new
@@ -605,13 +571,13 @@ theorem seq_coreU (hST : SeqTailDecl K.D) (hDV : DropValueG)
   -- the step for `u`, from the entry state itself
   have hOu := (ih m (by omega) K.Δ ρ).1 u st st₁ false none v₀ T₀ s π hm (fun e => by cases e) hne (.inl htd) hp hrt hr hS
     hv.1 habu (hintBelow_none _) hnhu (fun _ => by rw [htn]; exact hoku) hD₁ bh₁ hru
-  replace hOu := outK_of_outLK hOu
+  replace hOu := outGK_of_outLK hOu
   rw [htn] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, hglu⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
   obtain ⟨-, -, -, hS₁⟩ := Strict.fund_all hc u hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
   -- the discard, on both sides
-  obtain ⟨hdok, ⟨hga, hgl⟩, hP₄, hR₄, hK₄⟩ := hDV { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ s₄ v₀ T₀ ru s₁ m bh₃
+  obtain ⟨hdok, ⟨hga, hgl⟩, hP₄, hR₄, hK₄, hg₄⟩ := hDV { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ s₄ v₀ T₀ ru s₁ m bh₃
     (by rw [hK₁.size]; exact hne) hp₁ hr₁ hS₁ hmu hlu hdv
   have hS₂ : Strict.SGood K.dm K.Γ φ (discardEnd ru.2 s₁) := by
     unfold discardEnd; unfold DiscardOk at hdok; split
@@ -639,15 +605,17 @@ theorem seq_coreU (hST : SeqTailDecl K.D) (hDV : DropValueG)
     (hP₄.of_kern hkW) (hrt.move hKW.stack habW fun σ hσ => (he₁.agree σ hσ).1) (hR₄.of_kern hkW) hS₂
     (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habW) (hHb.mono habW) hnhw
     (fun _ => by rw [htnW, hHM, ← runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hokw) hD bh₂ hrw
-  replace hOw := outK_of_outLK hOw
+  replace hOw := outGK_of_outLK hOw
   rw [htnW, hHM] at hOw
-  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
+  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, he₂, hxw, hmw, haw, hlw, hp₂, hr₂, hglw⟩, hK₂⟩ := hOw
   have hxw' : runT K ρ φ st.curTail (hintM K ρ (if st.curTail then hint else none)) w (discardEnd ru.2 s₁) =
       some (rw', s₃) := by
     rw [runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hxw
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
     ((he₁.grow hga hgl).congr rfl rfl hkW.absTy hkW.nextLoan).trans he₂
-  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hp₂, hr₂⟩, hKW.trans hK₂⟩
+  have hgoal : hintM { K with Δ := Δ₂ } ρ₂ st'.goal = hintM K ρ st.goal := by
+    rw [hglw, ← hkW.goal, hg₄]; exact hglu
+  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hp₂, hr₂, hgoal⟩, hKW.trans hK₂⟩
   -- the reference's sequence: its tail runs at the tail's hint
   rw [runT_seq _ _ u w s hfl]
   simp only [bind, Option.bind]
@@ -709,7 +677,7 @@ theorem letIn_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (
     (by omega) (.inl htd₀) (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu
     (fun _ => by rw [htn₀]; exact hoku) hD₁ bh₁ hru
   rw [htn₀] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, -, hwu⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, -, hwu, hglu⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
   obtain ⟨hgu, hlabu, hlouu, hS₁⟩ := Strict.fund_all hc u hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
   have hm₁ : ModeR st₁ := (hm.of_modeEq hm₀).of_modeEq hK₁.mode
@@ -759,9 +727,9 @@ theorem letIn_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (
     hpB ((hrt.of_kern hk₀).move (by rw [← hkB.recStack]; exact hK₁.stack) (by rw [← hkB.absTy]; exact he₁.abs)
       fun σ hσ => (he₁.agree σ hσ).1) hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) (hHb.mono habB) hnhw
     (fun _ => by rw [htnB, hHM, ← runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hokw) hD₂ bh₂ hrw
-  replace hOw := outK_of_outLK hOw
+  replace hOw := outGK_of_outLK hOw
   rw [htnB, hHM] at hOw
-  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
+  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂, hglw⟩, hK₂⟩ := hOw
   have hxw' : runT K ρ φ st.curTail (hintM K ρ (if st.curTail then hint else none)) w
       (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) = some (rw', s₂) := by
     rw [runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hxw
@@ -769,7 +737,7 @@ theorem letIn_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (
   have hsz₂ := hK₂.size
   have hne₂ : 0 < st₂.env.size := by omega
   -- the drop
-  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃, hme₃, hsz₃, htop₃, hrs₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
+  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃, hme₃, hsz₃, htop₃, hrs₃, hgs₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
     (by rw [size_withTempT]; exact hne₂) hp₂ hr₂ hS₂ hrd
   obtain rfl : v = r := popped_of_topTemps hne₂ htt hk₃
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
@@ -789,7 +757,15 @@ theorem letIn_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (
       rw [← hk₃.recStack, hrs₃]; show st₂.recStack = st.recStack
       rw [hK₂.stack, ← hkB.recStack]; show st₁.recStack = st.recStack
       rw [hK₁.stack, ← hk₀.recStack]
-  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃⟩, hkept⟩
+  -- the goal's meaning: kept by the drop and the push (equal goals), carried by the two sub-runs' clauses
+  have hgoal : hintM { K with Δ := Δ₂ } ρ₂ st'.goal = hintM K ρ st.goal := by
+    have e1 : st'.goal = st₂.goal := by
+      show (st'.withTempT v T?).goal = (st₂.withTempT v T?).goal
+      rw [← hk₃.goal, hgs₃]
+    rw [e1, hglw, ← hkB.goal]
+    show hintM { K with Δ := Δ₁ } ρ₁ st₁.goal = _
+    rw [hglu, ← hk₀.goal]
+  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃, hgoal⟩, hkept⟩
   -- the reference's `let`: its tail runs at the tail's hint
   rw [runT_letIn _ _ x u w s hfl, hxu']
   simp only [bind, Option.bind]
@@ -854,7 +830,7 @@ theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW)
     (by omega) (.inl htd₀) (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu
     (fun _ => by rw [htn₀]; exact hoku) hD₁ bh₁ hru
   rw [htn₀] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, hlat, hwu⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, hlat, hwu, hglu⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) (.call f as hd) s = some (ru, s₁) := hxu
   obtain ⟨hgu, hlabu, hlouu, hS₁⟩ := Strict.fund_all hc _ hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
   have hm₁ : ModeR st₁ := (hm.of_modeEq hm₀).of_modeEq hK₁.mode
@@ -922,9 +898,9 @@ theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW)
     hpB ((hrt.of_kern hk₀).move (by rw [← hkB.recStack]; exact hK₁.stack) (by rw [← hkB.absTy]; exact he₁.abs)
       fun σ hσ => (he₁.agree σ hσ).1) hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) (hHb.mono habB) hnhw
     (fun _ => by rw [htnB, hHM, ← runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hokw) hD₂ bh₂ hrw
-  replace hOw := outK_of_outLK hOw
+  replace hOw := outGK_of_outLK hOw
   rw [htnB, hHM] at hOw
-  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
+  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂, hglw⟩, hK₂⟩ := hOw
   have hxw' : runT K ρ φ st.curTail (hintM K ρ (if st.curTail then hint else none)) w
       (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) = some (rw', s₂) := by
     rw [runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hxw
@@ -932,7 +908,7 @@ theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW)
   have hsz₂ := hK₂.size
   have hne₂ : 0 < st₂.env.size := by omega
   -- the drop
-  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃, hme₃, hsz₃, htop₃, hrs₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
+  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃, hme₃, hsz₃, htop₃, hrs₃, hgs₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
     (by rw [size_withTempT]; exact hne₂) hp₂ hr₂ hS₂ hrd
   obtain rfl : v = r := popped_of_topTemps hne₂ htt hk₃
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
@@ -952,7 +928,15 @@ theorem letCall_coreU (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW)
       rw [← hk₃.recStack, hrs₃]; show st₂.recStack = st.recStack
       rw [hK₂.stack, ← hkB.recStack]; show st₁.recStack = st.recStack
       rw [hK₁.stack, ← hk₀.recStack]
-  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃⟩, hkept⟩
+  -- the goal's meaning: kept by the drop and the push (equal goals), carried by the two sub-runs' clauses
+  have hgoal : hintM { K with Δ := Δ₂ } ρ₂ st'.goal = hintM K ρ st.goal := by
+    have e1 : st'.goal = st₂.goal := by
+      show (st'.withTempT v T?).goal = (st₂.withTempT v T?).goal
+      rw [← hk₃.goal, hgs₃]
+    rw [e1, hglw, ← hkB.goal]
+    show hintM { K with Δ := Δ₁ } ρ₁ st₁.goal = _
+    rw [hglu, ← hk₀.goal]
+  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃, hgoal⟩, hkept⟩
   -- the reference's `let`: its tail runs at the tail's hint
   rw [runT_letIn _ _ x _ w s hfl, hxu']
   simp only [bind, Option.bind]

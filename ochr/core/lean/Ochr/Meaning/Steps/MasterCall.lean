@@ -82,7 +82,9 @@ checker's inversion of `evalCall`'s loop, and the per-argument hint sites of D17
 `stc` (head and arguments held as temporaries, D115) and then runs `callFn` (`evalCall`'s last line; the head is a
 `.const`, so no [Rec] mark and no `given`) at a smaller fuel, ending in a state with `st'`'s kernel and mode; and the
 reference's arguments, run from any related good state, reach a call point related to `stc` (`CallPt`), under an
-extension. `callFn` is handed `deferHere` and `wantHere` (D130), what `OutL` reads through `TyWanted` and `LaterOk`. -/
+extension. `callFn` is handed `deferHere` and `wantHere` (D130), what `OutL` reads through `TyWanted` and `LaterOk`.
+With the goal's meaning kept to the call point (the goal clause, lead48, docs/31 D290: the head and the arguments are
+evaluations, each of which concludes it by the induction hypothesis; the pushes of temporaries do not write the goal). -/
 def CallHeadArgsG (K : RunCtx) (φ : Future) : Prop :=
   ∀ n, IH K φ n → ∀ (Δ : Nat → TyS) (ρ : Assignment) (g : String) (as : List Term) (hd : Bool)
     (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
@@ -103,6 +105,7 @@ def CallHeadArgsG (K : RunCtx) (φ : Future) : Prop :=
       Kern st₁ st' ∧ ModeEq st₁ st' ∧
       ∃ (ρc : Assignment) (Δc : Nat → TyS) (πc : Nat → Nat) (asR : List Res) (sc : SState),
         Ext { K with Δ := Δ } ρ π st stc ρc Δc πc ∧
+        hintM { K with Δ := Δc } ρc stc.goal = hintM { K with Δ := Δ } ρ st.goal ∧
         runArgs { K with Δ := Δ } ρ φ false (K.C.global g).2.m [] as s = some (asR, sc) ∧
         CallPt { K with Δ := Δc } ρc φ πc stc sc g ws tys (K.C.global g) asR
 
@@ -113,7 +116,10 @@ call (`Out`, the deferred type a `let` reads, the promised type) and `Kept`. Its
 run, the reference's call succeeds (`hok`, which an untyped `EvalAt`'s entry condition gives through `runArgs`). At the
 call point it takes the [Rec] stack's tie (`RecTie`, R1, docs/31 D284), which `EvalAt` carries to there (`Kept.stack`):
 it tells a call of the function under check (closed off at once) from a call of an accepted global (run in place). Proved
-from its three branches by `CallFnGFrom`. -/
+from its three branches by `CallFnGFrom`. It concludes the goal's meaning kept (the goal clause, lead48, docs/31 D290: at
+the in-place branch it is the body's own clause, from the induction hypothesis: an untyped run makes no split, and its
+writes of the goal, a recorded neutral's replacement or an η-refinement, keep the goal's meaning; a closed-off call
+writes no goal, [Close] substituting its fills with `types := false`). -/
 def CallFnG (K : RunCtx) (φ : Future) : Prop :=
   ∀ n, IH K φ (n + 1) → ∀ (Δ : Nat → TyS) (ρ : Assignment) (π : Nat → Nat) (g : String) (hd typed : Bool)
     (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (cf : CallFlags) (stc st₁ : MState)
@@ -132,7 +138,8 @@ def CallFnG (K : RunCtx) (φ : Future) : Prop :=
       Pre { K with Δ := Δ' } ρ' (st₁.withTempT v T?) ∧ Rel { K with Δ := Δ' } ρ' φ π' (st₁.withTempT v T?) s' ∧
       (cf.defer = true → ∀ caps hs ds cod rd ws', st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws') →
         ({ K with Δ := Δ' }).M.paramTy ρ' (.tPi caps (.pi hs ds cod) rd) ws' ds.length = r.2) ∧
-      ((typed = true ∨ (cf.want = true ∧ cf.defer = false)) → T? = none → r.2.m = TyM.err)) ∧
+      ((typed = true ∨ (cf.want = true ∧ cf.defer = false)) → T? = none → r.2.m = TyM.err) ∧
+      hintM { K with Δ := Δ' } ρ' st₁.goal = hintM { K with Δ := Δ } ρ stc.goal) ∧
     Kept stc st₁
 
 /-- `EvalAt` with one more hypothesis on the reference state (here: whether the table erases the term there). -/
@@ -240,7 +247,7 @@ theorem stepCallG_unerased {K : RunCtx} {φ : Future} (hE : EvalInvDCall) (hH : 
     hE (m + 1) typed (.const g) as hd hint st st' bh v T? K.D hm hD htd hP.2 h
   have hD₁ : DecTab K.D st₁ := DecTab.of_kern hk₁.symm hD
   obtain ⟨m', stc, st₂, fT, ws, tys, cf, bh'', hlt, -, -, hkc, htnc, hfT, hlen, hrun, hk₂, hm₂,
-      ρc, Δc, πc, asR, sc, hext, hargs, hpt⟩ :=
+      ρc, Δc, πc, asR, sc, hext, hgc, hargs, hpt⟩ :=
     hH (m + 1) (ih.mono (by omega)) Δ ρ g as hd st₀ st₁ typed hint v T? s π bh'
       (hm.of_modeEq hm₀) (fun e => hct.trans (htl e)) htn htd₀ (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS hv
       (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl hD₁ h₀
@@ -255,15 +262,15 @@ theorem stepCallG_unerased {K : RunCtx} {φ : Future} (hE : EvalInvDCall) (hH : 
   have hD₂ : DecTab K.D st₂ := DecTab.of_kern hk₂.symm hD₁
   have hok' : typed = false → (refCall { K with Δ := Δc } (K.C.global g) asR sc).isSome := by
     intro e; rw [← hrunT st.tailNext (hintM { K with Δ := Δ } ρ hint)]; exact hok e
-  obtain ⟨⟨ρ', Δ', π', r, s', hext', hx, hm', ha, hl, hp', hr', -, -⟩, hkept⟩ :=
+  obtain ⟨⟨ρ', Δ', π', r, s', hext', hx, hm', ha, hl, hp', hr', -, -, hg'⟩, hkept⟩ :=
     hF m' (ih.mono (by omega)) Δc ρc πc g hd typed fT ws tys cf stc st₂ sc asR v T? bh''
       ((hrt.of_kern hk₀).move hkc.stack hext.abs fun σ hσ => (hext.agree σ hσ).1)
       ((hm.of_modeEq hm₀).of_modeEq hkc.mode) htnc hsz hpt hfT hok' hD₂
       (by rw [← hlen]; exact hrun)
-  have hO : Out { K with Δ := Δ } ρ φ π st₀ st₂ s
+  have hO : OutG { K with Δ := Δ } ρ φ π st₀ st₂ s
       (runT { K with Δ := Δ } ρ φ st.tailNext (hintM { K with Δ := Δ } ρ hint) (.call (.const g) as hd)) v T? :=
-    ⟨ρ', Δ', π', r, s', hext.trans hext', by rw [hrunT]; exact hx, hm', ha, hl, hp', hr'⟩
-  exact ⟨Out.of_kern hk₀ (hk₂.trans hk₁) hO,
+    ⟨ρ', Δ', π', r, s', hext.trans hext', by rw [hrunT]; exact hx, hm', ha, hl, hp', hr', hg'.trans hgc⟩
+  exact ⟨OutG.of_kern hk₀ (hk₂.trans hk₁) hO,
     ((((Kept.of_kern hk₀ hm₀).trans hkc).trans hkept).trans (Kept.of_kern hk₂ hm₂)).trans (Kept.of_kern hk₁ hm₁)⟩
 
 /-- **The statement to prove next** (`stepCallG_of`): the step for a call of a global from the two phases, the

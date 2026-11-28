@@ -111,7 +111,7 @@ theorem type_coreSimK (hIT : InvPushType) {n : Nat} {t : Term} {P : MState → P
   refine ⟨⟨ρ, K.Δ, π, (.ty m, .plain (TyM.univ 1)), s, ⟨Nat.le_refl _, Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩,
     fun _ _ => rfl⟩, hrun _ _ _, hmean _ _ _ _, fun T hT => ?_, ?_, ⟨hp.ctx.of_eq rfl rfl,
     hIT K.D K.Γ st vt _ hvt hp.inv, hp.asg.of_refd rfl rfl rfl rfl rfl (refd_withTempT_noAbs hna _)⟩,
-    rel_withTempT_inertO hr hio _⟩, Kept.rfl' _⟩
+    rel_withTempT_inertO hr hio _, rfl⟩, Kept.rfl' _⟩
   · cases hT; rfl
   · rcases hvt with rfl | rfl <;> rfl
 

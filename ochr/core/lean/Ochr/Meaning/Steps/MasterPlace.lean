@@ -66,7 +66,8 @@ label reached at the place by the checker's sites (`Env.sitesOf`), to a state wh
 `endBorrow l` against `SState.endLabel (π l)` (the old `endBorrow_step_stmt` in this form; the fragment's
 `FragEnd.rel_end` is its case of one loan of a number); (M) the reference's access is any such chain (its rounds end
 in label order, the checker in path and content order; ends reached together commute: `RelendComm.relend_comm`,
-`SState.endLabel_comm`), with the strict tests carried across the orders. -/
+`SState.endLabel_comm`), with the strict tests carried across the orders. It keeps the goal (the goal clause, lead48,
+docs/31 D290; READ TRUE: an [End] substitutes with `types := false`, and a fill's re-run is a private run, D288). -/
 def AccessG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st st' : MState) (s : SState) (p : Place)
     (pos : Pos) (n bh : Nat),
@@ -78,7 +79,8 @@ def AccessG : Prop :=
     AccessOk K φ s pos (dataHit p.steps.2) ∧
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat),
       Ext K ρ π st st' ρ' Δ' π' ∧ Kept st st' ∧ st'.typing = st.typing ∧
-      Pre { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' st' (s.access pos (dataHit p.steps.2))
+      Pre { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' st' (s.access pos (dataHit p.steps.2)) ∧
+      st'.goal = st.goal
 
 /-! ## The read of a place -/
 
@@ -155,7 +157,7 @@ theorem readPlace_sim (hRI : ReadInvD) (hBW : BorrowReadWhole) (hA : AccessG) (h
       SM.guarded (ContentOk K φ p) (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p))) s = some (r, s') ∧
       meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧ r.2.label = (Value.heldLabel v).map π' ∧
       Pre { K with Δ := Δ' } ρ' (st'.withTempT v none) ∧ Rel { K with Δ := Δ' } ρ' φ π' (st'.withTempT v none) s' ∧
-      Kept st st' ∧ st'.typing = st.typing := by
+      Kept st st' ∧ st'.typing = st.typing ∧ st'.goal = st.goal := by
   obtain ⟨stA, pos, bA, hacc, hDA, hpos, hcont, hnb, hmA, htyA, hcp, hmv⟩ := hRI n p st st' bh v K.D hm hD h
   have hres : resolve s p = some (pos, p.steps.2) := rel_resolve_ck K ρ φ st s π p pos hr hpos
   -- the copy decision: the reference's scope is the checker's, which the access keeps
@@ -168,7 +170,7 @@ theorem readPlace_sim (hRI : ReadInvD) (hBW : BorrowReadWhole) (hA : AccessG) (h
     split
     · rename_i hc; unfold ContentOk at hc; rw [hres] at hc; exact fun _ => hc
     · simp
-  obtain ⟨hAok, ρ', Δ', π', hext, hkept, htyp, hpA, hrA⟩ := hA K ρ φ π st stA s p pos n bA hm hne hp hr hS hres hokA hDA hacc
+  obtain ⟨hAok, ρ', Δ', π', hext, hkept, htyp, hpA, hrA, hgA⟩ := hA K ρ φ π st stA s p pos n bA hm hne hp hr hS hres hokA hDA hacc
   have hsc' : scopeOf s = DecideScope.topReadings stA := by rw [hsc, hkept.top]
   have hneA : 0 < stA.env.size := by rw [hkept.size]; exact hne
   -- the reference's read is not guarded away: the access's tests pass
@@ -180,15 +182,15 @@ theorem readPlace_sim (hRI : ReadInvD) (hBW : BorrowReadWhole) (hA : AccessG) (h
   have hcA : (({ K with Δ := Δ' } : RunCtx).D.copy (({ K with Δ := Δ' } : RunCtx).D.placeDecl
       (DecideScope.topReadings stA) p)) = c := by rw [← hc, hsc']
   -- the checker's state after the read, as `ReadOutG` takes it
-  obtain ⟨stR, hR₁, hR₂, hkR, hRa, hRl⟩ : ∃ stR, (ReadCopies v c → stR = stA) ∧
+  obtain ⟨stR, hR₁, hR₂, hkR, hRa, hRl, hRg⟩ : ∃ stR, (ReadCopies v c → stR = stA) ∧
       (¬ ReadCopies v c → ((∀ l w, v ≠ .borrow l w) → v.hasHole = false) ∧
         ∃ E', ckSetBot stA.env pos p.steps.2 = some E' ∧ stR = { stA with env := E' }) ∧ Kern stR st' ∧
-      stR.absTy = stA.absTy ∧ stR.nextLoan = stA.nextLoan := by
+      stR.absTy = stA.absTy ∧ stR.nextLoan = stA.nextLoan ∧ stR.goal = stA.goal := by
     by_cases hrc : ReadCopies v c
-    · refine ⟨stA, fun _ => rfl, fun h => absurd hrc h, hcp ?_, rfl, rfl⟩
+    · refine ⟨stA, fun _ => rfl, fun h => absurd hrc h, hcp ?_, rfl, rfl, rfl⟩
       rw [← hsc', hc]; exact hrc
     · obtain ⟨hh, E', hE', hk⟩ := hmv (by rw [← hsc', hc]; exact hrc)
-      exact ⟨{ stA with env := E' }, fun h => absurd h hrc, fun _ => ⟨hh, E', hE', rfl⟩, hk, rfl, rfl⟩
+      exact ⟨{ stA with env := E' }, fun h => absurd h hrc, fun _ => ⟨hh, E', hE', rfl⟩, hk, rfl, rfl, rfl⟩
   obtain ⟨r, s', hrd, hmean, hlab, hpR, hrR⟩ := hRO { K with Δ := Δ' } ρ' φ π' stA stR s p pos v c hneA hres hS hAok
     hpA hrA hcont hnb hcA
     (fun e => by
@@ -196,10 +198,11 @@ theorem readPlace_sim (hRI : ReadInvD) (hBW : BorrowReadWhole) (hA : AccessG) (h
       rw [hguard] at this; exact this)
     hR₁ hR₂ (hBW (n + 1) p st st' bh v h)
   refine ⟨ρ', Δ', π', r, s', ?_, by rw [hguard]; exact hrd, hmean, hlab,
-    Pre.of_kern (hkR.withTempT v none) hpR, Rel.of_kern (hkR.withTempT v none) hrR, ?_, ?_⟩
+    Pre.of_kern (hkR.withTempT v none) hpR, Rel.of_kern (hkR.withTempT v none) hrR, ?_, ?_, ?_⟩
   · exact hext.congr rfl rfl (hRa.symm.trans hkR.absTy) (hRl.symm.trans hkR.nextLoan)
   · exact hkept.trans hmA
   · rw [htyA, htyp]
+  · rw [← hkR.goal, hRg, hgA]
 
 /-! ## The step -/
 
@@ -233,7 +236,7 @@ def CoreSimKT (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) 
     (typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
     ∀ bh, Runs (Ochr.evalCore n typed t hint) st bh (v, T?) st' →
-    Out K ρ φ π st st' s (runT K ρ φ st.curTail (hintM K ρ hint) t) v T? ∧ Kept st st'
+    OutG K ρ φ π st st' s (runT K ρ φ st.curTail (hintM K ρ hint) t) v T? ∧ Kept st st'
 
 /-- **`eval` around `evalCore`, with the typing flag**: `eval_of_coreK` from `CoreSimKT`. -/
 theorem eval_of_coreKT {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInvDT) {n : Nat} {t : Term}
@@ -250,7 +253,7 @@ theorem eval_of_coreKT {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalIn
     (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl (by rw [hct]; exact hok)
     (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'
-  exact ⟨Out.of_kern hk₀ hk₁ hc', ((Kept.of_kern hk₀ hm₀).trans hkp).trans (Kept.of_kern hk₁ hm₁)⟩
+  exact ⟨OutG.of_kern hk₀ hk₁ hc', ((Kept.of_kern hk₀ hm₀).trans hkp).trans (Kept.of_kern hk₁ hm₁)⟩
 
 /-- The place's type and, typed, its [Repack] whole: the first two lines of `evalCore`'s `.place` clause. -/
 def placeTyPart (n : Nat) (typed want : Bool) (p : Place) : M (Option Value) := do
@@ -271,7 +274,9 @@ def PlaceInvD : Prop :=
 /-- **The place's type** (mixed; STATED): the checker's type part (a private computation: a field's type evaluates
 the declaration's field types, a dependent one through the borrows of earlier fields, D117; [Repack] may make
 unknowns) keeps the entry conditions under an extension, leaves the reference untouched, names only unknowns below the
-counter, and its type, if any, is the reference's read's type (a typed run has one). -/
+counter, and its type, if any, is the reference's read's type (a typed run has one). It keeps the goal (the goal clause,
+lead48, docs/31 D290; READ TRUE: the field types are evaluated on a private copy, which restores the goal, and [Repack]
+checks, writing none, D288). -/
 def PlaceTypeG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st st₁ : MState) (s : SState) (p : Place)
     (n bh : Nat) (typed want : Bool) (T? : Option Value),
@@ -279,7 +284,7 @@ def PlaceTypeG : Prop :=
     Runs (placeTyPart n typed want p) st bh T? st₁ →
     (typed = true → T?.isSome) ∧
     ∃ (ρ₁ : Assignment) (Δ₁ : Nat → TyS) (π₁ : Nat → Nat),
-      Ext K ρ π st st₁ ρ₁ Δ₁ π₁ ∧ Kept st st₁ ∧ st₁.typing = st.typing ∧
+      Ext K ρ π st st₁ ρ₁ Δ₁ π₁ ∧ Kept st st₁ ∧ st₁.typing = st.typing ∧ st₁.goal = st.goal ∧
       Pre { K with Δ := Δ₁ } ρ₁ st₁ ∧ Rel { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ s ∧ HintBelow T? st₁.absTy.size ∧
       ∀ T, T? = some T → ∀ (c : Bool) (r : Res) (s' : SState), readPlace K φ p c s = some (r, s') →
         StrAgree { K with Δ := Δ₁ } ρ₁ T r.2
@@ -322,17 +327,18 @@ theorem place_coreT (hPI : PlaceInvD) (hPT : PlaceTypeG) (hRI : ReadInvD) (hBW :
     CoreSimKT K ρ φ (m + 1) (.place p) (fun st => 0 < st.env.size) := by
   intro st st' typed hint v T? s π hne hty hm _ _ _ _ hp _ hr hS _ _ _ _ hfl hok hD bh h
   obtain ⟨n, st₁, b₁, b₂, rfl, hT, hR⟩ := hPI m typed p hint st st' bh v T? hdir h
-  obtain ⟨hTs, ρ₁, Δ₁, π₁, he₁, hK₁, hty₁, hp₁, hr₁, hb₁, hag₁⟩ :=
+  obtain ⟨hTs, ρ₁, Δ₁, π₁, he₁, hK₁, hty₁, hg₁, hp₁, hr₁, hb₁, hag₁⟩ :=
     hPT K ρ φ π st st₁ s p (n + 1) b₁ typed st.wantHere T? hm hne hp hr hS hT
   have hx := runT_place K ρ φ st.curTail (hintM K ρ hint) p s hfl
-  obtain ⟨ρ', Δ', π', r, s', he', hrd, hmean, hlab, hp', hr', hK', hty'⟩ :=
+  obtain ⟨ρ', Δ', π', r, s', he', hrd, hmean, hlab, hp', hr', hK', hty', hg'⟩ :=
     readPlace_sim (K := { K with Δ := Δ₁ }) hRI hBW hA hRO (hm.of_modeEq hK₁.mode) (by rw [hK₁.size]; exact hne) hp₁ hr₁ hS
       (fun e => by
         have := hok (by rw [← hty, ← hty₁]; exact e)
         rw [hx] at this; exact this)
       hD hR
   refine ⟨⟨ρ', Δ', π', r, s', he₁.trans he', by rw [hx]; exact hrd, hmean, ?_, hlab,
-    Pre.of_kern (kern_withTempT_none st' v T?) hp', Rel.of_kern (kern_withTempT_none st' v T?) hr'⟩, hK₁.trans hK'⟩
+    Pre.of_kern (kern_withTempT_none st' v T?) hp', Rel.of_kern (kern_withTempT_none st' v T?) hr',
+    goal_kept hp (he₁.trans he') (hg'.trans hg₁)⟩, hK₁.trans hK'⟩
   intro T hT'
   have hrd' := (SM.guarded_some hrd).2
   exact strAgree_congrA (K := { K with Δ := Δ₁ }) (n := st₁.absTy.size)

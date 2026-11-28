@@ -45,7 +45,8 @@ namespace Ochr.Meaning.Steps.Form.Master
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form Ochr.Meaning.Steps.Form.CallInPlace
   Ochr.Meaning.Steps.Form.FrameEnd
 
-/-- **`CallFnG`'s conclusion at a reference run `x` of the call** (`refCall`, the run in place, `callOf`). -/
+/-- **`CallFnG`'s conclusion at a reference run `x` of the call** (`refCall`, the run in place, `callOf`), with the goal's
+meaning kept (the goal clause, lead48, docs/31 D290). -/
 def CallConcl (K : RunCtx) (φ : Future) (Δ : Nat → TyS) (ρ : Assignment) (π : Nat → Nat) (stc st₁ : MState)
     (x : SM Res) (sc : SState) (v : Value) (T? : Option Value) (cf : CallFlags) (typed : Bool) : Prop :=
   ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
@@ -56,7 +57,8 @@ def CallConcl (K : RunCtx) (φ : Future) (Δ : Nat → TyS) (ρ : Assignment) (�
     Pre { K with Δ := Δ' } ρ' (st₁.withTempT v T?) ∧ Rel { K with Δ := Δ' } ρ' φ π' (st₁.withTempT v T?) s' ∧
     (cf.defer = true → ∀ caps hs ds cod rd ws', st₁.callTyLater = some (.tPi caps (.pi hs ds cod) rd, ws') →
       ({ K with Δ := Δ' }).M.paramTy ρ' (.tPi caps (.pi hs ds cod) rd) ws' ds.length = r.2) ∧
-    ((typed = true ∨ (cf.want = true ∧ cf.defer = false)) → T? = none → r.2.m = TyM.err)
+    ((typed = true ∨ (cf.want = true ∧ cf.defer = false)) → T? = none → r.2.m = TyM.err) ∧
+    hintM { K with Δ := Δ' } ρ' st₁.goal = hintM { K with Δ := Δ } ρ stc.goal
 
 /-- **The checker's call of an accepted global, simulated in place or closed off** (MIXED; the parts (i) to (v) of the
 module docstring, and `CallClosedG`). At a body in the frame-free fragment (lead40, docs/31 D244: the hypothesis
@@ -210,7 +212,7 @@ theorem callAcceptedFF_of {K : RunCtx} {φ : Future} (hsim : CallRanSimG K φ) (
   have hrefCall : refCall { K with Δ := Δ } (K.C.global g) asR sc = callOf K.dm.read (K.C.global g) asR sc := by
     unfold refCall; exact if_pos hbt
   refine ⟨?_, hkept⟩
-  rcases hdisj with ⟨ρ', Δ', π', r, s', hext, hx, hmean, hstr, hlabel, hpre, hrel, hdefer, hmiss⟩ | hcl
+  rcases hdisj with ⟨ρ', Δ', π', r, s', hext, hx, hmean, hstr, hlabel, hpre, hrel, hdefer, hmiss, hgl⟩ | hcl
   · obtain ⟨hselfV, hselfT, hmem, hv⟩ := acceptedGlobalG_of hG g gd self hs ds c dec body hfind hcur hfn Δ ρ φ
     have hIP := callInPlace_of { K with Δ := Δ } ρ φ (callStartG _ ρ φ) (hpop Δ ρ) (hfc Δ) stc
       (hGΔ Δ stc hG) g gd self hs ds c dec body hfind hcur hfn hv hff asR sc hselfV hselfT hmem hgood hloc hlw hsites
@@ -224,7 +226,7 @@ theorem callAcceptedFF_of {K : RunCtx} {φ : Future} (hsim : CallRanSimG K φ) (
       obtain ⟨hrr, htr⟩ := hIP
       subst hrr
       exact ⟨ρ', Δ', π', r, s'', hext, by rw [hrefCall, hco], hmean, hstr, hlabel, hpre,
-        htr _ _ _ _ (hocc Δ' ρ' _ hpre) hrel, hdefer, hmiss⟩
+        htr _ _ _ _ (hocc Δ' ρ' _ hpre) hrel, hdefer, hmiss, hgl⟩
   · obtain ⟨ρ', Δ', π', r, s', hext, hx, hrest⟩ := hcl
     exact ⟨ρ', Δ', π', r, s', hext, by rw [hrefCall]; exact hx, hrest⟩
 

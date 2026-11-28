@@ -39,6 +39,15 @@ The statement for a run in tail position, `TailAt`, is `Form.TailSim` with the e
 `EvalAt` that a typed run needs (no `hok`: `checkTail` runs typed), and `Kept` at the leaf where the
 continuation runs (`TailOutK`).
 
+**The goal's meaning is kept** (the orchestrator's ruling on docs/31 D286, built by lead48, D290): `EvalAt`'s end and
+`TailAt`'s leaf, in both of its forms, conclude, inside the existential where the end's assignment `ρ'` and `Δ'` live,
+`hintM { K with Δ := Δ' } ρ' st'.goal = hintM K ρ st.goal`. The check at a function's leaf compares the result's type
+with the goal AS REFINED along the path, and the knot needs the result to be a member of the codomain at the original
+arguments: only this clause ties the two (`Top.Leaf.fixLeafG_of`). The goal is written only by a split's refinement, a
+generalisation, an η-refinement, a re-normalisation after the refinements grow, a tail `rewrite`, and the saves and
+restores around a nested check and a private copy (docs/31 D288's table); a step that does not write it keeps it by
+equality (`goal_kept`), and `Kern` holds it.
+
 ## The induction hypothesis, and why it has this shape
 
 `IH K φ n`: at every fuel below `n`, at EVERY `Δ` and assignment, `EvalAt` and `TailAt` for EVERY term.
@@ -239,10 +248,100 @@ def DeferClearG : Prop :=
   ∀ (n : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
     Runs (Ochr.eval n typed t hint) st bh r st' → st'.deferCallTy = false
 
+/-! ## The goal clause (the ruling on docs/31 D286; D288's plan, built by lead48, D290) -/
+
+/-- `hintM` at a hint that is not D124's deferred form: its meaning as a type value. -/
+theorem hintM_of_none {K : RunCtx} {ρ : Assignment} {T : Value} (h : deferredHint? T = none) :
+    hintM K ρ (some T) = Value.tyS K.dm K.M K.Γ ρ T := by
+  simp only [hintM, h]
+
+/-- `hintM` at D124's deferred hint: the codomain of the function type at the arguments (docs/31 D243). -/
+theorem hintM_of_some {K : RunCtx} {ρ : Assignment} {T P : Value} {ws : List Value} (h : deferredHint? T = some (P, ws)) :
+    hintM K ρ (some T) = K.M.paramTy ρ P ws (piArity P) := by
+  simp only [hintM, h]
+
+/-- **The hint means the same across an extension** (docs/31 D180): a hint naming only unknowns below `n`
+(`HintBelow`, D179) has the same meaning at an assignment and `Δ` that agree with the old ones below `n`, as
+every extension a step hands on does (`Ext.agree`). The reason `EvalAt` assumes `HintBelow`: an untyped `let`/`;`
+in tail position hands its tail the hint after its first sub-run extended the assignment. (Moved here from
+`MasterUntyped` by lead48: the goal clause rests on it.) -/
+theorem hintM_congrA {K : RunCtx} {ρ ρ₁ : Assignment} {Δ₁ : Nat → TyS} {hint : Option Value} {n : Nat}
+    (hb : HintBelow hint n) (hag : ∀ σ, σ < n → ρ₁ σ = ρ σ ∧ Δ₁ σ = K.Δ σ) :
+    hintM { K with Δ := Δ₁ } ρ₁ hint = hintM K ρ hint := by
+  cases hint with
+  | none => rfl
+  | some T =>
+    have hT : ∀ σ, T.anyAtom (· == .abs σ) = true → AgreeA K Δ₁ ρ ρ₁ σ := fun σ hσ => by
+      obtain ⟨a, d⟩ := hag σ (hb T rfl σ hσ)
+      exact ⟨a.symm, d.symm⟩
+    cases hd : deferredHint? T with
+    | none =>
+      rw [hintM_of_none hd, hintM_of_none hd]
+      show TyS.plain (Value.mean K.dm (codeMeaning { K with Δ := Δ₁ }) K.Γ ρ₁ (fun _ => .err) (.plain TyM.err) T).asTy =
+        TyS.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ (fun _ => .err) (.plain TyM.err) T).asTy
+      rw [meanV_eq_mean { K with Δ := Δ₁ } ρ₁, meanV_eq_mean K ρ, meanV_congrA K Δ₁ ρ ρ₁ _ T _ hT]
+    | some Pw =>
+      obtain ⟨P, ws⟩ := Pw
+      -- the deferred hint (docs/31 D243): its function type and arguments are atoms of the hint
+      rw [hintM_of_some hd, hintM_of_some hd]
+      exact (paramTy_congrA K Δ₁ ρ ρ₁ P ws (piArity P)
+        (fun σ h => hT σ ((deferredHint?_atoms hd _).1 h)) (fun σ h => hT σ ((deferredHint?_atoms hd _).2 h))).symm
+
+/-- **The goal names only the state's unknowns** (`Pre`'s (WF6), `Refd.goal`; docs/31 D179). -/
+theorem _root_.Ochr.Meaning.Steps.Form.Pre.goalBelow {K : RunCtx} {ρ : Assignment} {st : MState} (hp : Pre K ρ st) :
+    HintBelow st.goal st.absTy.size :=
+  fun G hG σ hσ => hp.inv.2.2.2.2.1.1 σ (MState.Refd.goal G hG hσ)
+
+/-- **A step that does not write the goal keeps its meaning** (the one lemma most steps pass the clause on with): the
+goal the same, the assignment and `Δ` extended. -/
+theorem goal_kept {K : RunCtx} {ρ ρ' : Assignment} {Δ' : Nat → TyS} {π π' : Nat → Nat} {st st' : MState}
+    (hp : Pre K ρ st) (he : Ext K ρ π st st' ρ' Δ' π') (hg : st'.goal = st.goal) :
+    hintM { K with Δ := Δ' } ρ' st'.goal = hintM K ρ st.goal := by
+  rw [hg]; exact hintM_congrA hp.goalBelow he.agree
+
+/-- **`Out` with the goal's meaning kept** (the ruling on docs/31 D286): at the extended context and assignment, the end
+state's goal means what the start's goal meant. The conclusion of the column forms `CoreSimK`, `EvalSimK` and of the full
+tail form `TailOutK`. -/
+def OutG (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st st' : MState) (s : SState)
+    (x : SM Res) (v : Value) (T? : Option Value) : Prop :=
+  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
+    Ext K ρ π st st' ρ' Δ' π' ∧ x s = some (r, s') ∧
+    meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    (∀ T, T? = some T → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+    r.2.label = (Value.heldLabel v).map π' ∧
+    Pre { K with Δ := Δ' } ρ' (st'.withTempT v T?) ∧
+    Rel { K with Δ := Δ' } ρ' φ π' (st'.withTempT v T?) s' ∧
+    hintM { K with Δ := Δ' } ρ' st'.goal = hintM K ρ st.goal
+
+theorem OutG.out {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
+    {x : SM Res} {v : Value} {T? : Option Value} (h : OutG K ρ φ π st st' s x v T?) : Out K ρ φ π st st' s x v T? :=
+  let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, _⟩ := h
+  ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr⟩
+
+/-- `Out` of a run that leaves the goal as it was gives `OutG` (`goal_kept`). -/
+theorem OutG.of_out {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
+    {x : SM Res} {v : Value} {T? : Option Value} (hp : Pre K ρ st) (hg : st'.goal = st.goal)
+    (h : Out K ρ φ π st st' s x v T?) : OutG K ρ φ π st st' s x v T? :=
+  let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp', hr⟩ := h
+  ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp', hr, goal_kept hp he hg⟩
+
+/-- `OutG` carries across the bookkeeping around a step (`Out.of_kern`; `Kern` holds the goal and the unknowns). -/
+theorem OutG.of_kern {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st₀ st₁ st st' : MState} {s : SState}
+    {x : SM Res} {v : Value} {T? : Option Value} (h₀ : Kern st st₀) (h₁ : Kern st₁ st')
+    (h : OutG K ρ φ π st₀ st₁ s x v T?) : OutG K ρ φ π st st' s x v T? := by
+  obtain ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, hg⟩ := h
+  refine ⟨ρ', Δ', π', r, s', ⟨?_, ?_, ?_, ?_⟩, hx, hm, ha, hl, hp.of_kern (h₁.withTempT v T?), hr.of_kern (h₁.withTempT v T?),
+    by rw [← h₁.goal, h₀.goal]; exact hg⟩
+  · rw [h₀.absTy, ← h₁.absTy]; exact he.abs
+  · rw [h₀.nextLoan, ← h₁.nextLoan]; exact he.lab
+  · intro σ hσ; rw [h₀.absTy] at hσ; exact he.agree σ hσ
+  · intro l hl; rw [h₀.nextLoan] at hl; exact he.ren l hl
+
 /-- **`Out` with the deferred type and the promised type** (the lead's rulings on D180, D183 and (ii) on D185): `Out`,
 and inside its existential, at its extended context and assignment, `LaterOk` for the run of `t`, and, where the run
 promises its type (`w`, `TyWanted` in `EvalAt`), a missing type reads as the reference's: its result type is `err`
-(what `Rel.skel` compares a binding with no type to; `some T` is `StrAgree`). `EvalAt`'s conclusion. -/
+(what `Rel.skel` compares a binding with no type to; `some T` is `StrAgree`), and the goal's meaning kept (the ruling on
+docs/31 D286; D290). `EvalAt`'s conclusion. -/
 def OutL (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st st' : MState) (s : SState)
     (x : SM Res) (v : Value) (T? : Option Value) (t : Term) (w : Prop) : Prop :=
   ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
@@ -253,7 +352,8 @@ def OutL (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st st'
     Pre { K with Δ := Δ' } ρ' (st'.withTempT v T?) ∧
     Rel { K with Δ := Δ' } ρ' φ π' (st'.withTempT v T?) s' ∧
     LaterOk { K with Δ := Δ' } ρ' t st st' r.2 ∧
-    (w → T? = none → r.2.m = TyM.err)
+    (w → T? = none → r.2.m = TyM.err) ∧
+    hintM { K with Δ := Δ' } ρ' st'.goal = hintM K ρ st.goal
 
 theorem OutL.out {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
     {x : SM Res} {v : Value} {T? : Option Value} {t : Term} {w : Prop} (h : OutL K ρ φ π st st' s x v T? t w) :
@@ -261,13 +361,19 @@ theorem OutL.out {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat}
   let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, _⟩ := h
   ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr⟩
 
+theorem OutL.outG {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} {w : Prop} (h : OutL K ρ φ π st st' s x v T? t w) :
+    OutG K ρ φ π st st' s x v T? :=
+  let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, _, _, hg⟩ := h
+  ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, hg⟩
+
 /-- The promised type's clause of a run that returns a type wherever it promises one is vacuous. -/
 theorem OutL.of_out {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
     {x : SM Res} {v : Value} {T? : Option Value} {t : Term} {w : Prop} (ht : ∀ f as hd, t ≠ .call f as hd)
-    (hT : w → T?.isSome = true) (h : Out K ρ φ π st st' s x v T?) : OutL K ρ φ π st st' s x v T? t w :=
-  let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr⟩ := h
+    (hT : w → T?.isSome = true) (h : OutG K ρ φ π st st' s x v T?) : OutL K ρ φ π st st' s x v T? t w :=
+  let ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, hg⟩ := h
   ⟨ρ', Δ', π', r, s', he, hx, hm, ha, hl, hp, hr, laterOk_of_not_call ht,
-    fun hw hn => by have := hT hw; rw [hn] at this; cases this⟩
+    (fun hw hn => by have := hT hw; rw [hn] at this; cases this), hg⟩
 
 /-- `EvalAt`'s conclusion read as `Out`'s (every consumer but the `let` of a call). -/
 theorem outK_of_outLK {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
@@ -275,12 +381,18 @@ theorem outK_of_outLK {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat →
     Out K ρ φ π st st' s x v T? ∧ Kept st st' :=
   ⟨h.1.out, h.2⟩
 
+/-- `EvalAt`'s conclusion read as `OutG`'s. -/
+theorem outGK_of_outLK {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
+    {x : SM Res} {v : Value} {T? : Option Value} {t : Term} {w : Prop} (h : OutL K ρ φ π st st' s x v T? t w ∧ Kept st st') :
+    OutG K ρ φ π st st' s x v T? ∧ Kept st st' :=
+  ⟨h.1.outG, h.2⟩
+
 /-- A step for a term that is not a call, returning a type wherever it promises one, concludes `EvalAt`'s form from
-`Out`'s. -/
+`OutG`'s. -/
 theorem outLK_of_outK {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st st' : MState} {s : SState}
     {x : SM Res} {v : Value} {T? : Option Value} {t : Term} {w : Prop} (ht : ∀ f as hd, t ≠ .call f as hd)
     (hT : w → T?.isSome = true)
-    (h : Out K ρ φ π st st' s x v T? ∧ Kept st st') : OutL K ρ φ π st st' s x v T? t w ∧ Kept st st' :=
+    (h : OutG K ρ φ π st st' s x v T? ∧ Kept st st') : OutL K ρ φ π st st' s x v T? t w ∧ Kept st st' :=
   ⟨OutL.of_out ht hT h.1, h.2⟩
 
 /-- **The evaluation step at fuel `n`, for one term**: from a state in the plain mode at any erased depth
@@ -303,16 +415,17 @@ def EvalAt (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) : P
     OutL K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T? t (TyWanted typed st) ∧ Kept st st'
 
 /-- **A tail step's conclusion, with what the run keeps**: `TailOut` (some leaf `stl` where the continuation
-ran, `Out` there) with `Kept` from the start to the leaf. -/
+ran, `Out` there) with `Kept` from the start to the leaf, and the goal's meaning kept at the leaf (`OutG`; the ruling on
+docs/31 D286, D290). -/
 def TailOutK (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st : MState) (s : SState) (x : SM Res)
     (k : Value → Value → M Unit) : Prop :=
-  ∃ (stl : MState) (v T : Value), (∃ bk stk, Runs (k v T) stl bk () stk) ∧ Out K ρ φ π st stl s x v (some T) ∧
+  ∃ (stl : MState) (v T : Value), (∃ bk stk, Runs (k v T) stl bk () stk) ∧ OutG K ρ φ π st stl s x v (some T) ∧
     Kept st stl
 
 theorem TailOutK.tailOut {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
     {x : SM Res} {k : Value → Value → M Unit} (h : TailOutK K ρ φ π st s x k) : TailOut K ρ φ π st s x k :=
   let ⟨stl, v, T, hk, hO, _⟩ := h
-  ⟨stl, v, T, hk, hO⟩
+  ⟨stl, v, T, hk, hO.out⟩
 
 /-- **The erased tail form** (docs/31 D248, ruled (P1) by the orchestrator, 2026-11-28): what the end-of-body check of
 a term the table reads as a PROOF concludes. `checkTail` recurses into such a term by its shape and runs its unerased
@@ -323,21 +436,23 @@ meaning its result and its type the result's type (for a proof the reference's t
 true), `Pre` and `Kept` at the leaf, and no relation there. Reasons (the ruling): a fact about a run concludes only what
 is used after it, and after the leaf of a lemma's body nothing reads the state (the type is compared with the goal
 formed before, the frame is popped, the whole state is restored); and the model does not mirror the effects of erased
-code. -/
+code. With the goal's meaning kept at the leaf (the ruling on docs/31 D286, D290): at a lemma, the leaf's `True`
+converts to the refined goal, and only this clause ties that to the statement at the original arguments. -/
 def TailOutE (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st : MState) (s : SState) (x : SM Res)
     (k : Value → Value → M Unit) : Prop :=
   ∃ (stl : MState) (v T : Value), (∃ bk stk, Runs (k v T) stl bk () stk) ∧
     (∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       Ext K ρ π st stl ρ' Δ' π' ∧ x s = some (r, s') ∧
       meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧ StrAgree { K with Δ := Δ' } ρ' T r.2 ∧
-      Pre { K with Δ := Δ' } ρ' (stl.withTempT v (some T))) ∧
+      Pre { K with Δ := Δ' } ρ' (stl.withTempT v (some T)) ∧
+      hintM { K with Δ := Δ' } ρ' stl.goal = hintM K ρ st.goal) ∧
     Kept st stl
 
 /-- The full tail form gives the erased one (it drops the relation at the leaf). -/
 theorem TailOutK.toE {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
     {x : SM Res} {k : Value → Value → M Unit} (h : TailOutK K ρ φ π st s x k) : TailOutE K ρ φ π st s x k :=
-  let ⟨stl, v, T, hk, ⟨ρ', Δ', π', r, s', he, hx, hm, ha, _, hp, _⟩, hK⟩ := h
-  ⟨stl, v, T, hk, ⟨ρ', Δ', π', r, s', he, hx, hm, ha T rfl, hp⟩, hK⟩
+  let ⟨stl, v, T, hk, ⟨ρ', Δ', π', r, s', he, hx, hm, ha, _, hp, _, hg⟩, hK⟩ := h
+  ⟨stl, v, T, hk, ⟨ρ', Δ', π', r, s', he, hx, hm, ha T rfl, hp, hg⟩, hK⟩
 
 /-- **The tail step's conclusion** (docs/31 D248, ruling (P1)): the erased form always, and the full form (`TailOutK`,
 the relation at the leaf) where the table does not read the term as a proof. As first stated (`TailOutK` everywhere)
@@ -401,7 +516,7 @@ def IH (K : RunCtx) (φ : Future) (n : Nat) : Prop :=
 with `Kept` beside `Out`: the forms a general step proves for a class of states before it is closed into
 `EvalAt`. -/
 
-/-- `Column.CoreSim` at any erased depth, with `Kept`. -/
+/-- `Column.CoreSim` at any erased depth, with `Kept`, and the goal's meaning kept (`OutG`, D290). -/
 def CoreSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True)
     (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
@@ -414,9 +529,9 @@ def CoreSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     (typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
     ∀ bh, Runs (Ochr.evalCore n typed t hint) st bh (v, T?) st' →
-    Out K ρ φ π st st' s (runT K ρ φ st.curTail (hintM K ρ hint) t) v T? ∧ Kept st st'
+    OutG K ρ φ π st st' s (runT K ρ φ st.curTail (hintM K ρ hint) t) v T? ∧ Kept st st'
 
-/-- `Column.EvalSim` at any erased depth, with `Kept`. -/
+/-- `Column.EvalSim` at any erased depth, with `Kept`, and the goal's meaning kept (`OutG`, D290). -/
 def EvalSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True)
     (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
@@ -429,7 +544,7 @@ def EvalSimK (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
     DecTab K.D st' →
     ∀ bh, Runs (Ochr.eval n typed t hint) st bh (v, T?) st' →
-    Out K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T? ∧ Kept st st'
+    OutG K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T? ∧ Kept st st'
 
 /-- **`eval` around `evalCore`, at any erased depth** (a fact about the checker alone; `Machine.EvalInvR` with
 `ModeR` for `Mode` and the mode's equalities for its `Mode` conclusions; PROVED, `MasterDepth.evalInvD`, by
@@ -465,7 +580,7 @@ theorem eval_of_coreK {K : RunCtx} {ρ : Assignment} {φ : Future} (hE : EvalInv
     (by rw [← hk₀.absTy]; exact hab) (by rw [← hk₀.absTy]; exact hhb) hnh hfl (by rw [hct]; exact hok)
     (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'
-  exact ⟨Out.of_kern hk₀ hk₁ hc', ((Kept.of_kern hk₀ hm₀).trans hkp).trans (Kept.of_kern hk₁ hm₁)⟩
+  exact ⟨OutG.of_kern hk₀ hk₁ hc', ((Kept.of_kern hk₀ hm₀).trans hkp).trans (Kept.of_kern hk₁ hm₁)⟩
 
 /-! ## The shapes `checkTail` matches -/
 

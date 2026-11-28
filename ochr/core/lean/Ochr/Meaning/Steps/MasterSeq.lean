@@ -86,7 +86,8 @@ def SeqTailDecl (D : Decisions) : Prop :=
 `Pre`, related to the reference's state after the first term, whose result `ru` the value means and whose label
 is the value's held borrow, renamed: the checker's `dropValue` is matched by the reference's discard (its strict
 test `DiscardOk` passes, and `discardEnd` ends the borrow the value holds), with `Pre` and `Rel` after, the mode,
-the frames and the top readings kept (`Kept`), the counters only grown. -/
+the frames and the top readings kept (`Kept`), the counters only grown, and the goal kept (the goal clause, lead48,
+docs/31 D290: read true, the discard's [End] substitutes with `types := false`, D288). -/
 def DropValueG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st₁ s₄ : MState) (v₀ : Value)
     (T₀ : Option Value) (ru : Res) (s₁ : SState) (n bh : Nat),
@@ -95,7 +96,7 @@ def DropValueG : Prop :=
     meanV K ρ (fun l => φ (π l)) ru.2 v₀ = ru.1 → ru.2.label = (Value.heldLabel v₀).map π →
     Runs (Ochr.dropValue n v₀ T₀) st₁ bh () s₄ →
     DiscardOk K φ ru.2 s₁ ∧ (st₁.absTy.size ≤ s₄.absTy.size ∧ st₁.nextLoan ≤ s₄.nextLoan) ∧
-      Pre K ρ s₄ ∧ Rel K ρ φ π s₄ (discardEnd ru.2 s₁) ∧ Kept st₁ s₄
+      Pre K ρ s₄ ∧ Rel K ρ φ π s₄ (discardEnd ru.2 s₁) ∧ Kept st₁ s₄ ∧ s₄.goal = st₁.goal
 
 namespace SeqGuards
 
@@ -137,13 +138,13 @@ theorem seq_coreK (hST : SeqTailDecl K.D) (hDV : DropValueG) (hVC : ValsCongrA) 
   -- the step for `u`, from the entry state itself
   have hOu := (ih m (by omega) K.Δ ρ).1 u st st₁ true none v₀ T₀ s π hm (fun _ => htn) hne (.inl htd) hp hrt hr hS
     hv.1 habu (hintBelow_none _) hnhu (fun e => by cases e) hD₁ bh₁ hru
-  replace hOu := outK_of_outLK hOu
+  replace hOu := outGK_of_outLK hOu
   rw [htn] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, hglu⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
   obtain ⟨-, -, -, hS₁⟩ := Strict.fund_all hc u hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
   -- the discard, on both sides
-  obtain ⟨hdok, ⟨hga, hgl⟩, hP₄, hR₄, hK₄⟩ := hDV { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ s₄ v₀ T₀ ru s₁ m bh₃
+  obtain ⟨hdok, ⟨hga, hgl⟩, hP₄, hR₄, hK₄, hg₄⟩ := hDV { K with Δ := Δ₁ } ρ₁ φ π₁ st₁ s₄ v₀ T₀ ru s₁ m bh₃
     (by rw [hK₁.size]; exact hne) hp₁ hr₁ hS₁ hmu hlu hdv
   have hS₂ : Strict.SGood K.dm K.Γ φ (discardEnd ru.2 s₁) := by
     unfold discardEnd; unfold DiscardOk at hdok; split
@@ -163,14 +164,16 @@ theorem seq_coreK (hST : SeqTailDecl K.D) (hDV : DropValueG) (hVC : ValsCongrA) 
     (hP₄.of_kern hkW) (hrt.move hKW.stack habW fun σ hσ => (he₁.agree σ hσ).1) (hR₄.of_kern hkW) hS₂
     (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habW) (hintBelow_none _) hnhw
     (fun e => by cases e) hD bh₂ hrw
-  replace hOw := outK_of_outLK hOw
+  replace hOw := outGK_of_outLK hOw
   rw [htnW] at hOw
-  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
+  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, he₂, hxw, hmw, haw, hlw, hp₂, hr₂, hglw⟩, hK₂⟩ := hOw
   have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w (discardEnd ru.2 s₁) = some (rw', s₃) := by
     rw [runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hxw
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
     ((he₁.grow hga hgl).congr rfl rfl hkW.absTy hkW.nextLoan).trans he₂
-  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hp₂, hr₂⟩, hKW.trans hK₂⟩
+  have hgoal : hintM { K with Δ := Δ₂ } ρ₂ st'.goal = hintM K ρ st.goal := by
+    rw [hglw, ← hkW.goal, hg₄]; exact hglu
+  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hp₂, hr₂, hgoal⟩, hKW.trans hK₂⟩
   -- the reference's sequence: a typed sequence is not in tail position (`hctl`), so its tail runs at no hint
   have hth : tailHint st.curTail (hintM K ρ hint) = .plain TyM.err := by rw [hctl rfl]; rfl
   rw [runT_seq _ _ u w s hfl]

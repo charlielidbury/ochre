@@ -217,7 +217,8 @@ checker's successful `dropTopBind` from a state meeting `Pre`, related to a good
 the reference's drop of its top binding (`LetDrop`), keeping the temporaries, only growing the tables, with
 `Pre` and `Rel` after; on the checker's side it keeps the mode and the frames and pops the top binding's
 reading, and keeps the [Rec] stack (R1, lead47, docs/31 D284: read true, `dropTopBind` ends borrows and re-runs sealed
-programs, each re-run restoring the stack it saved). -/
+programs, each re-run restoring the stack it saved) and the goal (the goal clause, lead48, docs/31 D290: read true, an
+[End] substitutes with `types := false`, so neither the drop nor its ends write the goal, D288). -/
 def LetDropG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (W st₃ : MState) (s₂ : SState) (n bh : Nat),
     0 < W.env.size → Pre K ρ W → Rel K ρ φ π W s₂ → Strict.SGood K.dm K.Γ φ s₂ →
@@ -225,7 +226,7 @@ def LetDropG : Prop :=
     ∃ s₃, LetDrop K φ s₂ s₃ ∧ topTemps st₃.env = topTemps W.env ∧
       (W.absTy.size ≤ st₃.absTy.size ∧ W.nextLoan ≤ st₃.nextLoan) ∧ Pre K ρ st₃ ∧ Rel K ρ φ π st₃ s₃ ∧
       ModeEq W st₃ ∧ st₃.env.size = W.env.size ∧
-      DecideScope.topReadings st₃ = (DecideScope.topReadings W).tail ∧ st₃.recStack = W.recStack
+      DecideScope.topReadings st₃ = (DecideScope.topReadings W).tail ∧ st₃.recStack = W.recStack ∧ st₃.goal = W.goal
 
 /-- **The embedded values' condition moves to an extension that agrees at the term's unknowns** (a fact about
 the model, NEW; at each embedded value by `runT_congrA`, whose run reads only the unknowns it holds). The
@@ -310,7 +311,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
   have hOu := (ih m (by omega) K.Δ ρ).1 u st₀ st₁ true none v₀ T₀ s π (hm.of_modeEq hm₀) (fun _ => htn₀) (by omega) (.inl htd₀)
     (hp.of_kern hk₀) (hrt.of_kern hk₀) (hr.of_kern hk₀) hS hv.1 (by rw [← hk₀.absTy]; exact habu) (hintBelow_none _) hnhu (fun e => by cases e) hD₁ bh₁ hru
   rw [htn₀] at hOu
-  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, -, hwu⟩, hK₁⟩ := hOu
+  obtain ⟨⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁, -, hwu, hglu⟩, hK₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
   obtain ⟨hgu, hlabu, hlouu, hS₁⟩ := Strict.fund_all hc u hv.1 false (.plain TyM.err) s s₁ ru hS hxu'
   have hm₁ : ModeR st₁ := (hm.of_modeEq hm₀).of_modeEq hK₁.mode
@@ -352,9 +353,9 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
   have hOw := (ih m (by omega) Δ₁ ρ₁).1 w stB st₂ true none r T? _ π₁ (hm₁.of_modeEq hmeB)
     (fun _ => htnB.trans (hctl rfl)) (by omega) htdB'
     hpB hrtB hrB hSB (hVC K Δ₁ ρ ρ₁ φ w hagree hv.2) (absBelow_mono habw habB) (hintBelow_none _) hnhw (fun e => by cases e) hD₂ bh₂ hrw
-  replace hOw := outK_of_outLK hOw
+  replace hOw := outGK_of_outLK hOw
   rw [htnB] at hOw
-  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩, hK₂⟩ := hOw
+  obtain ⟨⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂, hglw⟩, hK₂⟩ := hOw
   have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w
       (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := du }) = some (rw', s₂) := by
     rw [runT_congrA K Δ₁ ρ ρ₁ φ _ w _ _ hagree]; exact hxw
@@ -362,7 +363,7 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
   have hsz₂ := hK₂.size
   have hne₂ : 0 < st₂.env.size := by omega
   -- the drop
-  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃, hme₃, hsz₃, htop₃, hrs₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
+  obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃, hme₃, hsz₃, htop₃, hrs₃, hgs₃⟩ := hDr { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT r T?) st₃ s₂ m bh₃
     (by rw [size_withTempT]; exact hne₂) hp₂ hr₂ hS₂ hrd
   obtain rfl : v = r := popped_of_topTemps hne₂ htt hk₃
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
@@ -381,7 +382,15 @@ theorem letIn_core (hLT : LetTailDecl K.D) (hPu : LetPushG) (hEK : EvalKindW) (h
     · show (st'.withTempT v T?).recStack = st.recStack
       rw [← hk₃.recStack, hrs₃]; show st₂.recStack = st.recStack
       rw [hK₂.stack, ← hkB.recStack, hK₁.stack, ← hk₀.recStack]
-  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃⟩, hkept⟩
+  -- the goal's meaning: kept by the drop and the push (equal goals), carried by the two sub-runs' clauses
+  have hgoal : hintM { K with Δ := Δ₂ } ρ₂ st'.goal = hintM K ρ st.goal := by
+    have e1 : st'.goal = st₂.goal := by
+      show (st'.withTempT v T?).goal = (st₂.withTempT v T?).goal
+      rw [← hk₃.goal, hgs₃]
+    rw [e1, hglw, ← hkB.goal]
+    show hintM { K with Δ := Δ₁ } ρ₁ st₁.goal = _
+    rw [hglu, ← hk₀.goal]
+  refine ⟨⟨ρ₂, Δ₂, π₂, rw', s₃, hext, ?_, hmw, haw, hlw, hP₃.of_kern hk₃, hR₃.of_kern hk₃, hgoal⟩, hkept⟩
   -- the reference's `let`
   -- a typed `let` is not in tail position (`hctl`): its tail runs with no hint on both sides (D156)
   have hth : tailHint st.curTail (hintM K ρ hint) = .plain TyM.err := by rw [hctl rfl]; rfl

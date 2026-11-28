@@ -213,7 +213,10 @@ result is a temporary while the drops run, and `movedPlace`'s generalisation and
 one-constructor type substitute into it (`MatchRd.J4`: the arm returns `⌈G(σ0)⌉`, the continuation receives
 `MkBox(σ3)`); its meaning, the type and the label are kept. As first stated (the continuation at the arm's value) it was
 FALSE. It takes the induction hypothesis below the join's fuel (the drops' ends and substitutions re-run sealed
-programs). -/
+programs). It concludes the goal's meaning kept (the goal clause, lead48, docs/31 D290; READ TRUE: the drops' ends
+substitute with `types := false` and leave the goal; `movedPlace`'s generalisation of a sealed program and its
+η-refinement write it, `G[σ/n]` and `G[C(σ̄)/σ]`, under an extension giving `σ` the program's meaning, resp. naming the
+fields of the value, so its meaning is the same, D288's rows). -/
 def JoinContG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (stW stJ : MState) (sA : SState) (t : Term)
     (k kc : Value → Value → M Unit) (m bj : Nat),
@@ -232,6 +235,7 @@ def JoinContG : Prop :=
         r.2.label = (Value.heldLabel v₂).map π₂ ∧
         Pre { K with Δ := Δ₂ } ρ₂ (stl₂.withTempT v₂ (some T)) ∧
         Rel { K with Δ := Δ₂ } ρ₂ φ π₂ (stl₂.withTempT v₂ (some T)) (joinDrop K φ (movedPlaces φ sA) t s₁) ∧
+        hintM { K with Δ := Δ₂ } ρ₂ stl₂.goal = hintM { K with Δ := Δ₁ } ρ₁ stl.goal ∧
         ∃ bk' stk', Runs (k v₂ T) stl₂ bk' () stk'
 
 /-- **A sealed scrutinee generalised at the end of a body** (mixed, NEW; the paper's [Tail-gen], D34's record a path
@@ -312,7 +316,7 @@ theorem matchArm_leaf (hJI : JoinContInv) (hJ : JoinContG) (hVC : ValsCongrA) (h
     (hrt.move (by rw [← hkJ.recStack]; exact hKW.stack) (by rw [← hkJ.absTy]; exact heW.abs)
       fun σ hσ => (heW.agree σ hσ).1) (hrW.of_kern hkJ) hSA (hVC K ΔW ρ ρW φ _ hagree hva)
     (absBelow_mono haba (by rw [← hkJ.absTy]; exact heW.abs)) hnha hD₁ harm
-  obtain ⟨stl, v, T, ⟨bk, stk, hkr⟩, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hK₁⟩ := hO.1 harmfl
+  obtain ⟨stl, v, T, ⟨bk, stk, hkr⟩, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁, hg₁⟩, hK₁⟩ := hO.1 harmfl
   -- the arm's reference run at the start's context and hint
   have hgJ : hintM { K with Δ := ΔW } ρW stJ.goal = hintM K ρ st.goal := by rw [← hkJ.goal]; exact hgW
   rw [hgJ] at hx₁
@@ -320,12 +324,12 @@ theorem matchArm_leaf (hJI : JoinContInv) (hJ : JoinContG) (hVC : ValsCongrA) (h
     rw [runT_congrA K ΔW ρ ρW φ true _ _ sA hagree]; exact hx₁
   obtain ⟨-, -, -, hS₁⟩ := Strict.fund_all hc _ hva true _ sA s₁ r hSA hx₁'
   -- the join, at the arm's leaf
-  obtain ⟨hjok, stl₂, v₂, ρ₂, Δ₂, π₂, he₂, hK₂, hm₂, ha₂, hl₂, hp₂, hr₂, bk', stk', hk'⟩ :=
+  obtain ⟨hjok, stl₂, v₂, ρ₂, Δ₂, π₂, he₂, hK₂, hm₂, ha₂, hl₂, hp₂, hr₂, hg₂, bk', stk', hk'⟩ :=
     hJ { K with Δ := ΔW } ρW φ πW stW stJ sA _ k kc m bj (ih.lower (Nat.le_of_lt hmn) ΔW) hneW hpW hrW hjc ρ₁ Δ₁ π₁
       stl stk v T r s₁ bk he₁ hK₁ hm₁ (ha₁ T rfl) hl₁ hp₁ hr₁ hS₁ hkr
   refine ⟨stl₂, v₂, T, ⟨bk', stk', hk'⟩, ⟨ρ₂, Δ₂, π₂, r, joinDrop K φ (movedPlaces φ sA) (.matchNat p z u) s₁,
     (heW.trans ((he₁.congr hkJ.absTy hkJ.nextLoan rfl rfl))).trans he₂, ?_, hm₂, fun T' e => by cases e; exact ha₂,
-    hl₂, hp₂, hr₂⟩, ((hKW.trans (Kept.of_kern hkJ hmJ)).trans hK₁).trans hK₂⟩
+    hl₂, hp₂, hr₂, hg₂.trans (hg₁.trans hgJ)⟩, ((hKW.trans (Kept.of_kern hkJ hmJ)).trans hK₁).trans hK₂⟩
   exact runT_matchNat_tailData _ p z u hfl hTok htag hcn hx₁' hjok
 
 end
@@ -405,11 +409,11 @@ theorem tStepMatchNat_data (hInv : TailMatchNatInv) (hJI : JoinContInv) (hMF : M
       ((htdG.trans htdA).trans htd) hk hkt hpG
       (hrt.move (hKA.trans hKG).stack habG fun σ hσ => ((heA.trans heG).agree σ hσ).1)
       hrG hSA (hVC K ΔG ρ ρG φ _ hagree hv) (absBelow_mono hab habG) hnh hD₁ hre
-    obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁⟩, hK₁⟩ :=
+    obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hl₁, hp₁, hr₁, hg₁⟩, hK₁⟩ :=
       hO.1 (by rw [hsc]; exact hfl2)
     rw [hgG.trans hgA] at hx₁
-    refine ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, (heA.trans heG).trans he₁, ?_, hm₁, ha₁, hl₁, hp₁, hr₁⟩,
-      (hKA.trans hKG).trans hK₁⟩
+    refine ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, (heA.trans heG).trans he₁, ?_, hm₁, ha₁, hl₁, hp₁, hr₁,
+      hg₁.trans (hgG.trans hgA)⟩, (hKA.trans hKG).trans hK₁⟩
     rw [← hRe K ρ φ true (hintM K ρ st.goal) p z u s sA tg hfl hTok htag,
       runT_congrA K ΔG ρ ρG φ true _ _ sA hagree]
     exact hx₁
@@ -532,14 +536,15 @@ theorem matchArm_leafE (hJI : JoinContInv) (hPJ : ProofJoinG K.D) (hPA : ProofAr
     (hrt.move (by rw [← hkJ.recStack]; exact hKW.stack) (by rw [← hkJ.absTy]; exact heW.abs)
       fun σ hσ => (heW.agree σ hσ).1) (hrW.of_kern hkJ) hSA (hVC K ΔW ρ ρW φ _ hagree hva)
     (absBelow_mono haba (by rw [← hkJ.absTy]; exact heW.abs)) hnha hD₁ harm
-  obtain ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁⟩, hK₁⟩ := hO.2
+  obtain ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁, hg₁⟩, hK₁⟩ := hO.2
   have hgJ : hintM { K with Δ := ΔW } ρW stJ.goal = hintM K ρ st.goal := by rw [← hkJ.goal]; exact hgW
   rw [hgJ] at hx₁
   have hx₁' : runT K ρ φ true (hintM K ρ st.goal) (if c = 0 then z else u) sA = some (r, s₁) := by
     rw [runT_congrA K ΔW ρ ρW φ true _ _ sA hagree]; exact hx₁
   obtain ⟨hr1, hr2, hs₁⟩ := hPA K.Δ ρ φ _ p z u sA s₁ c r (by rw [hsc]; exact hfl2) hx₁'
   refine ⟨stl, v, T, hkr, ⟨ρ₁, Δ₁, π₁, (.proof, .plain (TyM.prop True)), s,
-    heW.trans (he₁.congr hkJ.absTy hkJ.nextLoan rfl rfl), ?_, ?_, ?_, hp₁⟩, (hKW.trans (Kept.of_kern hkJ hmJ)).trans hK₁⟩
+    heW.trans (he₁.congr hkJ.absTy hkJ.nextLoan rfl rfl), ?_, ?_, ?_, hp₁, hg₁.trans hgJ⟩,
+    (hKW.trans (Kept.of_kern hkJ hmJ)).trans hK₁⟩
   · exact runT_matchNat_tailProof _ p z u hfl2 hTok htag hcn hx₁' hr1
       (hPJ.1 _ _ p z u (by rw [hs₁, hsc]; exact hfl2))
   · show meanV _ _ _ (.plain (TyM.prop True)) v = .proof
@@ -603,14 +608,14 @@ theorem tStepMatchNat_proof (hInv : TailMatchNatInv) (hJI : JoinContInv) (hPJ : 
       ((htdG.trans htdA).trans htd) hk hkt hpG
       (hrt.move (hKA.trans hKG).stack habG fun σ hσ => ((heA.trans heG).agree σ hσ).1)
       hrG hSA (hVC K ΔG ρ ρG φ _ hagree hv) (absBelow_mono hab habG) hnh hD₁ hre
-    obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁⟩, hK₁⟩ := hO.2
+    obtain ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r, s₁, he₁, hx₁, hm₁, ha₁, hp₁, hg₁⟩, hK₁⟩ := hO.2
     rw [hgG.trans hgA, ← runT_congrA K ΔG ρ ρG φ true _ _ sA hagree] at hx₁
     have hmap := hRe K ρ φ true (hintM K ρ st.goal) p z u s sA tg hTok htag
     rw [hx₁] at hmap
     obtain ⟨⟨r', s'⟩, hx', hr'⟩ := Option.map_eq_some_iff.mp hmap.symm
     simp only at hr'
     subst hr'
-    exact ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s', (heA.trans heG).trans he₁, hx', hm₁, ha₁, hp₁⟩,
+    exact ⟨stl, v', T, hkr, ⟨ρ₁, Δ₁, π₁, r', s', (heA.trans heG).trans he₁, hx', hm₁, ha₁, hp₁, hg₁.trans (hgG.trans hgA)⟩,
       (hKA.trans hKG).trans hK₁⟩
 
 end
@@ -654,7 +659,9 @@ scrutinee closes off as a stuck block in a typed run (out of scope: decision (b)
 `&` invalidating, D112) against the reference's `matchEntry` (`Decisions.blockCaps` at the places moved after the tag,
 `entryAccess`, its strict test `MatchEntryOk`): the relation after, under an extension, what a run keeps. Its parts: the
 captures and modes the same on both sides (`blockCaps` aligned with `blockCaptures`, the moved places by `joinEntry_stmt`),
-each access `AccessG`'s, the re-rootings `movedPlace`'s. -/
+each access `AccessG`'s, the re-rootings `movedPlace`'s. With the goal's meaning kept (the goal clause, lead48, docs/31
+D290; READ TRUE: the entry's η-refinement of a captured one-constructor prefix writes the goal, `G[C(σ̄)/σ]`, under an
+extension naming the fields of `σ`'s value, D288; no consumer yet). -/
 def MatchEntryG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (stA stE : MState) (sA : SState) (t : Term)
     (caps : Array (Place × Nat)) (m bE : Nat),
@@ -662,7 +669,8 @@ def MatchEntryG : Prop :=
     Runs (Ochr.blockEntry m t) stA bE caps stE →
     MatchEntryOk K φ true t sA ∧ ∃ (ρE : Assignment) (ΔE : Nat → TyS) (πE : Nat → Nat),
       Ext K ρ π stA stE ρE ΔE πE ∧ Kept stA stE ∧
-      Pre { K with Δ := ΔE } ρE stE ∧ Rel { K with Δ := ΔE } ρE φ πE stE (matchEntry K φ true t sA).1
+      Pre { K with Δ := ΔE } ρE stE ∧ Rel { K with Δ := ΔE } ρE φ πE stE (matchEntry K φ true t sA).1 ∧
+      hintM { K with Δ := ΔE } ρE stE.goal = hintM K ρ stA.goal
 
 /-- **The join's drop after an arm, with the arm's result in flight** (mixed, NEW; [Join], D84; the old
 `joinDrop_step_stmt` in the master's form), at a match whose declared type is not a borrow: from the arm's end (its
@@ -671,7 +679,8 @@ as a temporary) against the reference's `JoinDropOk` and `joinDrop` at the place
 its meaning, type and label; the relation after, under an extension. As first written it took the lending as a FREE
 parameter `lend : M Unit` after the drops (any action plugged in made it false; and `joinEnds` marks the by-move borrow
 variables' lent places BEFORE the arm, so no action after the drops is the lending): the borrow-typed match's lending is
-its own fact, `JoinLendG`, stated in prose below. -/
+its own fact, `JoinLendG`, stated in prose below. With the goal's meaning kept (the goal clause, lead48, docs/31 D290;
+READ TRUE as `JoinContG`'s; no consumer yet). -/
 def JoinDropG : Prop :=
   ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (π : Nat → Nat) (st₁ st₂ : MState) (sE s₁ : SState) (t : Term)
     (v : Value) (T? : Option Value) (r : Res) (m b : Nat),
@@ -688,7 +697,8 @@ def JoinDropG : Prop :=
       meanV { K with Δ := Δ₂ } ρ₂ (fun l => φ (π₂ l)) r.2 v = r.1 ∧
       (∀ T, T? = some T → StrAgree { K with Δ := Δ₂ } ρ₂ T r.2) ∧ r.2.label = (Value.heldLabel v).map π₂ ∧
       Pre { K with Δ := Δ₂ } ρ₂ (st₂.withTempT v T?) ∧
-      Rel { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT v T?) (joinDrop K φ (movedPlaces φ sE) t s₁)
+      Rel { K with Δ := Δ₂ } ρ₂ φ π₂ (st₂.withTempT v T?) (joinDrop K φ (movedPlaces φ sE) t s₁) ∧
+      hintM { K with Δ := Δ₂ } ρ₂ st₂.goal = hintM K ρ st₁.goal
 
 /-! `JoinLendG` (mixed, NOT stated in Lean): at a match whose declared type is a borrow, `joinEnds`' lending, in two parts
 around the arm (before: a label `g` reserved and the by-move borrow variables' lent places marked for it; after the
