@@ -47,7 +47,7 @@ theorem evalAt_invF {n : Nat} {typed : Bool} {t : Term} {hint : Option Value} {s
     clear hd
     have hs := runs_keep (keep_withLive _ ((decideKeep n).2.2.2.2.2.2.2.2.1 _ _ _ _)) hd'
     subst hs
-    obtain rfl := hdd _ _ _ _ (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hd'
+    obtain rfl := hdd _ _ _ _ (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hd'
     clear hd'
     peel h₁
     have h := h₁; clear h₁
@@ -85,13 +85,13 @@ theorem evalAt_invF {n : Nat} {typed : Bool} {t : Term} {hint : Option Value} {s
     all_goals first
       | (obtain ⟨rfl, rfl⟩ := runs_pure_inv h₂
          refine ⟨_, _, _, ?_, ?_, ?_, ?_, ?_, ?_, hcore, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-         · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+         · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
          · exact ⟨rfl, rfl, rfl, rfl⟩
          · rfl
          · rfl
          · rfl
          · rfl
-         · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+         · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
          · exact ⟨rfl, rfl, rfl, rfl⟩
          · rfl
          · rfl

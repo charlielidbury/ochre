@@ -361,7 +361,7 @@ theorem assignDerefInv : AssignDerefInv := by
     ⟨henv, hq.globals, hq.inds, hq.refs, hq.etaRefs, hq.goal, hq.neutrals, hq.liveScope, hq.nextLoan, hq.absSize,
       hq.absTy⟩,
     fun hT => ?_, ⟨hme.headEval, hme.copying, hme.inPlace, hme.erased⟩, hn₂.pos, hn₂.bind,
-    ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+    ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
   have hsE : sE = st₁.withTempT v₀ T₀ := by
     cases T₀ with
     | none => exact runs_expectTy_none' hex

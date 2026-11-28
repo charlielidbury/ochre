@@ -64,7 +64,7 @@ theorem seqInvD : SeqInvD := by
     (Runs.grows (grows_eval _ _ _ _) h₂))
   refine ⟨s₃, s₄, { s₄ with tailDecl := s₁.curDecl, tailNext := s₁.curTail, wantTy := s₁.wantHere }, v₀, T₀, _, _, b₄,
     hu, ?_, hdv, hD₄,
-    ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, h₂⟩
+    ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, h₂⟩
   exact DecTab.back hD₄ (Runs.grows (grows_dropValue _ _ _) hdv)
 
 end Ochr.Meaning.Steps.Machine

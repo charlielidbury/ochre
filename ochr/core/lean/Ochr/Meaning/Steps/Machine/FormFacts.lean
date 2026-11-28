@@ -98,7 +98,7 @@ theorem dropNoopInvM (n : Nat) (st st' : MState) (bh : Nat) (fr : Frame) (b : Bi
       unfold modifyFrame at h₂
       have := runs_modify_inv h₂
       subst this
-      exact ⟨⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩⟩
+      exact ⟨⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩⟩
 
 /-- **`DropNoopInv`**: [Drop] of a binding that holds no loan and no borrow ends nothing and pops it
 (`endLoansOfTopBind` finds no live loan in a value with no loan). -/

@@ -57,7 +57,7 @@ theorem tailOtherInv : Form.Master.TailOtherInv := by
   | some T =>
     refine ⟨m, st₀, s₂, st₁, v, T, b₀, b₂, by omega, ?_, ?_, by rw [← hl0], by rw [← hl0], hg, by rw [← hg]; exact hev,
       hk, hl1⟩
-    · rw [← hl0]; exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · rw [← hl0]; exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · rw [← hl0]; exact ⟨rfl, rfl, rfl, rfl⟩
 
 /-- **The tail step for every term `checkTail` does not treat by shape, with nothing assumed of the checker.** -/

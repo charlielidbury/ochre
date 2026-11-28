@@ -249,8 +249,8 @@ theorem rel_refine {Δ Δ' : Nat → TyS} {ρ ρ' : Assignment} {π : Nat → Na
 theorem kern_of_env {a b : MState} (he : a.env = b.env) (hg : a.globals = b.globals) (hi : a.inds = b.inds)
     (hl : a.nextLoan = b.nextLoan) (hna : a.nextAbs = b.nextAbs) (ht : a.absTy = b.absTy) (hd : a.absDecl = b.absDecl)
     (hr : a.refs = b.refs) (he2 : a.etaRefs = b.etaRefs) (hgo : a.goal = b.goal) (hn : a.neutrals = b.neutrals)
-    (hs : a.liveScope = b.liveScope) : Kern a b :=
-  ⟨by rw [he], hg, hi, hl, hna, ht, hd, hr, he2, hgo, hn, hs⟩
+    (hs : a.liveScope = b.liveScope) (hrs : a.recStack = b.recStack := by rfl) : Kern a b :=
+  ⟨by rw [he], hg, hi, hl, hna, ht, hd, hr, he2, hgo, hn, hs, hrs⟩
 
 /-- **World `Z`'s leaf is related to the reference's state after the match** (the refinement, then the join's
 drop of `n`). -/
@@ -509,11 +509,11 @@ theorem norm_lsT : lsT.norm = lsT := by simp [lsT, envT, MState.norm, Env.erase,
 
 theorem kern_lzT : Kern lzT (leafZ.withTempT .zero (some .tNat)) :=
   ⟨by simp [lzT, leafZ, envT, envBot, nBot, MState.withTempT, Env.erase, Frame.erase], rfl, rfl, rfl, rfl, rfl, rfl,
-    rfl, rfl, rfl, rfl, rfl⟩
+    rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem kern_lsT : Kern lsT (leafS.withTempT (.abs 1) (some .tNat)) :=
   ⟨by simp [lsT, leafS, envT, envBot, nBot, MState.withTempT, Env.erase, Frame.erase], rfl, rfl, rfl, rfl, rfl, rfl,
-    rfl, rfl, rfl, rfl, rfl⟩
+    rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 section
 variable {dm : DataModel} {D : Decisions} {φ : Future}

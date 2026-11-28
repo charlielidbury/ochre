@@ -308,9 +308,9 @@ theorem assignVarInv : AssignVarInv := by
     · obtain ⟨X, rfl⟩ := hNB (.inr hbot); exact ⟨hme.headEval, hme.copying, hme.inPlace, hme.erased⟩
     · obtain ⟨X, rfl⟩ := hL f' j' m c hF; exact ⟨hme.headEval, hme.copying, hme.inPlace, hme.erased⟩
   · obtain ⟨X, rfl⟩ := hNB hbv
-    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   · obtain ⟨X, rfl⟩ := hL f' j' m c hF
-    refine ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    refine ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     simp only [popTempE_endE_bind]
 
 theorem noRun_content_deref_bot {i f j : Nat} {st st' : MState} {b : Nat} {v : Value}
@@ -472,7 +472,7 @@ theorem assignDerefInvF : AssignDerefInvF := by
     ⟨henv, hq.globals, hq.inds, hq.refs, hq.etaRefs, hq.goal, hq.neutrals, hq.liveScope, hq.nextLoan, hq.absSize,
       hq.absTy⟩,
     fun hT => ?_, ⟨hme.headEval, hme.copying, hme.inPlace, hme.erased⟩, hn₂.pos, hn₂.bind,
-    ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+    ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
   have hsE : sE = st₁.withTempT v₀ T₀ := by
     cases T₀ with
     | none => exact runs_expectTy_none' hex

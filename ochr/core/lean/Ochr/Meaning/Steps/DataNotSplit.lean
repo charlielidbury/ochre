@@ -501,11 +501,11 @@ theorem norm_lfT : lfT.norm = lfT := by simp [lfT, leafF, stNot, envBT, MState.n
 
 theorem kern_ltT : Kern ltT (leafT.withTempT vF (some tyB)) :=
   ⟨by simp [ltT, leafT, envBT, envB, MState.withTempT, Env.erase, Frame.erase], rfl, rfl, rfl, rfl, rfl, rfl,
-    rfl, rfl, rfl, rfl, rfl⟩
+    rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem kern_lfT : Kern lfT (leafF.withTempT vT (some tyB)) :=
   ⟨by simp [lfT, leafF, envBT, envB, MState.withTempT, Env.erase, Frame.erase], rfl, rfl, rfl, rfl, rfl, rfl,
-    rfl, rfl, rfl, rfl, rfl⟩
+    rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 section
 variable {dm : DataModel} {D : Decisions} {φ : Future} {rest : List IndDecl}

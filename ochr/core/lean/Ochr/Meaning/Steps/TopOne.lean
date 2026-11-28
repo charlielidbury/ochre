@@ -247,7 +247,7 @@ theorem one_check_inv {I : List IndDecl} {fuel : Nat} {st' : MState}
   have := runs_keep Machine.keep_fuelLeft hfl2; subst this
   obtain ⟨g, s₆, b₆, hg, h₆⟩ := Runs.bind_inv h₅
   clear h₅
-  obtain ⟨rfl, rs, nr, rfl⟩ := Machine.runs_evalType_nat hg rfl rfl
+  obtain ⟨rfl, nr, rfl⟩ := Machine.runs_evalType_nat_nil hg rfl rfl rfl
   obtain ⟨fl3, s₇, b₇, hfl3, h₇⟩ := Runs.bind_inv h₆
   clear h₆
   have := runs_keep Machine.keep_fuelLeft hfl3; subst this
@@ -292,7 +292,7 @@ theorem one_check_inv {I : List IndDecl} {fuel : Nat} {st' : MState}
   subst hst
   have hle0 : s₁₀.globals = s₈.globals := by rw [e10, ← hle₀]
   have hle1 : s₉.globals = s₁₁.globals := by rw [← hle₁, e9]
-  refine ⟨{ inds := I, recStack := rs, nextRecUid := nr }, s₈, s₁₀, s₁₁, s₉, s₁₃, fl3, b₇,
+  refine ⟨{ inds := I, nextRecUid := nr }, s₈, s₁₀, s₁₁, s₉, s₁₃, fl3, b₇,
     holeAbs s₁₃.absTy [Value.tNat, Value.zero.succ], ad, hev, hg8.globals, hg8.inds, by rw [e10]; exact hle₀, ⟨fc, b₁₀, hcv⟩,
     by rw [← e9]; exact hle₁, ⟨fb, b₁₂, hbr⟩, ?_⟩
   show s₁₆.globals ++ _ = _

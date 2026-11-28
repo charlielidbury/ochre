@@ -608,11 +608,11 @@ theorem norm_lsT : lsT.norm = lsT := by simp [lsT, envT, MState.norm, Env.erase,
 
 theorem kern_lzT : Kern lzT (leafZR.withTempT .zero (some .tNat)) :=
   ⟨by simp [lzT, leafZR, envT, envBot, nBot, MState.withTempT, Env.erase, Frame.erase], rfl, rfl, rfl, rfl, rfl, rfl,
-    rfl, rfl, rfl, rfl, rfl⟩
+    rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem kern_lsT : Kern lsT (leafSR.withTempT vR (some .tNat)) :=
   ⟨by simp [lsT, leafSR, envT, envBot, nBot, MState.withTempT, Env.erase, Frame.erase], rfl, rfl, rfl, rfl, rfl, rfl,
-    rfl, rfl, rfl, rfl, rfl⟩
+    rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 section
 variable {dm : DataModel} {D : Decisions} {φ : Future} {G : Sem × TyS} {b : Nat}

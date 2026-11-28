@@ -535,7 +535,7 @@ theorem varEnd_read {n : Nat} {typed : Bool} {D : Decisions} {s st' : MState} {b
     refine ⟨hvw, hTs, ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, s, Quiet.refl _, fun _ _ h => h,
       (fun e => by cases e), fun _ => ?_⟩
     have e := setAtE_same (Env.setAtE s.env (.bind 0 1) .bot) 0 0 w .bot
-    exact ⟨by simp only [e], rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    exact ⟨by simp only [e], rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 set_option maxHeartbeats 4000000 in
 /-- **`VarEndInv`, proved**: the read of `x` lent to `y`'s borrow at the two-binding state. -/

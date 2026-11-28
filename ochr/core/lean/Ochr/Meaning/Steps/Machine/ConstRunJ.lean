@@ -60,13 +60,13 @@ theorem constRunJ : ColumnJ.ConstRunJ := by
   have := runs_keep keep_fuelLeft hfl2; subst this
   obtain ⟨g, s₆, b₆, hg, h₆⟩ := Runs.bind_inv h₅
   clear h₅
-  obtain ⟨rfl, rs, nr, rfl⟩ := runs_evalType_nat hg rfl rfl
+  obtain ⟨rfl, nr, rfl⟩ := runs_evalType_nat_nil hg rfl rfl rfl
   obtain ⟨fl3, s₇, b₇, hfl3, h₇⟩ := Runs.bind_inv h₆
   clear h₆
   have := runs_keep keep_fuelLeft hfl3; subst this
   obtain ⟨⟨v, T⟩, s₈, b₈, hev, -⟩ := Runs.bind_inv h₇
   refine ⟨_, _, _, _, v, T, ?_, ?_, ?_, ?_, ?_, hev⟩
-  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   · exact ⟨rfl, rfl, rfl, rfl⟩
   all_goals rfl
 

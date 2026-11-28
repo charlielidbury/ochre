@@ -204,7 +204,7 @@ does not read. -/
 theorem kern_popTemp_withTempT (st : MState) (v : Value) (T? : Option Value)
     (hb : (st.env[st.env.size - 1]!).temps.back? = some v) :
     Kern st ({ st with env := Env.popTempE st.env }.withTempT v T?) := by
-  refine ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  refine ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   simp only [MState.withTempT, Env.popTempE, Env.erase, Array.size_modify]
   apply Array.ext
   · simp
@@ -329,12 +329,12 @@ theorem letInvR : LetInvR := by
       { s₃ with env := Env.pushBindE s₃.env x none v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
       s₈, s₁₀, v₀, r, none, s₃.lastProof || du'.isProof, _, _, _, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
       hdr, ?_, ?_, ?_, ?_⟩
-    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · exact ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩
     · exact decTab_declOf_at hDst hdu
-    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · exact ⟨rfl, rfl, rfl, rfl⟩
-    · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+    · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
     · exact ⟨rfl, rfl, rfl, rfl⟩
     · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
         ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
@@ -378,12 +378,12 @@ theorem letInvR : LetInvR := by
       { s₃ with env := Env.pushBindE s₃.env x (some T') v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
       s₈, s₁₀, v₀, r, (some T'), s₃.lastProof || du'.isProof, _, _, _, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
       hdr, ?_, ?_, ?_, ?_⟩
-    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · exact ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩
     · exact decTab_declOf_at hDst hdu
-    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · exact ⟨rfl, rfl, rfl, rfl⟩
-    · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+    · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
     · exact ⟨rfl, rfl, rfl, rfl⟩
     · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
         ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans

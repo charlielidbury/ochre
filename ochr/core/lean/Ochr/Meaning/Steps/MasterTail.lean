@@ -118,7 +118,7 @@ theorem tStepOther (hT : TailOtherInv) (K : RunCtx) (φ : Future) : TStepOther K
     hT n t k st st' bh ht hrun
   -- the run's end is the continuation's but for the editor's fields, which no table reads
   have hD₂ : DecTab K.D st₂ :=
-    DecTab.of_kern (by rw [← hst₂]; exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hD
+    DecTab.of_kern (by rw [← hst₂]; exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hD
   have hD₁ : DecTab K.D st₁ := hD₂.back (hk v T st₁ b₂ () st₂ hkr)
   have hab₀ : t.absBelow st₀.absTy.size := by rw [← hk₀.absTy]; exact hab
   -- the hint handed down is the state's goal, whose unknowns `Pre`'s (WF6) bounds (`Refd.goal`; docs/31 D179)

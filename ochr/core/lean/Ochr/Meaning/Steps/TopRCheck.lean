@@ -61,42 +61,7 @@ theorem runs_readingAgrees_nat {k : Nat} {hn : Hint} {v : Value} (hv : v ≠ .pr
 theorem runs_refineDecl_other {st st' : MState} {b : Nat} {r : DeclInfo}
     (h : Runs (refineDecl .other) st b r st') : r = .other ∧ st' = st := runs_inv_eval h fun _ => rfl
 
-/-- `restoreKeep` of a snapshot with an empty [Rec] stack, where the run kept the counters and records: the snapshot
-with the run's next mark. -/
-theorem runs_restoreKeep_nil {saved cur st' : MState} {b : Nat} {u : PUnit}
-    (h : Runs (restoreKeep saved) cur b u st') (hrs : saved.recStack = []) (ha : cur.nextAbs = saved.nextAbs)
-    (hl : cur.nextLoan = saved.nextLoan) (hn : cur.neutrals = saved.neutrals) (he : cur.etaRefs = saved.etaRefs)
-    (ht : cur.absTy = saved.absTy) (hd : cur.absDecl = saved.absDecl) :
-    st' = { saved with nextRecUid := cur.nextRecUid } := by
-  unfold restoreKeep at h
-  have := runs_modify_inv h
-  subst this
-  simp only [hrs, List.map_nil, ha, hl, hn, he, ht, hd]
-  congr 1
-  simp
-
-/-- **`Nat` as a type, at an empty [Rec] stack** (`Machine.runs_evalType_nat`, keeping the stack): `Nat`, the state as it
-was but for the next mark. -/
-theorem runs_evalType_nat' {n : Nat} {st st' : MState} {bh : Nat} {v : Value}
-    (h : Runs (Ochr.evalType n .nat) st bh v st') (hh : st.headEval = false) (htd : st.tailDecl = none)
-    (hrs : st.recStack = []) : v = .tNat ∧ ∃ nr, st' = { st with nextRecUid := nr } := by
-  cases n with
-  | zero =>
-    have e : Ochr.evalType 0 Term.nat = inStatement (exhausted "out of fuel") := rfl
-    rw [e, Machine.inStatement_eq] at h
-    obtain ⟨b₁, cur, b₂, hx, hr⟩ := Machine.Runs.privately_inv h
-    obtain ⟨b₃, cur', hx', rfl⟩ := Machine.Runs.withErased_inv hx
-    simp only [Machine.runs_exhausted_iff] at hx'
-  | succ k =>
-    rw [Machine.evalType_succ, Machine.inStatement_eq] at h
-    obtain ⟨b₁, cur, b₂, hx, hr⟩ := Machine.Runs.privately_inv h
-    obtain ⟨b₃, cur', hx', rfl⟩ := Machine.Runs.withErased_inv hx
-    obtain ⟨vT, s₁, b₄, hev, h₁⟩ := Runs.bind_inv hx'
-    obtain ⟨rfl, hk, -, -⟩ := Machine.eval_nat_inv hev hh htd
-    simp only at h₁
-    obtain ⟨rfl, rfl⟩ := runs_pure_inv h₁
-    exact ⟨rfl, _, runs_restoreKeep_nil hr hrs hk.nextAbs.symm hk.nextLoan.symm hk.neutrals.symm hk.etaRefs.symm
-      hk.absTy.symm hk.absDecl.symm⟩
+-- `runs_restoreKeep_nil` and `runs_evalType_nat'` moved to `Machine.CallJEval` (`runs_evalType_nat_nil`; lead47, R1).
 
 /-- `checkFix`'s continuation only extends the tables. -/
 theorem grows_fixCont (n : Nat) (name : String) (v T : Value) : GrowsM (fixCont n name v T) :=
@@ -179,7 +144,7 @@ theorem R_check_inv {I : List IndDecl} {fuel : Nat} {st' : MState}
   simp only [List.zip_cons_cons, List.zip_nil_left, List.zip_nil_right, List.forIn_cons, List.forIn_nil, bind_assoc] at h₁₀
   obtain ⟨A, s₁₁, b₁₁, hA, h₁₁⟩ := Runs.bind_inv h₁₀
   clear h₁₀
-  obtain ⟨rfl, nr₁, rfl⟩ := runs_evalType_nat' hA rfl rfl rfl
+  obtain ⟨rfl, nr₁, rfl⟩ := runs_evalType_nat_nil hA rfl rfl rfl
   simp only [bind_assoc] at h₁₁
   obtain ⟨p₁, s₁₂, b₁₂, hp1, h₁₂⟩ := Runs.bind_inv h₁₁
   clear h₁₁
@@ -199,7 +164,7 @@ theorem R_check_inv {I : List IndDecl} {fuel : Nat} {st' : MState}
   clear hpc hpd hpf hA hp1 hc hra hrd hf6 hfl hdo hu hms hd hsh hr h e1 e2
   obtain ⟨g, s₁₆, b₁₆, hg, h₁₆⟩ := Runs.bind_inv h₁₅
   clear h₁₅
-  obtain ⟨rfl, nr₂, rfl⟩ := runs_evalType_nat' hg rfl rfl rfl
+  obtain ⟨rfl, nr₂, rfl⟩ := runs_evalType_nat_nil hg rfl rfl rfl
   obtain ⟨_, s₁₇, b₁₇, htr, h₁₇⟩ := Runs.bind_inv h₁₆
   clear h₁₆
   obtain ⟨-, rfl⟩ := runs_inv_eval htr fun _ => rfl

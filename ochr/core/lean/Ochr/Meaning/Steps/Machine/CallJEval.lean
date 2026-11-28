@@ -35,7 +35,7 @@ theorem evalAt_inv_call {n : Nat} {typed : Bool} {f : Term} {as : List Term} {hd
   clear hd'
   have hs := runs_keep (keep_withLive _ ((decideKeep n).2.2.2.2.2.2.2.2.1 _ _ _ _)) hd''
   subst hs
-  obtain rfl := hdd _ _ _ _ (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hd''
+  obtain rfl := hdd _ _ _ _ (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hd''
   clear hd''
   peel h₁
   obtain ⟨pre, s₂, b₂, hp, h₂⟩ := Runs.bind_inv h₁
@@ -67,7 +67,7 @@ theorem evalAt_inv_call {n : Nat} {typed : Bool} {f : Term} {as : List Term} {hd
     peel h₄
     obtain ⟨rfl, rfl⟩ := runs_pure_inv h₄
     refine ⟨_, _, _, ?_, ?_, ?_, ?_, ?_, ?_, ?_, hcore, ?_, ?_⟩
-    all_goals first | rfl | exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ | exact ⟨rfl, rfl, rfl, rfl⟩
+    all_goals first | rfl | exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ | exact ⟨rfl, rfl, rfl, rfl⟩
 
 
 theorem evalCore_call_inv {n : Nat} {typed : Bool} {f : Term} {as : List Term} {hd : Bool} {hint : Option Value}
@@ -206,7 +206,7 @@ theorem eval_const_I_inv {n : Nat} {hint : Option Value} {st st' : MState} {bh :
   have hl : LocsEq sb st' := hlb
   split at h₃ <;> (simp only [setFlags] at h₃; peel h₃; obtain ⟨rfl, rfl⟩ := runs_pure_inv h₃) <;>
     (refine ⟨rfl, ?_, ?_⟩
-     · refine hka.trans (Kern.trans ?_ hl.kern); exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+     · refine hka.trans (Kern.trans ?_ hl.kern); exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
      · unfold LocsEq at hl hla; rw [← hl, ← hla]; exact ⟨rfl, rfl, rfl, rfl, rfl⟩)
 
 theorem runs_argDecls_zero {k : Nat} {st st' : MState} {b : Nat} {ads : Array DeclInfo}
@@ -280,7 +280,7 @@ theorem _root_.Ochr.Meaning.Steps.Form.Kern.binds {a b : MState} (h : Kern a b) 
 theorem _root_.Ochr.Meaning.Steps.Form.Kern.withTempT' {a b : MState} (h : Kern a b) {v : Value} {T T' : Option Value} :
     Kern (a.withTempT v T) (b.withTempT v T') :=
   ⟨by rw [erase_withTempT, erase_withTempT, h.env], h.globals, h.inds, h.nextLoan, h.nextAbs, h.absTy, h.absDecl,
-    h.refs, h.etaRefs, h.goal, h.neutrals, h.liveScope⟩
+    h.refs, h.etaRefs, h.goal, h.neutrals, h.liveScope, h.recStack⟩
 
 /-- `J`'s state with the call's head and argument held (main's D115). -/
 def stJ2 : MState := (CallGuards.stJ.withTempT (.gfn "I") (some ColumnI.piNat)).withTempT .zero (some .tNat)
@@ -361,9 +361,9 @@ theorem evalCall_J_inv {k : Nat} {s s' : MState} {bh : Nat} {r : Value × Option
   obtain ⟨ct, s₁₄, b₁₄, hct, h14⟩ := Runs.bind_inv h13
   clear h13
   have hk3' : Kern CallGuards.stJ s₃ := by
-    refine hk.trans (Kern.trans ?_ hk3); exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    refine hk.trans (Kern.trans ?_ hk3); exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   obtain ⟨rfl, rfl⟩ := callTemps_J hct (Kern.withTempT' (Kern.trans (Kern.trans (Kern.withTempT' hk3') (by
-    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩)) hk10))
+    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩)) hk10))
   obtain ⟨loc, s₁₅, b₁₅, hloc, h15⟩ := Runs.bind_inv h14
   clear h14
   have := runs_keep (keep_enderLoc _ _) hloc; subst this
@@ -372,7 +372,7 @@ theorem evalCall_J_inv {k : Nat} {s s' : MState} {bh : Nat} {r : Value × Option
   rw [hfills] at h15
   change Runs (Ochr.callFn k true (some ColumnI.piNat) 1 #[some .tNat] false none none res #[false] _ _ none) _ _ _ _ at h15
   refine ⟨res, _, _, Kern.withTempT' (Kern.trans (Kern.trans (Kern.withTempT' hk3') (by
-    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩)) hk10), ⟨hm10.headEval, hm10.copying,
+    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩)) hk10), ⟨hm10.headEval, hm10.copying,
     hm10.inPlace, hm10.erased⟩, htd10, hres, h15⟩
 
 /-! ## Private runs that change nothing the kernel holds -/
@@ -487,6 +487,44 @@ theorem runs_evalType_nat {n : Nat} {st st' : MState} {bh : Nat} {v : Value}
     simp only at h₁
     obtain ⟨rfl, rfl⟩ := runs_pure_inv h₁
     exact ⟨rfl, runs_restoreKeep_same hr hk.nextAbs.symm hk.nextLoan.symm hk.neutrals.symm hk.etaRefs.symm
+      hk.absTy.symm hk.absDecl.symm⟩
+
+/-- `restoreKeep` of a snapshot with an empty [Rec] stack, where the run kept the counters and records: the snapshot
+with the run's next mark (lead47, R1: `Kern` holds the stack, docs/31 D284; `Top.RT.runs_restoreKeep_nil` moved here). -/
+theorem runs_restoreKeep_nil {saved cur st' : MState} {b : Nat} {u : PUnit}
+    (h : Runs (restoreKeep saved) cur b u st') (hrs : saved.recStack = []) (ha : cur.nextAbs = saved.nextAbs)
+    (hl : cur.nextLoan = saved.nextLoan) (hn : cur.neutrals = saved.neutrals) (he : cur.etaRefs = saved.etaRefs)
+    (ht : cur.absTy = saved.absTy) (hd : cur.absDecl = saved.absDecl) :
+    st' = { saved with nextRecUid := cur.nextRecUid } := by
+  unfold restoreKeep at h
+  have := runs_modify_inv h
+  subst this
+  simp only [hrs, List.map_nil, ha, hl, hn, he, ht, hd]
+  congr 1
+  simp
+
+set_option maxHeartbeats 4000000 in
+/-- **`Nat` as a type, at an empty [Rec] stack** (`runs_evalType_nat`, keeping the stack; lead47, R1, docs/31 D284;
+`Top.RT.runs_evalType_nat'` moved here): `Nat`, the state as it was but for the next mark. -/
+theorem runs_evalType_nat_nil {n : Nat} {st st' : MState} {bh : Nat} {v : Value}
+    (h : Runs (Ochr.evalType n .nat) st bh v st') (hh : st.headEval = false) (htd : st.tailDecl = none)
+    (hrs : st.recStack = []) : v = .tNat ∧ ∃ nr, st' = { st with nextRecUid := nr } := by
+  cases n with
+  | zero =>
+    have e : Ochr.evalType 0 Term.nat = inStatement (exhausted "out of fuel") := rfl
+    rw [e, inStatement_eq] at h
+    obtain ⟨b₁, cur, b₂, hx, hr⟩ := Runs.privately_inv h
+    obtain ⟨b₃, cur', hx', rfl⟩ := Runs.withErased_inv hx
+    simp only [runs_exhausted_iff] at hx'
+  | succ k =>
+    rw [evalType_succ, inStatement_eq] at h
+    obtain ⟨b₁, cur, b₂, hx, hr⟩ := Runs.privately_inv h
+    obtain ⟨b₃, cur', hx', rfl⟩ := Runs.withErased_inv hx
+    obtain ⟨vT, s₁, b₄, hev, h₁⟩ := Runs.bind_inv hx'
+    obtain ⟨rfl, hk, -, -⟩ := eval_nat_inv hev hh htd
+    simp only at h₁
+    obtain ⟨rfl, rfl⟩ := runs_pure_inv h₁
+    exact ⟨rfl, _, runs_restoreKeep_nil hr hrs hk.nextAbs.symm hk.nextLoan.symm hk.neutrals.symm hk.etaRefs.symm
       hk.absTy.symm hk.absDecl.symm⟩
 
 

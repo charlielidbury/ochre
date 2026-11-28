@@ -56,7 +56,7 @@ theorem dropBorrowInvM (n : Nat) (st st' : MState) (bh : Nat) (fr : Frame) (b : 
     unfold modifyFrame at h₂
     have e3 := runs_modify_inv h₂
     subst e3
-    refine ⟨⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩⟩
+    refine ⟨⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩⟩
     simp only [Env.popBindE, size_endE]
 
 theorem dropBorrowInv : DropBorrowInv := fun n st st' bh fr b px l c hfr hb hv hF h =>
@@ -211,7 +211,7 @@ theorem varLent_read {n i f j f' j' l : Nat} {D : Decisions} {s st' : MState} {b
   | false =>
     obtain ⟨X, rfl⟩ := hcf rfl
     exact ⟨hvw, rfl, ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, s, Quiet.refl _, fun _ _ h => h,
-      (fun e => by cases e), fun _ => ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+      (fun e => by cases e), fun _ => ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 set_option maxHeartbeats 4000000 in
 /-- **`VarLentInv`**: the read of a number variable lent to a binding's borrow. -/
@@ -349,7 +349,7 @@ theorem borrowLentInv : BorrowLentInv := by
     simp only [Prod.mk.injEq] at hvt
     obtain ⟨rfl, rfl⟩ := hvt
     exact ⟨⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, s₅, Quiet.refl _, fun _ _ h => h, rfl, rfl,
-      ⟨congrArg Env.erase (popTempE_pushTempTyE _ _ _).symm, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+      ⟨congrArg Env.erase (popTempE_pushTempTyE _ _ _).symm, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 /-! ## `SeqBorInv`: `u; w` with `u`'s value a borrow -/
 
@@ -495,7 +495,7 @@ theorem seqBorInv : SeqBorInv := by
   · subst hv
     have := runs_dropValue_borrow hc hvals hx hpx hl1 hb hdv
     subst this
-    exact ⟨s₃, Quiet.refl _, fun _ _ h => h, ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩,
+    exact ⟨s₃, Quiet.refl _, fun _ _ h => h, ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩,
       ⟨rfl, rfl, rfl, rfl⟩⟩
 
 #print axioms seqBorInv

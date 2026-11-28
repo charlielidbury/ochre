@@ -640,7 +640,7 @@ theorem caller_of_rel {π : Nat → Nat} {s : SState} (hr : Rel K ρ φ π stX1 
           rw [this]; rfl
         rw [this] at hl; cases hl)
       ⟨rfl, rfl⟩ (fun _ => by rw [NatAlong]; trivial)
-    refine h₁.of_kern ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    refine h₁.of_kern ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     simp [Env.setAtE, stX1, stX, xB, Env.erase, Frame.erase]
 
 end

@@ -294,7 +294,7 @@ theorem runT_place (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (hin
 /-- The type in flight is not read by the entry conditions (`Env.erase` forgets a temporary's stored type). -/
 theorem kern_withTempT_none (st : MState) (v : Value) (T? : Option Value) :
     Kern (st.withTempT v none) (st.withTempT v T?) :=
-  ⟨by rw [erase_withTempT, erase_withTempT], rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  ⟨by rw [erase_withTempT, erase_withTempT], rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- `StrAgree` is the hint's meaning at the type: moved across an extension as `hintM_congrA` moves it. -/
 theorem strAgree_congrA {K : RunCtx} {ρ ρ₁ : Assignment} {Δ₁ : Nat → TyS} {T : Value} {R : TyS} {n : Nat}

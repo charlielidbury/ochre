@@ -6,7 +6,8 @@ import Ochr.Meaning.Steps.FormErase
 The checker's state carries much besides what the simulation speaks of: the flags and one-shot
 readings `eval` hands down (`curTail`, `tailDecl`, `headEval`, `wantTy`, …), the log, the editor's
 locations. A step's hypotheses read only the *kernel* (`Kern`): Ω, Σ, the declarations, the label
-and unknown counters, Δ and its frozen readings, the records, the goal and the reading mode. So the
+and unknown counters, Δ and its frozen readings, the records, the goal and the reading mode, and (since R1, docs/31
+D284) the [Rec] stack, which `EvalAt`'s entry condition `RecTie` reads (`Pre`, through `MState.norm`, does not). So the
 bookkeeping a checker function does around a sub-run changes nothing a step assumes (`Pre.of_kern`,
 `Rel.of_kern`, `DecTab.of_kern`), and the facts about the checker's runs a step uses
 (`Steps/FormMachine.lean`) need say no more of the intermediate states than their kernel.
@@ -33,23 +34,26 @@ structure Kern (st st' : MState) : Prop where
   goal : st.goal = st'.goal
   neutrals : st.neutrals = st'.neutrals
   liveScope : st.liveScope = st'.liveScope
+  /-- The [Rec] stack (R1, docs/31 D284): read by `EvalAt`'s and `TailAt`'s entry condition `RecTie`. -/
+  recStack : st.recStack = st'.recStack
 
-theorem Kern.rfl' (st : MState) : Kern st st := ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+theorem Kern.rfl' (st : MState) : Kern st st := ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem Kern.symm {st st' : MState} (h : Kern st st') : Kern st' st :=
   ⟨h.env.symm, h.globals.symm, h.inds.symm, h.nextLoan.symm, h.nextAbs.symm, h.absTy.symm, h.absDecl.symm,
-    h.refs.symm, h.etaRefs.symm, h.goal.symm, h.neutrals.symm, h.liveScope.symm⟩
+    h.refs.symm, h.etaRefs.symm, h.goal.symm, h.neutrals.symm, h.liveScope.symm, h.recStack.symm⟩
 
 theorem Kern.trans {a b c : MState} (h₁ : Kern a b) (h₂ : Kern b c) : Kern a c :=
   ⟨h₁.env.trans h₂.env, h₁.globals.trans h₂.globals, h₁.inds.trans h₂.inds, h₁.nextLoan.trans h₂.nextLoan,
     h₁.nextAbs.trans h₂.nextAbs, h₁.absTy.trans h₂.absTy, h₁.absDecl.trans h₂.absDecl, h₁.refs.trans h₂.refs,
-    h₁.etaRefs.trans h₂.etaRefs, h₁.goal.trans h₂.goal, h₁.neutrals.trans h₂.neutrals, h₁.liveScope.trans h₂.liveScope⟩
+    h₁.etaRefs.trans h₂.etaRefs, h₁.goal.trans h₂.goal, h₁.neutrals.trans h₂.neutrals, h₁.liveScope.trans h₂.liveScope,
+    h₁.recStack.trans h₂.recStack⟩
 
 /-- The value in flight counted: two states with one kernel have one kernel with it counted. -/
 theorem Kern.withTempT {st st' : MState} (h : Kern st st') (v : Value) (T? : Option Value) :
     Kern (st.withTempT v T?) (st'.withTempT v T?) :=
   ⟨by rw [erase_withTempT, erase_withTempT, h.env], h.globals, h.inds, h.nextLoan, h.nextAbs, h.absTy, h.absDecl, h.refs,
-    h.etaRefs, h.goal, h.neutrals, h.liveScope⟩
+    h.etaRefs, h.goal, h.neutrals, h.liveScope, h.recStack⟩
 
 theorem Kern.norm {st st' : MState} (h : Kern st st') : st.norm = st'.norm := by
   simp only [MState.norm, h.env, h.globals, h.inds, h.nextLoan, h.nextAbs, h.absTy, h.absDecl, h.refs, h.etaRefs,

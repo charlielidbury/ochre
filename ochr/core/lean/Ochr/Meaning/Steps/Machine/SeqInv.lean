@@ -126,6 +126,6 @@ theorem seqInvR : SeqInvR := by
       ((TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl)).trans (Runs.grows (grows_eval _ _ _ _) h₂)))
   · have := runs_dropValue_inert hb hl hdv
     subst this
-    exact ⟨⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩⟩
+    exact ⟨⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩⟩
 
 end Ochr.Meaning.Steps.Machine

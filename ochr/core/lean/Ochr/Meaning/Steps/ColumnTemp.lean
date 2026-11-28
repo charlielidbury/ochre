@@ -310,7 +310,7 @@ theorem rel_withTemp_inertA {K : RunCtx} {ρ : Assignment} {φ : Future} {π : N
 
 /-- `withTemp` and `withTempT` of one state have one kernel. -/
 theorem kern_withTemp (st : MState) (v : Value) (T? : Option Value) : Kern (st.withTemp v) (st.withTempT v T?) :=
-  ⟨erase_withTemp st v T?, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  ⟨erase_withTemp st v T?, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem rel_withTemp_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
     (hr : Rel K ρ φ π st s) {v : Value} (hv : v.Num) : Rel K ρ φ π (st.withTemp v) s :=

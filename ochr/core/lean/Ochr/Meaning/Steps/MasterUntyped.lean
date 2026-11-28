@@ -73,7 +73,7 @@ theorem seqInvDU : SeqInvDU := by
     (Runs.grows (grows_eval _ _ _ _) h₂))
   refine ⟨s₃, s₄, { s₄ with tailDecl := s₁.curDecl, tailNext := s₁.curTail, wantTy := s₁.wantHere }, v₀, T₀, _, _, b₄,
     hu, ?_, hdv, hD₄,
-    ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, h₂⟩
+    ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩, rfl, rfl, h₂⟩
   exact DecTab.back hD₄ (Runs.grows (grows_dropValue _ _ _) hdv)
 
 /-- **`evalCore` of an UNTYPED `let` whose right-hand side is not a call**: as `LetInvD`, `u` run untyped with no
@@ -172,12 +172,12 @@ theorem letInvDUn : LetInvDUn := by
     { s₃ with env := Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du', callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
     s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, b₃, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, ?_, ?_, rfl, hw',
     hdr, ?_, ?_, ?_, ?_, rfl, rfl⟩
-  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   · exact ⟨rfl, rfl, rfl, rfl⟩
   · exact decTab_declOf_at hDst hdu
-  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   · exact ⟨rfl, rfl, rfl, rfl⟩
-  · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+  · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
   · exact ⟨rfl, rfl, rfl, rfl⟩
   · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
       ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
@@ -340,12 +340,12 @@ theorem letCallInvU : LetCallInvU := by
         { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop none, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
         s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, _, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, (.inr ⟨rfl, rfl⟩), ?_, ?_,
         rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
-      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
       · exact ⟨rfl, rfl, rfl, rfl⟩
       · exact decTab_declOf_at hDst hdu
-      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
       · exact ⟨rfl, rfl, rfl, rfl⟩
-      · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+      · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
       · exact ⟨rfl, rfl, rfl, rfl⟩
       · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
           ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
@@ -401,12 +401,12 @@ theorem letCallInvU : LetCallInvU := by
         { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop none, callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
         s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, none, _, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, (.inl ⟨rfl, .inl ⟨rfl, fun caps hs ds cod rd ws hT e => by subst hT; simp at hL; rw [hL] at e; cases e⟩⟩), ?_, ?_,
         rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
-      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
       · exact ⟨rfl, rfl, rfl, rfl⟩
       · exact decTab_declOf_at hDst hdu
-      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
       · exact ⟨rfl, rfl, rfl, rfl⟩
-      · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+      · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
       · exact ⟨rfl, rfl, rfl, rfl⟩
       · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
           ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
@@ -447,12 +447,12 @@ theorem letCallInvU : LetCallInvU := by
           { s₃ with env := (Env.pushBindE s₃.env x T₀ v₀ (s₃.lastProof || du'.isProof) du').setLazyTop (some (Value.tPi caps (.pi hs ds cod) rd, ws, ds.length)), callTyLater := none, tailDecl := s₂.curDecl, wantTy := s₂.wantHere, tailNext := s₂.curTail },
           s₈, s₁₀, v₀, r, T₀, s₃.lastProof || du'.isProof, some (Value.tPi caps (.pi hs ds cod) rd, ws, ds.length), _, b₇, b₁₀, ?_, ?_, htn, htd, rfl, hu, ?_, (.inl ⟨rfl, .inr ⟨caps, hs, ds, cod, rd, ws, hT, later_eq hL, rfl⟩⟩), ?_, ?_,
           rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
-        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
         · exact ⟨rfl, rfl, rfl, rfl⟩
         · exact decTab_declOf_at hDst hdu
-        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
         · exact ⟨rfl, rfl, rfl, rfl⟩
-        · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+        · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
         · exact ⟨rfl, rfl, rfl, rfl⟩
         · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
             ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans
@@ -490,12 +490,12 @@ theorem letCallInvU : LetCallInvU := by
             subst hT; simp at hL; rw [hL] at e; cases e
             first | exact hnotPi _ _ _ _ _ rfl | exact (hnotPi _ _ _ _ _ rfl).elim | simp_all⟩⟩), ?_, ?_,
           rfl, hw', hdr, ?_, ?_, ?_, ?_, rfl⟩
-        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
         · exact ⟨rfl, rfl, rfl, rfl⟩
         · exact decTab_declOf_at hDst hdu
-        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+        · exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
         · exact ⟨rfl, rfl, rfl, rfl⟩
-        · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
+        · exact Kern.trans (by exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩) hk3
         · exact ⟨rfl, rfl, rfl, rfl⟩
         · exact DecTab.back hD (TablesGrow.trans (TablesGrow.of_fields (by rfl) (by rfl) (by rfl) (by rfl) (by rfl))
             ((Runs.grows (grows_eval _ _ _ _) hw').trans (hg₂.trans

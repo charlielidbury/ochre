@@ -60,7 +60,7 @@ theorem kern_moveK {st st' : MState} (hk : Kern stK st) (hk' : Kern endK st') :
   refine ⟨?_, hk.globals.symm.trans hk'.globals, hk.inds.symm.trans hk'.inds, hk.nextLoan.symm.trans hk'.nextLoan,
     hk.nextAbs.symm.trans hk'.nextAbs, hk.absTy.symm.trans hk'.absTy, hk.absDecl.symm.trans hk'.absDecl,
     hk.refs.symm.trans hk'.refs, hk.etaRefs.symm.trans hk'.etaRefs, hk.goal.symm.trans hk'.goal,
-    hk.neutrals.symm.trans hk'.neutrals, hk.liveScope.symm.trans hk'.liveScope⟩
+    hk.neutrals.symm.trans hk'.neutrals, hk.liveScope.symm.trans hk'.liveScope, hk.recStack.symm.trans hk'.recStack⟩
   show Env.erase (Env.setAtE st.env (.bind 1 1) .bot) = st'.env.erase
   rw [ColumnB.erase_setAtE, ← hk.env, ← hk'.env]
   simp [stK, endK, Env.setAtE, Env.erase, Frame.erase, cellR, selfK, rB]

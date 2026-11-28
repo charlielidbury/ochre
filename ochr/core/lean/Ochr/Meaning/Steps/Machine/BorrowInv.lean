@@ -123,6 +123,6 @@ theorem borrowNumInv : BorrowNumInv := by
     simp only [Prod.mk.injEq] at hvt
     obtain ⟨rfl, rfl⟩ := hvt
     exact ⟨⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, s₅, Quiet.refl _, fun _ _ h => h, rfl, rfl,
-      ⟨congrArg Env.erase (popTempE_pushTempTyE _ _ _).symm, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+      ⟨congrArg Env.erase (popTempE_pushTempTyE _ _ _).symm, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 end Ochr.Meaning.Steps.Machine

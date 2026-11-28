@@ -347,7 +347,7 @@ theorem varNum_read {n i f j : Nat} {bd : Binding} {typed : Bool} {D : Decisions
   | false =>
     obtain ⟨X, rfl⟩ := hcf rfl
     exact ⟨rfl, hT', hTs, ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, _, Quiet.refl _, fun _ _ h => h, (fun e => by cases e),
-      fun _ => ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+      fun _ => ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 set_option maxHeartbeats 4000000 in
 theorem varNumInv : VarNumInv := by
